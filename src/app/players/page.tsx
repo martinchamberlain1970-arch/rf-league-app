@@ -27,6 +27,7 @@ type ClaimRequest = {
   player_id: string;
   requester_user_id: string;
   requested_full_name: string;
+  requested_date_of_birth?: string | null;
   status: "pending" | "approved" | "rejected";
   created_at: string;
 };
@@ -240,7 +241,7 @@ export default function PlayersPage() {
     if (!client) return;
     const { data, error } = await client
       .from("player_claim_requests")
-      .select("id,player_id,requester_user_id,requested_full_name,status,created_at")
+      .select("id,player_id,requester_user_id,requested_full_name,requested_date_of_birth,status,created_at")
       .order("created_at", { ascending: false });
     if (error || !data) return;
     setClaims(data as ClaimRequest[]);
@@ -844,6 +845,7 @@ export default function PlayersPage() {
         .update({
           claimed_by: claim.requester_user_id,
           full_name: claim.requested_full_name || claimPlayer?.full_name,
+          date_of_birth: claim.requested_date_of_birth ?? undefined,
           is_archived: false,
         })
         .eq("id", claim.player_id);

@@ -104,16 +104,17 @@ export default function SignInPage() {
           router.replace(nextPath);
           return;
         }
-        const submitClaim = async (playerId: string, fullName: string) => {
+        const submitClaim = async (playerId: string, fullName: string, requestedDateOfBirth?: string | null) => {
           await client.from("player_claim_requests").insert({
             player_id: playerId,
             requester_user_id: userId,
             requested_full_name: fullName,
+            requested_date_of_birth: requestedDateOfBirth ?? null,
             status: "pending",
           });
         };
         if (parsed.type === "existing" && parsed.playerId && parsed.fullName) {
-          await submitClaim(parsed.playerId, parsed.fullName);
+          await submitClaim(parsed.playerId, parsed.fullName, parsed.dateOfBirth ?? null);
           setMessage("Your profile-link request has been submitted for administrator approval.");
           if (parsed.locationId) {
             await client.from("player_update_requests").insert({
@@ -170,7 +171,7 @@ export default function SignInPage() {
                 });
               }
             }
-            await submitClaim(created.id, fullName);
+            await submitClaim(created.id, fullName, parsed.dateOfBirth ?? null);
             setMessage("Your profile-link request has been submitted for administrator approval.");
           }
         }
