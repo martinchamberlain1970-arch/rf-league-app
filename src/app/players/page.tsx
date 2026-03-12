@@ -14,6 +14,7 @@ type Player = {
   id: string;
   display_name: string;
   full_name: string | null;
+  date_of_birth?: string | null;
   is_archived: boolean;
   claimed_by: string | null;
   location_id?: string | null;
@@ -103,6 +104,20 @@ type AppUser = {
 };
 type Location = { id: string; name: string };
 
+function deriveAgeBandFromDob(dob: string | null | undefined): "under_13" | "13_15" | "16_17" | "18_plus" {
+  if (!dob) return "18_plus";
+  const birth = new Date(`${dob}T12:00:00`);
+  if (Number.isNaN(birth.getTime())) return "18_plus";
+  const now = new Date();
+  let age = now.getFullYear() - birth.getFullYear();
+  const monthDiff = now.getMonth() - birth.getMonth();
+  if (monthDiff < 0 || (monthDiff === 0 && now.getDate() < birth.getDate())) age -= 1;
+  if (age < 13) return "under_13";
+  if (age < 16) return "13_15";
+  if (age < 18) return "16_17";
+  return "18_plus";
+}
+
 export default function PlayersPage() {
   const admin = useAdminStatus();
   const [players, setPlayers] = useState<Player[]>([]);
@@ -113,6 +128,8 @@ export default function PlayersPage() {
   const [locationRequests, setLocationRequests] = useState<LocationRequest[]>([]);
   const [mergeRequests, setMergeRequests] = useState<ProfileMergeRequest[]>([]);
   const [deletionRequests, setDeletionRequests] = useState<PlayerDeletionRequest[]>([]);
+  const [dobDraftByPlayerId, setDobDraftByPlayerId] = useState<Record<string, string>>({});
+  const [savingDobByPlayerId, setSavingDobByPlayerId] = useState<Record<string, boolean>>({});
   const [appUsers, setAppUsers] = useState<AppUser[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [newLocationId, setNewLocationId] = useState("");
@@ -226,14 +243,22 @@ export default function PlayersPage() {
     setLoading(true);
     const { data, error } = await client
       .from("players")
-      .select("id,display_name,full_name,is_archived,claimed_by,location_id,age_band,guardian_consent,guardian_user_id")
+      .select("id,display_name,full_name,date_of_birth,is_archived,claimed_by,location_id,age_band,guardian_consent,guardian_user_id")
       .order("display_name", { ascending: true });
     setLoading(false);
     if (error || !data) {
       setMessage(`Failed to load players: ${error?.message ?? "Unknown error"}`);
       return;
     }
-    setPlayers(data as Player[]);
+    const rows = data as Player[];
+    setPlayers(rows);
+    setDobDraftByPlayerId((prev) => {
+      const next = { ...prev };
+      for (const p of rows) {
+        if (next[p.id] === undefined) next[p.id] = p.date_of_birth ?? "";
+      }
+      return next;
+    });
   };
 
   const loadClaims = async () => {
@@ -749,6 +774,45 @@ export default function PlayersPage() {
       return;
     }
     await onRequestClaim(player);
+  };
+
+  const onSavePlayerDob = async (player: Player) => {
+    const client = supabase;
+    if (!client || !isSuperAdmin) return;
+    const dob = (dobDraftByPlayerId[player.id] ?? "").trim();
+    if (!dob) {
+      setMessage("Enter a date of birth before saving.");
+      return;
+    }
+    const ageBand = deriveAgeBandFromDob(dob);
+    setSavingDobByPlayerId((prev) => ({ ...prev, [player.id]: true }));
+    const payload: Record<string, string | null> = {
+      date_of_birth: dob,
+      age_band: ageBand,
+    };
+    if (ageBand !== "18_plus") payload.avatar_url = null;
+    const { error } = await client.from("players").update(payload).eq("id", player.id);
+    setSavingDobByPlayerId((prev) => ({ ...prev, [player.id]: false }));
+    if (error) {
+      setMessage(`Failed to save date of birth: ${error.message}`);
+      return;
+    }
+    setPlayers((prev) =>
+      prev.map((p) =>
+        p.id === player.id
+          ? {
+              ...p,
+              date_of_birth: dob,
+              age_band: ageBand,
+            }
+          : p
+      )
+    );
+    setMessage(null);
+    setInfoModal({
+      title: "Date of birth updated",
+      body: `${player.full_name ?? player.display_name} was updated successfully.`,
+    });
   };
 
   const onCreateProfileClaim = async () => {
@@ -1920,6 +1984,30 @@ export default function PlayersPage() {
                       <Link href={`/players/${p.id}`} className="text-sm font-medium text-teal-700 underline">
                         View profile
                       </Link>
+                      {isSuperAdmin ? (
+                        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1">
+                          <label className="text-xs text-slate-600">DOB</label>
+                          <input
+                            type="date"
+                            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700"
+                            value={dobDraftByPlayerId[p.id] ?? p.date_of_birth ?? ""}
+                            onChange={(e) =>
+                              setDobDraftByPlayerId((prev) => ({
+                                ...prev,
+                                [p.id]: e.target.value,
+                              }))
+                            }
+                          />
+                          <button
+                            type="button"
+                            onClick={() => void onSavePlayerDob(p)}
+                            disabled={Boolean(savingDobByPlayerId[p.id])}
+                            className="rounded-lg border border-teal-300 bg-teal-50 px-2 py-1 text-xs text-teal-800 disabled:opacity-60"
+                          >
+                            {savingDobByPlayerId[p.id] ? "Saving..." : "Save DOB"}
+                          </button>
+                        </div>
+                      ) : null}
                       {!admin.isAdmin ? (
                         p.claimed_by ? (
                           <span className="text-xs text-emerald-700">Claimed</span>
