@@ -1,0 +1,884 @@
+"use client";
+
+import { useEffect, useMemo, useState } from "react";
+import RequireAuth from "@/components/RequireAuth";
+import ScreenHeader from "@/components/ScreenHeader";
+import MessageModal from "@/components/MessageModal";
+import InfoModal from "@/components/InfoModal";
+import useAdminStatus from "@/components/useAdminStatus";
+import { supabase } from "@/lib/supabase";
+
+type Season = {
+  id: string;
+  name: string;
+  is_published?: boolean | null;
+  handicap_enabled?: boolean | null;
+  singles_count?: number | null;
+  doubles_count?: number | null;
+};
+type Team = { id: string; season_id: string; name: string };
+type TeamMember = {
+  season_id: string;
+  team_id: string;
+  player_id: string;
+  is_captain: boolean;
+  is_vice_captain: boolean;
+};
+type Fixture = {
+  id: string;
+  season_id: string;
+  home_team_id: string;
+  away_team_id: string;
+  fixture_date: string | null;
+  week_no: number | null;
+  status: "pending" | "in_progress" | "complete";
+};
+type Player = {
+  id: string;
+  display_name: string;
+  full_name: string | null;
+  snooker_handicap?: number | null;
+};
+type FrameSlot = {
+  id: string;
+  fixture_id: string;
+  slot_no: number;
+  slot_type: "singles" | "doubles";
+  home_player1_id: string | null;
+  home_player2_id: string | null;
+  away_player1_id: string | null;
+  away_player2_id: string | null;
+  home_nominated: boolean;
+  away_nominated: boolean;
+  home_forfeit: boolean;
+  away_forfeit: boolean;
+  winner_side: "home" | "away" | null;
+  home_nominated_name?: string | null;
+  away_nominated_name?: string | null;
+  home_points_scored?: number | null;
+  away_points_scored?: number | null;
+};
+type BreakRow = {
+  player_id: string | null;
+  entered_player_name: string;
+  break_value: string;
+};
+
+type SubmissionBreakEntry = {
+  player_id: string | null;
+  entered_player_name: string | null;
+  break_value: number;
+};
+type SubmissionFrameResult = {
+  slot_no: number;
+  slot_type: "singles" | "doubles";
+  winner_side: "home" | "away" | null;
+  home_player1_id: string | null;
+  home_player2_id: string | null;
+  away_player1_id: string | null;
+  away_player2_id: string | null;
+  home_nominated: boolean;
+  away_nominated: boolean;
+  home_forfeit: boolean;
+  away_forfeit: boolean;
+  home_nominated_name: string | null;
+  away_nominated_name: string | null;
+  home_points_scored: number | null;
+  away_points_scored: number | null;
+  break_entries?: SubmissionBreakEntry[];
+};
+
+const named = (p?: Player | null) => (p ? (p.full_name?.trim() ? p.full_name : p.display_name) : "Unknown");
+
+function isFixtureOpenForSubmission(fixtureDate: string | null) {
+  if (!fixtureDate) return false;
+  const parsed = new Date(`${fixtureDate}T12:00:00`);
+  if (Number.isNaN(parsed.getTime())) return false;
+  const now = new Date();
+  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+  return parsed <= endOfToday;
+}
+
+const sectionCardClass = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
+const sectionCardTintClass = "bg-gradient-to-br from-teal-50 via-white to-emerald-50";
+const sectionTitleClass = "text-lg font-semibold text-slate-900";
+
+export default function CaptainResultsPage() {
+  const admin = useAdminStatus();
+  const [message, setMessage] = useState<string | null>(null);
+  const [info, setInfo] = useState<{ title: string; description: string } | null>(null);
+  const [loading, setLoading] = useState(false);
+
+  const [seasons, setSeasons] = useState<Season[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
+  const [members, setMembers] = useState<TeamMember[]>([]);
+  const [fixtures, setFixtures] = useState<Fixture[]>([]);
+  const [allSlots, setAllSlots] = useState<FrameSlot[]>([]);
+  const [players, setPlayers] = useState<Player[]>([]);
+  const [selectedFixtureId, setSelectedFixtureId] = useState("");
+  const [scorecardPhotoUrl, setScorecardPhotoUrl] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [linkedPlayerId, setLinkedPlayerId] = useState<string | null>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [pendingByFixture, setPendingByFixture] = useState<Set<string>>(new Set());
+
+  const [slots, setSlots] = useState<FrameSlot[]>([]);
+  const [nominatedNames, setNominatedNames] = useState<Record<string, string>>({});
+  const [breaksFeatureAvailable, setBreaksFeatureAvailable] = useState(true);
+  const [fixtureBreaks, setFixtureBreaks] = useState<BreakRow[]>([
+    { player_id: null, entered_player_name: "", break_value: "" },
+    { player_id: null, entered_player_name: "", break_value: "" },
+    { player_id: null, entered_player_name: "", break_value: "" },
+    { player_id: null, entered_player_name: "", break_value: "" },
+  ]);
+
+  const canSubmit = !admin.isSuper;
+  const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
+  const playerById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
+
+  const loadBreaks = async (fixtureId: string) => {
+    const client = supabase;
+    if (!client || !fixtureId) return;
+    const res = await client
+      .from("league_fixture_breaks")
+      .select("player_id,entered_player_name,break_value")
+      .eq("fixture_id", fixtureId)
+      .order("break_value", { ascending: false });
+    if (res.error) {
+      if (res.error.message?.toLowerCase().includes("does not exist")) {
+        setBreaksFeatureAvailable(false);
+      }
+      return;
+    }
+    setBreaksFeatureAvailable(true);
+    const rows = (res.data ?? []).map((r) => ({
+      player_id: (r.player_id as string | null) ?? null,
+      entered_player_name: (r.entered_player_name as string | null) ?? "",
+      break_value: String(r.break_value ?? ""),
+    }));
+    const padded = [...rows];
+    while (padded.length < 4) padded.push({ player_id: null, entered_player_name: "", break_value: "" });
+    setFixtureBreaks(padded);
+  };
+
+  const loadAll = async () => {
+    const client = supabase;
+    if (!client) {
+      setMessage("Supabase is not configured.");
+      return;
+    }
+    setLoading(true);
+    const authRes = await client.auth.getUser();
+    const userId = authRes.data.user?.id ?? null;
+    setCurrentUserId(userId);
+    if (!userId) {
+      setLoading(false);
+      return;
+    }
+    const appUserRes = await client.from("app_users").select("linked_player_id").eq("id", userId).maybeSingle();
+    const playerId = (appUserRes.data?.linked_player_id as string | null) ?? null;
+    setLinkedPlayerId(playerId);
+    if (!playerId) {
+      setLoading(false);
+      return;
+    }
+
+    const [seasonRes, teamRes, memberRes, fixtureRes, slotRes, pendingRes, playerRes] = await Promise.all([
+      client
+        .from("league_seasons")
+        .select("id,name,is_published,handicap_enabled,singles_count,doubles_count")
+        .eq("is_published", true)
+        .order("created_at", { ascending: false }),
+      client.from("league_teams").select("id,season_id,name"),
+      client.from("league_team_members").select("season_id,team_id,player_id,is_captain,is_vice_captain"),
+      client
+        .from("league_fixtures")
+        .select("id,season_id,home_team_id,away_team_id,fixture_date,week_no,status")
+        .order("fixture_date", { ascending: true }),
+      client
+        .from("league_fixture_frames")
+        .select("id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_forfeit,away_forfeit,winner_side,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored")
+        .order("slot_no", { ascending: true }),
+      client.from("league_result_submissions").select("fixture_id,status").eq("status", "pending"),
+      client.from("players").select("id,display_name,full_name,snooker_handicap").eq("is_archived", false),
+    ]);
+
+    const firstError =
+      seasonRes.error?.message ||
+      teamRes.error?.message ||
+      memberRes.error?.message ||
+      fixtureRes.error?.message ||
+      slotRes.error?.message ||
+      pendingRes.error?.message ||
+      playerRes.error?.message ||
+      null;
+
+    if (firstError) {
+      setMessage(firstError);
+      setLoading(false);
+      return;
+    }
+
+    setSeasons((seasonRes.data ?? []) as Season[]);
+    setTeams((teamRes.data ?? []) as Team[]);
+    setMembers((memberRes.data ?? []) as TeamMember[]);
+    setFixtures((fixtureRes.data ?? []) as Fixture[]);
+    setAllSlots((slotRes.data ?? []) as FrameSlot[]);
+    setPendingByFixture(new Set((pendingRes.data ?? []).map((r) => r.fixture_id as string)));
+    setPlayers((playerRes.data ?? []) as Player[]);
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    void loadAll();
+  }, []);
+
+  const captainTeamIds = useMemo(() => {
+    if (!linkedPlayerId) return new Set<string>();
+    return new Set(
+      members
+        .filter((m) => m.player_id === linkedPlayerId && (m.is_captain || m.is_vice_captain))
+        .map((m) => m.team_id)
+    );
+  }, [members, linkedPlayerId]);
+
+  const publishedSeasonIds = useMemo(() => new Set(seasons.map((s) => s.id)), [seasons]);
+
+  const myFixtures = useMemo(
+    () =>
+      fixtures.filter(
+        (f) =>
+          publishedSeasonIds.has(f.season_id) &&
+          (captainTeamIds.has(f.home_team_id) || captainTeamIds.has(f.away_team_id))
+      ),
+    [fixtures, publishedSeasonIds, captainTeamIds]
+  );
+
+  const myCurrentWeekFixtures = useMemo(
+    () => myFixtures.filter((f) => f.status !== "complete" && isFixtureOpenForSubmission(f.fixture_date)),
+    [myFixtures]
+  );
+
+  const selectedFixture = useMemo(
+    () => myCurrentWeekFixtures.find((f) => f.id === selectedFixtureId) ?? null,
+    [myCurrentWeekFixtures, selectedFixtureId]
+  );
+  useEffect(() => {
+    if (!selectedFixtureId) return;
+    if (!myCurrentWeekFixtures.some((f) => f.id === selectedFixtureId)) setSelectedFixtureId("");
+  }, [selectedFixtureId, myCurrentWeekFixtures]);
+
+  const selectedSeason = useMemo(
+    () => (selectedFixture ? seasons.find((s) => s.id === selectedFixture.season_id) ?? null : null),
+    [seasons, selectedFixture]
+  );
+
+  const isWinterFormat = (selectedSeason?.singles_count ?? 5) === 5 && (selectedSeason?.doubles_count ?? 1) === 1;
+  const singlesMaxPerPlayer = (selectedSeason?.singles_count ?? 5) === 6 && (selectedSeason?.doubles_count ?? 1) === 0 ? 2 : 1;
+
+  useEffect(() => {
+    if (!selectedFixture) {
+      setSlots([]);
+      setNominatedNames({});
+      setFixtureBreaks([
+        { player_id: null, entered_player_name: "", break_value: "" },
+        { player_id: null, entered_player_name: "", break_value: "" },
+        { player_id: null, entered_player_name: "", break_value: "" },
+        { player_id: null, entered_player_name: "", break_value: "" },
+      ]);
+      return;
+    }
+    const nextSlots = allSlots
+      .filter((s) => s.fixture_id === selectedFixture.id)
+      .sort((a, b) => a.slot_no - b.slot_no);
+    setSlots(nextSlots);
+    const nn: Record<string, string> = {};
+    for (const slot of nextSlots) {
+      if (slot.home_nominated_name) nn[`${slot.id}:home`] = slot.home_nominated_name;
+      if (slot.away_nominated_name) nn[`${slot.id}:away`] = slot.away_nominated_name;
+    }
+    setNominatedNames(nn);
+    void loadBreaks(selectedFixture.id);
+  }, [selectedFixture, allSlots]);
+
+  const teamMembersByTeam = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const m of members) {
+      if (!selectedSeason || m.season_id !== selectedSeason.id) continue;
+      const prev = map.get(m.team_id) ?? [];
+      prev.push(m.player_id);
+      map.set(m.team_id, prev);
+    }
+    return map;
+  }, [members, selectedSeason]);
+
+  const homeRosterIds = useMemo(() => {
+    if (!selectedFixture) return [] as string[];
+    return teamMembersByTeam.get(selectedFixture.home_team_id) ?? [];
+  }, [teamMembersByTeam, selectedFixture]);
+
+  const awayRosterIds = useMemo(() => {
+    if (!selectedFixture) return [] as string[];
+    return teamMembersByTeam.get(selectedFixture.away_team_id) ?? [];
+  }, [teamMembersByTeam, selectedFixture]);
+
+  const fixturePlayerOptions = useMemo(() => {
+    const ids = new Set<string>();
+    for (const id of homeRosterIds) ids.add(id);
+    for (const id of awayRosterIds) ids.add(id);
+    for (const s of slots) {
+      if (s.home_player1_id) ids.add(s.home_player1_id);
+      if (s.home_player2_id) ids.add(s.home_player2_id);
+      if (s.away_player1_id) ids.add(s.away_player1_id);
+      if (s.away_player2_id) ids.add(s.away_player2_id);
+    }
+    return Array.from(ids)
+      .map((id) => ({ id, label: named(playerById.get(id)) }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [homeRosterIds, awayRosterIds, slots, playerById]);
+
+  const playerHandicap = (playerId: string | null | undefined) =>
+    Number(playerById.get(playerId ?? "")?.snooker_handicap ?? 0);
+
+  const doublesTeamHandicap = (player1Id: string | null | undefined, player2Id: string | null | undefined) => {
+    return (playerHandicap(player1Id) + playerHandicap(player2Id)) / 2;
+  };
+
+  const doublesHandicapLabel = (slot: FrameSlot) => {
+    const home = doublesTeamHandicap(slot.home_player1_id, slot.home_player2_id);
+    const away = doublesTeamHandicap(slot.away_player1_id, slot.away_player2_id);
+    const format = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
+    return `Doubles handicap: Home ${format(home)} · Away ${format(away)}`;
+  };
+
+  const deriveWinnerFromFrame = (row: FrameSlot): "home" | "away" | null => {
+    if (row.home_forfeit && row.away_forfeit) return null;
+    if (row.home_forfeit && !row.away_forfeit) return "away";
+    if (row.away_forfeit && !row.home_forfeit) return "home";
+
+    if (row.slot_type === "doubles") {
+      const homeReady = Boolean(row.home_player1_id) && Boolean(row.home_player2_id);
+      const awayReady = Boolean(row.away_player1_id) && Boolean(row.away_player2_id);
+      if (!homeReady || !awayReady) return null;
+    } else {
+      const homeReady = row.home_nominated ? true : Boolean(row.home_player1_id);
+      const awayReady = row.away_nominated ? true : Boolean(row.away_player1_id);
+      if (!homeReady || !awayReady) return null;
+    }
+
+    const homePts = typeof row.home_points_scored === "number" ? row.home_points_scored : null;
+    const awayPts = typeof row.away_points_scored === "number" ? row.away_points_scored : null;
+    if (homePts === null || awayPts === null) return null;
+    if (row.slot_type === "doubles" && selectedSeason?.handicap_enabled) {
+      const homeAdjusted = homePts + doublesTeamHandicap(row.home_player1_id, row.home_player2_id);
+      const awayAdjusted = awayPts + doublesTeamHandicap(row.away_player1_id, row.away_player2_id);
+      if (homeAdjusted > awayAdjusted) return "home";
+      if (awayAdjusted > homeAdjusted) return "away";
+      return null;
+    }
+    if (homePts > awayPts) return "home";
+    if (awayPts > homePts) return "away";
+    return null;
+  };
+
+  const updateSlotLocal = (slotId: string, patch: Partial<FrameSlot>) => {
+    setSlots((prev) =>
+      prev.map((s) => {
+        if (s.id !== slotId) return s;
+        const merged = { ...s, ...patch } as FrameSlot;
+        return { ...merged, winner_side: deriveWinnerFromFrame(merged) };
+      })
+    );
+  };
+
+  const getSinglesSelectionValue = (slot: FrameSlot, side: "home" | "away") => {
+    const playerId = side === "home" ? slot.home_player1_id : slot.away_player1_id;
+    const nominated = side === "home" ? slot.home_nominated : slot.away_nominated;
+    const forfeit = side === "home" ? slot.home_forfeit : slot.away_forfeit;
+    if (forfeit) return "__NO_SHOW__";
+    if (nominated) return "__NOMINATED__";
+    return playerId ?? "";
+  };
+
+  const applySinglesSelection = (slot: FrameSlot, side: "home" | "away", selection: string) => {
+    const sidePrefix = side === "home" ? "home" : "away";
+    const nameKey = side === "home" ? "home_nominated_name" : "away_nominated_name";
+    if (selection === "__NO_SHOW__") {
+      setNominatedNames((prev) => ({ ...prev, [`${slot.id}:${side}`]: "" }));
+      updateSlotLocal(slot.id, {
+        [`${sidePrefix}_player1_id`]: null,
+        [`${sidePrefix}_nominated`]: false,
+        [`${sidePrefix}_forfeit`]: true,
+        [`${sidePrefix}_points_scored`]: 0,
+        [nameKey]: null,
+      } as Partial<FrameSlot>);
+      return;
+    }
+    if (selection === "__NOMINATED__") {
+      updateSlotLocal(slot.id, {
+        [`${sidePrefix}_player1_id`]: null,
+        [`${sidePrefix}_nominated`]: true,
+        [`${sidePrefix}_forfeit`]: false,
+      } as Partial<FrameSlot>);
+      return;
+    }
+    setNominatedNames((prev) => ({ ...prev, [`${slot.id}:${side}`]: "" }));
+    updateSlotLocal(slot.id, {
+      [`${sidePrefix}_player1_id`]: selection || null,
+      [`${sidePrefix}_nominated`]: false,
+      [`${sidePrefix}_forfeit`]: false,
+      [nameKey]: null,
+    } as Partial<FrameSlot>);
+  };
+
+  const setBreakField = (idx: number, patch: Partial<BreakRow>) => {
+    setFixtureBreaks((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+  };
+
+  const addBreakRow = () => {
+    setFixtureBreaks((prev) => [...prev, { player_id: null, entered_player_name: "", break_value: "" }]);
+  };
+
+  const getValidatedBreakRows = () => {
+    const valid = fixtureBreaks
+      .map((r) => ({
+        player_id: r.player_id || null,
+        entered_player_name: r.entered_player_name.trim() || null,
+        break_value: Number(r.break_value || 0),
+      }))
+      .filter((r) => Number.isFinite(r.break_value) && r.break_value >= 30 && (r.player_id || r.entered_player_name));
+
+    const pointsByPlayer = new Map<string, number>();
+    for (const slot of slots) {
+      const homePoints = typeof slot.home_points_scored === "number" ? slot.home_points_scored : 0;
+      const awayPoints = typeof slot.away_points_scored === "number" ? slot.away_points_scored : 0;
+      const homePlayers = [slot.home_player1_id, slot.home_player2_id].filter(Boolean) as string[];
+      const awayPlayers = [slot.away_player1_id, slot.away_player2_id].filter(Boolean) as string[];
+      for (const id of homePlayers) pointsByPlayer.set(id, Math.max(pointsByPlayer.get(id) ?? 0, homePoints));
+      for (const id of awayPlayers) pointsByPlayer.set(id, Math.max(pointsByPlayer.get(id) ?? 0, awayPoints));
+    }
+    for (const row of valid) {
+      if (!row.player_id) continue;
+      const maxFramePoints = pointsByPlayer.get(row.player_id);
+      if (maxFramePoints === undefined) return { error: "Break entry failed: selected player is not part of this fixture.", rows: [] as SubmissionBreakEntry[] };
+      if (row.break_value > maxFramePoints) {
+        return { error: `Break entry failed: ${row.break_value} exceeds the player's frame points (${maxFramePoints}).`, rows: [] as SubmissionBreakEntry[] };
+      }
+    }
+    return { error: null, rows: valid as SubmissionBreakEntry[] };
+  };
+
+  const submit = async () => {
+    const client = supabase;
+    if (!client || !selectedFixture || !currentUserId) return;
+    if (selectedFixture.status === "complete") {
+      setMessage("This fixture is locked because it is complete.");
+      return;
+    }
+    if (!canSubmit) {
+      setMessage("Super User does not submit from this page.");
+      return;
+    }
+    if (!captainTeamIds.has(selectedFixture.home_team_id) && !captainTeamIds.has(selectedFixture.away_team_id)) {
+      setMessage("You can only submit results for your own team fixtures.");
+      return;
+    }
+    if (!isFixtureOpenForSubmission(selectedFixture.fixture_date)) return setMessage("Fixture is not open yet. You can submit on the fixture date.");
+    if (pendingByFixture.has(selectedFixture.id)) return setMessage("A submission is already pending for this fixture.");
+
+    const frameResults: SubmissionFrameResult[] = slots.map((s) => ({
+      slot_no: s.slot_no,
+      slot_type: s.slot_type,
+      winner_side: deriveWinnerFromFrame(s),
+      home_player1_id: s.home_player1_id ?? null,
+      home_player2_id: s.home_player2_id ?? null,
+      away_player1_id: s.away_player1_id ?? null,
+      away_player2_id: s.away_player2_id ?? null,
+      home_nominated: Boolean(s.home_nominated),
+      away_nominated: Boolean(s.away_nominated),
+      home_forfeit: Boolean(s.home_forfeit),
+      away_forfeit: Boolean(s.away_forfeit),
+      home_nominated_name: s.home_nominated_name ?? null,
+      away_nominated_name: s.away_nominated_name ?? null,
+      home_points_scored: typeof s.home_points_scored === "number" ? s.home_points_scored : null,
+      away_points_scored: typeof s.away_points_scored === "number" ? s.away_points_scored : null,
+    }));
+
+    const incomplete = frameResults.some((r) => !r.winner_side && !r.home_forfeit && !r.away_forfeit);
+    if (incomplete) {
+      setMessage("Complete all frames before submitting for approval.");
+      return;
+    }
+
+    const breakRows = getValidatedBreakRows();
+    if (breakRows.error) {
+      setMessage(breakRows.error);
+      return;
+    }
+    if (frameResults.length > 0) frameResults[0].break_entries = breakRows.rows;
+
+    setSubmitting(true);
+    const sessionRes = await client.auth.getSession();
+    const token = sessionRes.data.session?.access_token ?? null;
+    if (!token) {
+      setSubmitting(false);
+      setMessage("Session expired. Please sign in again.");
+      return;
+    }
+
+    let res: Response;
+    try {
+      res = await fetch("/api/league/captain-submit", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          fixtureId: selectedFixture.id,
+          frameResults,
+          scorecardPhotoUrl: scorecardPhotoUrl.trim() || null,
+        }),
+      });
+    } catch {
+      setSubmitting(false);
+      setMessage("Network error while submitting. Check server is running and try again.");
+      return;
+    }
+
+    setSubmitting(false);
+    const payload = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) {
+      setMessage(payload.error ?? "Failed to submit result.");
+      return;
+    }
+
+    setInfo({ title: "Result Submitted", description: "Your result has been submitted for Super User approval." });
+    setScorecardPhotoUrl("");
+    await loadAll();
+  };
+
+  return (
+    <main className="min-h-screen bg-slate-100 p-6">
+      <div className="mx-auto max-w-6xl space-y-4">
+        <RequireAuth>
+          <ScreenHeader title="Captain Result Submission" eyebrow="League" subtitle="Submit your team result for Super User approval." />
+          {loading ? <section className={`${sectionCardClass} text-slate-600`}>Loading...</section> : null}
+
+          {!linkedPlayerId && !loading ? (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm">
+              Your account must be linked to a player profile to submit results.
+            </section>
+          ) : null}
+
+          {linkedPlayerId && captainTeamIds.size === 0 && !loading ? (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm">
+              You are not currently assigned as captain or vice-captain.
+            </section>
+          ) : null}
+
+          {linkedPlayerId && captainTeamIds.size > 0 ? (
+            <section className={`${sectionCardClass} ${sectionCardTintClass} space-y-4`}>
+              <div>
+                <h2 className={sectionTitleClass}>Fixture Entry</h2>
+                <p className="mt-1 text-sm text-slate-600">Choose a fixture, complete each frame, then submit for review.</p>
+              </div>
+              <select
+                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+                value={selectedFixtureId}
+                onChange={(e) => setSelectedFixtureId(e.target.value)}
+              >
+                <option value="">Select your fixture</option>
+                {myCurrentWeekFixtures.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.fixture_date ? new Date(`${f.fixture_date}T12:00:00`).toLocaleDateString() : `Week ${f.week_no ?? "-"}`} · {teamById.get(f.home_team_id)?.name ?? "Home"} vs {teamById.get(f.away_team_id)?.name ?? "Away"}
+                    {pendingByFixture.has(f.id) ? " · pending review" : ""}
+                  </option>
+                ))}
+              </select>
+
+              {myCurrentWeekFixtures.length === 0 ? (
+                <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
+                  No fixtures are open for submission yet. Captains and vice-captains can submit from the fixture date.
+                </p>
+              ) : null}
+              {selectedFixture ? (
+                <div className="space-y-3">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                    {isWinterFormat ? (
+                      <p>
+                        Winter format: 5 singles + 1 doubles. Singles 3 supports <span className="font-medium">No Show</span>. Singles 4 supports <span className="font-medium">Nominated Player</span>.
+                      </p>
+                    ) : (
+                      <p>
+                        Summer format: 6 singles. Each player can play a maximum of <span className="font-medium">2 singles frames</span>. Frames 5 and 6 support <span className="font-medium">No Show</span>.
+                      </p>
+                    )}
+                    {selectedSeason?.handicap_enabled ? (
+                      <p className="mt-1">In doubles, team handicap = (player 1 handicap + player 2 handicap) ÷ 2.</p>
+                    ) : null}
+                  </div>
+                  {slots.map((slot) => {
+                    const homeSinglesCount = new Map<string, number>();
+                    const awaySinglesCount = new Map<string, number>();
+                    for (const s of slots) {
+                      if (s.slot_type !== "singles" || s.id === slot.id) continue;
+                      if (s.home_player1_id) homeSinglesCount.set(s.home_player1_id, (homeSinglesCount.get(s.home_player1_id) ?? 0) + 1);
+                      if (s.away_player1_id) awaySinglesCount.set(s.away_player1_id, (awaySinglesCount.get(s.away_player1_id) ?? 0) + 1);
+                    }
+                    const homeSelection = getSinglesSelectionValue(slot, "home");
+                    const awaySelection = getSinglesSelectionValue(slot, "away");
+                    return (
+                      <div
+                        key={slot.id}
+                        className={`rounded-xl border p-3 ${
+                          slot.slot_type === "doubles"
+                            ? "border-indigo-200 bg-indigo-50/70"
+                            : "border-teal-200 bg-teal-50/70"
+                        }`}
+                      >
+                          <p className="text-sm font-semibold text-slate-900">
+                          {slot.slot_type === "doubles" ? `Frame ${slot.slot_no} · Doubles` : `Frame ${slot.slot_no} · Singles`}
+                          </p>
+                          {slot.slot_type === "doubles" && selectedSeason?.handicap_enabled ? (
+                            <p className="mt-1 text-xs text-slate-600">{doublesHandicapLabel(slot)} (combined player handicaps ÷ 2)</p>
+                          ) : null}
+                        <div className="mt-2 grid gap-2 sm:grid-cols-5">
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Home</div>
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 sm:col-span-3">Player(s)</div>
+                          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Points</div>
+
+                          <div className="text-xs text-slate-600">{teamById.get(selectedFixture.home_team_id)?.name ?? "Home"}</div>
+                          <div className="sm:col-span-3">
+                            {slot.slot_type === "doubles" ? (
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <select
+                                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                  value={slot.home_player1_id ?? ""}
+                                  onChange={(e) => updateSlotLocal(slot.id, { home_player1_id: e.target.value || null, home_forfeit: false })}
+                                >
+                                  <option value="">Home player 1</option>
+                                  {homeRosterIds.map((id) => (
+                                    <option key={id} value={id} disabled={slot.home_player2_id === id}>{named(playerById.get(id))}</option>
+                                  ))}
+                                </select>
+                                <select
+                                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                  value={slot.home_player2_id ?? ""}
+                                  onChange={(e) => updateSlotLocal(slot.id, { home_player2_id: e.target.value || null })}
+                                >
+                                  <option value="">Home player 2</option>
+                                  {homeRosterIds.map((id) => (
+                                    <option key={id} value={id} disabled={slot.home_player1_id === id}>{named(playerById.get(id))}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            ) : (
+                              <select
+                                className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                value={homeSelection}
+                                onChange={(e) => applySinglesSelection(slot, "home", e.target.value)}
+                              >
+                                <option value="">Home player</option>
+                                {((isWinterFormat && slot.slot_no === 3) || (!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5)) ? <option value="__NO_SHOW__">No Show</option> : null}
+                                {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                {homeRosterIds.map((id) => (
+                                  <option key={id} value={id} disabled={(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id}>
+                                    {named(playerById.get(id))}
+                                    {(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id ? " (Already used in singles)" : ""}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                          <input
+                            type="number"
+                            min={0}
+                            max={200}
+                            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                            value={slot.home_points_scored ?? ""}
+                            onChange={(e) => {
+                              const raw = e.target.value === "" ? null : Number.parseInt(e.target.value, 10);
+                              const parsed = raw === null || Number.isNaN(raw) ? null : Math.min(200, Math.max(0, raw));
+                              updateSlotLocal(slot.id, { home_points_scored: parsed });
+                            }}
+                            placeholder="0-200"
+                          />
+
+                          <div className="text-xs text-slate-600">{teamById.get(selectedFixture.away_team_id)?.name ?? "Away"}</div>
+                          <div className="sm:col-span-3">
+                            {slot.slot_type === "doubles" ? (
+                              <div className="grid gap-2 sm:grid-cols-2">
+                                <select
+                                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                  value={slot.away_player1_id ?? ""}
+                                  onChange={(e) => updateSlotLocal(slot.id, { away_player1_id: e.target.value || null, away_forfeit: false })}
+                                >
+                                  <option value="">Away player 1</option>
+                                  {awayRosterIds.map((id) => (
+                                    <option key={id} value={id} disabled={slot.away_player2_id === id}>{named(playerById.get(id))}</option>
+                                  ))}
+                                </select>
+                                <select
+                                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                  value={slot.away_player2_id ?? ""}
+                                  onChange={(e) => updateSlotLocal(slot.id, { away_player2_id: e.target.value || null })}
+                                >
+                                  <option value="">Away player 2</option>
+                                  {awayRosterIds.map((id) => (
+                                    <option key={id} value={id} disabled={slot.away_player1_id === id}>{named(playerById.get(id))}</option>
+                                  ))}
+                                </select>
+                              </div>
+                            ) : (
+                              <select
+                                className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                value={awaySelection}
+                                onChange={(e) => applySinglesSelection(slot, "away", e.target.value)}
+                              >
+                                <option value="">Away player</option>
+                                {((isWinterFormat && slot.slot_no === 3) || (!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5)) ? <option value="__NO_SHOW__">No Show</option> : null}
+                                {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                {awayRosterIds.map((id) => (
+                                  <option key={id} value={id} disabled={(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id}>
+                                    {named(playerById.get(id))}
+                                    {(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id ? " (Already used in singles)" : ""}
+                                  </option>
+                                ))}
+                              </select>
+                            )}
+                          </div>
+                          <input
+                            type="number"
+                            min={0}
+                            max={200}
+                            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                            value={slot.away_points_scored ?? ""}
+                            onChange={(e) => {
+                              const raw = e.target.value === "" ? null : Number.parseInt(e.target.value, 10);
+                              const parsed = raw === null || Number.isNaN(raw) ? null : Math.min(200, Math.max(0, raw));
+                              updateSlotLocal(slot.id, { away_points_scored: parsed });
+                            }}
+                            placeholder="0-200"
+                          />
+                        </div>
+
+                        {slot.slot_type === "singles" && isWinterFormat && slot.slot_no === 4 ? (
+                          <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                            {slot.home_nominated ? (
+                              <select
+                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                value={nominatedNames[`${slot.id}:home`] ?? ""}
+                                onChange={(e) => {
+                                  setNominatedNames((prev) => ({ ...prev, [`${slot.id}:home`]: e.target.value }));
+                                  updateSlotLocal(slot.id, { home_nominated_name: e.target.value || null });
+                                }}
+                              >
+                                <option value="">Home nominated player (info)</option>
+                                {homeRosterIds.map((id) => <option key={id} value={named(playerById.get(id))}>{named(playerById.get(id))}</option>)}
+                              </select>
+                            ) : <div />}
+                            {slot.away_nominated ? (
+                              <select
+                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                value={nominatedNames[`${slot.id}:away`] ?? ""}
+                                onChange={(e) => {
+                                  setNominatedNames((prev) => ({ ...prev, [`${slot.id}:away`]: e.target.value }));
+                                  updateSlotLocal(slot.id, { away_nominated_name: e.target.value || null });
+                                }}
+                              >
+                                <option value="">Away nominated player (info)</option>
+                                {awayRosterIds.map((id) => <option key={id} value={named(playerById.get(id))}>{named(playerById.get(id))}</option>)}
+                              </select>
+                            ) : <div />}
+                          </div>
+                        ) : null}
+
+                        <p className="mt-2 text-xs text-slate-600">
+                          Winner: {slot.winner_side === "home" ? (teamById.get(selectedFixture.home_team_id)?.name ?? "Home") : slot.winner_side === "away" ? (teamById.get(selectedFixture.away_team_id)?.name ?? "Away") : "Not decided"}
+                        </p>
+                      </div>
+                    );
+                  })}
+
+                  <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4">
+                    <h3 className="text-base font-semibold text-slate-900">Breaks 30+</h3>
+                    {!breaksFeatureAvailable ? (
+                      <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                        Break tracking table is missing. Run the SQL migration first.
+                      </p>
+                    ) : null}
+                    <div className="mt-3 space-y-2">
+                      {fixtureBreaks.map((row, idx) => (
+                        <div key={`break-${idx}`} className="grid gap-2 sm:grid-cols-4">
+                          <select
+                            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                            value={row.player_id ?? ""}
+                            onChange={(e) => setBreakField(idx, { player_id: e.target.value || null })}
+                          >
+                            <option value="">Select player</option>
+                            {fixturePlayerOptions.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+                          </select>
+                          <input
+                            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                            placeholder="Or enter player name"
+                            value={row.entered_player_name}
+                            onChange={(e) => setBreakField(idx, { entered_player_name: e.target.value })}
+                          />
+                          <input
+                            type="number"
+                            min={30}
+                            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                            placeholder="Break value (30+)"
+                            value={row.break_value}
+                            onChange={(e) => setBreakField(idx, { break_value: e.target.value })}
+                          />
+                          <button
+                            type="button"
+                            onClick={() => setFixtureBreaks((prev) => prev.filter((_, i) => i !== idx))}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700"
+                            disabled={fixtureBreaks.length <= 4 && idx < 4}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-3 flex gap-2">
+                      <button type="button" onClick={addBreakRow} className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700">
+                        More
+                      </button>
+                    </div>
+                  </section>
+
+                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
+                    <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                      <input
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                        placeholder="Optional scorecard photo URL"
+                        value={scorecardPhotoUrl}
+                        onChange={(e) => setScorecardPhotoUrl(e.target.value)}
+                        disabled={pendingByFixture.has(selectedFixture.id)}
+                      />
+                      <button
+                        type="button"
+                        onClick={submit}
+                        disabled={submitting || pendingByFixture.has(selectedFixture.id)}
+                        className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                      >
+                        {pendingByFixture.has(selectedFixture.id) ? "Submission pending review" : submitting ? "Submitting..." : "Submit for approval"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </section>
+          ) : null}
+
+          <MessageModal message={message} onClose={() => setMessage(null)} />
+          <InfoModal open={Boolean(info)} title={info?.title ?? ""} description={info?.description ?? ""} onClose={() => setInfo(null)} />
+        </RequireAuth>
+      </div>
+    </main>
+  );
+}
