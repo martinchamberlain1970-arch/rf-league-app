@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
@@ -22,7 +22,7 @@ function calculateAge(dob: string | null | undefined): number | null {
   return age;
 }
 
-export default function WelcomePage() {
+function WelcomePageInner() {
   const search = useSearchParams();
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
@@ -171,5 +171,23 @@ export default function WelcomePage() {
         </RequireAuth>
       </div>
     </main>
+  );
+}
+
+export default function WelcomePage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-slate-100 p-6">
+          <div className="mx-auto max-w-3xl space-y-4">
+            <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <p className="text-slate-600">Loading...</p>
+            </section>
+          </div>
+        </main>
+      }
+    >
+      <WelcomePageInner />
+    </Suspense>
   );
 }
