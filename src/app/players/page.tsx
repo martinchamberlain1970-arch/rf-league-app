@@ -1985,11 +1985,15 @@ export default function PlayersPage() {
                         View profile
                       </Link>
                       {isSuperAdmin ? (
-                        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-white px-2 py-1">
-                          <label className="text-xs text-slate-600">DOB</label>
+                        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-2 py-1">
+                          <label className="text-xs font-semibold text-teal-800">Super User DOB</label>
+                          <span className="text-[11px] text-slate-600">
+                            Current: {p.date_of_birth ? new Date(`${p.date_of_birth}T12:00:00`).toLocaleDateString() : "Not set"}
+                          </span>
                           <input
                             type="date"
                             className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700"
+                            title="Set or correct player date of birth"
                             value={dobDraftByPlayerId[p.id] ?? p.date_of_birth ?? ""}
                             onChange={(e) =>
                               setDobDraftByPlayerId((prev) => ({
