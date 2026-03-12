@@ -145,27 +145,27 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
   }, [admin.loading, admin.isAdmin, admin.isSuper, admin.userId, storageKey, dismissedKey]);
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
       {isSuperManagementPage ? (
         <>
           <button
             type="button"
             onClick={() => router.push("/players")}
-            className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-slate-700"
+            className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
           >
             Users
           </button>
           <button
             type="button"
             onClick={() => router.push("/results")}
-            className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-slate-700"
+            className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
           >
             Results
           </button>
           <button
             type="button"
             onClick={() => router.push("/audit")}
-            className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-slate-700"
+            className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
           >
             Audit
           </button>
@@ -174,7 +174,7 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
       <button
         type="button"
         onClick={onNotifications}
-        className="relative whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-slate-700"
+        className="relative whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
         aria-label="Notifications"
       >
         🔔
@@ -185,14 +185,14 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
         ) : null}
       </button>
       {showBack ? (
-        <button type="button" onClick={() => requestNavigation("back")} className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-4 py-2 text-slate-700">
+        <button type="button" onClick={() => requestNavigation("back")} className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
           Back
         </button>
       ) : null}
-      <button type="button" onClick={() => requestNavigation("home")} className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-4 py-2 text-slate-700">
+      <button type="button" onClick={() => requestNavigation("home")} className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
         Home
       </button>
-      <button type="button" onClick={onSignOut} className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-4 py-2 text-slate-700">
+      <button type="button" onClick={onSignOut} className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
         Sign out
       </button>
       <ConfirmModal
