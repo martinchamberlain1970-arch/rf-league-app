@@ -437,7 +437,6 @@ export default function HomePage() {
           "location_requests",
           "profile_merge_requests",
           "player_deletion_requests",
-          "competition_entries",
         ];
         const counts = await Promise.all(
           tables.map((table) => client.from(table).select("id", { count: "exact", head: true }).eq("status", "pending"))

@@ -134,6 +134,8 @@ export default function PlayerProfilePage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [editingPlayer, setEditingPlayer] = useState(false);
   const [savingPlayer, setSavingPlayer] = useState(false);
+  const [quickDobInput, setQuickDobInput] = useState("");
+  const [savingQuickDob, setSavingQuickDob] = useState(false);
   const [editFullName, setEditFullName] = useState("");
   const [editDateOfBirth, setEditDateOfBirth] = useState("");
   const [editLocationId, setEditLocationId] = useState("");
@@ -167,6 +169,10 @@ export default function PlayerProfilePage() {
   const hasAdminPower = admin.isAdmin || admin.isSuper;
   const editDerivedAgeBand = deriveAgeBandFromDob(editDateOfBirth || null);
   const editIsMinor = editDerivedAgeBand !== "18_plus";
+
+  useEffect(() => {
+    setQuickDobInput(player?.date_of_birth ?? "");
+  }, [player?.date_of_birth]);
 
   useEffect(() => {
     const client = supabase;
@@ -466,7 +472,6 @@ export default function PlayerProfilePage() {
       phone_number: editPhoneNumber.trim() || null,
       phone_share_consent: Boolean(editPhoneConsent),
       guardian_consent: isMinorBand ? editGuardianConsent : false,
-      guardian_consent_at: isMinorBand && editGuardianConsent ? new Date().toISOString() : null,
       guardian_name: isMinorBand ? editGuardianName.trim() || null : null,
       guardian_email: isMinorBand ? (editGuardianEmail.trim() || null) : null,
       guardian_user_id: isMinorBand ? editGuardianUserId || null : null,
@@ -505,6 +510,46 @@ export default function PlayerProfilePage() {
     );
     setEditingPlayer(false);
     setMessage("Player profile updated.");
+  };
+
+  const onSaveDobQuick = async () => {
+    const client = supabase;
+    if (!client || !player || !admin.isSuper) return;
+    if (!quickDobInput.trim()) {
+      setInfoModal({ title: "Date of Birth Required", description: "Enter a date of birth before saving." });
+      return;
+    }
+    const computedAgeBand = deriveAgeBandFromDob(quickDobInput || null);
+    setSavingQuickDob(true);
+    const payload: Record<string, string | null> = {
+      date_of_birth: quickDobInput,
+      age_band: computedAgeBand,
+    };
+    if (computedAgeBand !== "18_plus") {
+      payload.avatar_url = null;
+    }
+    const { error } = await client.from("players").update(payload).eq("id", player.id);
+    setSavingQuickDob(false);
+    if (error) {
+      setMessage(`Failed to update date of birth: ${error.message}`);
+      return;
+    }
+    setPlayer((prev) =>
+      prev
+        ? {
+            ...prev,
+            date_of_birth: quickDobInput,
+            age_band: computedAgeBand,
+            avatar_url: computedAgeBand !== "18_plus" ? null : prev.avatar_url,
+          }
+        : prev
+    );
+    setEditDateOfBirth(quickDobInput);
+    setMessage(null);
+    setInfoModal({
+      title: "Date of Birth Updated",
+      description: "Player date of birth has been saved.",
+    });
   };
 
   const onSaveOwnContact = async () => {
@@ -1321,6 +1366,30 @@ export default function PlayerProfilePage() {
                     </div>
                   ) : null}
                 </div>
+                {admin.isSuper ? (
+                  <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-semibold text-slate-900">Date of birth (Super User)</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      Current: {player?.date_of_birth ? new Date(`${player.date_of_birth}T12:00:00`).toLocaleDateString() : "Not set"}
+                    </p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <input
+                        type="date"
+                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                        value={quickDobInput}
+                        onChange={(e) => setQuickDobInput(e.target.value)}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void onSaveDobQuick()}
+                        disabled={savingQuickDob}
+                        className="rounded-lg border border-teal-300 bg-teal-50 px-3 py-2 text-sm text-teal-800 disabled:opacity-60"
+                      >
+                        {savingQuickDob ? "Saving..." : "Save DOB"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
                 {admin.isSuper && editingPlayer ? (
                   <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <p className="text-sm font-semibold text-slate-900">Super User: Edit Player</p>
