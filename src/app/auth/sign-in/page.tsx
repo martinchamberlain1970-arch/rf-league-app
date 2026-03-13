@@ -147,7 +147,6 @@ export default function SignInPage() {
               date_of_birth: parsed.dateOfBirth ?? null,
               age_band: effectiveAgeBand,
               guardian_consent: effectiveAgeBand === "18_plus" ? false : Boolean(parsed.guardianConsent),
-              guardian_consent_at: effectiveAgeBand === "18_plus" ? null : Boolean(parsed.guardianConsent) ? new Date().toISOString() : null,
               guardian_name: parsed.guardianName ?? null,
               guardian_email: parsed.guardianEmail ?? null,
               guardian_user_id: parsed.guardianUserId ?? null,

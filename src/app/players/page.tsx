@@ -439,7 +439,6 @@ export default function PlayersPage() {
       location_id: newLocationId,
       age_band: "18_plus",
       guardian_consent: false,
-      guardian_consent_at: null,
       guardian_user_id: null,
       guardian_email: null,
     });
@@ -938,7 +937,6 @@ export default function PlayersPage() {
           if (firstOnly) updatePayload.display_name = firstOnly;
           updatePayload.avatar_url = null;
           updatePayload.guardian_consent = Boolean(req.requested_guardian_consent);
-          updatePayload.guardian_consent_at = req.requested_guardian_consent ? new Date().toISOString() : null;
           if (req.requested_guardian_name) updatePayload.guardian_name = req.requested_guardian_name;
           if (req.requested_guardian_email) updatePayload.guardian_email = req.requested_guardian_email;
           if (req.requested_guardian_user_id) updatePayload.guardian_user_id = req.requested_guardian_user_id;
