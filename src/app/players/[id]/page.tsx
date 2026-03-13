@@ -1393,18 +1393,13 @@ export default function PlayerProfilePage() {
                 {admin.isSuper && editingPlayer ? (
                   <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <p className="text-sm font-semibold text-slate-900">Super User: Edit Player</p>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                    <p className="mt-1 text-xs text-slate-600">Date of birth is managed in the dedicated DOB editor above.</p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-1">
                       <input
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                         value={editFullName}
                         onChange={(e) => setEditFullName(e.target.value)}
                         placeholder="Full name (or nickname for minors)"
-                      />
-                      <input
-                        type="date"
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                        value={editDateOfBirth}
-                        onChange={(e) => setEditDateOfBirth(e.target.value)}
                       />
                     </div>
                     <div className="mt-2 grid gap-2 sm:grid-cols-2">
