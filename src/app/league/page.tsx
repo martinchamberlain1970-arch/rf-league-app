@@ -368,6 +368,7 @@ export default function LeaguePage() {
   const [handicapTeamId, setHandicapTeamId] = useState("");
   const [handicapTargetValue, setHandicapTargetValue] = useState("");
   const [handicapReason, setHandicapReason] = useState("");
+  const [recalculatingHandicaps, setRecalculatingHandicaps] = useState(false);
   const [savingHandicap, setSavingHandicap] = useState(false);
 
   const canManage = admin.isSuper;
@@ -2180,169 +2181,45 @@ export default function LeaguePage() {
     setInfoModal({ title: "Breaks Saved", description: "Breaks 30+ have been recorded for this fixture." });
   };
 
-  const recalculateSnookerHandicaps = async () => {
+  const recalculateSnookerHandicapsFromElo = async () => {
     const client = supabase;
     if (!client) return;
-    const playersRes = await client
-      .from("players")
-      .select("id,snooker_handicap,snooker_handicap_base")
-      .eq("is_archived", false);
-    if (playersRes.error) {
-      // Demo schema may not yet include handicap columns.
-      if (playersRes.error.message.toLowerCase().includes("snooker_handicap")) return;
-      setMessage(playersRes.error.message);
+    if (!canManage) {
+      setMessage("Only Super User can recalculate handicaps.");
       return;
     }
-    const activePlayers = (playersRes.data ?? []) as Array<{
-      id: string;
-      snooker_handicap: number | null;
-      snooker_handicap_base: number | null;
-    }>;
-    const baseByPlayer = new Map<string, number>();
-    for (const p of activePlayers) {
-      baseByPlayer.set(p.id, p.snooker_handicap_base ?? p.snooker_handicap ?? 0);
-    }
-
-    const handicapSeasonsRes = await client
-      .from("league_seasons")
-      .select("id")
-      .eq("handicap_enabled", true);
-    if (handicapSeasonsRes.error) {
-      if (handicapSeasonsRes.error.message.toLowerCase().includes("handicap_enabled")) return;
-      setMessage(handicapSeasonsRes.error.message);
+    const sessionRes = await client.auth.getSession();
+    const token = sessionRes.data.session?.access_token ?? null;
+    if (!token) {
+      setMessage("Session expired. Please sign in again.");
       return;
     }
-    const handicapSeasonIds = (handicapSeasonsRes.data ?? []).map((r) => r.id).filter(Boolean);
-    let completeFixtureIds: string[] = [];
-    if (handicapSeasonIds.length > 0) {
-      const completeFixturesRes = await client
-        .from("league_fixtures")
-        .select("id")
-        .eq("status", "complete")
-        .in("season_id", handicapSeasonIds);
-      if (completeFixturesRes.error) {
-        setMessage(completeFixturesRes.error.message);
-        return;
-      }
-      completeFixtureIds = (completeFixturesRes.data ?? []).map((f) => f.id).filter(Boolean);
-    }
-    const deltaByPlayer = new Map<string, number>();
-    if (completeFixtureIds.length > 0) {
-      const slotRes = await client
-        .from("league_fixture_frames")
-        .select("fixture_id,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_forfeit,away_forfeit")
-        .in("fixture_id", completeFixtureIds);
-      if (slotRes.error) {
-        setMessage(slotRes.error.message);
-        return;
-      }
-      const rows = (slotRes.data ?? []) as Array<{
-        fixture_id: string;
-        winner_side: "home" | "away" | null;
-        home_player1_id: string | null;
-        home_player2_id: string | null;
-        away_player1_id: string | null;
-        away_player2_id: string | null;
-        home_forfeit: boolean;
-        away_forfeit: boolean;
-      }>;
-      for (const row of rows) {
-        if (!row.winner_side) continue;
-        // No-show/forfeit frames are excluded from handicap changes.
-        if (row.home_forfeit || row.away_forfeit) continue;
-        const homePlayers = Array.from(new Set([row.home_player1_id, row.home_player2_id].filter(Boolean))) as string[];
-        const awayPlayers = Array.from(new Set([row.away_player1_id, row.away_player2_id].filter(Boolean))) as string[];
-        const winners = row.winner_side === "home" ? homePlayers : awayPlayers;
-        const losers = row.winner_side === "home" ? awayPlayers : homePlayers;
-        for (const winner of winners) {
-          deltaByPlayer.set(winner, (deltaByPlayer.get(winner) ?? 0) - 4);
-        }
-        for (const loser of losers) {
-          deltaByPlayer.set(loser, (deltaByPlayer.get(loser) ?? 0) + 4);
-        }
-      }
-    }
-
-    for (const [playerId, base] of baseByPlayer.entries()) {
-      const nextHandicap = base + (deltaByPlayer.get(playerId) ?? 0);
-      const { error } = await client
-        .from("players")
-        .update({ snooker_handicap: nextHandicap })
-        .eq("id", playerId);
-      if (error) {
-        setMessage(error.message);
-        return;
-      }
-    }
-  };
-
-  const recordAutoHandicapHistory = async (
-    fixtureValue: Fixture,
-    frameRows: Array<{
-      winner_side: "home" | "away" | null;
-      home_forfeit: boolean;
-      away_forfeit: boolean;
-      home_player1_id: string | null;
-      home_player2_id: string | null;
-      away_player1_id: string | null;
-      away_player2_id: string | null;
-    }>
-  ) => {
-    const client = supabase;
-    if (!client) return;
-    const season = seasonById.get(fixtureValue.season_id);
-    if (!season?.handicap_enabled) return;
-
-    const alreadyRes = await client
-      .from("league_handicap_history")
-      .select("id")
-      .eq("fixture_id", fixtureValue.id)
-      .eq("change_type", "auto_result")
-      .limit(1);
-    if (alreadyRes.error) {
-      if (alreadyRes.error.message.toLowerCase().includes("league_handicap_history")) return;
-      setMessage(alreadyRes.error.message);
+    setRecalculatingHandicaps(true);
+    let res: Response;
+    try {
+      res = await fetch("/api/league/recalculate-handicaps", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+    } catch {
+      setRecalculatingHandicaps(false);
+      setMessage("Network error while recalculating handicaps.");
       return;
     }
-    if ((alreadyRes.data ?? []).length > 0) return;
-
-    const deltaByPlayer = new Map<string, number>();
-    for (const row of frameRows) {
-      if (!row.winner_side) continue;
-      if (row.home_forfeit || row.away_forfeit) continue;
-      const homePlayers = Array.from(new Set([row.home_player1_id, row.home_player2_id].filter(Boolean))) as string[];
-      const awayPlayers = Array.from(new Set([row.away_player1_id, row.away_player2_id].filter(Boolean))) as string[];
-      const winners = row.winner_side === "home" ? homePlayers : awayPlayers;
-      const losers = row.winner_side === "home" ? awayPlayers : homePlayers;
-      for (const pid of winners) deltaByPlayer.set(pid, (deltaByPlayer.get(pid) ?? 0) - 4);
-      for (const pid of losers) deltaByPlayer.set(pid, (deltaByPlayer.get(pid) ?? 0) + 4);
+    const payload = (await res.json().catch(() => ({}))) as { error?: string; reviewed?: number; changed?: number };
+    setRecalculatingHandicaps(false);
+    if (!res.ok) {
+      setMessage(payload.error ?? "Failed to recalculate handicaps.");
+      return;
     }
-    if (deltaByPlayer.size === 0) return;
-
-    const playerIds = Array.from(deltaByPlayer.keys());
-    const playersRes = await client.from("players").select("id,snooker_handicap").in("id", playerIds);
-    if (playersRes.error) return setMessage(playersRes.error.message);
-    const currentByPlayer = new Map((playersRes.data ?? []).map((p) => [p.id as string, Number((p as { snooker_handicap: number | null }).snooker_handicap ?? 0)]));
-
-    const historyRows = playerIds.map((pid) => {
-      const prev = currentByPlayer.get(pid) ?? 0;
-      const delta = deltaByPlayer.get(pid) ?? 0;
-      return {
-        player_id: pid,
-        season_id: fixtureValue.season_id,
-        fixture_id: fixtureValue.id,
-        change_type: "auto_result",
-        delta,
-        previous_handicap: prev,
-        new_handicap: prev + delta,
-        reason: "Auto update from completed fixture",
-        changed_by_user_id: currentUserId,
-      };
+    setInfoModal({
+      title: "Handicaps Recalculated",
+      description: `${payload.changed ?? 0} player handicaps updated from current Elo ratings.`,
     });
-    const insRes = await client.from("league_handicap_history").insert(historyRows);
-    if (insRes.error && !insRes.error.message.toLowerCase().includes("league_handicap_history")) {
-      setMessage(insRes.error.message);
-    }
+    await loadAll();
   };
 
   const recomputeFixtureScore = async (fixtureTargetId: string) => {
@@ -2399,11 +2276,7 @@ export default function LeaguePage() {
       return;
     }
     setFixtures((prev) => prev.map((f) => (f.id === fixtureTargetId ? ({ ...f, ...(fixtureRow as Fixture) }) : f)));
-    if (status === "complete" && previousFixture?.status !== "complete") {
-      await recordAutoHandicapHistory(fixtureRow as Fixture, frameRows);
-    }
-    await recalculateSnookerHandicaps();
-  };
+    };
 
   const computeFixtureProgress = (fixtureValue: Fixture) => {
     const frameRows = fixtureSlotsByFixtureId.get(fixtureValue.id) ?? [];
@@ -5696,8 +5569,26 @@ export default function LeaguePage() {
               <section className="rounded-2xl border border-fuchsia-200 bg-gradient-to-br from-white to-fuchsia-50 p-4 shadow-sm">
                 <h2 className="text-lg font-semibold text-fuchsia-900">Handicap Management</h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  View and adjust player handicaps. All changes are recorded in history.
+                  View and adjust player handicaps. Elo updates per valid frame; handicaps should then be reviewed from Elo rather than moved by individual wins/losses.
                 </p>
+                <div className="mt-3 rounded-xl border border-fuchsia-200 bg-white p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Weekly Elo review</p>
+                      <p className="text-xs text-slate-600">
+                        Recalculate current handicaps from each league player's snooker Elo. Movement is capped at 4 points per review and recorded in history.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void recalculateSnookerHandicapsFromElo()}
+                      disabled={recalculatingHandicaps}
+                      className="rounded-xl bg-fuchsia-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                    >
+                      {recalculatingHandicaps ? "Recalculating..." : "Recalculate from Elo"}
+                    </button>
+                  </div>
+                </div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-6">
                   <select
                     className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
