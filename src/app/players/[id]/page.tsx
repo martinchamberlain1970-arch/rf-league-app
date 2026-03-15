@@ -835,6 +835,28 @@ export default function PlayerProfilePage() {
     if (start > 0) return `Starting handicap for this season/review cycle: receives ${start} start.`;
     return "Starting handicap for this season/review cycle: scratch.";
   }, [player?.snooker_handicap_base]);
+  const eloHandicapGuideRows = useMemo(
+    () => [
+      { elo: "1160", handicap: "-32" },
+      { elo: "1140", handicap: "-28" },
+      { elo: "1120", handicap: "-24" },
+      { elo: "1100", handicap: "-20" },
+      { elo: "1080", handicap: "-16" },
+      { elo: "1060", handicap: "-12" },
+      { elo: "1040", handicap: "-8" },
+      { elo: "1020", handicap: "-4" },
+      { elo: "1000", handicap: "0" },
+      { elo: "980", handicap: "+4" },
+      { elo: "960", handicap: "+8" },
+      { elo: "940", handicap: "+12" },
+      { elo: "920", handicap: "+16" },
+      { elo: "900", handicap: "+20" },
+      { elo: "880", handicap: "+24" },
+      { elo: "860", handicap: "+28" },
+      { elo: "840", handicap: "+32" },
+    ],
+    []
+  );
   const isWalkoverMatch = (m: MatchRow) => {
     const rows = framesByMatch.get(m.id) ?? [];
     return rows.length > 0 && rows.every((f) => f.is_walkover_award);
@@ -1357,13 +1379,37 @@ export default function PlayerProfilePage() {
                         Your snooker Elo rating updates after every valid competitive frame. Handicap is then reviewed from Elo by the league, rather than changing automatically after every win or loss.
                       </p>
                       <p className="mt-1">
-                        Each review can move your handicap by a maximum of 4 points toward the target handicap linked to your Elo rating. No-show, nominated-player, and void frames are excluded.
+                        Target handicap now matches the original Elo seed formula: handicap = nearest multiple of 4 to (1000 - Elo) / 5. Each review can move your handicap by a maximum of 4 points toward that target. No-show, nominated-player, and void frames are excluded.
                       </p>
                     </div>
                     <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-6 text-slate-700">
                       <p className="font-semibold text-slate-900">What your handicap means in points start</p>
                       <p className="mt-1">{handicapExplain}</p>
                       <p className="mt-1">{baselineExplain}</p>
+                    </div>
+                    <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3">
+                      <p className="text-sm font-semibold text-slate-900">Elo to handicap guide</p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        Reference points for the current conversion. Higher Elo means a stronger player and therefore a more negative handicap.
+                      </p>
+                      <div className="mt-3 overflow-auto rounded-xl border border-slate-200">
+                        <table className="min-w-full border-collapse text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-600">
+                              <th className="px-3 py-2">Elo</th>
+                              <th className="px-3 py-2">Handicap</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {eloHandicapGuideRows.map((row) => (
+                              <tr key={row.elo} className="border-b border-slate-100 text-slate-800 last:border-b-0">
+                                <td className="px-3 py-2">{row.elo}</td>
+                                <td className="px-3 py-2 font-semibold">{row.handicap}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                     {handicapHistory.length === 0 ? (
                       <p className="text-sm text-slate-600">No handicap changes recorded yet.</p>

@@ -7,22 +7,8 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
 
 function targetHandicapFromElo(rating: number) {
-  if (rating >= 1320) return -64;
-  if (rating >= 1280) return -56;
-  if (rating >= 1240) return -48;
-  if (rating >= 1200) return -40;
-  if (rating >= 1160) return -32;
-  if (rating >= 1120) return -24;
-  if (rating >= 1080) return -16;
-  if (rating >= 1040) return -8;
-  if (rating >= 980) return 0;
-  if (rating >= 940) return 8;
-  if (rating >= 900) return 16;
-  if (rating >= 860) return 24;
-  if (rating >= 820) return 32;
-  if (rating >= 780) return 40;
-  if (rating >= 740) return 48;
-  return 56;
+  const raw = (1000 - rating) / 5;
+  return Math.round(raw / 4) * 4;
 }
 
 export async function POST(req: NextRequest) {

@@ -625,6 +625,28 @@ export default function LeaguePage() {
     }
     return lines.join("\n");
   }, [handicapPlayersFiltered, locations]);
+  const eloHandicapGuideRows = useMemo(
+    () => [
+      { elo: "1160", handicap: "-32" },
+      { elo: "1140", handicap: "-28" },
+      { elo: "1120", handicap: "-24" },
+      { elo: "1100", handicap: "-20" },
+      { elo: "1080", handicap: "-16" },
+      { elo: "1060", handicap: "-12" },
+      { elo: "1040", handicap: "-8" },
+      { elo: "1020", handicap: "-4" },
+      { elo: "1000", handicap: "0" },
+      { elo: "980", handicap: "+4" },
+      { elo: "960", handicap: "+8" },
+      { elo: "940", handicap: "+12" },
+      { elo: "920", handicap: "+16" },
+      { elo: "900", handicap: "+20" },
+      { elo: "880", handicap: "+24" },
+      { elo: "860", handicap: "+28" },
+      { elo: "840", handicap: "+32" },
+    ],
+    []
+  );
   const playersAtSourceVenue = useMemo(() => {
     if (!transferFromVenueId) return [];
     return players
@@ -5604,10 +5626,35 @@ export default function LeaguePage() {
                   <ul className="mt-2 space-y-1 text-xs leading-6 text-fuchsia-900">
                     <li>Elo rating updates after every valid competitive frame.</li>
                     <li>No-show, nominated-player, and void frames do not affect Elo or handicap.</li>
-                    <li>Handicaps are reviewed from Elo when the Super User runs a weekly review.</li>
-                    <li>Each review moves a player by a maximum of 4 points toward their Elo-based target handicap.</li>
+                    <li>Handicaps are reviewed from Elo when the Super User runs a review.</li>
+                    <li>Target handicap now matches the original Elo seed formula: handicap = nearest multiple of 4 to (1000 - Elo) / 5.</li>
+                    <li>Each review moves a player by a maximum of 4 points toward that Elo-based target handicap.</li>
                     <li>Manual overrides remain available where league rules require correction.</li>
                   </ul>
+                </div>
+                <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                  <p className="text-sm font-semibold text-slate-900">Elo to handicap guide</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Reference points for the current conversion model. Higher Elo means a stronger player and therefore a more negative handicap.
+                  </p>
+                  <div className="mt-3 overflow-auto rounded-xl border border-slate-200">
+                    <table className="min-w-full border-collapse text-sm">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-600">
+                          <th className="px-3 py-2">Elo</th>
+                          <th className="px-3 py-2">Handicap</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {eloHandicapGuideRows.map((row) => (
+                          <tr key={row.elo} className="border-b border-slate-100 text-slate-800 last:border-b-0">
+                            <td className="px-3 py-2">{row.elo}</td>
+                            <td className="px-3 py-2 font-semibold">{row.handicap}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
                 <div className="mt-3 rounded-xl border border-fuchsia-200 bg-white p-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
