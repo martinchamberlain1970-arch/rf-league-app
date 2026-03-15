@@ -112,6 +112,9 @@ function deriveAgeBandFromDob(dob: string | null | undefined): "under_13" | "13_
   if (age < 18) return "16_17";
   return "18_plus";
 }
+function displayPlayerName(player: Pick<Player, "full_name" | "display_name">) {
+  return player.full_name?.trim() || player.display_name || "Unnamed player";
+}
 
 export default function PlayerProfilePage() {
   const { id } = useParams<{ id: string }>();
@@ -809,12 +812,12 @@ export default function PlayerProfilePage() {
         .sort((a, b) => {
           const ratingDiff = Number(b.rating_snooker ?? 1000) - Number(a.rating_snooker ?? 1000);
           if (ratingDiff !== 0) return ratingDiff;
-          return named(a).localeCompare(named(b));
+          return displayPlayerName(a).localeCompare(displayPlayerName(b));
         })
         .map((p, index) => ({
           id: p.id,
           rank: index + 1,
-          name: named(p),
+          name: displayPlayerName(p),
           rating: Math.round(Number(p.rating_snooker ?? 1000)),
           handicap: Number(p.snooker_handicap ?? 0),
         })),
