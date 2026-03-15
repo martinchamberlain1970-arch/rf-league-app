@@ -825,15 +825,15 @@ export default function PlayerProfilePage() {
   );
   const handicapExplain = useMemo(() => {
     const current = Number(player?.snooker_handicap ?? 0);
-    if (current < 0) return `Current match start: this player gives ${Math.abs(current)} points start to a scratch (0) opponent.`;
-    if (current > 0) return `Current match start: this player receives ${current} points start from a scratch (0) opponent.`;
-    return "Current match start: this player is off scratch and neither gives nor receives points against a 0-handicap opponent.";
+    if (current < 0) return `Current handicap after the latest review: this player gives ${Math.abs(current)} points start to a scratch (0) opponent.`;
+    if (current > 0) return `Current handicap after the latest review: this player receives ${current} points start from a scratch (0) opponent.`;
+    return "Current handicap after the latest review: this player is off scratch and neither gives nor receives points against a 0-handicap opponent.";
   }, [player?.snooker_handicap]);
   const baselineExplain = useMemo(() => {
     const start = Number(player?.snooker_handicap_base ?? 0);
-    if (start < 0) return `Starting handicap for this season/review cycle: gives ${Math.abs(start)} start.`;
-    if (start > 0) return `Starting handicap for this season/review cycle: receives ${start} start.`;
-    return "Starting handicap for this season/review cycle: scratch.";
+    if (start < 0) return `Baseline handicap set before the season/review cycle: gives ${Math.abs(start)} start.`;
+    if (start > 0) return `Baseline handicap set before the season/review cycle: receives ${start} start.`;
+    return "Baseline handicap set before the season/review cycle: scratch.";
   }, [player?.snooker_handicap_base]);
   const eloHandicapGuideRows = useMemo(
     () => [
@@ -1171,10 +1171,10 @@ export default function PlayerProfilePage() {
                           Age: <span className="font-semibold text-slate-900">{playerAge ?? "Not set"}</span>
                         </span>
                         <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-slate-700">
-                          Handicap: <span className="font-semibold text-slate-900">{(player?.snooker_handicap ?? 0) > 0 ? `+${player?.snooker_handicap}` : (player?.snooker_handicap ?? 0)}</span>
+                          Current: <span className="font-semibold text-slate-900">{(player?.snooker_handicap ?? 0) > 0 ? `+${player?.snooker_handicap}` : (player?.snooker_handicap ?? 0)}</span>
                         </span>
                         <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-slate-700">
-                          Start: <span className="font-semibold text-slate-900">{(player?.snooker_handicap_base ?? 0) > 0 ? `+${player?.snooker_handicap_base}` : (player?.snooker_handicap_base ?? 0)}</span>
+                          Baseline: <span className="font-semibold text-slate-900">{(player?.snooker_handicap_base ?? 0) > 0 ? `+${player?.snooker_handicap_base}` : (player?.snooker_handicap_base ?? 0)}</span>
                         </span>
                         <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-slate-700">
                           Location: <span className="font-semibold text-slate-900">{player?.location_id ? locations.find((l) => l.id === player.location_id)?.name ?? "Assigned" : "Not set"}</span>
