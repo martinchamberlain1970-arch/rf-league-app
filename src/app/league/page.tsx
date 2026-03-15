@@ -597,6 +597,33 @@ export default function LeaguePage() {
       handicapHistory.filter((h) => (handicapPlayerId ? h.player_id === handicapPlayerId : true)),
     [handicapHistory, handicapPlayerId]
   );
+  const handicapBroadcastText = useMemo(() => {
+    const rows = handicapPlayersFiltered
+      .map((row) => ({
+        club: locationLabel(locationById.get(row.location_id ?? "")?.name ?? "Unassigned club"),
+        team: row.teams[0] ?? "No team",
+        player: named(row),
+        handicap: Number(row.snooker_handicap ?? 0),
+      }))
+      .sort((a, b) => a.club.localeCompare(b.club) || a.team.localeCompare(b.team) || a.player.localeCompare(b.player));
+    if (rows.length === 0) return "";
+    const lines: string[] = [];
+    let currentClub = "";
+    let currentTeam = "";
+    for (const row of rows) {
+      if (row.club !== currentClub) {
+        currentClub = row.club;
+        currentTeam = "";
+        lines.push(currentClub);
+      }
+      if (row.team !== currentTeam) {
+        currentTeam = row.team;
+        lines.push(`  ${currentTeam}`);
+      }
+      lines.push(`    ${row.player} ${row.handicap > 0 ? `+${row.handicap}` : row.handicap}`);
+    }
+    return lines.join("\n");
+  }, [handicapPlayersFiltered, locationById]);
   const playersAtSourceVenue = useMemo(() => {
     if (!transferFromVenueId) return [];
     return players
@@ -809,7 +836,7 @@ export default function LeaguePage() {
           "Use Fixtures to generate, review, and operate weekly league matches.",
           "Use League Table and Player Table to publish standings and performance.",
           "Use Knockout Cups for competition creation, entry windows, approvals, and draws.",
-          "Use Handicaps to review automatic changes and apply Super User overrides when required.",
+          "Use Handicaps to review Elo-driven changes, export the current handicap list, and apply Super User overrides when required.",
         ],
       };
     }
@@ -905,10 +932,10 @@ export default function LeaguePage() {
     return {
       title: "Handicaps Guide",
       points: [
-        "Handicap movements are applied automatically from approved results.",
-        "Filter by club/team/player to review current values quickly.",
-        "Use override controls for league-corrective changes.",
-        "Open history to trace when and why each change was made.",
+        "Snooker Elo updates after every valid competitive frame, but handicaps do not move automatically after each win or loss.",
+        "Use Recalculate from Elo when you want to review handicaps for the current week. Each review moves a player by a maximum of 4 points toward their Elo-based target handicap.",
+        "Filter by club/team/player to review current values quickly, or use the copy-ready handicap list to send a full update by WhatsApp or email.",
+        "Use override controls for league-corrective changes and open history to trace when and why each change was made.",
       ],
     };
   };
@@ -5571,6 +5598,16 @@ export default function LeaguePage() {
                 <p className="mt-1 text-sm text-slate-600">
                   View and adjust player handicaps. Elo updates per valid frame; handicaps should then be reviewed from Elo rather than moved by individual wins/losses.
                 </p>
+                <div className="mt-3 rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-3 text-sm text-fuchsia-950">
+                  <p className="font-semibold">How snooker handicaps now work</p>
+                  <ul className="mt-2 space-y-1 text-xs leading-6 text-fuchsia-900">
+                    <li>Elo rating updates after every valid competitive frame.</li>
+                    <li>No-show, nominated-player, and void frames do not affect Elo or handicap.</li>
+                    <li>Handicaps are reviewed from Elo when the Super User runs a weekly review.</li>
+                    <li>Each review moves a player by a maximum of 4 points toward their Elo-based target handicap.</li>
+                    <li>Manual overrides remain available where league rules require correction.</li>
+                  </ul>
+                </div>
                 <div className="mt-3 rounded-xl border border-fuchsia-200 bg-white p-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
@@ -5588,6 +5625,38 @@ export default function LeaguePage() {
                       {recalculatingHandicaps ? "Recalculating..." : "Recalculate from Elo"}
                     </button>
                   </div>
+                </div>
+                <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Copy-ready handicap list</p>
+                      <p className="text-xs text-slate-600">
+                        Uses the current club/team filter. This is formatted so you can paste it directly into WhatsApp or email.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!handicapBroadcastText}
+                      onClick={async () => {
+                        if (!handicapBroadcastText) return;
+                        try {
+                          await navigator.clipboard.writeText(handicapBroadcastText);
+                          setInfoModal({ title: "Handicap List Copied", description: "Current handicap list copied to clipboard." });
+                        } catch {
+                          setMessage("Could not copy to clipboard. Select the text manually instead.");
+                        }
+                      }}
+                      className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50"
+                    >
+                      Copy list
+                    </button>
+                  </div>
+                  <textarea
+                    readOnly
+                    value={handicapBroadcastText}
+                    className="mt-3 min-h-48 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-800"
+                    placeholder="Select club and team to build a copy-ready handicap list."
+                  />
                 </div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-6">
                   <select

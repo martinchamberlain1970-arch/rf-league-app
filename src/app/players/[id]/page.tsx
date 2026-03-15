@@ -1275,6 +1275,15 @@ export default function PlayerProfilePage() {
                 </button>
                 {showHandicap ? (
                   <div className="mt-3">
+                    <div className="mb-3 rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-3 text-xs leading-6 text-fuchsia-950">
+                      <p className="font-semibold">How your handicap is adjusted</p>
+                      <p className="mt-1">
+                        Your snooker Elo rating updates after every valid competitive frame. Handicap is then reviewed from Elo by the league, rather than changing automatically after every win or loss.
+                      </p>
+                      <p className="mt-1">
+                        Each review can move your handicap by a maximum of 4 points toward the target handicap linked to your Elo rating. No-show, nominated-player, and void frames are excluded.
+                      </p>
+                    </div>
                     {handicapHistory.length === 0 ? (
                       <p className="text-sm text-slate-600">No handicap changes recorded yet.</p>
                     ) : (

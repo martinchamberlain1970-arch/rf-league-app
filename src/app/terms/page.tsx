@@ -49,7 +49,9 @@ export default function TermsPage() {
             <h2 className="text-base font-semibold text-slate-900">3. Results, Rankings, and Handicaps</h2>
             <ul className="mt-2 list-disc space-y-1 pl-5">
               <li>League standings and player tables are calculated from approved data.</li>
-              <li>Handicap and ranking adjustments may occur automatically from approved fixtures.</li>
+              <li>Snooker Elo ratings are updated from approved valid competitive frames.</li>
+              <li>Snooker handicaps are reviewed from Elo and may be adjusted by up to 4 points per review cycle.</li>
+              <li>No-show, void, and nominated-player frames do not affect Elo or handicap.</li>
               <li>Super User may apply manual handicap corrections where required by league rules.</li>
             </ul>
           </div>
