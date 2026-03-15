@@ -3722,7 +3722,17 @@ export default function LeaguePage() {
                       <li>No Show on both sides gives no frame point and no player stats.</li>
                     </ul>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+                    <p className="font-semibold">Winter League rules applied</p>
+                    <ul className="mt-1 space-y-1 text-xs text-sky-800">
+                      <li>5 singles frames and 1 doubles frame.</li>
+                      <li>Singles players can appear once only per fixture.</li>
+                      <li>Singles frame 3 allows No Show if a side is short.</li>
+                      <li>Singles frame 4 allows Nominated Player where team points count but player stats do not.</li>
+                    </ul>
+                  </div>
+                )}
                 <label className="mt-2 inline-flex items-center gap-2 text-sm text-slate-700">
                   <input
                     type="checkbox"
@@ -4962,7 +4972,17 @@ export default function LeaguePage() {
                         <li>If both sides are No Show in a frame, that frame gives no point and no player stats.</li>
                       </ul>
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+                      <p className="font-semibold">Winter League result entry</p>
+                      <ul className="mt-1 space-y-1 text-xs text-sky-800">
+                        <li>5 singles plus 1 doubles frame.</li>
+                        <li>Singles players can only be selected once in the same fixture.</li>
+                        <li>No Show is available in singles frame 3 only.</li>
+                        <li>Nominated Player is available in singles frame 4 only and does not generate player stats.</li>
+                      </ul>
+                    </div>
+                  )}
                   {canManage ? (
                     <>
                       <p className="text-sm font-semibold text-slate-900">Auto-generate full league fixtures</p>
