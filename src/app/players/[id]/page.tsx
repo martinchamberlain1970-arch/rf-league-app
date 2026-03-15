@@ -1289,7 +1289,7 @@ export default function PlayerProfilePage() {
                           {eloLeaderboard.map((row) => (
                             <tr
                               key={row.id}
-                              className={`border-b border-slate-100 text-slate-800 last:border-b-0 ${row.id === player.id ? "bg-cyan-50" : "bg-white"}`}
+                              className={`border-b border-slate-100 text-slate-800 last:border-b-0 ${row.id === player?.id ? "bg-cyan-50" : "bg-white"}`}
                             >
                               <td className="px-3 py-2 font-semibold">{row.rank}</td>
                               <td className="px-3 py-2">{row.name}</td>
