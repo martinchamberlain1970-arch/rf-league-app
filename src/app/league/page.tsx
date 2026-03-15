@@ -607,20 +607,21 @@ export default function LeaguePage() {
       }))
       .sort((a, b) => a.club.localeCompare(b.club) || a.team.localeCompare(b.team) || a.player.localeCompare(b.player));
     if (rows.length === 0) return "";
-    const lines: string[] = [];
+    const lines: string[] = ["Current Snooker Handicaps", ""];
     let currentClub = "";
     let currentTeam = "";
     for (const row of rows) {
       if (row.club !== currentClub) {
         currentClub = row.club;
         currentTeam = "";
+        if (lines[lines.length - 1] !== "") lines.push("");
         lines.push(currentClub);
       }
       if (row.team !== currentTeam) {
         currentTeam = row.team;
-        lines.push(`  ${currentTeam}`);
+        lines.push(currentTeam);
       }
-      lines.push(`    ${row.player} ${row.handicap > 0 ? `+${row.handicap}` : row.handicap}`);
+      lines.push(`${row.player} ${row.handicap > 0 ? `+${row.handicap}` : row.handicap}`);
     }
     return lines.join("\n");
   }, [handicapPlayersFiltered, locations]);
