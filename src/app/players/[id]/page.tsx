@@ -806,6 +806,10 @@ export default function PlayerProfilePage() {
       totalPlayers: players.length,
     };
   }, [player, players]);
+  const locationName = useMemo(
+    () => (player?.location_id ? locations.find((l) => l.id === player.location_id)?.name ?? "Assigned club" : "No club assigned"),
+    [locations, player?.location_id]
+  );
   const eloLeaderboard = useMemo(
     () =>
       [...players]
@@ -987,6 +991,21 @@ export default function PlayerProfilePage() {
     return chars.length ? chars.join("") : "-";
   }, [leagueRelevant, leagueFixtureById, id]);
   const effectiveFormGuide = formGuide !== "-" ? formGuide : leagueFormGuide;
+  const currentLeagueTeams = useMemo(() => {
+    const names = new Set<string>();
+    for (const row of leagueRelevant) {
+      const fixture = leagueFixtureById.get(row.fixture_id);
+      if (!fixture) continue;
+      const inHome = row.home_player1_id === id || row.home_player2_id === id;
+      const teamName = leagueTeamById.get(inHome ? fixture.home_team_id : fixture.away_team_id);
+      if (teamName) names.add(teamName);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [leagueRelevant, leagueFixtureById, leagueTeamById, id]);
+  const profileSummaryLine = useMemo(() => {
+    const teamText = currentLeagueTeams.length ? currentLeagueTeams.join(", ") : "No active team linked yet";
+    return `${locationName} · ${teamText}`;
+  }, [currentLeagueTeams, locationName]);
 
   const opponents = useMemo(() => {
     const map = new Map<string, { played: number; won: number; lost: number }>();
@@ -1138,7 +1157,7 @@ export default function PlayerProfilePage() {
 
   return (
     <main className="min-h-screen bg-slate-100 p-6">
-      <div className="mx-auto max-w-4xl space-y-4">
+      <div className="mx-auto max-w-5xl space-y-4">
         <RequireAuth>
           <ScreenHeader
             title={`Player Profile: ${playerName}`}
@@ -1156,31 +1175,38 @@ export default function PlayerProfilePage() {
           {!loading ? (
             <>
               {player ? (
-                <section ref={profileRef} className="rounded-2xl border border-cyan-200 bg-gradient-to-br from-white via-cyan-50 to-sky-50 p-4 shadow-sm">
-                  <div className="flex flex-wrap items-start gap-4">
-                    <div className="h-20 w-20 overflow-hidden rounded-full border border-cyan-200 bg-slate-100">
+                <section ref={profileRef} className="rounded-[2rem] border border-cyan-200 bg-gradient-to-br from-white via-cyan-50 to-sky-50 p-5 shadow-sm">
+                  <div className="flex flex-wrap items-start gap-5">
+                    <div className="h-24 w-24 overflow-hidden rounded-full border-2 border-cyan-200 bg-slate-100 shadow-sm">
                       {player.avatar_url ? (
                         <img src={player.avatar_url} alt={playerName} className="h-full w-full object-cover" />
                       ) : null}
                     </div>
                     <div className="min-w-[220px] flex-1">
-                      <p className="text-lg font-semibold text-slate-900">{playerName}</p>
-                      {linkedEmail ? <p className="text-sm text-slate-600">{linkedEmail}</p> : null}
-                      <div className="mt-2 flex flex-wrap gap-2 text-xs">
-                        <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-slate-700">
+                      <p className="text-3xl font-black tracking-tight text-slate-950">{playerName}</p>
+                      <p className="mt-1 text-sm font-medium text-slate-600">{profileSummaryLine}</p>
+                      {linkedEmail ? <p className="mt-2 text-base text-slate-700">{linkedEmail}</p> : null}
+                      <p className="mt-3 max-w-3xl text-sm leading-7 text-slate-600">
+                        Current snooker league profile with live Elo ranking, reviewed handicap, and frame-by-frame performance.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2 text-xs">
+                        <span className="rounded-full border border-slate-300 bg-white px-3 py-1 text-slate-700">
                           Age: <span className="font-semibold text-slate-900">{playerAge ?? "Not set"}</span>
                         </span>
-                        <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-slate-700">
+                        <span className="rounded-full border border-teal-300 bg-white px-3 py-1 text-teal-800">
                           Current: <span className="font-semibold text-slate-900">{(player?.snooker_handicap ?? 0) > 0 ? `+${player?.snooker_handicap}` : (player?.snooker_handicap ?? 0)}</span>
                         </span>
-                        <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-slate-700">
+                        <span className="rounded-full border border-slate-300 bg-white px-3 py-1 text-slate-700">
                           Baseline: <span className="font-semibold text-slate-900">{(player?.snooker_handicap_base ?? 0) > 0 ? `+${player?.snooker_handicap_base}` : (player?.snooker_handicap_base ?? 0)}</span>
                         </span>
-                        <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-slate-700">
-                          Location: <span className="font-semibold text-slate-900">{player?.location_id ? locations.find((l) => l.id === player.location_id)?.name ?? "Assigned" : "Not set"}</span>
+                        <span className="rounded-full border border-indigo-300 bg-white px-3 py-1 text-indigo-800">
+                          Elo: <span className="font-semibold text-slate-900">{Math.round(Number(player?.rating_snooker ?? 1000))}</span>
+                        </span>
+                        <span className="rounded-full border border-slate-300 bg-white px-3 py-1 text-slate-700">
+                          Club: <span className="font-semibold text-slate-900">{locationName}</span>
                         </span>
                         {isMinor ? (
-                          <span className={`rounded-full border px-2 py-0.5 ${player.guardian_consent ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-800"}`}>
+                          <span className={`rounded-full border px-3 py-1 ${player.guardian_consent ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-800"}`}>
                             {player.guardian_consent ? "Guardian consent on file" : "Guardian consent pending"}
                           </span>
                         ) : null}
@@ -1250,8 +1276,32 @@ export default function PlayerProfilePage() {
                   </div>
                 </section>
               ) : null}
+              {player && rankingCard ? (
+                <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  <div className="rounded-2xl border border-cyan-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-cyan-700">Current Elo</p>
+                    <p className="mt-2 text-3xl font-black text-slate-950">{Math.round(rankingCard.snookerRating)}</p>
+                    <p className="mt-1 text-sm text-slate-600">Live snooker rating after approved results.</p>
+                  </div>
+                  <div className="rounded-2xl border border-indigo-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">League Rank</p>
+                    <p className="mt-2 text-3xl font-black text-slate-950">#{rankingCard.snookerRank}</p>
+                    <p className="mt-1 text-sm text-slate-600">Out of {rankingCard.totalPlayers} active players.</p>
+                  </div>
+                  <div className="rounded-2xl border border-teal-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Current Handicap</p>
+                    <p className="mt-2 text-3xl font-black text-slate-950">{Number(player.snooker_handicap ?? 0) > 0 ? `+${player.snooker_handicap}` : (player.snooker_handicap ?? 0)}</p>
+                    <p className="mt-1 text-sm text-slate-600">Live points-start figure after latest review.</p>
+                  </div>
+                  <div className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Frames Won %</p>
+                    <p className="mt-2 text-3xl font-black text-slate-950">{pct(effectiveSummary.won, effectiveSummary.played)}%</p>
+                    <p className="mt-1 text-sm text-slate-600">{effectiveSummary.won} wins from {effectiveSummary.played} recorded frames.</p>
+                  </div>
+                </section>
+              ) : null}
               {rankingCard ? (
-                <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-lg font-semibold text-slate-900">Ranking Card</h2>
                     <button
@@ -1284,43 +1334,43 @@ export default function PlayerProfilePage() {
                       BYE, walkover, no-show, nominated-player, and void outcomes are excluded from ratings.
                     </p>
                   </div>
-                  <div className="mt-3 grid gap-3 sm:grid-cols-1">
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="mt-3 grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
                       <p className="text-sm font-semibold text-slate-900">Snooker Rating</p>
                       <p className="mt-1 text-2xl font-bold text-slate-900">{Math.round(rankingCard.snookerRating)}</p>
                       <p className="text-sm text-slate-600">Rank #{rankingCard.snookerRank} of {rankingCard.totalPlayers}</p>
                       <p className="text-xs text-slate-500">Peak {Math.round(rankingCard.snookerPeak)} · Rated matches {rankingCard.snookerMatches}</p>
                     </div>
-                  </div>
-                  <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <p className="text-sm font-semibold text-slate-900">Live Elo and Handicap Table</p>
-                      <p className="text-xs text-slate-500">All active players</p>
-                    </div>
-                    <div className="mt-3 max-h-72 overflow-auto rounded-xl border border-slate-200">
-                      <table className="min-w-full border-collapse text-sm">
-                        <thead>
-                          <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-600">
-                            <th className="px-3 py-2">#</th>
-                            <th className="px-3 py-2">Player</th>
-                            <th className="px-3 py-2">Elo</th>
-                            <th className="px-3 py-2">Handicap</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {eloLeaderboard.map((row) => (
-                            <tr
-                              key={row.id}
-                              className={`border-b border-slate-100 text-slate-800 last:border-b-0 ${row.id === player?.id ? "bg-cyan-50" : "bg-white"}`}
-                            >
-                              <td className="px-3 py-2 font-semibold">{row.rank}</td>
-                              <td className="px-3 py-2">{row.name}</td>
-                              <td className="px-3 py-2">{row.rating}</td>
-                              <td className="px-3 py-2">{row.handicap > 0 ? `+${row.handicap}` : row.handicap}</td>
+                    <div className="rounded-xl border border-slate-200 bg-white p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-slate-900">Live Elo and Handicap Table</p>
+                        <p className="text-xs text-slate-500">All active players</p>
+                      </div>
+                      <div className="mt-3 max-h-72 overflow-auto rounded-xl border border-slate-200">
+                        <table className="min-w-full border-collapse text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-600">
+                              <th className="px-3 py-2">#</th>
+                              <th className="px-3 py-2">Player</th>
+                              <th className="px-3 py-2">Elo</th>
+                              <th className="px-3 py-2">Handicap</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
+                          </thead>
+                          <tbody>
+                            {eloLeaderboard.map((row) => (
+                              <tr
+                                key={row.id}
+                                className={`border-b border-slate-100 text-slate-800 last:border-b-0 ${row.id === player?.id ? "bg-cyan-50" : "bg-white"}`}
+                              >
+                                <td className="px-3 py-2 font-semibold">{row.rank}</td>
+                                <td className="px-3 py-2">{row.name}</td>
+                                <td className="px-3 py-2">{row.rating}</td>
+                                <td className="px-3 py-2">{row.handicap > 0 ? `+${row.handicap}` : row.handicap}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
                     </div>
                   </div>
                 </section>
