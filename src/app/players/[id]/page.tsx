@@ -803,6 +803,35 @@ export default function PlayerProfilePage() {
       totalPlayers: players.length,
     };
   }, [player, players]);
+  const eloLeaderboard = useMemo(
+    () =>
+      [...players]
+        .sort((a, b) => {
+          const ratingDiff = Number(b.rating_snooker ?? 1000) - Number(a.rating_snooker ?? 1000);
+          if (ratingDiff !== 0) return ratingDiff;
+          return named(a).localeCompare(named(b));
+        })
+        .map((p, index) => ({
+          id: p.id,
+          rank: index + 1,
+          name: named(p),
+          rating: Math.round(Number(p.rating_snooker ?? 1000)),
+          handicap: Number(p.snooker_handicap ?? 0),
+        })),
+    [players]
+  );
+  const handicapExplain = useMemo(() => {
+    const current = Number(player?.snooker_handicap ?? 0);
+    if (current < 0) return `Current match start: this player gives ${Math.abs(current)} points start to a scratch (0) opponent.`;
+    if (current > 0) return `Current match start: this player receives ${current} points start from a scratch (0) opponent.`;
+    return "Current match start: this player is off scratch and neither gives nor receives points against a 0-handicap opponent.";
+  }, [player?.snooker_handicap]);
+  const baselineExplain = useMemo(() => {
+    const start = Number(player?.snooker_handicap_base ?? 0);
+    if (start < 0) return `Starting handicap for this season/review cycle: gives ${Math.abs(start)} start.`;
+    if (start > 0) return `Starting handicap for this season/review cycle: receives ${start} start.`;
+    return "Starting handicap for this season/review cycle: scratch.";
+  }, [player?.snooker_handicap_base]);
   const isWalkoverMatch = (m: MatchRow) => {
     const rows = framesByMatch.get(m.id) ?? [];
     return rows.length > 0 && rows.every((f) => f.is_walkover_award);
@@ -1238,6 +1267,37 @@ export default function PlayerProfilePage() {
                       <p className="text-xs text-slate-500">Peak {Math.round(rankingCard.snookerPeak)} · Rated matches {rankingCard.snookerMatches}</p>
                     </div>
                   </div>
+                  <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <p className="text-sm font-semibold text-slate-900">Live Elo and Handicap Table</p>
+                      <p className="text-xs text-slate-500">All active players</p>
+                    </div>
+                    <div className="mt-3 max-h-72 overflow-auto rounded-xl border border-slate-200">
+                      <table className="min-w-full border-collapse text-sm">
+                        <thead>
+                          <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-600">
+                            <th className="px-3 py-2">#</th>
+                            <th className="px-3 py-2">Player</th>
+                            <th className="px-3 py-2">Elo</th>
+                            <th className="px-3 py-2">Handicap</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {eloLeaderboard.map((row) => (
+                            <tr
+                              key={row.id}
+                              className={`border-b border-slate-100 text-slate-800 last:border-b-0 ${row.id === player.id ? "bg-cyan-50" : "bg-white"}`}
+                            >
+                              <td className="px-3 py-2 font-semibold">{row.rank}</td>
+                              <td className="px-3 py-2">{row.name}</td>
+                              <td className="px-3 py-2">{row.rating}</td>
+                              <td className="px-3 py-2">{row.handicap > 0 ? `+${row.handicap}` : row.handicap}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 </section>
               ) : null}
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -1296,6 +1356,11 @@ export default function PlayerProfilePage() {
                       <p className="mt-1">
                         Each review can move your handicap by a maximum of 4 points toward the target handicap linked to your Elo rating. No-show, nominated-player, and void frames are excluded.
                       </p>
+                    </div>
+                    <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-6 text-slate-700">
+                      <p className="font-semibold text-slate-900">What your handicap means in points start</p>
+                      <p className="mt-1">{handicapExplain}</p>
+                      <p className="mt-1">{baselineExplain}</p>
                     </div>
                     {handicapHistory.length === 0 ? (
                       <p className="text-sm text-slate-600">No handicap changes recorded yet.</p>
