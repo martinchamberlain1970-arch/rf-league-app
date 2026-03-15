@@ -383,6 +383,7 @@ export default function LeaguePage() {
   const currentSeasonDoublesCount = Math.max(0, Math.min(4, currentSeason?.doubles_count ?? 1));
   const currentSeasonTotalFrames = currentSeasonSinglesCount + currentSeasonDoublesCount;
   const isWinterFormat = currentSeasonSinglesCount === 5 && currentSeasonDoublesCount === 1;
+  const isSummerFormat = currentSeasonSinglesCount === 6 && currentSeasonDoublesCount === 0;
   const isHodgeTriplesFormat =
     currentSeasonSinglesCount === 6 &&
     currentSeasonDoublesCount === 0 &&
@@ -848,7 +849,9 @@ export default function LeaguePage() {
         title: "League Setup Guide",
         points: [
           "Create seasonal leagues (for example Winter or Summer).",
-          "Set format rules (singles/doubles mix and handicap mode).",
+          "Winter League = 5 singles + 1 doubles. Summer League = 6 singles only.",
+          "Summer League players can appear in up to 2 singles frames; frames 5 and 6 allow No Show if a side is short.",
+          "Set handicap mode when creating the league.",
           "Add registered teams to the selected league season.",
           "Publish only after setup and fixtures are ready for members.",
         ],
@@ -871,6 +874,8 @@ export default function LeaguePage() {
         points: [
           "Generate fixture list and manage break weeks.",
           "Open result entry for Super User operation.",
+          "Summer League uses 6 singles only, with a maximum of 2 singles per player.",
+          "If a side only has 2 players available, use No Show in frames 5 and 6.",
           "Review captain submissions and approve/reject where configured.",
           "Track fixture status: pending, in-progress, and complete.",
         ],
@@ -3707,6 +3712,17 @@ export default function LeaguePage() {
                     {formatLabel(LEAGUE_TEMPLATES[seasonTemplate].singlesCount, LEAGUE_TEMPLATES[seasonTemplate].doublesCount)}
                   </span>
                 </p>
+                {seasonTemplate === "summer" ? (
+                  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                    <p className="font-semibold">Summer League rules applied</p>
+                    <ul className="mt-1 space-y-1 text-xs text-amber-800">
+                      <li>6 singles frames and no doubles.</li>
+                      <li>Each player can play a maximum of 2 singles frames.</li>
+                      <li>If a side only has 2 players, frames 5 and 6 should be recorded as No Show.</li>
+                      <li>No Show on both sides gives no frame point and no player stats.</li>
+                    </ul>
+                  </div>
+                ) : null}
                 <label className="mt-2 inline-flex items-center gap-2 text-sm text-slate-700">
                   <input
                     type="checkbox"
@@ -4936,6 +4952,17 @@ export default function LeaguePage() {
                   ) : null}
                 </div>
                 <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                  {isSummerFormat ? (
+                    <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                      <p className="font-semibold">Summer League result entry</p>
+                      <ul className="mt-1 space-y-1 text-xs text-amber-800">
+                        <li>6 singles only. No doubles frame is generated for this league.</li>
+                        <li>Any player can be selected for a maximum of 2 singles frames.</li>
+                        <li>No Show is available in frames 5 and 6 only.</li>
+                        <li>If both sides are No Show in a frame, that frame gives no point and no player stats.</li>
+                      </ul>
+                    </div>
+                  ) : null}
                   {canManage ? (
                     <>
                       <p className="text-sm font-semibold text-slate-900">Auto-generate full league fixtures</p>
