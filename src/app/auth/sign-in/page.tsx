@@ -32,7 +32,7 @@ export default function SignInPage() {
 
   useEffect(() => {
     if (signupState === "created") {
-      setMessage("Account created. Check your email if verification is enabled, then sign in.");
+      setMessage("Account created. Once your profile has been approved, sign in to continue.");
     }
   }, [signupState]);
 
@@ -183,50 +183,101 @@ export default function SignInPage() {
   };
 
   return (
-    <main className="min-h-screen bg-slate-100 p-6">
-      <div className="mx-auto max-w-md space-y-4">
-        <h1 className="text-3xl font-bold text-slate-900">Sign In</h1>
-        <p className="text-sm text-slate-600">
-          Captains, vice-captains, and players all sign in here. Team permissions are managed by the Super User.
-        </p>
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="mb-2 text-sm font-semibold text-slate-900">Existing account</p>
-          <form onSubmit={onSignIn} className="space-y-3">
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>
-              <input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
-              />
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(186,230,253,0.55),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(253,230,138,0.38),_transparent_28%),#f8fafc] p-4 sm:p-6">
+      <div className="mx-auto max-w-7xl">
+        <div className="grid gap-5 xl:grid-cols-[1.15fr_1.35fr_0.9fr]">
+          <section className="rounded-[2rem] border border-sky-100 bg-white/95 p-6 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] sm:p-8">
+            <span className="inline-flex rounded-full border border-teal-200 bg-teal-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-teal-700">
+              Rack & Frame League
+            </span>
+            <h1 className="mt-5 max-w-md text-5xl font-black leading-[0.95] tracking-tight text-slate-950 sm:text-6xl">
+              Get straight back to your league night.
+            </h1>
+            <p className="mt-5 max-w-lg text-lg leading-8 text-slate-600">
+              Sign in to review fixtures, check results, follow competition draws, and keep your club activity moving.
+            </p>
+            <div className="mt-8 rounded-[1.5rem] border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-5">
+              <p className="text-sm font-semibold text-amber-900">League access note</p>
+              <p className="mt-2 text-sm leading-7 text-amber-800">
+                New accounts are reviewed before full access is enabled. Approval is usually completed within an hour and can take up to 24 hours.
+              </p>
             </div>
-            <div>
-              <label className="mb-1 block text-sm font-medium text-slate-700">Password</label>
-              <input
-                type="password"
-                required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
-              />
+          </section>
+
+          <section className="rounded-[2rem] border border-slate-200 bg-white/95 p-4 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] sm:p-6">
+            <div className="rounded-[1.75rem] border border-slate-200 bg-slate-100 p-4">
+              <div className="flex min-h-[24rem] items-center justify-center rounded-[1.5rem] bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),_transparent_38%),linear-gradient(145deg,_#111827,_#1f2937_52%,_#0f172a)] p-8">
+                <div className="text-center">
+                  <div className="inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/10 px-5 py-2 text-xs font-semibold uppercase tracking-[0.34em] text-slate-100">
+                    Snooker League
+                  </div>
+                  <div className="mt-8 text-5xl font-black tracking-tight text-white sm:text-6xl">
+                    Rack<span className="text-amber-400">&amp;</span>Frame
+                  </div>
+                  <p className="mt-4 max-w-md text-base leading-7 text-slate-200">
+                    Fixtures, tables, player rankings, competitions, and result submission in one place.
+                  </p>
+                </div>
+              </div>
+              <div className="mt-4 rounded-[1.25rem] border border-slate-200 bg-white p-5">
+                <p className="text-xl font-semibold text-slate-900">Ready to continue?</p>
+                <p className="mt-2 text-base leading-7 text-slate-600">
+                  Use your existing account to open your dashboard, view notifications, and jump straight into league activity.
+                </p>
+              </div>
             </div>
-            <button type="submit" disabled={busy} className="rounded-xl bg-teal-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60">
-              {busy ? "Please wait..." : "Sign In"}
-            </button>
-          </form>
-          <MessageModal message={message} onClose={() => setMessage(null)} />
-        </section>
-        <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-          <p className="text-sm text-slate-700">
-            Don&apos;t yet have an account?{" "}
-            <Link href="/auth/register" className="font-semibold text-teal-700 underline underline-offset-4">
-              Click here
-            </Link>
-            .
-          </p>
-        </section>
+          </section>
+
+          <section className="rounded-[2rem] border border-slate-200 bg-white/95 p-6 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] sm:p-8">
+            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Sign in</p>
+            <h2 className="mt-3 text-5xl font-black tracking-tight text-slate-950">Welcome back</h2>
+            <p className="mt-4 text-lg leading-8 text-slate-600">
+              Captains, vice-captains, and players all sign in here. Team permissions are controlled centrally by the Super User.
+            </p>
+            <form onSubmit={onSignIn} className="mt-8 space-y-5">
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">Email address</label>
+                <input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="h-16 w-full rounded-[1.35rem] border border-slate-300 bg-white px-5 text-lg text-slate-900 shadow-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                  placeholder="you@example.com"
+                />
+              </div>
+              <div>
+                <label className="mb-2 block text-sm font-medium text-slate-700">Password</label>
+                <input
+                  type="password"
+                  required
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="h-16 w-full rounded-[1.35rem] border border-slate-300 bg-white px-5 text-lg text-slate-900 shadow-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                  placeholder="Enter your password"
+                />
+              </div>
+              <button
+                type="submit"
+                disabled={busy}
+                className="inline-flex h-16 items-center justify-center rounded-[1.35rem] bg-teal-700 px-8 text-xl font-semibold text-white transition hover:bg-teal-800 disabled:opacity-60"
+              >
+                {busy ? "Please wait..." : "Sign in"}
+              </button>
+            </form>
+            <section className="mt-8 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
+              <p className="text-base text-slate-700">
+                Don&apos;t have an account yet?{" "}
+                <Link href="/auth/register" className="font-semibold text-teal-700 underline underline-offset-4">
+                  Create one here
+                </Link>
+                .
+              </p>
+            </section>
+            <p className="mt-8 text-sm uppercase tracking-[0.22em] text-slate-400">Designed and developed by Martin Chamberlain</p>
+            <MessageModal message={message} onClose={() => setMessage(null)} />
+          </section>
+        </div>
       </div>
     </main>
   );

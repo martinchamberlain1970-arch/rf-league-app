@@ -380,7 +380,7 @@ export default function SignUpPage() {
     await logAudit("auth_sign_up", { entityType: "auth", summary: "User account created." });
     setInfoModal({
       title: "Account created",
-      body: "Your account was created successfully. If email verification is enabled, verify your email first. Then sign in to complete your profile linking and continue.",
+      body: "Your account was created successfully. Your profile request will now be reviewed. Once approved, sign in to continue.",
       closeLabel: "Go to sign in",
       redirectTo: "/auth/sign-in?signup=created&next=%2Fauth%2Fwelcome",
     });
