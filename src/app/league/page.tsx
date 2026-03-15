@@ -600,7 +600,7 @@ export default function LeaguePage() {
   const handicapBroadcastText = useMemo(() => {
     const rows = handicapPlayersFiltered
       .map((row) => ({
-        club: locationLabel(locationById.get(row.location_id ?? "")?.name ?? "Unassigned club"),
+        club: locationLabel(locations.find((l) => l.id === row.location_id)?.name ?? "Unassigned club"),
         team: row.teams[0] ?? "No team",
         player: named(row),
         handicap: Number(row.snooker_handicap ?? 0),
@@ -623,7 +623,7 @@ export default function LeaguePage() {
       lines.push(`    ${row.player} ${row.handicap > 0 ? `+${row.handicap}` : row.handicap}`);
     }
     return lines.join("\n");
-  }, [handicapPlayersFiltered, locationById]);
+  }, [handicapPlayersFiltered, locations]);
   const playersAtSourceVenue = useMemo(() => {
     if (!transferFromVenueId) return [];
     return players
