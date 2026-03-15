@@ -1212,10 +1212,23 @@ export default function PlayerProfilePage() {
                   <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
                     <p className="font-semibold text-slate-900">How ranking is calculated</p>
                     <p className="mt-1">
-                      Ratings use an Elo-style model. Expected result is based on current ratings, then updated when approved matches complete.
-                      Upsets move ratings more than expected wins. K-factor is higher for newer players and lower for experienced players.
+                      Ratings use an Elo-style model. Every player has a live snooker rating. Before a frame starts, the system works out the expected result from both players&apos; current ratings. After an approved result, ratings move up or down.
                     </p>
-                    <p className="mt-1">BYE and walkover outcomes are excluded from ratings.</p>
+                    <p className="mt-1">
+                      If a higher-rated player beats a lower-rated player, the change is usually small because that result was expected. If a lower-rated player causes an upset, the change is larger. K-factor is higher for newer players and lower for experienced players, so new ratings settle faster than established ones.
+                    </p>
+                    <p className="mt-1">
+                      Example 1: a 1080-rated player beats a 980-rated player. That is close to the expected result, so the winner may only gain a few points and the loser may only drop a few points.
+                    </p>
+                    <p className="mt-1">
+                      Example 2: a 980-rated player beats a 1080-rated player. That is an upset, so the 980-rated player gains more points and the 1080-rated player loses more points.
+                    </p>
+                    <p className="mt-1">
+                      Example 3: if two players are rated very closely, the result usually produces a balanced change in both directions because the frame was considered close to a 50/50 match.
+                    </p>
+                    <p className="mt-1">
+                      BYE, walkover, no-show, nominated-player, and void outcomes are excluded from ratings.
+                    </p>
                   </div>
                   <div className="mt-3 grid gap-3 sm:grid-cols-1">
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
