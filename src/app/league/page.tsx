@@ -22,6 +22,7 @@ type Player = {
   display_name: string;
   full_name: string | null;
   location_id?: string | null;
+  rating_snooker?: number | null;
   snooker_handicap?: number | null;
   snooker_handicap_base?: number | null;
 };
@@ -548,7 +549,9 @@ export default function LeaguePage() {
         id: p.id,
         name: named(p),
         venue: locationLabel(locations.find((l) => l.id === p.location_id)?.name ?? "Unknown venue"),
-        handicap: p.snooker_handicap ?? 0,
+        currentHandicap: Number(p.snooker_handicap ?? 0),
+        baselineHandicap: Number(p.snooker_handicap_base ?? p.snooker_handicap ?? 0),
+        rating: Math.round(Number((p as Player & { rating_snooker?: number | null }).rating_snooker ?? 1000)),
       }));
   }, [players, profileVenueFilterId, locations]);
   const selectedRegistryTeam = useMemo(
@@ -991,7 +994,7 @@ export default function LeaguePage() {
       client.from("locations").select("id,name,address,contact_phone,contact_email").order("name"),
       client
         .from("players")
-        .select("id,display_name,full_name,location_id,snooker_handicap,snooker_handicap_base")
+        .select("id,display_name,full_name,location_id,rating_snooker,snooker_handicap,snooker_handicap_base")
         .eq("is_archived", false),
       client
         .from("league_seasons")
@@ -4569,17 +4572,27 @@ export default function LeaguePage() {
                   <div className="mt-3 rounded-xl border border-slate-200 bg-white p-2">
                     <ul className="max-h-[28rem] space-y-1 overflow-y-auto">
                       {visiblePlayerProfiles.map((player) => (
-                        <li key={`profile-row-${player.id}`} className="grid items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 sm:grid-cols-[1fr_auto_auto]">
-                          <Link
-                            href={`/players/${player.id}`}
-                            className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-2 hover:text-slate-700"
-                          >
-                            {player.name}
-                          </Link>
-                          <span className="text-xs font-semibold text-slate-700">
-                            HCP {player.handicap > 0 ? `+${player.handicap}` : player.handicap}
-                          </span>
-                          <span className="text-xs text-slate-600">{player.venue}</span>
+                        <li key={`profile-row-${player.id}`} className="grid items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 sm:grid-cols-[1fr_auto]">
+                          <div>
+                            <Link
+                              href={`/players/${player.id}`}
+                              className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-2 hover:text-slate-700"
+                            >
+                              {player.name}
+                            </Link>
+                            <p className="mt-1 text-xs text-slate-600">{player.venue}</p>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-2 justify-self-start sm:justify-self-end">
+                            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-800">
+                              Elo {player.rating}
+                            </span>
+                            <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-800">
+                              Current {player.currentHandicap > 0 ? `+${player.currentHandicap}` : player.currentHandicap}
+                            </span>
+                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                              Baseline {player.baselineHandicap > 0 ? `+${player.baselineHandicap}` : player.baselineHandicap}
+                            </span>
+                          </div>
                         </li>
                       ))}
                       {visiblePlayerProfiles.length === 0 ? <li className="px-2 py-1 text-sm text-slate-500">No players found for this venue.</li> : null}
