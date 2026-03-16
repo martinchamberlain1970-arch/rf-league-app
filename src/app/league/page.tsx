@@ -731,10 +731,10 @@ export default function LeaguePage() {
   const isCurrentFixtureLocked = currentFixture?.status === "complete";
 
   useEffect(() => {
-    if (!canManage && ["guide", "teamManagement", "venues", "profiles", "setup", "handicaps"].includes(activeView)) {
+    if (!admin.loading && !canManage && ["guide", "teamManagement", "venues", "profiles", "setup", "handicaps"].includes(activeView)) {
       setActiveView("fixtures");
     }
-  }, [canManage, activeView]);
+  }, [admin.loading, canManage, activeView]);
   const pendingFixtureSubmission = useMemo(
     () => submissions.find((s) => s.fixture_id === fixtureId && s.status === "pending") ?? null,
     [submissions, fixtureId]
@@ -3505,11 +3505,11 @@ export default function LeaguePage() {
                       <button type="button" onClick={() => setActiveView("guide")} className={leagueTabClass("guide")}>
                         Summary
                       </button>
-                      <button type="button" onClick={() => setActiveView("teamManagement")} className={leagueTabClass("teamManagement")}>
-                        Team Management
-                      </button>
                       <button type="button" onClick={() => setActiveView("venues")} className={leagueTabClass("venues")}>
                         Venues
+                      </button>
+                      <button type="button" onClick={() => setActiveView("teamManagement")} className={leagueTabClass("teamManagement")}>
+                        Team Management
                       </button>
                       <button type="button" onClick={() => setActiveView("profiles")} className={leagueTabClass("profiles")}>
                         Player Profiles
@@ -3517,16 +3517,10 @@ export default function LeaguePage() {
                       <button type="button" onClick={() => setActiveView("setup")} className={leagueTabClass("setup")}>
                         League Setup
                       </button>
-                      <button type="button" onClick={() => setActiveView("handicaps")} className={leagueTabClass("handicaps")}>
-                        Handicaps
-                      </button>
                     </>
                   ) : null}
                   <button type="button" onClick={() => setActiveView("fixtures")} className={leagueTabClass("fixtures")}>
                     Fixtures
-                  </button>
-                  <button type="button" onClick={() => setActiveView("knockouts")} className={leagueTabClass("knockouts")}>
-                    Knockout Cups
                   </button>
                   <button type="button" onClick={() => setActiveView("table")} className={leagueTabClass("table")}>
                     League Table
@@ -3534,6 +3528,14 @@ export default function LeaguePage() {
                   <button type="button" onClick={() => setActiveView("playerTable")} className={leagueTabClass("playerTable")}>
                     Player Table
                   </button>
+                  <button type="button" onClick={() => setActiveView("knockouts")} className={leagueTabClass("knockouts")}>
+                    Knockout Cups
+                  </button>
+                  {canManage ? (
+                    <button type="button" onClick={() => setActiveView("handicaps")} className={leagueTabClass("handicaps")}>
+                      Handicaps
+                    </button>
+                  ) : null}
                 </div>
                 <p className="mt-2 text-xs text-slate-600">{activeViewDescription}</p>
               </section>
@@ -3824,30 +3826,36 @@ export default function LeaguePage() {
                   </p>
                   {canManage ? (
                     <div className="mt-3 grid gap-2 sm:grid-cols-4">
-                      <select
-                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                        value={knockoutTemplateKey}
-                        onChange={(e) => setKnockoutTemplateKey(e.target.value as "" | (typeof LEAGUE_KNOCKOUT_TEMPLATES)[number]["key"])}
-                      >
-                        <option value="">Select competition</option>
-                        {LEAGUE_KNOCKOUT_TEMPLATES.map((t) => (
-                          <option key={t.key} value={t.key}>
-                            {t.name}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                        value={knockoutSeasonLabel}
-                        onChange={(e) => setKnockoutSeasonLabel(e.target.value)}
-                      >
-                        <option value="">Select Season</option>
-                        {seasonYearOptions.map((label) => (
-                          <option key={label} value={label}>
-                            {label}
-                          </option>
-                        ))}
-                      </select>
+                      <label className="space-y-1">
+                        <span className="block text-xs font-medium text-slate-600">Competition</span>
+                        <select
+                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                          value={knockoutTemplateKey}
+                          onChange={(e) => setKnockoutTemplateKey(e.target.value as "" | (typeof LEAGUE_KNOCKOUT_TEMPLATES)[number]["key"])}
+                        >
+                          <option value="">Select competition</option>
+                          {LEAGUE_KNOCKOUT_TEMPLATES.map((t) => (
+                            <option key={t.key} value={t.key}>
+                              {t.name}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="space-y-1">
+                        <span className="block text-xs font-medium text-slate-600">Season</span>
+                        <select
+                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                          value={knockoutSeasonLabel}
+                          onChange={(e) => setKnockoutSeasonLabel(e.target.value)}
+                        >
+                          <option value="">Select season</option>
+                          {seasonYearOptions.map((label) => (
+                            <option key={label} value={label}>
+                              {label}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
                       <label className="space-y-1">
                         <span className="block text-xs font-medium text-slate-600">Round 1 completion deadline</span>
                         <input
