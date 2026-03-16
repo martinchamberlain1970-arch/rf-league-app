@@ -296,7 +296,7 @@ export default function LeaguePage() {
   const [seasonName, setSeasonName] = useState("");
   const [seasonTemplate, setSeasonTemplate] = useState<LeagueTemplateKey>("winter");
   const [seasonHandicapEnabled, setSeasonHandicapEnabled] = useState(false);
-  const [knockoutTemplateKey, setKnockoutTemplateKey] = useState<(typeof LEAGUE_KNOCKOUT_TEMPLATES)[number]["key"]>("gary_webb");
+  const [knockoutTemplateKey, setKnockoutTemplateKey] = useState<"" | (typeof LEAGUE_KNOCKOUT_TEMPLATES)[number]["key"]>("");
   const [knockoutSeasonLabel, setKnockoutSeasonLabel] = useState("");
   const [knockoutRound1Deadline, setKnockoutRound1Deadline] = useState("");
   const [knockoutDeadlineDraftByCompetitionId, setKnockoutDeadlineDraftByCompetitionId] = useState<Record<string, string>>({});
@@ -2882,7 +2882,10 @@ export default function LeaguePage() {
       return;
     }
     const tpl = LEAGUE_KNOCKOUT_TEMPLATES.find((t) => t.key === knockoutTemplateKey);
-    if (!tpl) return;
+    if (!tpl) {
+      setMessage("Select a competition first.");
+      return;
+    }
     const seasonLabel = knockoutSeasonLabel.trim();
     if (!seasonLabel) {
       setMessage("Select or enter a season label first (e.g. 2026/2027).");
@@ -3824,8 +3827,9 @@ export default function LeaguePage() {
                       <select
                         className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
                         value={knockoutTemplateKey}
-                        onChange={(e) => setKnockoutTemplateKey(e.target.value as (typeof LEAGUE_KNOCKOUT_TEMPLATES)[number]["key"])}
+                        onChange={(e) => setKnockoutTemplateKey(e.target.value as "" | (typeof LEAGUE_KNOCKOUT_TEMPLATES)[number]["key"])}
                       >
+                        <option value="">Select competition</option>
                         {LEAGUE_KNOCKOUT_TEMPLATES.map((t) => (
                           <option key={t.key} value={t.key}>
                             {t.name}
@@ -3844,13 +3848,15 @@ export default function LeaguePage() {
                           </option>
                         ))}
                       </select>
-                      <input
-                        type="datetime-local"
-                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                        value={knockoutRound1Deadline}
-                        onChange={(e) => setKnockoutRound1Deadline(e.target.value)}
-                        placeholder="Round 1 completion deadline"
-                      />
+                      <label className="space-y-1">
+                        <span className="block text-xs font-medium text-slate-600">Round 1 completion deadline</span>
+                        <input
+                          type="datetime-local"
+                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                          value={knockoutRound1Deadline}
+                          onChange={(e) => setKnockoutRound1Deadline(e.target.value)}
+                        />
+                      </label>
                       <button
                         type="button"
                         onClick={() => void createLeagueKnockoutCompetition()}
