@@ -1160,7 +1160,7 @@ export default function PlayerProfilePage() {
       <div className="mx-auto max-w-5xl space-y-4">
         <RequireAuth>
           <ScreenHeader
-            title={playerName}
+            title="Player Profile"
             eyebrow="Players"
             subtitle="Profile details and individual performance."
           />
