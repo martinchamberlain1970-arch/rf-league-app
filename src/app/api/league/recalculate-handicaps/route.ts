@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { targetHandicapFromElo } from "@/lib/snooker-rating";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
-
-function targetHandicapFromElo(rating: number) {
-  const raw = (1000 - rating) / 5;
-  return Math.round(raw / 4) * 4;
-}
 
 export async function POST(req: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {

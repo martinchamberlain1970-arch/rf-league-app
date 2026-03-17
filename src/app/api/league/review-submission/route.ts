@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { applyGroupSnookerRating } from "@/lib/snooker-rating";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -29,16 +30,6 @@ type SubmissionFrameResult = {
   away_points_scored?: number | null;
   break_entries?: SubmissionBreakEntry[];
 };
-
-function expectedScore(teamA: number, teamB: number) {
-  return 1 / (1 + Math.pow(10, (teamB - teamA) / 400));
-}
-
-function kFactor(avgRating: number, avgMatches: number) {
-  if (avgMatches < 30) return 32;
-  if (avgRating >= 1800) return 16;
-  return 20;
-}
 
 function isHodgeTriplesSeason(seasonName: string | null | undefined, singlesCount: number | null | undefined, doublesCount: number | null | undefined) {
   return (seasonName ?? "").toLowerCase().includes("hodge") && Number(singlesCount ?? 0) === 6 && Number(doublesCount ?? 0) === 0;
@@ -234,7 +225,7 @@ export async function POST(req: NextRequest) {
       .eq("id", submission.fixture_id);
     if (fixtureUpdate.error) return NextResponse.json({ error: fixtureUpdate.error.message }, { status: 400 });
 
-    // Apply Elo-style snooker rating only when fixture is complete.
+    // Apply shared Elo-style snooker rating only when fixture is complete.
     if (status === "complete") {
       const team1Ids = Array.from(
         new Set(
@@ -251,71 +242,23 @@ export async function POST(req: NextRequest) {
         )
       );
       if (team1Ids.length > 0 && team2Ids.length > 0) {
-        const uniqueIds = Array.from(new Set([...team1Ids, ...team2Ids]));
-        const playerRes = await adminClient
-          .from("players")
-          .select("id,rating_snooker,peak_rating_snooker,rated_matches_snooker")
-          .in("id", uniqueIds);
-        if (!playerRes.error && playerRes.data) {
-          const players = playerRes.data as Array<{
-            id: string;
-            rating_snooker: number | null;
-            peak_rating_snooker: number | null;
-            rated_matches_snooker: number | null;
-          }>;
-          const playerById = new Map(players.map((p) => [p.id, p]));
-
-          const team1Ratings = team1Ids.map((pid) => playerById.get(pid)?.rating_snooker ?? 1000);
-          const team2Ratings = team2Ids.map((pid) => playerById.get(pid)?.rating_snooker ?? 1000);
-          const team1Matches = team1Ids.map((pid) => playerById.get(pid)?.rated_matches_snooker ?? 0);
-          const team2Matches = team2Ids.map((pid) => playerById.get(pid)?.rated_matches_snooker ?? 0);
-
-          const team1AvgRating = team1Ratings.reduce((a, b) => a + b, 0) / team1Ratings.length;
-          const team2AvgRating = team2Ratings.reduce((a, b) => a + b, 0) / team2Ratings.length;
-          const team1AvgMatches = team1Matches.reduce((a, b) => a + b, 0) / team1Matches.length;
-          const team2AvgMatches = team2Matches.reduce((a, b) => a + b, 0) / team2Matches.length;
-
-          const expectedTeam1 = expectedScore(team1AvgRating, team2AvgRating);
-          const actualTeam1 = homePoints > awayPoints ? 1 : homePoints < awayPoints ? 0 : 0.5;
-          const k = Math.max(kFactor(team1AvgRating, team1AvgMatches), kFactor(team2AvgRating, team2AvgMatches));
-          const deltaTeam1 = Math.round(k * (actualTeam1 - expectedTeam1));
-          const deltaTeam2 = -deltaTeam1;
-
-          for (const pid of team1Ids) {
-            const p = playerById.get(pid);
-            if (!p) continue;
-            const current = p.rating_snooker ?? 1000;
-            const next = Math.max(100, current + deltaTeam1);
-            const peak = Math.max(p.peak_rating_snooker ?? 1000, next);
-            const played = (p.rated_matches_snooker ?? 0) + 1;
-            const upd = await adminClient
-              .from("players")
-              .update({
-                rating_snooker: next,
-                peak_rating_snooker: peak,
-                rated_matches_snooker: played,
-              })
-              .eq("id", pid);
-            if (upd.error) return NextResponse.json({ error: upd.error.message }, { status: 400 });
-          }
-
-          for (const pid of team2Ids) {
-            const p = playerById.get(pid);
-            if (!p) continue;
-            const current = p.rating_snooker ?? 1000;
-            const next = Math.max(100, current + deltaTeam2);
-            const peak = Math.max(p.peak_rating_snooker ?? 1000, next);
-            const played = (p.rated_matches_snooker ?? 0) + 1;
-            const upd = await adminClient
-              .from("players")
-              .update({
-                rating_snooker: next,
-                peak_rating_snooker: peak,
-                rated_matches_snooker: played,
-              })
-              .eq("id", pid);
-            if (upd.error) return NextResponse.json({ error: upd.error.message }, { status: 400 });
-          }
+        try {
+          await applyGroupSnookerRating({
+            adminClient,
+            sourceApp: "league",
+            sourceResultId: `league_fixture:${submission.fixture_id}`,
+            groupAIds: team1Ids,
+            groupBIds: team2Ids,
+            scoreA: homePoints,
+            scoreB: awayPoints,
+            notes: `League fixture ${submission.fixture_id}`,
+            metadata: { fixture_id: submission.fixture_id, season_id: fixtureRes.data.season_id },
+          });
+        } catch (error) {
+          return NextResponse.json(
+            { error: error instanceof Error ? error.message : "Failed to apply snooker rating." },
+            { status: 400 }
+          );
         }
       }
     }
