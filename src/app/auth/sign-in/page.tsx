@@ -206,15 +206,19 @@ export default function SignInPage() {
 
           <section className="rounded-[2rem] border border-slate-200 bg-white/95 p-4 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] sm:p-6">
             <div className="rounded-[1.75rem] border border-slate-200 bg-slate-100 p-4">
-              <div className="flex min-h-[24rem] items-center justify-center rounded-[1.5rem] bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),_transparent_38%),linear-gradient(145deg,_#111827,_#1f2937_52%,_#0f172a)] p-8">
-                <div className="text-center">
+              <div className="flex min-h-[24rem] items-center justify-center rounded-[1.5rem] bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),_transparent_38%),linear-gradient(145deg,_#111827,_#1f2937_52%,_#0f172a)] p-6 sm:p-8">
+                <div className="w-full text-center">
                   <div className="inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/10 px-5 py-2 text-xs font-semibold uppercase tracking-[0.34em] text-slate-100">
                     Snooker League
                   </div>
-                  <div className="mt-8 text-5xl font-black tracking-tight text-white sm:text-6xl">
-                    Rack<span className="text-amber-400">&amp;</span>Frame
+                  <div className="mt-6 overflow-hidden rounded-[1.5rem] border border-white/10 bg-black/15 p-3 shadow-[0_18px_45px_-24px_rgba(15,23,42,0.8)]">
+                    <img
+                      src="/rf-logo.png"
+                      alt="Rack & Frame League logo"
+                      className="mx-auto max-h-[21rem] w-auto rounded-[1.1rem] object-contain"
+                    />
                   </div>
-                  <p className="mt-4 max-w-md text-base leading-7 text-slate-200">
+                  <p className="mt-5 text-base leading-7 text-slate-200">
                     Fixtures, tables, player rankings, competitions, and result submission in one place.
                   </p>
                 </div>

@@ -1072,6 +1072,7 @@ export default function LeaguePage() {
       if (!fallbackPlayers.error) {
         playerRows = (fallbackPlayers.data ?? []).map((p) => ({
           ...p,
+          rating_snooker: null,
           snooker_handicap: null,
           snooker_handicap_base: null,
         }));
