@@ -11,7 +11,7 @@ import ConfirmModal from "@/components/ConfirmModal";
 import useFeatureAccess from "@/components/useFeatureAccess";
 
 const links = [
-  { href: "/players", title: "Registered Players", desc: "Add and manage players." },
+  { href: "/players", title: "Players", desc: "View and manage player records." },
   { href: "/quick-match", title: "Quick Match", desc: "Optional module: create ad-hoc practice matches." },
   { href: "/events/new", title: "Create Competition", desc: "Optional module: create standalone knockout or league events." },
   { href: "/league", title: "League Manager", desc: "Set up teams, fixtures, and league table." },
