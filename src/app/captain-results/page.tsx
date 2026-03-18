@@ -7,6 +7,7 @@ import MessageModal from "@/components/MessageModal";
 import InfoModal from "@/components/InfoModal";
 import useAdminStatus from "@/components/useAdminStatus";
 import { supabase } from "@/lib/supabase";
+import { calculateAdjustedScoresWithCap, MAX_SNOOKER_START } from "@/lib/snooker-handicap";
 
 type Season = {
   id: string;
@@ -340,15 +341,13 @@ export default function CaptainResultsPage() {
   const playerHandicap = (playerId: string | null | undefined) =>
     Number(playerById.get(playerId ?? "")?.snooker_handicap ?? 0);
 
-  const doublesTeamHandicap = (player1Id: string | null | undefined, player2Id: string | null | undefined) => {
-    return (playerHandicap(player1Id) + playerHandicap(player2Id)) / 2;
-  };
-
   const doublesHandicapLabel = (slot: FrameSlot) => {
-    const home = doublesTeamHandicap(slot.home_player1_id, slot.home_player2_id);
-    const away = doublesTeamHandicap(slot.away_player1_id, slot.away_player2_id);
-    const format = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
-    return `Doubles handicap: Home ${format(home)} · Away ${format(away)}`;
+    const home = (playerHandicap(slot.home_player1_id) + playerHandicap(slot.home_player2_id)) / 2;
+    const away = (playerHandicap(slot.away_player1_id) + playerHandicap(slot.away_player2_id)) / 2;
+    const starts = calculateAdjustedScoresWithCap(0, 0, home, away);
+    if (starts.homeStart > 0) return `Doubles handicap: Home receives ${starts.homeStart} start`;
+    if (starts.awayStart > 0) return `Doubles handicap: Away receives ${starts.awayStart} start`;
+    return "Doubles handicap: Level start";
   };
 
   const deriveWinnerFromFrame = (row: FrameSlot): "home" | "away" | null => {
@@ -370,10 +369,11 @@ export default function CaptainResultsPage() {
     const awayPts = typeof row.away_points_scored === "number" ? row.away_points_scored : null;
     if (homePts === null || awayPts === null) return null;
     if (row.slot_type === "doubles" && selectedSeason?.handicap_enabled) {
-      const homeAdjusted = homePts + doublesTeamHandicap(row.home_player1_id, row.home_player2_id);
-      const awayAdjusted = awayPts + doublesTeamHandicap(row.away_player1_id, row.away_player2_id);
-      if (homeAdjusted > awayAdjusted) return "home";
-      if (awayAdjusted > homeAdjusted) return "away";
+      const home = (playerHandicap(row.home_player1_id) + playerHandicap(row.home_player2_id)) / 2;
+      const away = (playerHandicap(row.away_player1_id) + playerHandicap(row.away_player2_id)) / 2;
+      const adjusted = calculateAdjustedScoresWithCap(homePts, awayPts, home, away);
+      if (adjusted.homeAdjusted > adjusted.awayAdjusted) return "home";
+      if (adjusted.awayAdjusted > adjusted.homeAdjusted) return "away";
       return null;
     }
     if (homePts > awayPts) return "home";
@@ -615,7 +615,7 @@ export default function CaptainResultsPage() {
                       </p>
                     )}
                     {selectedSeason?.handicap_enabled ? (
-                      <p className="mt-1">In doubles, team handicap = (player 1 handicap + player 2 handicap) ÷ 2.</p>
+                      <p className="mt-1">In doubles, team handicap = (player 1 handicap + player 2 handicap) ÷ 2, with the live start capped at {MAX_SNOOKER_START}.</p>
                     ) : null}
                   </div>
                   {slots.map((slot) => {

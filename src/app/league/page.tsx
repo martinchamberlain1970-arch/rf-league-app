@@ -9,6 +9,7 @@ import MessageModal from "@/components/MessageModal";
 import InfoModal from "@/components/InfoModal";
 import ConfirmModal from "@/components/ConfirmModal";
 import { supabase } from "@/lib/supabase";
+import { calculateAdjustedScoresWithCap, MAX_SNOOKER_START } from "@/lib/snooker-handicap";
 
 type Location = {
   id: string;
@@ -1388,7 +1389,7 @@ export default function LeaguePage() {
     setInfoModal({
       title: "League Created",
       description: seasonHandicapEnabled
-        ? "League created successfully. Handicap mode is enabled (±4 per frame)."
+        ? `League created successfully. Handicap mode is enabled with a maximum start of ${MAX_SNOOKER_START}.`
         : "League created successfully. Handicap mode is disabled.",
     });
   };
@@ -2041,10 +2042,9 @@ export default function LeaguePage() {
         const playerHcp = (playerId: string | null | undefined) => Number(playerById.get(playerId ?? "")?.snooker_handicap ?? 0);
         const homeHandicap = (playerHcp(row.home_player1_id) + playerHcp(row.home_player2_id)) / 2;
         const awayHandicap = (playerHcp(row.away_player1_id) + playerHcp(row.away_player2_id)) / 2;
-        const homeAdjusted = homePts + homeHandicap;
-        const awayAdjusted = awayPts + awayHandicap;
-        if (homeAdjusted > awayAdjusted) return "home";
-        if (awayAdjusted > homeAdjusted) return "away";
+        const adjusted = calculateAdjustedScoresWithCap(homePts, awayPts, homeHandicap, awayHandicap);
+        if (adjusted.homeAdjusted > adjusted.awayAdjusted) return "home";
+        if (adjusted.awayAdjusted > adjusted.homeAdjusted) return "away";
         return null;
       }
     }
@@ -2057,8 +2057,10 @@ export default function LeaguePage() {
     const playerHcp = (playerId: string | null | undefined) => Number(playerById.get(playerId ?? "")?.snooker_handicap ?? 0);
     const home = (playerHcp(slot.home_player1_id) + playerHcp(slot.home_player2_id)) / 2;
     const away = (playerHcp(slot.away_player1_id) + playerHcp(slot.away_player2_id)) / 2;
-    const format = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
-    return `Doubles handicap: Home ${format(home)} · Away ${format(away)}`;
+    const starts = calculateAdjustedScoresWithCap(0, 0, home, away);
+    if (starts.homeStart > 0) return `Doubles handicap: Home receives ${starts.homeStart} start`;
+    if (starts.awayStart > 0) return `Doubles handicap: Away receives ${starts.awayStart} start`;
+    return "Doubles handicap: Level start";
   };
 
   const updateFrameWithDerivedWinner = async (slot: FrameSlot, patch: Partial<FrameSlot>) => {
@@ -3190,10 +3192,13 @@ export default function LeaguePage() {
         const playerHcp = (playerId: string | null | undefined) => Number(playerById.get(playerId ?? "")?.snooker_handicap ?? 0);
         const homeHcp = (playerHcp(slot.home_player1_id) + playerHcp(slot.home_player2_id)) / 2;
         const awayHcp = (playerHcp(slot.away_player1_id) + playerHcp(slot.away_player2_id)) / 2;
-        const homeAdj = homePoints + homeHcp;
-        const awayAdj = awayPoints + awayHcp;
-        const format = (v: number) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
-        handicapNote = `HCP ${format(homeHcp)} vs ${format(awayHcp)} · Adjusted ${format(homeAdj)}-${format(awayAdj)}`;
+        const adjusted = calculateAdjustedScoresWithCap(homePoints, awayPoints, homeHcp, awayHcp);
+        handicapNote =
+          adjusted.homeStart > 0
+            ? `HCP Home receives ${adjusted.homeStart} · Adjusted ${adjusted.homeAdjusted}-${adjusted.awayAdjusted}`
+            : adjusted.awayStart > 0
+              ? `HCP Away receives ${adjusted.awayStart} · Adjusted ${adjusted.homeAdjusted}-${adjusted.awayAdjusted}`
+              : `HCP Level start · Adjusted ${adjusted.homeAdjusted}-${adjusted.awayAdjusted}`;
       }
       const homePlayers =
         slot.slot_type === "doubles"
@@ -3671,7 +3676,7 @@ export default function LeaguePage() {
                     checked={seasonHandicapEnabled}
                     onChange={(e) => setSeasonHandicapEnabled(e.target.checked)}
                   />
-                  Handicap league (apply ±4 per frame)
+                  Handicap league (maximum start 40)
                 </label>
                 <div className="mt-3">
                   <button
@@ -4903,7 +4908,7 @@ export default function LeaguePage() {
                           : "bg-slate-200 text-slate-700"
                       }`}
                     >
-                      {currentSeason.handicap_enabled ? "Handicap ON (±4)" : "Handicap OFF"}
+                      {currentSeason.handicap_enabled ? `Handicap ON (max ${MAX_SNOOKER_START})` : "Handicap OFF"}
                     </span>
                   ) : null}
                   {currentSeason ? (
@@ -5652,14 +5657,15 @@ export default function LeaguePage() {
                 <div className="mt-3 rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-3 text-sm text-fuchsia-950">
                   <p className="font-semibold">How snooker handicaps now work</p>
                   <ul className="mt-2 space-y-1 text-xs leading-6 text-fuchsia-900">
-                    <li>Elo rating updates after every valid competitive frame.</li>
-                    <li>No-show, nominated-player, and void frames do not affect Elo or handicap.</li>
-                    <li>Handicaps are reviewed from Elo when the Super User runs a review.</li>
-                    <li>Target handicap now matches the original Elo seed formula: handicap = nearest multiple of 4 to (1000 - Elo) / 5.</li>
-                    <li>Each review moves a player by a maximum of 4 points toward that Elo-based target handicap.</li>
-                    <li>Manual overrides remain available where league rules require correction.</li>
-                  </ul>
-                </div>
+                      <li>Elo rating updates after every valid competitive frame.</li>
+                      <li>No-show, nominated-player, and void frames do not affect Elo or handicap.</li>
+                      <li>Handicaps are reviewed from Elo when the Super User runs a review.</li>
+                      <li>Target handicap now matches the original Elo seed formula: handicap = nearest multiple of 4 to (1000 - Elo) / 5.</li>
+                      <li>Each review moves a player by a maximum of 4 points toward that Elo-based target handicap.</li>
+                      <li>Live match starts are capped at {MAX_SNOOKER_START} so a fixture stays competitive even when the Elo gap is wider.</li>
+                      <li>Manual overrides remain available where league rules require correction.</li>
+                    </ul>
+                  </div>
                 <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
                   <p className="text-sm font-semibold text-slate-900">Elo to handicap guide</p>
                   <p className="mt-1 text-xs text-slate-600">

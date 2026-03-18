@@ -15,6 +15,7 @@ const links = [
   { href: "/quick-match", title: "Quick Match", desc: "Optional module: create ad-hoc practice matches." },
   { href: "/events/new", title: "Create Competition", desc: "Optional module: create standalone knockout or league events." },
   { href: "/league", title: "League Manager", desc: "Set up teams, fixtures, and league table." },
+  { href: "/handicaps", title: "Handicaps", desc: "See the snooker handicap list and how starts are worked out." },
   { href: "/captain-results", title: "Captain Results", desc: "Submit your fixture result for approval." },
   { href: "/events", title: "Events", desc: "View open and completed events." },
   { href: "/signups", title: "Competition Sign-ups", desc: "Enter open competitions and track entry status." },
@@ -70,6 +71,7 @@ export default function HomePage() {
     if (admin.isSuper) {
       return [
         "/league",
+        "/handicaps",
         "/players",
         "/signup-requests",
         "/signups",
@@ -78,16 +80,16 @@ export default function HomePage() {
         "/audit",
         "/usage",
         "/backup",
+        "/help",
         "/legal",
       ].includes(href);
     }
-    if (href === "/help") return false;
     if (!admin.isSuper && (href === "/audit" || href === "/usage" || href === "/signup-requests")) return false;
     if (admin.isAdmin) {
       // Admins still see these cards, but they can be disabled per-account.
       return true;
     }
-    return ["/events", "/league", "/captain-results", "/signups", "/help", "/legal", "/notifications"].includes(href);
+    return ["/events", "/league", "/handicaps", "/captain-results", "/signups", "/help", "/legal", "/notifications"].includes(href);
   };
 
   const visibleLinks = links.filter((item) => isVisibleLink(item.href));
@@ -104,8 +106,8 @@ export default function HomePage() {
   const primaryHrefs = admin.isSuper
     ? ["/signup-requests", "/players", "/notifications", "/league", "/results", "/backup", "/signups", "/legal"]
     : admin.isAdmin
-      ? ["/league", "/captain-results", "/events", "/quick-match", "/events/new", "/signups", "/legal"]
-      : ["/league", "/captain-results", "/events", "/notifications", "/signups", "/legal"];
+      ? ["/league", "/handicaps", "/captain-results", "/events", "/quick-match", "/events/new", "/signups", "/help", "/legal"]
+      : ["/league", "/handicaps", "/captain-results", "/events", "/notifications", "/signups", "/help", "/legal"];
   const quickAccessHrefs = admin.isSuper
     ? ["/audit", "/usage"]
     : admin.isAdmin
@@ -283,6 +285,7 @@ export default function HomePage() {
       "/live",
       "/rules",
       "/help",
+      "/handicaps",
       "/legal",
     ];
     common.forEach((path) => router.prefetch(path));
