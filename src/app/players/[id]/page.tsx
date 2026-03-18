@@ -10,6 +10,7 @@ import useAdminStatus from "@/components/useAdminStatus";
 import ConfirmModal from "@/components/ConfirmModal";
 import InfoModal from "@/components/InfoModal";
 import MessageModal from "@/components/MessageModal";
+import { MAX_SNOOKER_START } from "@/lib/snooker-handicap";
 
 type Player = {
   id: string;
@@ -1284,7 +1285,7 @@ export default function PlayerProfilePage() {
                     <p className="mt-1 text-sm text-slate-600">Live snooker rating after approved results.</p>
                   </div>
                   <div className="rounded-2xl border border-indigo-200 bg-white p-4 shadow-sm">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">League Rank</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Rank</p>
                     <p className="mt-2 text-3xl font-black text-slate-950">#{rankingCard.snookerRank}</p>
                     <p className="mt-1 text-sm text-slate-600">Out of {rankingCard.totalPlayers} active players.</p>
                   </div>
@@ -1336,7 +1337,7 @@ export default function PlayerProfilePage() {
                   </div>
                   <div className="mt-3 grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-                      <p className="text-sm font-semibold text-slate-900">Snooker Rating</p>
+                      <p className="text-sm font-semibold text-slate-900">Current Elo</p>
                       <p className="mt-1 text-2xl font-bold text-slate-900">{Math.round(rankingCard.snookerRating)}</p>
                       <p className="text-sm text-slate-600">Rank #{rankingCard.snookerRank} of {rankingCard.totalPlayers}</p>
                       <p className="text-xs text-slate-500">Peak {Math.round(rankingCard.snookerPeak)} · Rated matches {rankingCard.snookerMatches}</p>
@@ -1431,16 +1432,25 @@ export default function PlayerProfilePage() {
                       <p className="mt-1">
                         Target handicap now matches the original Elo seed formula: handicap = nearest multiple of 4 to (1000 - Elo) / 5. Each review can move your handicap by a maximum of 4 points toward that target. No-show, nominated-player, and void frames are excluded.
                       </p>
+                      <p className="mt-1">
+                        The live match start is capped at {MAX_SNOOKER_START}. That cap keeps frames competitive and stops a large rating gap from making the opening score feel like the whole result.
+                      </p>
                     </div>
                     <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-6 text-slate-700">
                       <p className="font-semibold text-slate-900">What your handicap means in points start</p>
                       <p className="mt-1">{handicapExplain}</p>
                       <p className="mt-1">{baselineExplain}</p>
                     </div>
+                    <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                      <p className="font-semibold text-slate-900">Why the maximum start is capped at {MAX_SNOOKER_START}</p>
+                      <p className="mt-1">
+                        The reviewed handicap still reflects the longer-term Elo gap, but the live fixture uses a capped start so the frame remains playable, recognisable, and easier for players to trust.
+                      </p>
+                    </div>
                     <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3">
                       <p className="text-sm font-semibold text-slate-900">Elo to handicap guide</p>
                       <p className="mt-1 text-xs text-slate-600">
-                        Reference points for the current conversion. Higher Elo means a stronger player and therefore a more negative handicap.
+                        Reference points for the current conversion. Higher Elo means a stronger player and therefore a more negative handicap. Live starts are capped at {MAX_SNOOKER_START}.
                       </p>
                       <div className="mt-3 overflow-auto rounded-xl border border-slate-200">
                         <table className="min-w-full border-collapse text-sm">
