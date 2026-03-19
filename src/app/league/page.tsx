@@ -3530,11 +3530,11 @@ export default function LeaguePage() {
                       <button type="button" onClick={() => setActiveView("guide")} className={leagueTabClass("guide")}>
                         Summary
                       </button>
-                      <button type="button" onClick={() => setActiveView("venues")} className={leagueTabClass("venues")}>
-                        Venues
-                      </button>
                       <button type="button" onClick={() => setActiveView("teamManagement")} className={leagueTabClass("teamManagement")}>
                         Team Management
+                      </button>
+                      <button type="button" onClick={() => setActiveView("venues")} className={leagueTabClass("venues")}>
+                        Venues
                       </button>
                       <button type="button" onClick={() => setActiveView("profiles")} className={leagueTabClass("profiles")}>
                         Player Profiles
