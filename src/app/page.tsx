@@ -33,6 +33,15 @@ const links = [
   { href: "/legal", title: "Legal & Credits", desc: "Legal and support information." },
 ];
 
+type PriorityTone = "rose" | "indigo" | "amber" | "emerald" | "sky" | "violet";
+type PriorityCard = {
+  href: string;
+  title: string;
+  value: number;
+  tone: PriorityTone;
+  detail: string;
+};
+
 export default function HomePage() {
   const router = useRouter();
   const admin = useAdminStatus();
@@ -255,7 +264,7 @@ export default function HomePage() {
         ? "Captain"
         : "Vice-captain"
     : "Player";
-  const priorityCards = useMemo(() => {
+  const priorityCards = useMemo<PriorityCard[]>(() => {
     if (admin.isSuper) {
       return [
         {
@@ -345,7 +354,7 @@ export default function HomePage() {
     pendingResultSubmissionsCount,
     resultsQueueCount,
   ]);
-  const priorityCardClass = (tone: "rose" | "indigo" | "amber" | "emerald" | "sky" | "violet") => {
+  const priorityCardClass = (tone: PriorityTone) => {
     if (tone === "rose") return "border-rose-200 bg-gradient-to-br from-rose-50 to-white";
     if (tone === "indigo") return "border-indigo-200 bg-gradient-to-br from-indigo-50 to-white";
     if (tone === "amber") return "border-amber-200 bg-gradient-to-br from-amber-50 to-white";
@@ -353,7 +362,7 @@ export default function HomePage() {
     if (tone === "sky") return "border-sky-200 bg-gradient-to-br from-sky-50 to-white";
     return "border-violet-200 bg-gradient-to-br from-violet-50 to-white";
   };
-  const priorityValueClass = (tone: "rose" | "indigo" | "amber" | "emerald" | "sky" | "violet") => {
+  const priorityValueClass = (tone: PriorityTone) => {
     if (tone === "rose") return "text-rose-700";
     if (tone === "indigo") return "text-indigo-700";
     if (tone === "amber") return "text-amber-700";
