@@ -90,6 +90,13 @@ type SubmissionFrameResult = {
 };
 
 const named = (p?: Player | null) => (p ? (p.full_name?.trim() ? p.full_name : p.display_name) : "Unknown");
+const sortLabelByFirstName = (a: string, b: string) => {
+  const aParts = a.trim().split(/\s+/);
+  const bParts = b.trim().split(/\s+/);
+  const firstCompare = (aParts[0] ?? "").localeCompare(bParts[0] ?? "");
+  if (firstCompare !== 0) return firstCompare;
+  return a.localeCompare(b);
+};
 
 function isFixtureOpenForSubmission(fixtureDate: string | null) {
   if (!fixtureDate) return false;
@@ -274,7 +281,7 @@ export default function CaptainResultsPage() {
     [seasons, selectedFixture]
   );
 
-  const isWinterFormat = (selectedSeason?.singles_count ?? 5) === 5 && (selectedSeason?.doubles_count ?? 1) === 1;
+  const isWinterFormat = (selectedSeason?.singles_count ?? 4) === 4 && (selectedSeason?.doubles_count ?? 1) === 1;
   const singlesMaxPerPlayer = (selectedSeason?.singles_count ?? 5) === 6 && (selectedSeason?.doubles_count ?? 1) === 0 ? 2 : 1;
 
   useEffect(() => {
@@ -335,8 +342,27 @@ export default function CaptainResultsPage() {
     }
     return Array.from(ids)
       .map((id) => ({ id, label: named(playerById.get(id)) }))
-      .sort((a, b) => a.label.localeCompare(b.label));
+      .sort((a, b) => sortLabelByFirstName(a.label, b.label));
   }, [homeRosterIds, awayRosterIds, slots, playerById]);
+  const sortRosterIds = (ids: string[]) =>
+    ids
+      .slice()
+      .sort((a, b) => sortLabelByFirstName(named(playerById.get(a)), named(playerById.get(b))));
+  const winterDoublesEligibleIds = (side: "home" | "away") => {
+    if (!isWinterFormat) return sortRosterIds(side === "home" ? homeRosterIds : awayRosterIds);
+    const frameFour = slots.find((slot) => slot.slot_type === "singles" && slot.slot_no === 4);
+    const sideForfeit = side === "home" ? frameFour?.home_forfeit : frameFour?.away_forfeit;
+    if (!sideForfeit) return sortRosterIds(side === "home" ? homeRosterIds : awayRosterIds);
+    const eligible = new Set<string>();
+    for (const slotNo of [1, 2]) {
+      const slot = slots.find((row) => row.slot_type === "singles" && row.slot_no === slotNo);
+      const playerId = side === "home" ? slot?.home_player1_id : slot?.away_player1_id;
+      if (playerId) eligible.add(playerId);
+    }
+    return sortRosterIds(Array.from(eligible));
+  };
+  const homeDoublesOptions = useMemo(() => winterDoublesEligibleIds("home"), [slots, isWinterFormat, homeRosterIds, playerById]);
+  const awayDoublesOptions = useMemo(() => winterDoublesEligibleIds("away"), [slots, isWinterFormat, awayRosterIds, playerById]);
 
   const playerHandicap = (playerId: string | null | undefined) =>
     Number(playerById.get(playerId ?? "")?.snooker_handicap ?? 0);
@@ -607,7 +633,7 @@ export default function CaptainResultsPage() {
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                     {isWinterFormat ? (
                       <p>
-                        Winter format: 5 singles + 1 doubles. Singles 3 supports <span className="font-medium">No Show</span>. Singles 4 supports <span className="font-medium">Nominated Player</span>.
+                        Winter format: 4 singles + 1 doubles. Singles 3 supports <span className="font-medium">Nominated Player</span>. Singles 4 supports <span className="font-medium">No Show</span>.
                       </p>
                     ) : (
                       <p>
@@ -658,7 +684,7 @@ export default function CaptainResultsPage() {
                                   onChange={(e) => updateSlotLocal(slot.id, { home_player1_id: e.target.value || null, home_forfeit: false })}
                                 >
                                   <option value="">Home player 1</option>
-                                  {homeRosterIds.map((id) => (
+                                  {homeDoublesOptions.map((id) => (
                                     <option key={id} value={id} disabled={slot.home_player2_id === id}>{named(playerById.get(id))}</option>
                                   ))}
                                 </select>
@@ -668,7 +694,7 @@ export default function CaptainResultsPage() {
                                   onChange={(e) => updateSlotLocal(slot.id, { home_player2_id: e.target.value || null })}
                                 >
                                   <option value="">Home player 2</option>
-                                  {homeRosterIds.map((id) => (
+                                  {homeDoublesOptions.map((id) => (
                                     <option key={id} value={id} disabled={slot.home_player1_id === id}>{named(playerById.get(id))}</option>
                                   ))}
                                 </select>
@@ -680,9 +706,10 @@ export default function CaptainResultsPage() {
                                 onChange={(e) => applySinglesSelection(slot, "home", e.target.value)}
                               >
                                 <option value="">Home player</option>
-                                {((isWinterFormat && slot.slot_no === 3) || (!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5)) ? <option value="__NO_SHOW__">No Show</option> : null}
-                                {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">Nominated Player</option> : null}
-                                {homeRosterIds.map((id) => (
+                                {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                {isWinterFormat && slot.slot_no === 3 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                {sortRosterIds(homeRosterIds).map((id) => (
                                   <option key={id} value={id} disabled={(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id}>
                                     {named(playerById.get(id))}
                                     {(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id ? " (Already used in singles)" : ""}
@@ -693,6 +720,8 @@ export default function CaptainResultsPage() {
                           </div>
                           <input
                             type="number"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             min={0}
                             max={200}
                             className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
@@ -715,7 +744,7 @@ export default function CaptainResultsPage() {
                                   onChange={(e) => updateSlotLocal(slot.id, { away_player1_id: e.target.value || null, away_forfeit: false })}
                                 >
                                   <option value="">Away player 1</option>
-                                  {awayRosterIds.map((id) => (
+                                  {awayDoublesOptions.map((id) => (
                                     <option key={id} value={id} disabled={slot.away_player2_id === id}>{named(playerById.get(id))}</option>
                                   ))}
                                 </select>
@@ -725,7 +754,7 @@ export default function CaptainResultsPage() {
                                   onChange={(e) => updateSlotLocal(slot.id, { away_player2_id: e.target.value || null })}
                                 >
                                   <option value="">Away player 2</option>
-                                  {awayRosterIds.map((id) => (
+                                  {awayDoublesOptions.map((id) => (
                                     <option key={id} value={id} disabled={slot.away_player1_id === id}>{named(playerById.get(id))}</option>
                                   ))}
                                 </select>
@@ -737,9 +766,10 @@ export default function CaptainResultsPage() {
                                 onChange={(e) => applySinglesSelection(slot, "away", e.target.value)}
                               >
                                 <option value="">Away player</option>
-                                {((isWinterFormat && slot.slot_no === 3) || (!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5)) ? <option value="__NO_SHOW__">No Show</option> : null}
-                                {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">Nominated Player</option> : null}
-                                {awayRosterIds.map((id) => (
+                                {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                {isWinterFormat && slot.slot_no === 3 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                {sortRosterIds(awayRosterIds).map((id) => (
                                   <option key={id} value={id} disabled={(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id}>
                                     {named(playerById.get(id))}
                                     {(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id ? " (Already used in singles)" : ""}
@@ -750,6 +780,8 @@ export default function CaptainResultsPage() {
                           </div>
                           <input
                             type="number"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             min={0}
                             max={200}
                             className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
@@ -827,6 +859,8 @@ export default function CaptainResultsPage() {
                           />
                           <input
                             type="number"
+                            inputMode="numeric"
+                            pattern="[0-9]*"
                             min={30}
                             className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
                             placeholder="Break value (30+)"

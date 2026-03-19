@@ -187,11 +187,18 @@ type CompetitionRoundDeadline = {
 };
 
 const named = (p?: Player | null) => (p ? (p.full_name?.trim() ? p.full_name : p.display_name) : "Unknown");
+const sortLabelByFirstName = (a: string, b: string) => {
+  const aParts = a.trim().split(/\s+/);
+  const bParts = b.trim().split(/\s+/);
+  const firstCompare = (aParts[0] ?? "").localeCompare(bParts[0] ?? "");
+  if (firstCompare !== 0) return firstCompare;
+  return a.localeCompare(b);
+};
 const statusLabel = (s: Fixture["status"]) =>
   s === "in_progress" ? "in progress" : s === "pending" ? "scheduled" : "complete";
 const LEAGUE_BODY_NAME = "Gravesend & District Indoor Games League";
 const LEAGUE_TEMPLATES = {
-  winter: { label: "Winter League", singlesCount: 5, doublesCount: 1 },
+  winter: { label: "Winter League", singlesCount: 4, doublesCount: 1 },
   summer: { label: "Summer League", singlesCount: 6, doublesCount: 0 },
 } as const;
 const LEAGUE_KNOCKOUT_TEMPLATES = [
@@ -382,10 +389,10 @@ export default function LeaguePage() {
     [canManage, seasons]
   );
   const seasonById = useMemo(() => new Map(seasons.map((s) => [s.id, s])), [seasons]);
-  const currentSeasonSinglesCount = Math.max(1, Math.min(10, currentSeason?.singles_count ?? 5));
+  const currentSeasonSinglesCount = Math.max(1, Math.min(10, currentSeason?.singles_count ?? 4));
   const currentSeasonDoublesCount = Math.max(0, Math.min(4, currentSeason?.doubles_count ?? 1));
   const currentSeasonTotalFrames = currentSeasonSinglesCount + currentSeasonDoublesCount;
-  const isWinterFormat = currentSeasonSinglesCount === 5 && currentSeasonDoublesCount === 1;
+  const isWinterFormat = currentSeasonSinglesCount === 4 && currentSeasonDoublesCount === 1;
   const isSummerFormat = currentSeasonSinglesCount === 6 && currentSeasonDoublesCount === 0;
   const isHodgeTriplesFormat =
     currentSeasonSinglesCount === 6 &&
@@ -708,8 +715,12 @@ export default function LeaguePage() {
     const ids = new Set<string>([...fixtureParticipantPlayerIds, ...fixtureRosterPlayerIds]);
     return Array.from(ids)
       .map((id) => ({ id, label: named(playerById.get(id)) }))
-      .sort((a, b) => a.label.localeCompare(b.label));
+      .sort((a, b) => sortLabelByFirstName(a.label, b.label));
   }, [fixtureParticipantPlayerIds, fixtureRosterPlayerIds, playerById]);
+  const sortRosterIds = (ids: string[]) =>
+    ids
+      .slice()
+      .sort((a, b) => sortLabelByFirstName(named(playerById.get(a)), named(playerById.get(b))));
   const captainTeamIds = useMemo(() => {
     if (!currentUserPlayerId) return new Set<string>();
     const ids = members
@@ -752,7 +763,7 @@ export default function LeaguePage() {
   );
 
   const getSeasonFrameConfig = (season?: Season | null) => {
-    const singles = Math.max(1, Math.min(10, season?.singles_count ?? 5));
+    const singles = Math.max(1, Math.min(10, season?.singles_count ?? 4));
     const doubles = Math.max(0, Math.min(4, season?.doubles_count ?? 1));
     const seasonName = (season?.name ?? "").toLowerCase();
     const isHodgeTriples = singles === 6 && doubles === 0 && seasonName.includes("hodge");
@@ -904,7 +915,7 @@ export default function LeaguePage() {
         title: "League Setup Guide",
         points: [
           "Create seasonal leagues (for example Winter or Summer).",
-          "Winter League = 5 singles + 1 doubles. Summer League = 6 singles only.",
+          "Winter League = 4 singles + 1 doubles. Summer League = 6 singles only.",
           "Summer League players can appear in up to 2 singles frames; frames 5 and 6 allow No Show if a side is short.",
           "Set handicap mode when creating the league.",
           "Add registered teams to the selected league season.",
@@ -1293,6 +1304,11 @@ export default function LeaguePage() {
       setSeasonId(visibleSeasons[0].id);
     }
   }, [visibleSeasons, seasonId]);
+
+  useEffect(() => {
+    if (admin.loading || canManage) return;
+    if (activeView === "guide") setActiveView("fixtures");
+  }, [admin.loading, canManage, activeView]);
 
   useEffect(() => {
     if (!resultEntryOpen) return;
@@ -3212,9 +3228,9 @@ export default function LeaguePage() {
               ? slot.home_nominated_name?.trim() || "Nominated Player"
               : slot.home_player1_id
                 ? named(playerById.get(slot.home_player1_id))
-                : useWinterNoShowRules && slot.slot_no === 3
+                : useWinterNoShowRules && slot.slot_no === 4
                   ? "No Show"
-                  : useWinterNoShowRules && slot.slot_no === 4
+                  : useWinterNoShowRules && slot.slot_no === 3
                     ? "Nominated Player"
                     : "Not recorded";
       const awayPlayers =
@@ -3229,9 +3245,9 @@ export default function LeaguePage() {
               ? slot.away_nominated_name?.trim() || "Nominated Player"
               : slot.away_player1_id
                 ? named(playerById.get(slot.away_player1_id))
-                : useWinterNoShowRules && slot.slot_no === 3
+                : useWinterNoShowRules && slot.slot_no === 4
                   ? "No Show"
-                  : useWinterNoShowRules && slot.slot_no === 4
+                  : useWinterNoShowRules && slot.slot_no === 3
                     ? "Nominated Player"
                     : "Not recorded";
       return {
@@ -3663,10 +3679,10 @@ export default function LeaguePage() {
                   <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
                     <p className="font-semibold">Winter League rules applied</p>
                     <ul className="mt-1 space-y-1 text-xs text-sky-800">
-                      <li>5 singles frames and 1 doubles frame.</li>
+                      <li>4 singles frames and 1 doubles frame.</li>
                       <li>Singles players can appear once only per fixture.</li>
-                      <li>Singles frame 3 allows No Show if a side is short.</li>
-                      <li>Singles frame 4 allows Nominated Player where team points count but player stats do not.</li>
+                      <li>Singles frame 3 allows Nominated Player where team points count but player stats do not.</li>
+                      <li>Singles frame 4 allows No Show if a side is short.</li>
                     </ul>
                   </div>
                 )}
@@ -4932,10 +4948,10 @@ export default function LeaguePage() {
                     <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
                       <p className="font-semibold">Winter League result entry</p>
                       <ul className="mt-1 space-y-1 text-xs text-sky-800">
-                        <li>5 singles plus 1 doubles frame.</li>
+                        <li>4 singles plus 1 doubles frame.</li>
                         <li>Singles players can only be selected once in the same fixture.</li>
-                        <li>No Show is available in singles frame 3 only.</li>
-                        <li>Nominated Player is available in singles frame 4 only and does not generate player stats.</li>
+                        <li>Nominated Player is available in singles frame 3 only and does not generate player stats.</li>
+                        <li>No Show is available in singles frame 4 only.</li>
                       </ul>
                     </div>
                   )}
@@ -5232,8 +5248,8 @@ export default function LeaguePage() {
                       {fixtureSlots.map((slot) => {
                         const fixture = seasonFixtures.find((f) => f.id === slot.fixture_id);
                         if (!fixture) return null;
-                        const homeRosterIds = fallbackRosterByLeagueTeamId.get(fixture.home_team_id) ?? [];
-                        const awayRosterIds = fallbackRosterByLeagueTeamId.get(fixture.away_team_id) ?? [];
+                        const homeRosterIds = sortRosterIds(fallbackRosterByLeagueTeamId.get(fixture.home_team_id) ?? []);
+                        const awayRosterIds = sortRosterIds(fallbackRosterByLeagueTeamId.get(fixture.away_team_id) ?? []);
                         const homeSinglesCount = new Map<string, number>();
                         const awaySinglesCount = new Map<string, number>();
                         for (const s of fixtureSlots) {
@@ -5241,6 +5257,25 @@ export default function LeaguePage() {
                           if (s.home_player1_id) homeSinglesCount.set(s.home_player1_id, (homeSinglesCount.get(s.home_player1_id) ?? 0) + 1);
                           if (s.away_player1_id) awaySinglesCount.set(s.away_player1_id, (awaySinglesCount.get(s.away_player1_id) ?? 0) + 1);
                         }
+                        const winterFrameFour = fixtureSlots.find((row) => row.slot_type === "singles" && row.slot_no === 4);
+                        const homeDoublesOptions =
+                          isWinterFormat && winterFrameFour?.home_forfeit
+                            ? sortRosterIds(
+                                fixtureSlots
+                                  .filter((row) => row.slot_type === "singles" && (row.slot_no === 1 || row.slot_no === 2))
+                                  .map((row) => row.home_player1_id)
+                                  .filter((id): id is string => Boolean(id))
+                              )
+                            : homeRosterIds;
+                        const awayDoublesOptions =
+                          isWinterFormat && winterFrameFour?.away_forfeit
+                            ? sortRosterIds(
+                                fixtureSlots
+                                  .filter((row) => row.slot_type === "singles" && (row.slot_no === 1 || row.slot_no === 2))
+                                  .map((row) => row.away_player1_id)
+                                  .filter((id): id is string => Boolean(id))
+                              )
+                            : awayRosterIds;
                         const homeSelection = getSinglesSelectionValue(slot, "home");
                         const awaySelection = getSinglesSelectionValue(slot, "away");
                         return (
@@ -5266,7 +5301,7 @@ export default function LeaguePage() {
                                       onChange={(e) => void updateFrameWithDerivedWinner(slot, { home_player1_id: e.target.value || null, home_forfeit: false })}
                                     >
                                       <option value="">Home player 1</option>
-                                      {homeRosterIds.map((id) => (
+                                      {homeDoublesOptions.map((id) => (
                                         <option key={id} value={id} disabled={slot.home_player2_id === id}>
                                           {named(playerById.get(id))}
                                         </option>
@@ -5278,7 +5313,7 @@ export default function LeaguePage() {
                                       onChange={(e) => void updateFrameWithDerivedWinner(slot, { home_player2_id: e.target.value || null })}
                                     >
                                       <option value="">Home player 2</option>
-                                      {homeRosterIds.map((id) => (
+                                      {homeDoublesOptions.map((id) => (
                                         <option key={id} value={id} disabled={slot.home_player1_id === id}>
                                           {named(playerById.get(id))}
                                         </option>
@@ -5292,8 +5327,9 @@ export default function LeaguePage() {
                                     onChange={(e) => void applySinglesSelection(slot, "home", e.target.value)}
                                   >
                                     <option value="">Home player</option>
-                                    {((isWinterFormat && slot.slot_no === 3) || (!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5)) ? <option value="__NO_SHOW__">No Show</option> : null}
-                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                    {isWinterFormat && slot.slot_no === 3 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                    {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                     {homeRosterIds.map((id) => (
                                       <option key={id} value={id} disabled={(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id}>
                                         {named(playerById.get(id))}
@@ -5306,6 +5342,8 @@ export default function LeaguePage() {
                               <input
                                 key={`home-points-${slot.id}-${slot.home_points_scored ?? ""}`}
                                 type="number"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
                                 min={0}
                                 max={200}
                                 className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
@@ -5324,7 +5362,7 @@ export default function LeaguePage() {
                                       onChange={(e) => void updateFrameWithDerivedWinner(slot, { away_player1_id: e.target.value || null, away_forfeit: false })}
                                     >
                                       <option value="">Away player 1</option>
-                                      {awayRosterIds.map((id) => (
+                                      {awayDoublesOptions.map((id) => (
                                         <option key={id} value={id} disabled={slot.away_player2_id === id}>
                                           {named(playerById.get(id))}
                                         </option>
@@ -5336,7 +5374,7 @@ export default function LeaguePage() {
                                       onChange={(e) => void updateFrameWithDerivedWinner(slot, { away_player2_id: e.target.value || null })}
                                     >
                                       <option value="">Away player 2</option>
-                                      {awayRosterIds.map((id) => (
+                                      {awayDoublesOptions.map((id) => (
                                         <option key={id} value={id} disabled={slot.away_player1_id === id}>
                                           {named(playerById.get(id))}
                                         </option>
@@ -5350,8 +5388,9 @@ export default function LeaguePage() {
                                     onChange={(e) => void applySinglesSelection(slot, "away", e.target.value)}
                                   >
                                     <option value="">Away player</option>
-                                    {((isWinterFormat && slot.slot_no === 3) || (!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5)) ? <option value="__NO_SHOW__">No Show</option> : null}
-                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                    {isWinterFormat && slot.slot_no === 3 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                    {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                     {awayRosterIds.map((id) => (
                                       <option key={id} value={id} disabled={(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id}>
                                         {named(playerById.get(id))}
@@ -5364,6 +5403,8 @@ export default function LeaguePage() {
                               <input
                                 key={`away-points-${slot.id}-${slot.away_points_scored ?? ""}`}
                                 type="number"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
                                 min={0}
                                 max={200}
                                 className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
@@ -5372,7 +5413,7 @@ export default function LeaguePage() {
                                 placeholder="0-200"
                               />
                             </div>
-                            {slot.slot_type === "singles" && isWinterFormat && slot.slot_no === 4 ? (
+                            {slot.slot_type === "singles" && isWinterFormat && slot.slot_no === 3 ? (
                               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                                 {slot.home_nominated ? (
                                   <select
@@ -5454,6 +5495,8 @@ export default function LeaguePage() {
                             />
                             <input
                               type="number"
+                              inputMode="numeric"
+                              pattern="[0-9]*"
                               min={30}
                               className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
                               placeholder="Break value (30+)"
@@ -5489,6 +5532,25 @@ export default function LeaguePage() {
                       </div>
                       </fieldset>
                     </section>
+                    {canManage && currentFixture && !isCurrentFixtureLocked ? (
+                      <section className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-3">
+                          <p className="text-xs text-slate-600">
+                            Super User changes save as you edit. Use this to recompute the fixture status and close the entry screen.
+                          </p>
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              await recomputeFixtureScore(currentFixture.id);
+                              setResultEntryOpen(false);
+                            }}
+                            className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
+                          >
+                            {computeFixtureProgress(currentFixture).status === "complete" ? "Save and complete fixture" : "Save and close"}
+                          </button>
+                        </div>
+                      </section>
+                    ) : null}
                     {!canManage && !isCurrentFixtureLocked ? (
                       <section className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
                         <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
