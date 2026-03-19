@@ -6,6 +6,11 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
 
+function isMissingTableError(message?: string | null) {
+  const m = (message ?? "").toLowerCase();
+  return m.includes("could not find the table") || m.includes("does not exist");
+}
+
 type RoleMembership = {
   team_id: string;
   player_id: string;
@@ -101,7 +106,10 @@ export async function GET(req: NextRequest) {
   }
 
   const res = await query;
-  if (res.error) return NextResponse.json({ error: res.error.message }, { status: 400 });
+  if (res.error) {
+    if (isMissingTableError(res.error.message)) return NextResponse.json({ rows: [] });
+    return NextResponse.json({ error: res.error.message }, { status: 400 });
+  }
   return NextResponse.json({ rows: res.data ?? [] });
 }
 
@@ -176,7 +184,12 @@ export async function POST(req: NextRequest) {
     .eq("fixture_id", fixtureId)
     .eq("status", "pending")
     .limit(1);
-  if (pendingRes.error) return NextResponse.json({ error: pendingRes.error.message }, { status: 400 });
+  if (pendingRes.error) {
+    if (isMissingTableError(pendingRes.error.message)) {
+      return NextResponse.json({ error: "Fixture date requests are not available until the latest database migration has been run." }, { status: 400 });
+    }
+    return NextResponse.json({ error: pendingRes.error.message }, { status: 400 });
+  }
   if ((pendingRes.data ?? []).length) {
     return NextResponse.json({ error: "A fixture date change request is already pending for this fixture." }, { status: 400 });
   }
@@ -192,7 +205,12 @@ export async function POST(req: NextRequest) {
     reason,
     status: "pending",
   });
-  if (ins.error) return NextResponse.json({ error: ins.error.message }, { status: 400 });
+  if (ins.error) {
+    if (isMissingTableError(ins.error.message)) {
+      return NextResponse.json({ error: "Fixture date requests are not available until the latest database migration has been run." }, { status: 400 });
+    }
+    return NextResponse.json({ error: ins.error.message }, { status: 400 });
+  }
 
   return NextResponse.json({ ok: true });
 }

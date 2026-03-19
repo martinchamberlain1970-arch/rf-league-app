@@ -18,6 +18,7 @@ const links = [
   { href: "/handicaps", title: "Handicaps", desc: "See the snooker handicap list and how starts are worked out." },
   { href: "/high-breaks", title: "High Breaks", desc: "View the published league high-break table." },
   { href: "/captain-results", title: "Captain Results", desc: "Submit your fixture result for approval." },
+  { href: "/reschedule-fixture", title: "Reschedule Fixture", desc: "Request permission to play early or, exceptionally, later." },
   { href: "/events", title: "Events", desc: "View open and completed events." },
   { href: "/signups", title: "Competition Sign-ups", desc: "Enter open competitions and track entry status." },
   { href: "/backup", title: "Data Management", desc: "Backup, restore, and controlled data reset." },
@@ -92,7 +93,7 @@ export default function HomePage() {
       // Admins still see these cards, but they can be disabled per-account.
       return true;
     }
-    return ["/events", "/league", "/handicaps", "/high-breaks", "/captain-results", "/signups", "/help", "/legal", "/notifications"].includes(href);
+    return ["/events", "/league", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/signups", "/help", "/legal", "/notifications"].includes(href);
   };
 
   const visibleLinks = links.filter((item) => isVisibleLink(item.href));
@@ -109,8 +110,8 @@ export default function HomePage() {
   const primaryHrefs = admin.isSuper
     ? ["/signup-requests", "/players", "/notifications", "/league", "/results", "/backup", "/signups", "/legal"]
     : admin.isAdmin
-      ? ["/league", "/handicaps", "/high-breaks", "/captain-results", "/events", "/quick-match", "/events/new", "/signups", "/help", "/legal"]
-      : ["/league", "/handicaps", "/high-breaks", "/captain-results", "/events", "/notifications", "/signups", "/help", "/legal"];
+      ? ["/league", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/quick-match", "/events/new", "/signups", "/help", "/legal"]
+      : ["/league", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/notifications", "/signups", "/help", "/legal"];
   const quickAccessHrefs = admin.isSuper
     ? ["/audit", "/usage"]
     : admin.isAdmin
@@ -150,6 +151,7 @@ export default function HomePage() {
     const base = `rounded-2xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${compactSuper ? "p-2.5 min-h-[112px]" : "p-4 min-h-[160px]"}`;
     if (href === "/league") return `${base} border-indigo-200 bg-gradient-to-br from-indigo-50 to-white`;
     if (href === "/captain-results") return `${base} border-emerald-200 bg-gradient-to-br from-emerald-50 to-white`;
+    if (href === "/reschedule-fixture") return `${base} border-indigo-200 bg-gradient-to-br from-indigo-50 to-white`;
     if (href === "/quick-match") return `${base} border-teal-200 bg-gradient-to-br from-teal-50 to-white`;
     if (href === "/events/new") return `${base} border-amber-200 bg-gradient-to-br from-amber-50 to-white`;
     if (href === "/events") return `${base} border-sky-200 bg-gradient-to-br from-sky-50 to-white`;
@@ -159,6 +161,7 @@ export default function HomePage() {
   const primaryTileBadgeClass = (href: string) => {
     if (href === "/league") return "border-indigo-300 bg-indigo-100 text-indigo-900";
     if (href === "/captain-results") return "border-emerald-300 bg-emerald-100 text-emerald-900";
+    if (href === "/reschedule-fixture") return "border-indigo-300 bg-indigo-100 text-indigo-900";
     if (href === "/quick-match") return "border-teal-300 bg-teal-100 text-teal-900";
     if (href === "/events/new") return "border-amber-300 bg-amber-100 text-amber-900";
     if (href === "/events") return "border-sky-300 bg-sky-100 text-sky-900";
@@ -174,6 +177,9 @@ export default function HomePage() {
     if (href === "/captain-results") {
       if (admin.isSuper) return "Review what captains submit and confirm final results.";
       return "If you're captain/vice-captain, submit your team result for approval.";
+    }
+    if (href === "/reschedule-fixture") {
+      return "Request permission to play before the league date or, exceptionally, later.";
     }
     if (href === "/players") {
       return admin.isSuper ? "Full player governance, linking, and approvals." : "View your own player profile and status.";
@@ -292,6 +298,7 @@ export default function HomePage() {
       "/rules",
       "/help",
       "/handicaps",
+      "/reschedule-fixture",
       "/legal",
     ];
     common.forEach((path) => router.prefetch(path));

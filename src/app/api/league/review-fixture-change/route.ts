@@ -6,6 +6,11 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
 
+function isMissingTableError(message?: string | null) {
+  const m = (message ?? "").toLowerCase();
+  return m.includes("could not find the table") || m.includes("does not exist");
+}
+
 export async function POST(req: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
     return NextResponse.json({ error: "Server is not configured." }, { status: 500 });
@@ -38,6 +43,9 @@ export async function POST(req: NextRequest) {
     .eq("id", requestId)
     .maybeSingle();
   if (requestRes.error || !requestRes.data) {
+    if (isMissingTableError(requestRes.error?.message)) {
+      return NextResponse.json({ error: "Fixture date requests are not available until the latest database migration has been run." }, { status: 400 });
+    }
     return NextResponse.json({ error: requestRes.error?.message ?? "Request not found." }, { status: 404 });
   }
   if (requestRes.data.status !== "pending") {
@@ -63,7 +71,12 @@ export async function POST(req: NextRequest) {
       reviewed_at: new Date().toISOString(),
     })
     .eq("id", requestId);
-  if (updReq.error) return NextResponse.json({ error: updReq.error.message }, { status: 400 });
+  if (updReq.error) {
+    if (isMissingTableError(updReq.error.message)) {
+      return NextResponse.json({ error: "Fixture date requests are not available until the latest database migration has been run." }, { status: 400 });
+    }
+    return NextResponse.json({ error: updReq.error.message }, { status: 400 });
+  }
 
   return NextResponse.json({ ok: true });
 }
