@@ -1316,6 +1316,14 @@ export default function LeaguePage() {
   }, [visibleSeasons, seasonId, canManage, currentUserPlayerId, members]);
 
   useEffect(() => {
+    if (canManage || !seasonId || !currentUserPlayerId) return;
+    const memberTeamId =
+      members.find((m) => m.season_id === seasonId && m.player_id === currentUserPlayerId)?.team_id ?? "";
+    if (!memberTeamId) return;
+    if (fixtureTeamFilter !== memberTeamId) setFixtureTeamFilter(memberTeamId);
+  }, [canManage, seasonId, currentUserPlayerId, members, fixtureTeamFilter]);
+
+  useEffect(() => {
     if (admin.loading || canManage) return;
     if (activeView === "guide") setActiveView("fixtures");
   }, [admin.loading, canManage, activeView]);

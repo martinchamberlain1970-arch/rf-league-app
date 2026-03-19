@@ -64,6 +64,7 @@ type LeagueFixtureLite = {
   status?: "pending" | "in_progress" | "complete" | null;
 };
 type LeagueTeamLite = { id: string; name: string };
+type LeagueTeamMemberLite = { season_id: string; team_id: string; player_id: string };
 type LeagueFrameLite = {
   fixture_id: string;
   slot_no: number;
@@ -128,6 +129,7 @@ export default function PlayerProfilePage() {
   const [frames, setFrames] = useState<Frame[]>([]);
   const [leagueFixtures, setLeagueFixtures] = useState<LeagueFixtureLite[]>([]);
   const [leagueTeams, setLeagueTeams] = useState<LeagueTeamLite[]>([]);
+  const [leagueMembers, setLeagueMembers] = useState<LeagueTeamMemberLite[]>([]);
   const [leagueFrames, setLeagueFrames] = useState<LeagueFrameLite[]>([]);
   const [handicapHistory, setHandicapHistory] = useState<HandicapHistoryEntry[]>([]);
   const [message, setMessage] = useState<string | null>(null);
@@ -187,7 +189,7 @@ export default function PlayerProfilePage() {
     }
     let active = true;
     const run = async () => {
-      const [authRes, pRes, allPlayersRes, mRes, cRes, fRes, locRes, usersRes, pendingDeleteRes, lfRes, ltRes, lfrRes] = await Promise.all([
+      const [authRes, pRes, allPlayersRes, mRes, cRes, fRes, locRes, usersRes, pendingDeleteRes, lfRes, ltRes, ltmRes, lfrRes] = await Promise.all([
         client.auth.getUser(),
         client
           .from("players")
@@ -216,6 +218,7 @@ export default function PlayerProfilePage() {
           .limit(1),
         client.from("league_fixtures").select("id,season_id,fixture_date,week_no,home_team_id,away_team_id,home_points,away_points,status"),
         client.from("league_teams").select("id,name"),
+        client.from("league_team_members").select("season_id,team_id,player_id"),
         client
           .from("league_fixture_frames")
           .select("fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,winner_side,home_forfeit,away_forfeit,home_points_scored,away_points_scored"),
@@ -282,6 +285,7 @@ export default function PlayerProfilePage() {
       setFrames((fRes.error ? [] : (fRes.data ?? [])) as Frame[]);
       setLeagueFixtures((lfRes.error ? [] : (lfRes.data ?? [])) as LeagueFixtureLite[]);
       setLeagueTeams((ltRes.error ? [] : (ltRes.data ?? [])) as LeagueTeamLite[]);
+      setLeagueMembers((ltmRes.error ? [] : (ltmRes.data ?? [])) as LeagueTeamMemberLite[]);
       setLeagueFrames((lfrRes.error ? [] : (lfrRes.data ?? [])) as LeagueFrameLite[]);
       const handicapRes = await client
         .from("league_handicap_history")
@@ -994,15 +998,13 @@ export default function PlayerProfilePage() {
   const effectiveFormGuide = formGuide !== "-" ? formGuide : leagueFormGuide;
   const currentLeagueTeams = useMemo(() => {
     const names = new Set<string>();
-    for (const row of leagueRelevant) {
-      const fixture = leagueFixtureById.get(row.fixture_id);
-      if (!fixture) continue;
-      const inHome = row.home_player1_id === id || row.home_player2_id === id;
-      const teamName = leagueTeamById.get(inHome ? fixture.home_team_id : fixture.away_team_id);
+    for (const member of leagueMembers) {
+      if (member.player_id !== id) continue;
+      const teamName = leagueTeamById.get(member.team_id);
       if (teamName) names.add(teamName);
     }
     return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [leagueRelevant, leagueFixtureById, leagueTeamById, id]);
+  }, [leagueMembers, leagueTeamById, id]);
   const profileSummaryLine = useMemo(() => {
     const teamText = currentLeagueTeams.length ? currentLeagueTeams.join(", ") : "No active team linked yet";
     return `${locationName} · ${teamText}`;
