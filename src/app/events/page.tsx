@@ -88,6 +88,15 @@ type UserCompetitionMatch = {
   opponentLabel: string;
 };
 
+type LeagueFixtureSummary = {
+  key: string;
+  label: string;
+  seasonName: string;
+  lastFixture: LeagueFixture | null;
+  nextFixture: LeagueFixture | null;
+  followingFixture: LeagueFixture | null;
+};
+
 type Tab = "open" | "completed" | "archived";
 type PredictionStyle = "balanced" | "form" | "handicap";
 const PREDICTION_STYLE_KEY = "rf_prediction_style";
@@ -109,6 +118,7 @@ export default function EventsPage() {
   const [lastFixture, setLastFixture] = useState<LeagueFixture | null>(null);
   const [nextFixture, setNextFixture] = useState<LeagueFixture | null>(null);
   const [followingFixture, setFollowingFixture] = useState<LeagueFixture | null>(null);
+  const [leagueSummaries, setLeagueSummaries] = useState<LeagueFixtureSummary[]>([]);
   const [seasonFixtures, setSeasonFixtures] = useState<LeagueFixture[]>([]);
   const [seasonMembers, setSeasonMembers] = useState<LeagueTeamMember[]>([]);
   const [seasonFrames, setSeasonFrames] = useState<LeagueFramePerf[]>([]);
@@ -170,16 +180,22 @@ export default function EventsPage() {
 
         const appRes = await client.from("app_users").select("linked_player_id").eq("id", userId).maybeSingle();
         const linkedPlayerId = (appRes.data?.linked_player_id as string | null) ?? null;
-        if (!linkedPlayerId) return;
+        if (!linkedPlayerId) {
+          setLeagueSummaries([]);
+          return;
+        }
 
         const seasonsRes = await client
           .from("league_seasons")
-          .select("id,is_published,created_at")
+          .select("id,name,is_published,created_at")
           .eq("is_published", true)
           .order("created_at", { ascending: false });
-        const publishedSeasons = (seasonsRes.data ?? []) as Array<{ id: string }>;
+        const publishedSeasons = (seasonsRes.data ?? []) as Array<{ id: string; name: string | null }>;
         const publishedSeasonIds = publishedSeasons.map((season) => season.id);
-        if (publishedSeasonIds.length === 0) return;
+        if (publishedSeasonIds.length === 0) {
+          setLeagueSummaries([]);
+          return;
+        }
 
         const memberRes = await client
           .from("league_team_members")
@@ -187,7 +203,10 @@ export default function EventsPage() {
           .eq("player_id", linkedPlayerId)
           .in("season_id", publishedSeasonIds);
         const members = (memberRes.data ?? []) as LeagueTeamMember[];
-        if (members.length === 0) return;
+        if (members.length === 0) {
+          setLeagueSummaries([]);
+          return;
+        }
 
         const relevantSeasonIds = Array.from(new Set(members.map((m) => m.season_id)));
         const memberTeamIds = Array.from(new Set(members.map((m) => m.team_id)));
@@ -218,16 +237,37 @@ export default function EventsPage() {
           return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
         };
 
-        const uniqueTeamLabels = Array.from(
-          new Set(memberTeamIds.map((teamId) => teamMap.get(teamId) ?? "My Team"))
-        ).sort((a, b) => a.localeCompare(b));
-        setTeamLabel(uniqueTeamLabels.join(" / ") || "My Team");
-
-        const past = fixturesForMemberTeams.filter((f) => keyOf(f) <= toDayKey).sort((a, b) => keyOf(b) - keyOf(a));
-        const future = fixturesForMemberTeams.filter((f) => keyOf(f) > toDayKey).sort((a, b) => keyOf(a) - keyOf(b));
-        setLastFixture(past[0] ?? null);
-        setNextFixture(future[0] ?? null);
-        setFollowingFixture(future[1] ?? null);
+        const seasonNameById = new Map(publishedSeasons.map((season) => [season.id, season.name?.trim() || "League"]));
+        const summaryRows = members
+          .map((member) => {
+            const teamName = teamMap.get(member.team_id) ?? "My Team";
+            const seasonName = seasonNameById.get(member.season_id) ?? "League";
+            const teamFixtures = fixturesForMemberTeams.filter(
+              (fixture) =>
+                fixture.season_id === member.season_id &&
+                (fixture.home_team_id === member.team_id || fixture.away_team_id === member.team_id)
+            );
+            const past = teamFixtures.filter((f) => keyOf(f) <= toDayKey).sort((a, b) => keyOf(b) - keyOf(a));
+            const future = teamFixtures.filter((f) => keyOf(f) > toDayKey).sort((a, b) => keyOf(a) - keyOf(b));
+            return {
+              key: `${member.season_id}:${member.team_id}`,
+              label: teamName,
+              seasonName,
+              lastFixture: past[0] ?? null,
+              nextFixture: future[0] ?? null,
+              followingFixture: future[1] ?? null,
+            } satisfies LeagueFixtureSummary;
+          })
+          .sort((a, b) => a.seasonName.localeCompare(b.seasonName) || a.label.localeCompare(b.label));
+        setLeagueSummaries(summaryRows);
+        setTeamLabel(summaryRows[0]?.label ?? "My Team");
+        setLastFixture(summaryRows[0]?.lastFixture ?? null);
+        const primaryNextFixture = [...summaryRows]
+          .map((summary) => summary.nextFixture)
+          .filter((fixture): fixture is LeagueFixture => Boolean(fixture))
+          .sort((a, b) => keyOf(a) - keyOf(b))[0] ?? null;
+        setNextFixture(primaryNextFixture);
+        setFollowingFixture(summaryRows[0]?.followingFixture ?? null);
         setSeasonFixtures(allSeasonFixtures);
         const fixtureIds = allSeasonFixtures.map((f) => f.id);
         const [membersResAll, framesResAll, playersResAll] = await Promise.all([
@@ -299,10 +339,14 @@ export default function EventsPage() {
             )
           ) as string[];
           const [compRes, playersRes] = await Promise.all([
-            compIds.length ? client.from("competitions").select("id,name").in("id", compIds) : Promise.resolve({ data: [] as Array<{ id: string; name: string }> }),
+            compIds.length ? client.from("competitions").select("id,name,is_archived,is_completed").in("id", compIds) : Promise.resolve({ data: [] as Array<{ id: string; name: string; is_archived: boolean | null; is_completed: boolean | null }> }),
             allPlayerIds.length ? client.from("players").select("id,full_name,display_name").in("id", allPlayerIds) : Promise.resolve({ data: [] as Array<{ id: string; full_name: string | null; display_name: string | null }> }),
           ]);
-          const compNameById = new Map(((compRes.data ?? []) as Array<{ id: string; name: string }>).map((c) => [c.id, c.name]));
+          const compNameById = new Map(
+            ((compRes.data ?? []) as Array<{ id: string; name: string; is_archived: boolean | null; is_completed: boolean | null }>)
+              .filter((competition) => !competition.is_archived && !competition.is_completed)
+              .map((competition) => [competition.id, competition.name])
+          );
           const playerNameById = new Map(
             ((playersRes.data ?? []) as Array<{ id: string; full_name: string | null; display_name: string | null }>).map((p) => [
               p.id,
@@ -893,42 +937,51 @@ export default function EventsPage() {
 
           {leagueMode ? (
             <section className="space-y-3">
-              <article className={cardBaseClass}>
-                <h2 className="text-lg font-semibold text-slate-900">{teamLabel ?? "My Team"}</h2>
-                <p className="mt-1 text-sm text-slate-600">Recent and upcoming league fixtures.</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Last Match</p>
-                    <p className="mt-1 text-sm font-medium text-slate-900">{leagueFixtureLabel(lastFixture)}</p>
-                    <p className="text-xs text-slate-600">{leagueFixtureDate(lastFixture)} · {leagueFixtureScore(lastFixture)}</p>
-                    {lastFixture?.status === "complete" ? (
+              {leagueSummaries.length === 0 ? (
+                <article className={cardBaseClass}>
+                  <h2 className="text-lg font-semibold text-slate-900">{teamLabel ?? "My Team"}</h2>
+                  <p className="mt-1 text-sm text-slate-600">Recent and upcoming league fixtures.</p>
+                </article>
+              ) : (
+                leagueSummaries.map((summary) => (
+                  <article key={summary.key} className={cardBaseClass}>
+                    <h2 className="text-lg font-semibold text-slate-900">{summary.label}</h2>
+                    <p className="mt-1 text-sm text-slate-600">{summary.seasonName}</p>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Last Match</p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">{leagueFixtureLabel(summary.lastFixture)}</p>
+                        <p className="text-xs text-slate-600">{leagueFixtureDate(summary.lastFixture)} · {leagueFixtureScore(summary.lastFixture)}</p>
+                        {summary.lastFixture?.status === "complete" ? (
+                          <button
+                            type="button"
+                            onClick={() => setReportFixture(summary.lastFixture)}
+                            className="mt-2 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 hover:bg-slate-100"
+                          >
+                            View match report
+                          </button>
+                        ) : null}
+                      </div>
                       <button
                         type="button"
-                        onClick={() => setReportFixture(lastFixture)}
-                        className="mt-2 rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs font-medium text-slate-800 hover:bg-slate-100"
+                        onClick={() => summary.nextFixture && setPredictionFixture(summary.nextFixture)}
+                        className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-left transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-70"
+                        disabled={!summary.nextFixture}
                       >
-                        View match report
+                        <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Next Match</p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">{leagueFixtureLabel(summary.nextFixture)}</p>
+                        <p className="text-xs text-slate-600">{leagueFixtureDate(summary.nextFixture)}</p>
+                        <p className="mt-2 text-xs font-medium text-indigo-800">Click to view match preview</p>
                       </button>
-                    ) : null}
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => nextFixture && setPredictionFixture(nextFixture)}
-                    className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-left transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-70"
-                    disabled={!nextFixture}
-                  >
-                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Next Match</p>
-                    <p className="mt-1 text-sm font-medium text-slate-900">{leagueFixtureLabel(nextFixture)}</p>
-                    <p className="text-xs text-slate-600">{leagueFixtureDate(nextFixture)}</p>
-                    <p className="mt-2 text-xs font-medium text-indigo-800">Click to view match preview</p>
-                  </button>
-                  <div className="rounded-xl border border-teal-200 bg-teal-50 p-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Future Match</p>
-                    <p className="mt-1 text-sm font-medium text-slate-900">{leagueFixtureLabel(followingFixture)}</p>
-                    <p className="text-xs text-slate-600">{leagueFixtureDate(followingFixture)}</p>
-                  </div>
-                </div>
-              </article>
+                      <div className="rounded-xl border border-teal-200 bg-teal-50 p-3">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Future Match</p>
+                        <p className="mt-1 text-sm font-medium text-slate-900">{leagueFixtureLabel(summary.followingFixture)}</p>
+                        <p className="text-xs text-slate-600">{leagueFixtureDate(summary.followingFixture)}</p>
+                      </div>
+                    </div>
+                  </article>
+                ))
+              )}
               {predictionFixture && prediction ? (
                 <article className={cardBaseClass}>
                   <div className="flex items-start justify-between gap-2">
