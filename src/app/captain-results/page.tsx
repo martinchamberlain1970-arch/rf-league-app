@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
@@ -122,7 +121,6 @@ const sectionTitleClass = "text-lg font-semibold text-slate-900";
 
 export default function CaptainResultsPage() {
   const admin = useAdminStatus();
-  const searchParams = useSearchParams();
   const [message, setMessage] = useState<string | null>(null);
   const [info, setInfo] = useState<{ title: string; description: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -289,12 +287,13 @@ export default function CaptainResultsPage() {
     if (!myCurrentWeekFixtures.some((f) => f.id === selectedFixtureId)) setSelectedFixtureId("");
   }, [selectedFixtureId, myCurrentWeekFixtures]);
   useEffect(() => {
-    const requestedFixtureId = searchParams.get("fixtureId");
+    if (typeof window === "undefined") return;
+    const requestedFixtureId = new URLSearchParams(window.location.search).get("fixtureId");
     if (!requestedFixtureId) return;
     if (myCurrentWeekFixtures.some((fixture) => fixture.id === requestedFixtureId)) {
       setSelectedFixtureId(requestedFixtureId);
     }
-  }, [searchParams, myCurrentWeekFixtures]);
+  }, [myCurrentWeekFixtures]);
 
 
   const selectedSeason = useMemo(
