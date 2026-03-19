@@ -91,6 +91,21 @@ type MatchRow = {
   team2_player2_id?: string | null;
 };
 type CompetitionRow = { id: string; name: string };
+type FixtureChangeRequest = {
+  id: string;
+  fixture_id: string;
+  requested_by_user_id: string;
+  requester_team_id: string | null;
+  request_type: "play_early" | "play_late";
+  original_fixture_date: string | null;
+  proposed_fixture_date: string;
+  opposing_team_agreed: boolean;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  review_notes: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+};
 
 const named = (p?: PlayerRow | null) => (p ? (p.full_name?.trim() ? p.full_name : p.display_name) : "Unknown");
 
@@ -104,6 +119,7 @@ export default function ResultsQueuePage() {
   const [competitionSubmissions, setCompetitionSubmissions] = useState<CompetitionSubmission[]>([]);
   const [competitionMatches, setCompetitionMatches] = useState<MatchRow[]>([]);
   const [competitions, setCompetitions] = useState<CompetitionRow[]>([]);
+  const [fixtureChangeRequests, setFixtureChangeRequests] = useState<FixtureChangeRequest[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
@@ -112,7 +128,7 @@ export default function ResultsQueuePage() {
   const [seasonFilter, setSeasonFilter] = useState("all");
   const [expandedPending, setExpandedPending] = useState<Set<string>>(new Set());
   const [reviewedLimit, setReviewedLimit] = useState(20);
-  const [queueTab, setQueueTab] = useState<"league" | "competition">("league");
+  const [queueTab, setQueueTab] = useState<"league" | "competition" | "fixture_changes">("league");
 
   const load = async () => {
     const client = supabase;
@@ -146,11 +162,29 @@ export default function ResultsQueuePage() {
         .select("id,match_id,competition_id,submitted_by_user_id,created_at,status,rejection_reason,payload")
         .order("created_at", { ascending: false }),
     ]);
+
+    const sessionRes = await client.auth.getSession();
+    const token = sessionRes.data.session?.access_token;
+    let loadedFixtureChangeRequests: FixtureChangeRequest[] = [];
+    if (token) {
+      const fixtureChangeRes = await fetch(`/api/league/fixture-change-requests?scope=${admin.isAdmin ? "admin" : "mine"}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = (await fixtureChangeRes.json().catch(() => ({}))) as { error?: string; rows?: FixtureChangeRequest[] };
+      if (!fixtureChangeRes.ok) {
+        setMessage(payload.error ?? "Failed to load fixture date requests.");
+        return;
+      }
+      loadedFixtureChangeRequests = payload.rows ?? [];
+      setFixtureChangeRequests(loadedFixtureChangeRequests);
+    }
     if (!competitionSubmissionRes.error) {
       setCompetitionSubmissions((competitionSubmissionRes.data ?? []) as CompetitionSubmission[]);
     }
 
-    const fixtureIds = Array.from(new Set(submissionRows.map((s) => s.fixture_id).filter(Boolean)));
+    const fixtureIds = Array.from(
+      new Set([...submissionRows.map((s) => s.fixture_id).filter(Boolean), ...loadedFixtureChangeRequests.map((r) => r.fixture_id).filter(Boolean)])
+    );
     if (!fixtureIds.length) {
       setFixtures([]);
       setTeams([]);
@@ -232,8 +266,11 @@ export default function ResultsQueuePage() {
   const reviewed = submissions.filter((s) => s.status !== "pending");
   const competitionPending = competitionSubmissions.filter((s) => s.status === "pending");
   const competitionReviewed = competitionSubmissions.filter((s) => s.status !== "pending");
+  const fixtureChangePending = fixtureChangeRequests.filter((r) => r.status === "pending");
+  const fixtureChangeReviewed = fixtureChangeRequests.filter((r) => r.status !== "pending");
   const leaguePendingCount = pending.length;
   const competitionPendingCount = competitionPending.length;
+  const fixtureChangePendingCount = fixtureChangePending.length;
   const cardClass = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
   const tintedCardClass = "rounded-2xl border border-slate-200 bg-gradient-to-br from-cyan-50 via-white to-emerald-50 p-5 shadow-sm";
   const itemClass = "rounded-xl border border-slate-200 bg-white p-3";
@@ -309,6 +346,44 @@ export default function ResultsQueuePage() {
     await load();
   };
 
+  const onReviewFixtureChange = async (requestId: string, decision: "approved" | "rejected") => {
+    const client = supabase;
+    if (!client) return;
+    const { data: sessionRes } = await client.auth.getSession();
+    const token = sessionRes.session?.access_token;
+    if (!token) {
+      setMessage("Session expired. Please sign in again.");
+      return;
+    }
+    setBusyId(requestId);
+    let res: Response;
+    try {
+      res = await fetch("/api/league/review-fixture-change", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          requestId,
+          decision,
+          reviewNotes: rejectReasons[requestId] ?? "",
+        }),
+      });
+    } catch {
+      setBusyId(null);
+      setMessage("Network error while reviewing fixture date request.");
+      return;
+    }
+    const payload = (await res.json().catch(() => ({}))) as { error?: string };
+    setBusyId(null);
+    if (!res.ok) {
+      setMessage(payload.error ?? "Failed to review fixture date request.");
+      return;
+    }
+    await load();
+  };
+
   const onReviewCompetition = async (submissionId: string, decision: "approved" | "rejected") => {
     const client = supabase;
     if (!client) return;
@@ -378,6 +453,88 @@ export default function ResultsQueuePage() {
     if (status === "rejected") return "border-rose-200 bg-rose-50 text-rose-800";
     return "border-slate-200 bg-slate-100 text-slate-700";
   };
+
+  const requestTypeLabel = (value: "play_early" | "play_late") =>
+    value === "play_early" ? "Play before league date" : "Exceptional postponement / later date";
+
+  const fixtureChangeQueueSection = (
+    <section className={cardClass}>
+      <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-xl font-semibold text-slate-900">Fixture date requests ({fixtureChangePending.length})</h2>
+        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-700">
+          Pending {fixtureChangePending.length}
+        </span>
+      </div>
+      <p className="text-sm text-slate-600">Play-before requests require opposing-team agreement. Later-date requests are exceptional only.</p>
+      <div className="mt-3 space-y-3">
+        {fixtureChangePending.length === 0 ? <p className="text-sm text-slate-600">No pending fixture date requests.</p> : null}
+        {fixtureChangePending.map((r) => {
+          const f = fixtureById.get(r.fixture_id);
+          const home = f ? teamById.get(f.home_team_id) ?? "Home" : "Home";
+          const away = f ? teamById.get(f.away_team_id) ?? "Away" : "Away";
+          const seasonName = f ? seasonById.get(f.season_id) ?? "League" : "League";
+          return (
+            <article key={r.id} className={itemClass}>
+              <p className="text-sm text-slate-600">{seasonName}</p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xl font-semibold text-slate-900">{home} vs {away}</p>
+                <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold uppercase text-amber-800">pending</span>
+              </div>
+              <p className="mt-1 text-sm text-slate-700">{requestTypeLabel(r.request_type)} · {new Date(`${r.proposed_fixture_date}T12:00:00`).toLocaleDateString()}</p>
+              <p className="text-xs text-slate-600">Original date: {r.original_fixture_date ? new Date(`${r.original_fixture_date}T12:00:00`).toLocaleDateString() : "Not set"}</p>
+              <p className="mt-2 text-sm text-slate-700">{r.reason}</p>
+              <p className="mt-1 text-xs text-slate-600">Opposing team agreed: {r.opposing_team_agreed ? "Yes" : "No"}</p>
+              <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                <input
+                  className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                  placeholder="League Secretary note (optional)"
+                  value={rejectReasons[r.id] ?? ""}
+                  onChange={(e) => setRejectReasons((prev) => ({ ...prev, [r.id]: e.target.value }))}
+                />
+                <button
+                  type="button"
+                  className="rounded-lg bg-emerald-700 px-2.5 py-1 text-xs text-white disabled:opacity-60"
+                  onClick={() => void onReviewFixtureChange(r.id, "approved")}
+                  disabled={busyId === r.id}
+                >
+                  Approve
+                </button>
+                <button
+                  type="button"
+                  className="rounded-lg border border-rose-300 bg-rose-50 px-2.5 py-1 text-xs text-rose-800 disabled:opacity-60"
+                  onClick={() => void onReviewFixtureChange(r.id, "rejected")}
+                  disabled={busyId === r.id}
+                >
+                  Reject
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+      {fixtureChangeReviewed.length > 0 ? (
+        <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+          <summary className="cursor-pointer text-sm font-semibold text-slate-800">Reviewed fixture date requests ({fixtureChangeReviewed.length})</summary>
+          <div className="mt-2 space-y-2">
+            {fixtureChangeReviewed.slice(0, reviewedLimit).map((r) => {
+              const f = fixtureById.get(r.fixture_id);
+              const home = f ? teamById.get(f.home_team_id) ?? "Home" : "Home";
+              const away = f ? teamById.get(f.away_team_id) ?? "Away" : "Away";
+              return (
+                <div key={r.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs">
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{home} vs {away} · {requestTypeLabel(r.request_type)}</span>
+                    <span className={`rounded-full border px-2 py-0.5 ${statusChipClass(r.status)}`}>{r.status}</span>
+                  </div>
+                  {r.review_notes ? <p className="mt-1 text-slate-600">Note: {r.review_notes}</p> : null}
+                </div>
+              );
+            })}
+          </div>
+        </details>
+      ) : null}
+    </section>
+  );
 
   const competitionQueueSection = (
     <section className={cardClass}>
@@ -468,6 +625,13 @@ export default function ResultsQueuePage() {
                 >
                   Competition Submissions ({competitionPendingCount})
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setQueueTab("fixture_changes")}
+                  className={`rounded-full border px-4 py-1.5 text-sm ${queueTab === "fixture_changes" ? "border-indigo-700 bg-indigo-700 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
+                >
+                  Fixture Date Requests ({fixtureChangePendingCount})
+                </button>
               </div>
               {queueTab === "league" ? (
                 <div className="mt-3 grid gap-3 sm:grid-cols-[1fr_260px]">
@@ -490,8 +654,10 @@ export default function ResultsQueuePage() {
                     ))}
                   </select>
                 </div>
-              ) : (
+              ) : queueTab === "competition" ? (
                 <p className="mt-3 text-sm text-slate-600">Competition result approvals are separated here for knockout cups.</p>
+              ) : (
+                <p className="mt-3 text-sm text-slate-600">Fixture date requests cover early-play agreements and exceptional later-date requests.</p>
               )}
             </section>
           ) : (
@@ -543,6 +709,8 @@ export default function ResultsQueuePage() {
             </section>
           ) : queueTab === "competition" ? (
             competitionQueueSection
+          ) : queueTab === "fixture_changes" ? (
+            fixtureChangeQueueSection
           ) : (
             <>
               <section className={cardClass}>

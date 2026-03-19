@@ -35,6 +35,7 @@ type LeaguePublicationRow = {
 };
 type LeagueSeasonRow = { id: string; name: string };
 type LeagueSubmissionRow = { id: string; fixture_id: string; status: string; created_at: string };
+type FixtureChangeRequestRow = { id: string; fixture_id: string; status: string; created_at: string; request_type: "play_early" | "play_late"; proposed_fixture_date: string };
 type LeagueFixtureRow = { id: string; home_team_id: string; away_team_id: string; fixture_date: string | null };
 type LeagueTeamNameRow = { id: string; name: string };
 type CompetitionEntryNotifyRow = {
@@ -357,8 +358,9 @@ export default function NotificationsPage() {
         }
       }
       if (admin.isSuper) {
-        const [leaguePendingRes, claimRes, updateRes, adminReqRes, locationReqRes, competitionPendingRes] = await Promise.all([
+        const [leaguePendingRes, fixtureChangePendingRes, claimRes, updateRes, adminReqRes, locationReqRes, competitionPendingRes] = await Promise.all([
           softQuery<LeagueSubmissionRow>(client.from("league_result_submissions").select("id,fixture_id,status,created_at").eq("status", "pending").order("created_at", { ascending: false })),
+          softQuery<FixtureChangeRequestRow>(client.from("league_fixture_change_requests").select("id,fixture_id,status,created_at,request_type,proposed_fixture_date").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<{ id: string; created_at: string; status: string }>(client.from("player_claim_requests").select("id,created_at,status").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<{ id: string; player_id: string; created_at: string; status: string }>(client.from("player_update_requests").select("id,player_id,created_at,status").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<{ id: string; created_at: string; status: string }>(client.from("admin_requests").select("id,created_at,status").eq("status", "pending").order("created_at", { ascending: false })),
@@ -366,9 +368,10 @@ export default function NotificationsPage() {
           softQuery<CompetitionEntryNotifyRow>(client.from("competition_entries").select("id,competition_id,requester_user_id,player_id,status,created_at").eq("status", "pending").order("created_at", { ascending: false })),
         ]);
 
-        if (leaguePendingRes.error || claimRes.error || updateRes.error || adminReqRes.error || locationReqRes.error || competitionPendingRes.error) {
+        if (leaguePendingRes.error || fixtureChangePendingRes.error || claimRes.error || updateRes.error || adminReqRes.error || locationReqRes.error || competitionPendingRes.error) {
           const firstError =
             leaguePendingRes.error?.message ??
+            fixtureChangePendingRes.error?.message ??
             claimRes.error?.message ??
             updateRes.error?.message ??
             adminReqRes.error?.message ??
@@ -386,6 +389,19 @@ export default function NotificationsPage() {
             key: `league_pending:${r.id}`,
             title: "League result submission pending approval",
             detail: labels.get(r.fixture_id) ?? `Fixture ${r.fixture_id.slice(0, 8)}`,
+            created_at: r.created_at,
+            href: "/results",
+            status: r.status,
+          });
+        });
+        const fixtureChangeRows = (fixtureChangePendingRes.data ?? []) as FixtureChangeRequestRow[];
+        const fixtureChangeLabels = await loadLeagueFixtureLabels(fixtureChangeRows.map((r) => ({ id: r.id, fixture_id: r.fixture_id, status: r.status, created_at: r.created_at })));
+        fixtureChangeRows.forEach((r) => {
+          const typeLabel = r.request_type === "play_early" ? "Play before league date" : "Exceptional postponement request";
+          out.push({
+            key: `fixture_change_pending:${r.id}`,
+            title: "Fixture date request pending approval",
+            detail: `${fixtureChangeLabels.get(r.fixture_id) ?? `Fixture ${r.fixture_id.slice(0, 8)}`} · ${typeLabel} · ${new Date(`${r.proposed_fixture_date}T12:00:00`).toLocaleDateString()}`,
             created_at: r.created_at,
             href: "/results",
             status: r.status,
@@ -463,15 +479,24 @@ export default function NotificationsPage() {
           });
         });
       } else if (admin.isAdmin) {
-        const leaguePendingRes = await softQuery<LeagueSubmissionRow>(
-          client
-            .from("league_result_submissions")
-            .select("id,fixture_id,status,created_at")
-            .eq("status", "pending")
-            .order("created_at", { ascending: false })
-        );
-        if (leaguePendingRes.error) {
-          setMessage(`Failed to load notifications: ${leaguePendingRes.error.message}`);
+        const [leaguePendingRes, fixtureChangePendingRes] = await Promise.all([
+          softQuery<LeagueSubmissionRow>(
+            client
+              .from("league_result_submissions")
+              .select("id,fixture_id,status,created_at")
+              .eq("status", "pending")
+              .order("created_at", { ascending: false })
+          ),
+          softQuery<FixtureChangeRequestRow>(
+            client
+              .from("league_fixture_change_requests")
+              .select("id,fixture_id,status,created_at,request_type,proposed_fixture_date")
+              .eq("status", "pending")
+              .order("created_at", { ascending: false })
+          ),
+        ]);
+        if (leaguePendingRes.error || fixtureChangePendingRes.error) {
+          setMessage(`Failed to load notifications: ${leaguePendingRes.error?.message ?? fixtureChangePendingRes.error?.message}`);
           return;
         }
         const pendingRows = (leaguePendingRes.data ?? []) as LeagueSubmissionRow[];
@@ -481,6 +506,19 @@ export default function NotificationsPage() {
             key: `league_pending:${r.id}`,
             title: "League result submission pending approval",
             detail: labels.get(r.fixture_id) ?? `Fixture ${r.fixture_id.slice(0, 8)}`,
+            created_at: r.created_at,
+            href: "/results",
+            status: r.status,
+          });
+        });
+        const fixtureChangeRows = (fixtureChangePendingRes.data ?? []) as FixtureChangeRequestRow[];
+        const fixtureChangeLabels = await loadLeagueFixtureLabels(fixtureChangeRows.map((r) => ({ id: r.id, fixture_id: r.fixture_id, status: r.status, created_at: r.created_at })));
+        fixtureChangeRows.forEach((r) => {
+          const typeLabel = r.request_type === "play_early" ? "Play before league date" : "Exceptional postponement request";
+          out.push({
+            key: `fixture_change_pending:${r.id}`,
+            title: "Fixture date request pending approval",
+            detail: `${fixtureChangeLabels.get(r.fixture_id) ?? `Fixture ${r.fixture_id.slice(0, 8)}`} · ${typeLabel} · ${new Date(`${r.proposed_fixture_date}T12:00:00`).toLocaleDateString()}`,
             created_at: r.created_at,
             href: "/results",
             status: r.status,
@@ -533,6 +571,7 @@ export default function NotificationsPage() {
         if (leagueResultRes.error || claimRes.error || updateRes.error || adminReqRes.error || competitionEntryRes.error) {
           const firstError =
             leagueResultRes.error?.message ??
+            fixtureChangePendingRes.error?.message ??
             claimRes.error?.message ??
             updateRes.error?.message ??
             adminReqRes.error?.message ??

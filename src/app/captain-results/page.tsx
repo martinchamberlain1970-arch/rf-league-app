@@ -94,6 +94,21 @@ type PendingSubmission = {
   frame_results: SubmissionFrameResult[];
   scorecard_photo_url: string | null;
 };
+type FixtureChangeRequest = {
+  id: string;
+  fixture_id: string;
+  requested_by_user_id: string;
+  requester_team_id: string | null;
+  request_type: "play_early" | "play_late";
+  original_fixture_date: string | null;
+  proposed_fixture_date: string;
+  opposing_team_agreed: boolean;
+  reason: string;
+  status: "pending" | "approved" | "rejected";
+  review_notes: string | null;
+  reviewed_at: string | null;
+  created_at: string;
+};
 
 const named = (p?: Player | null) => (p ? (p.full_name?.trim() ? p.full_name : p.display_name) : "Unknown");
 const sortLabelByFirstName = (a: string, b: string) => {
@@ -138,6 +153,12 @@ export default function CaptainResultsPage() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [pendingByFixture, setPendingByFixture] = useState<Set<string>>(new Set());
   const [pendingSubmissionMap, setPendingSubmissionMap] = useState<Map<string, PendingSubmission>>(new Map());
+  const [fixtureChangeRequests, setFixtureChangeRequests] = useState<FixtureChangeRequest[]>([]);
+  const [changeRequestType, setChangeRequestType] = useState<"play_early" | "play_late">("play_early");
+  const [changeRequestDate, setChangeRequestDate] = useState("");
+  const [changeRequestReason, setChangeRequestReason] = useState("");
+  const [changeRequestAgreed, setChangeRequestAgreed] = useState(false);
+  const [changeRequestSubmitting, setChangeRequestSubmitting] = useState(false);
 
   const [slots, setSlots] = useState<FrameSlot[]>([]);
   const [nominatedNames, setNominatedNames] = useState<Record<string, string>>({});
@@ -152,6 +173,23 @@ export default function CaptainResultsPage() {
   const canSubmit = !admin.isSuper;
   const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
   const playerById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
+
+  const loadFixtureChangeRequests = async (fixtureId: string) => {
+    const client = supabase;
+    if (!client || !fixtureId) return;
+    const sessionRes = await client.auth.getSession();
+    const token = sessionRes.data.session?.access_token;
+    if (!token) return;
+    const res = await fetch(`/api/league/fixture-change-requests?fixtureId=${encodeURIComponent(fixtureId)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = (await res.json().catch(() => ({}))) as { error?: string; rows?: FixtureChangeRequest[] };
+    if (!res.ok) {
+      setMessage(payload.error ?? "Failed to load fixture date requests.");
+      return;
+    }
+    setFixtureChangeRequests(payload.rows ?? []);
+  };
 
   const loadBreaks = async (fixtureId: string) => {
     const client = supabase;
@@ -279,21 +317,21 @@ export default function CaptainResultsPage() {
   );
 
   const selectedFixture = useMemo(
-    () => myCurrentWeekFixtures.find((f) => f.id === selectedFixtureId) ?? null,
-    [myCurrentWeekFixtures, selectedFixtureId]
+    () => myFixtures.find((f) => f.id === selectedFixtureId) ?? null,
+    [myFixtures, selectedFixtureId]
   );
   useEffect(() => {
     if (!selectedFixtureId) return;
-    if (!myCurrentWeekFixtures.some((f) => f.id === selectedFixtureId)) setSelectedFixtureId("");
-  }, [selectedFixtureId, myCurrentWeekFixtures]);
+    if (!myFixtures.some((f) => f.id === selectedFixtureId)) setSelectedFixtureId("");
+  }, [selectedFixtureId, myFixtures]);
   useEffect(() => {
     if (typeof window === "undefined") return;
     const requestedFixtureId = new URLSearchParams(window.location.search).get("fixtureId");
     if (!requestedFixtureId) return;
-    if (myCurrentWeekFixtures.some((fixture) => fixture.id === requestedFixtureId)) {
+    if (myFixtures.some((fixture) => fixture.id === requestedFixtureId)) {
       setSelectedFixtureId(requestedFixtureId);
     }
-  }, [myCurrentWeekFixtures]);
+  }, [myFixtures]);
 
 
   const selectedSeason = useMemo(
@@ -303,6 +341,22 @@ export default function CaptainResultsPage() {
 
   const isWinterFormat = (selectedSeason?.singles_count ?? 4) === 4 && (selectedSeason?.doubles_count ?? 1) === 1;
   const singlesMaxPerPlayer = (selectedSeason?.singles_count ?? 5) === 6 && (selectedSeason?.doubles_count ?? 1) === 0 ? 2 : 1;
+
+  useEffect(() => {
+    if (!selectedFixture) {
+      setFixtureChangeRequests([]);
+      setChangeRequestReason("");
+      setChangeRequestAgreed(false);
+      setChangeRequestType("play_early");
+      setChangeRequestDate("");
+      return;
+    }
+    setChangeRequestType("play_early");
+    setChangeRequestReason("");
+    setChangeRequestAgreed(false);
+    setChangeRequestDate(selectedFixture.fixture_date ?? "");
+    void loadFixtureChangeRequests(selectedFixture.id);
+  }, [selectedFixtureId, selectedFixture?.fixture_date]);
 
   useEffect(() => {
     if (!selectedFixture) {
@@ -566,6 +620,50 @@ export default function CaptainResultsPage() {
     return { error: null, rows: valid as SubmissionBreakEntry[] };
   };
 
+  const requestTypeLabel = (value: "play_early" | "play_late") =>
+    value === "play_early" ? "Play before league date" : "Exceptional postponement / later date";
+
+  const submitFixtureChangeRequest = async () => {
+    const client = supabase;
+    if (!client || !selectedFixture) return;
+    const sessionRes = await client.auth.getSession();
+    const token = sessionRes.data.session?.access_token;
+    if (!token) {
+      setMessage("Session expired. Please sign in again.");
+      return;
+    }
+    setChangeRequestSubmitting(true);
+    let res: Response;
+    try {
+      res = await fetch("/api/league/fixture-change-requests", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          fixtureId: selectedFixture.id,
+          requestType: changeRequestType,
+          proposedFixtureDate: changeRequestDate,
+          reason: changeRequestReason,
+          opposingTeamAgreed: changeRequestAgreed,
+        }),
+      });
+    } catch {
+      setChangeRequestSubmitting(false);
+      setMessage("Network error while submitting fixture date request.");
+      return;
+    }
+    const payload = (await res.json().catch(() => ({}))) as { error?: string };
+    setChangeRequestSubmitting(false);
+    if (!res.ok) {
+      setMessage(payload.error ?? "Failed to submit fixture date request.");
+      return;
+    }
+    setInfo({ title: "Request submitted", description: "Your fixture date request is now pending League Secretary review." });
+    await loadFixtureChangeRequests(selectedFixture.id);
+  };
+
   const submit = async () => {
     const client = supabase;
     if (!client || !selectedFixture || !currentUserId) return;
@@ -581,7 +679,7 @@ export default function CaptainResultsPage() {
       setMessage("You can only submit results for your own team fixtures.");
       return;
     }
-    if (!isFixtureOpenForSubmission(selectedFixture.fixture_date)) return setMessage("Fixture is not open. Captains can submit from match night until 5pm on the following Friday.");
+    if (!isFixtureOpenForSubmission(selectedFixture.fixture_date)) return setMessage("Fixture is not open. Captains can submit from match night until 5pm on the following day.");
     if (pendingByFixture.has(selectedFixture.id)) return setMessage("A submission is already pending for this fixture.");
 
     const frameResults: SubmissionFrameResult[] = slots.map((s) => ({
@@ -687,7 +785,7 @@ export default function CaptainResultsPage() {
                 onChange={(e) => setSelectedFixtureId(e.target.value)}
               >
                 <option value="">Select your fixture</option>
-                {myCurrentWeekFixtures.map((f) => (
+                {myFixtures.map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.fixture_date ? new Date(`${f.fixture_date}T12:00:00`).toLocaleDateString() : `Week ${f.week_no ?? "-"}`} · {teamById.get(f.home_team_id)?.name ?? "Home"} vs {teamById.get(f.away_team_id)?.name ?? "Away"}
                     {pendingByFixture.has(f.id) ? " · pending review" : ""}
@@ -697,7 +795,7 @@ export default function CaptainResultsPage() {
 
               {myCurrentWeekFixtures.length === 0 ? (
                 <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                  No fixtures are open for submission right now. Captains and vice-captains can submit from match night until 5pm on the following Friday.
+                  No fixtures are open for result submission right now. Captains and vice-captains can still open future fixtures here to request a date change.
                 </p>
               ) : null}
               {selectedFixture ? (
@@ -721,7 +819,92 @@ export default function CaptainResultsPage() {
                       <p className="mt-1">In doubles, team handicap = (player 1 handicap + player 2 handicap) ÷ 2, with the live start capped at {MAX_SNOOKER_START}.</p>
                     ) : null}
                   </div>
-                  <fieldset disabled={pendingByFixture.has(selectedFixture.id)} className={pendingByFixture.has(selectedFixture.id) ? "cursor-not-allowed opacity-80" : ""}>
+
+                  <section className="rounded-2xl border border-indigo-200 bg-indigo-50/70 p-4">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <h3 className="text-base font-semibold text-slate-900">Fixture date request</h3>
+                        <p className="mt-1 text-sm text-slate-700">
+                          No postponements are allowed as standard. Teams may request to play before the league date by agreement, or request a later date only in exceptional circumstances and only with League Secretary approval.
+                        </p>
+                      </div>
+                      {selectedFixture.fixture_date ? (
+                        <span className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700">
+                          Published date: {new Date(`${selectedFixture.fixture_date}T12:00:00`).toLocaleDateString()}
+                        </span>
+                      ) : null}
+                    </div>
+                    <ul className="mt-3 list-disc space-y-1 pl-5 text-xs text-slate-600">
+                      <li>Play-before requests require opposing team agreement and League Secretary approval.</li>
+                      <li>Later-date requests are for exceptional circumstances only: illness, severe weather, or bereavement for example.</li>
+                      <li>Not having enough players is not treated as exceptional.</li>
+                    </ul>
+                    <div className="mt-4 grid gap-3 md:grid-cols-[220px_180px]">
+                      <select
+                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                        value={changeRequestType}
+                        onChange={(e) => setChangeRequestType(e.target.value as "play_early" | "play_late")}
+                      >
+                        <option value="play_early">Play before league date</option>
+                        <option value="play_late">Exceptional postponement / later date</option>
+                      </select>
+                      <input
+                        type="date"
+                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                        value={changeRequestDate}
+                        onChange={(e) => setChangeRequestDate(e.target.value)}
+                      />
+                    </div>
+                    <textarea
+                      className="mt-3 min-h-[96px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                      placeholder="Explain the request and confirm any agreement with the opposing team."
+                      value={changeRequestReason}
+                      onChange={(e) => setChangeRequestReason(e.target.value)}
+                    />
+                    <label className="mt-3 flex items-start gap-2 text-sm text-slate-700">
+                      <input
+                        type="checkbox"
+                        checked={changeRequestAgreed}
+                        onChange={(e) => setChangeRequestAgreed(e.target.checked)}
+                        className="mt-1"
+                      />
+                      <span>The opposing team has agreed to this request. This is required for play-before requests.</span>
+                    </label>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void submitFixtureChangeRequest()}
+                        disabled={changeRequestSubmitting}
+                        className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                      >
+                        {changeRequestSubmitting ? "Submitting..." : "Submit fixture date request"}
+                      </button>
+                    </div>
+                    <div className="mt-4 space-y-2">
+                      {fixtureChangeRequests.length === 0 ? (
+                        <p className="text-sm text-slate-600">No fixture date requests logged for this fixture yet.</p>
+                      ) : (
+                        fixtureChangeRequests.map((request) => (
+                          <div key={request.id} className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <p className="font-medium text-slate-900">{requestTypeLabel(request.request_type)} · {new Date(`${request.proposed_fixture_date}T12:00:00`).toLocaleDateString()}</p>
+                              <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold uppercase ${request.status === "approved" ? "border-emerald-200 bg-emerald-50 text-emerald-800" : request.status === "rejected" ? "border-rose-200 bg-rose-50 text-rose-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
+                                {request.status}
+                              </span>
+                            </div>
+                            <p className="mt-1 text-xs text-slate-600">Requested {new Date(request.created_at).toLocaleString()}</p>
+                            <p className="mt-1">{request.reason}</p>
+                            {request.review_notes ? <p className="mt-1 text-xs text-slate-600">League Secretary note: {request.review_notes}</p> : null}
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </section>
+
+                  <fieldset
+                    disabled={pendingByFixture.has(selectedFixture.id) || !isFixtureOpenForSubmission(selectedFixture.fixture_date)}
+                    className={pendingByFixture.has(selectedFixture.id) || !isFixtureOpenForSubmission(selectedFixture.fixture_date) ? "cursor-not-allowed opacity-80" : ""}
+                  >
                   {slots.map((slot) => {
                     const homeSinglesCount = new Map<string, number>();
                     const awaySinglesCount = new Map<string, number>();
@@ -913,6 +1096,12 @@ export default function CaptainResultsPage() {
 
                   </fieldset>
 
+                  {!isFixtureOpenForSubmission(selectedFixture.fixture_date) ? (
+                    <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
+                      Result entry opens on match night and stays open until 5pm the following day. You can still submit a fixture date request above for future fixtures.
+                    </div>
+                  ) : null}
+
                   <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4">
                     <h3 className="text-base font-semibold text-slate-900">Breaks 30+</h3>
                     {!breaksFeatureAvailable ? (
@@ -977,7 +1166,7 @@ export default function CaptainResultsPage() {
                       <button
                         type="button"
                         onClick={submit}
-                        disabled={submitting || pendingByFixture.has(selectedFixture.id)}
+                        disabled={submitting || pendingByFixture.has(selectedFixture.id) || !isFixtureOpenForSubmission(selectedFixture.fixture_date)}
                         className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
                       >
                         {pendingByFixture.has(selectedFixture.id) ? "Submission pending review" : submitting ? "Submitting..." : "Submit for approval"}
