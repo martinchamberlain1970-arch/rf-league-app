@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import PageNav from "@/components/PageNav";
@@ -53,6 +53,8 @@ export default function HomePage() {
   const [resultsQueueCount, setResultsQueueCount] = useState<number | null>(null);
   const [pendingRequestsCount, setPendingRequestsCount] = useState<number | null>(null);
   const [pendingResultSubmissionsCount, setPendingResultSubmissionsCount] = useState<number>(0);
+  const [fixtureChangeActionCount, setFixtureChangeActionCount] = useState<number>(0);
+  const [outstandingFixtureCount, setOutstandingFixtureCount] = useState<number>(0);
   const [leagueRole, setLeagueRole] = useState<{ isCaptain: boolean; isViceCaptain: boolean; teamNames: string[] }>({
     isCaptain: false,
     isViceCaptain: false,
@@ -81,6 +83,7 @@ export default function HomePage() {
         "/signups",
         "/notifications",
         "/results",
+        "/reschedule-fixture",
         "/audit",
         "/usage",
         "/backup",
@@ -108,7 +111,7 @@ export default function HomePage() {
     (href === "/events/new" && pendingFeatureRequests.has("competition_create"));
 
   const primaryHrefs = admin.isSuper
-    ? ["/signup-requests", "/players", "/notifications", "/league", "/results", "/backup", "/signups", "/legal"]
+    ? ["/signup-requests", "/players", "/notifications", "/league", "/results", "/reschedule-fixture", "/backup", "/signups", "/legal"]
     : admin.isAdmin
       ? ["/league", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/quick-match", "/events/new", "/signups", "/help", "/legal"]
       : ["/league", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/notifications", "/signups", "/help", "/legal"];
@@ -152,6 +155,7 @@ export default function HomePage() {
     if (href === "/league") return `${base} border-indigo-200 bg-gradient-to-br from-indigo-50 to-white`;
     if (href === "/captain-results") return `${base} border-emerald-200 bg-gradient-to-br from-emerald-50 to-white`;
     if (href === "/reschedule-fixture") return `${base} border-indigo-200 bg-gradient-to-br from-indigo-50 to-white`;
+    if (href === "/results?tab=fixture_changes") return `${base} border-indigo-200 bg-gradient-to-br from-indigo-50 to-white`;
     if (href === "/quick-match") return `${base} border-teal-200 bg-gradient-to-br from-teal-50 to-white`;
     if (href === "/events/new") return `${base} border-amber-200 bg-gradient-to-br from-amber-50 to-white`;
     if (href === "/events") return `${base} border-sky-200 bg-gradient-to-br from-sky-50 to-white`;
@@ -162,12 +166,45 @@ export default function HomePage() {
     if (href === "/league") return "border-indigo-300 bg-indigo-100 text-indigo-900";
     if (href === "/captain-results") return "border-emerald-300 bg-emerald-100 text-emerald-900";
     if (href === "/reschedule-fixture") return "border-indigo-300 bg-indigo-100 text-indigo-900";
+    if (href === "/results?tab=fixture_changes") return "border-indigo-300 bg-indigo-100 text-indigo-900";
     if (href === "/quick-match") return "border-teal-300 bg-teal-100 text-teal-900";
     if (href === "/events/new") return "border-amber-300 bg-amber-100 text-amber-900";
     if (href === "/events") return "border-sky-300 bg-sky-100 text-sky-900";
     if (href === "/notifications") return "border-violet-300 bg-violet-100 text-violet-900";
     return "border-slate-300 bg-slate-100 text-slate-800";
   };
+  const primaryTileBadgeText = (href: string) => {
+    if (href === "/results?tab=fixture_changes" && admin.isSuper) {
+      return fixtureChangeActionCount > 0 ? `${fixtureChangeActionCount} to review` : "Open";
+    }
+    if (href === "/reschedule-fixture" && !admin.isSuper) {
+      return outstandingFixtureCount > 0 ? `${outstandingFixtureCount} outstanding` : "Open";
+    }
+    return "Open";
+  };
+  const resolvedMainTabLinks = useMemo(
+    () =>
+      mainTabLinksWithGovernance.map((item) => {
+        if (item.href !== "/reschedule-fixture") return item;
+        if (admin.isSuper) {
+          return {
+            ...item,
+            href: "/results?tab=fixture_changes",
+            title: "Fixtures To Be Rescheduled",
+            desc: `${fixtureChangeActionCount} fixture${fixtureChangeActionCount === 1 ? "" : "s"} awaiting review or agreed dates.`,
+          };
+        }
+        return {
+          ...item,
+          title: "Outstanding Fixtures",
+          desc:
+            outstandingFixtureCount > 0
+              ? `${outstandingFixtureCount} fixture${outstandingFixtureCount === 1 ? "" : "s"} currently pending review or a new agreed date.`
+              : "Request early play or track fixtures waiting for a new agreed date.",
+        };
+      }),
+    [mainTabLinksWithGovernance, admin.isSuper, fixtureChangeActionCount, outstandingFixtureCount]
+  );
   const cardDescription = (href: string, fallback: string) => {
     if (href === "/league") {
       if (admin.isSuper) return "Set up leagues, teams, venues, fixtures, and approvals.";
@@ -180,6 +217,9 @@ export default function HomePage() {
     }
     if (href === "/reschedule-fixture") {
       return "Request permission to play before the league date or, exceptionally, later.";
+    }
+    if (href === "/results?tab=fixture_changes") {
+      return "Review fixture-date requests and set agreed dates for approved outstanding fixtures.";
     }
     if (href === "/players") {
       return admin.isSuper ? "Full player governance, linking, and approvals." : "View your own player profile and status.";
@@ -508,6 +548,45 @@ export default function HomePage() {
   }, [admin.isAdmin, admin.isSuper, admin.userId, pendingClaim]);
 
   useEffect(() => {
+    const run = async () => {
+      const client = supabase;
+      if (!client || admin.loading) return;
+      const { data: sessionRes } = await client.auth.getSession();
+      const token = sessionRes.session?.access_token;
+      if (!token) {
+        setFixtureChangeActionCount(0);
+        setOutstandingFixtureCount(0);
+        return;
+      }
+      const scope = admin.isSuper ? "admin" : "mine";
+      const resp = await fetch(`/api/league/fixture-change-requests?scope=${scope}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) {
+        setFixtureChangeActionCount(0);
+        setOutstandingFixtureCount(0);
+        return;
+      }
+      const data = (await resp.json().catch(() => ({}))) as {
+        rows?: Array<{ status?: string }>;
+      };
+      const rows = data.rows ?? [];
+      if (admin.isSuper) {
+        setFixtureChangeActionCount(
+          rows.filter((row) => row.status === "pending" || row.status === "approved_outstanding").length
+        );
+        setOutstandingFixtureCount(0);
+        return;
+      }
+      setOutstandingFixtureCount(
+        rows.filter((row) => row.status === "pending" || row.status === "approved_outstanding").length
+      );
+      setFixtureChangeActionCount(0);
+    };
+    void run();
+  }, [admin.loading, admin.isSuper, admin.userId]);
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     if (admin.loading || admin.isSuper) return;
     if (!admin.userId || !userPlayerId) return;
@@ -803,7 +882,7 @@ export default function HomePage() {
                     : "mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
                 }
               >
-                {mainTabLinksWithGovernance.map((item) => (
+                {resolvedMainTabLinks.map((item) => (
                   isDisabledAdminFeature(item.href) ? (
                     <div
                       key={`${item.href}|${item.title}`}
@@ -837,7 +916,7 @@ export default function HomePage() {
                       <h2 className="text-base font-semibold text-slate-900">{item.title}</h2>
                       <p className="mt-1 text-sm text-slate-600">{cardDescription(item.href, item.desc)}</p>
                       <span className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${primaryTileBadgeClass(item.href)}`}>
-                        Open
+                        {primaryTileBadgeText(item.href)}
                       </span>
                     </Link>
                   )

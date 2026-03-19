@@ -24,16 +24,16 @@ export async function POST(req: NextRequest) {
 
   const userEmail = authData.user.email?.trim().toLowerCase() ?? "";
   if (!superAdminEmail || userEmail !== superAdminEmail) {
-    return NextResponse.json({ error: "Only Super User can review fixture change requests." }, { status: 403 });
+    return NextResponse.json({ error: "Only Super User can set the agreed fixture date." }, { status: 403 });
   }
 
   const body = await req.json().catch(() => ({}));
   const requestId = typeof body?.requestId === "string" ? body.requestId : "";
-  const decision = body?.decision === "approved" || body?.decision === "rejected" ? body.decision : null;
+  const agreedFixtureDate = typeof body?.agreedFixtureDate === "string" ? body.agreedFixtureDate : "";
   const reviewNotes = typeof body?.reviewNotes === "string" ? body.reviewNotes.trim() : "";
 
-  if (!requestId || !decision) {
-    return NextResponse.json({ error: "Invalid request." }, { status: 400 });
+  if (!requestId || !agreedFixtureDate) {
+    return NextResponse.json({ error: "Missing request details." }, { status: 400 });
   }
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
@@ -48,23 +48,29 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ error: requestRes.error?.message ?? "Request not found." }, { status: 404 });
   }
-  if (requestRes.data.status !== "pending") {
-    return NextResponse.json({ error: "Request is no longer pending." }, { status: 400 });
+  if (requestRes.data.status !== "approved_outstanding") {
+    return NextResponse.json({ error: "This request is not waiting for a scheduled date." }, { status: 400 });
+  }
+
+  const updFixture = await adminClient
+    .from("league_fixtures")
+    .update({ fixture_date: agreedFixtureDate, status: "pending" })
+    .eq("id", requestRes.data.fixture_id);
+  if (updFixture.error) {
+    return NextResponse.json({ error: updFixture.error.message }, { status: 400 });
   }
 
   const updReq = await adminClient
     .from("league_fixture_change_requests")
     .update({
-      status: decision === "approved" ? "approved_outstanding" : "rejected",
+      status: "rescheduled",
+      agreed_fixture_date: agreedFixtureDate,
       review_notes: reviewNotes || null,
       reviewed_by_user_id: authData.user.id,
       reviewed_at: new Date().toISOString(),
     })
     .eq("id", requestId);
   if (updReq.error) {
-    if (isMissingTableError(updReq.error.message)) {
-      return NextResponse.json({ error: "Fixture date requests are not available until the latest database migration has been run." }, { status: 400 });
-    }
     return NextResponse.json({ error: updReq.error.message }, { status: 400 });
   }
 

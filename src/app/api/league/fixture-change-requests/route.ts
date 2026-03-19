@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
   let query = adminClient
     .from("league_fixture_change_requests")
     .select(
-      "id,fixture_id,requested_by_user_id,requester_team_id,request_type,original_fixture_date,proposed_fixture_date,opposing_team_agreed,reason,status,review_notes,reviewed_by_user_id,reviewed_at,created_at"
+      "id,fixture_id,requested_by_user_id,requester_team_id,request_type,original_fixture_date,proposed_fixture_date,agreed_fixture_date,opposing_team_agreed,reason,status,review_notes,reviewed_by_user_id,reviewed_at,created_at"
     )
     .order("created_at", { ascending: false });
 
@@ -82,15 +82,11 @@ export async function GET(req: NextRequest) {
     if (membershipRes.error) return NextResponse.json({ error: membershipRes.error.message }, { status: 400 });
 
     const teamIds = new Set(
-      ((membershipRes.data ?? []) as RoleMembership[])
-        .filter((m) => m.is_captain || Boolean(m.is_vice_captain))
-        .map((m) => m.team_id)
+      ((membershipRes.data ?? []) as RoleMembership[]).map((m) => m.team_id)
     );
     if (teamIds.size === 0) return NextResponse.json({ rows: [] });
 
-    const orClause = Array.from(teamIds)
-      .map((id) => `home_team_id.eq.${id},away_team_id.eq.${id}`)
-      .join(",");
+    const orClause = Array.from(teamIds).map((id) => `home_team_id.eq.${id},away_team_id.eq.${id}`).join(",");
     const fixtureRes = await adminClient.from("league_fixtures").select("id,home_team_id,away_team_id").or(orClause);
     if (fixtureRes.error) return NextResponse.json({ error: fixtureRes.error.message }, { status: 400 });
 
@@ -98,11 +94,9 @@ export async function GET(req: NextRequest) {
     if (fixtureId && !allowedFixtureIds.has(fixtureId)) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
-    if (!fixtureId) {
-      const ids = Array.from(allowedFixtureIds);
-      if (ids.length === 0) return NextResponse.json({ rows: [] });
-      query = query.in("fixture_id", ids);
-    }
+    const ids = fixtureId ? [fixtureId] : Array.from(allowedFixtureIds);
+    if (ids.length === 0) return NextResponse.json({ rows: [] });
+    query = query.in("fixture_id", ids);
   }
 
   const res = await query;
@@ -127,11 +121,10 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const fixtureId = typeof body?.fixtureId === "string" ? body.fixtureId : "";
   const requestType = body?.requestType === "play_early" || body?.requestType === "play_late" ? body.requestType : null;
-  const proposedFixtureDate = typeof body?.proposedFixtureDate === "string" ? body.proposedFixtureDate : "";
   const reason = typeof body?.reason === "string" ? body.reason.trim() : "";
   const opposingTeamAgreed = Boolean(body?.opposingTeamAgreed);
 
-  if (!fixtureId || !requestType || !proposedFixtureDate || !reason) {
+  if (!fixtureId || !requestType || !reason) {
     return NextResponse.json({ error: "Missing request details." }, { status: 400 });
   }
 
@@ -162,17 +155,8 @@ export async function POST(req: NextRequest) {
   if (!requesterTeamId) {
     return NextResponse.json({ error: "You can only request changes for your own team fixtures." }, { status: 403 });
   }
-
   if (!fixture.fixture_date) {
     return NextResponse.json({ error: "This fixture does not currently have a league date." }, { status: 400 });
-  }
-
-  const originalDate = fixture.fixture_date;
-  if (requestType === "play_early" && proposedFixtureDate >= originalDate) {
-    return NextResponse.json({ error: "Play-before requests must use a date before the published league date." }, { status: 400 });
-  }
-  if (requestType === "play_late" && proposedFixtureDate <= originalDate) {
-    return NextResponse.json({ error: "Exceptional postponement requests must use a later date." }, { status: 400 });
   }
   if (requestType === "play_early" && !opposingTeamAgreed) {
     return NextResponse.json({ error: "Play-before requests require confirmation that the opposing team agrees." }, { status: 400 });
@@ -182,7 +166,7 @@ export async function POST(req: NextRequest) {
     .from("league_fixture_change_requests")
     .select("id")
     .eq("fixture_id", fixtureId)
-    .eq("status", "pending")
+    .in("status", ["pending", "approved_outstanding"])
     .limit(1);
   if (pendingRes.error) {
     if (isMissingTableError(pendingRes.error.message)) {
@@ -191,7 +175,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: pendingRes.error.message }, { status: 400 });
   }
   if ((pendingRes.data ?? []).length) {
-    return NextResponse.json({ error: "A fixture date change request is already pending for this fixture." }, { status: 400 });
+    return NextResponse.json({ error: "A fixture date request is already active for this fixture." }, { status: 400 });
   }
 
   const ins = await adminClient.from("league_fixture_change_requests").insert({
@@ -199,8 +183,8 @@ export async function POST(req: NextRequest) {
     requested_by_user_id: userId,
     requester_team_id: requesterTeamId,
     request_type: requestType,
-    original_fixture_date: originalDate,
-    proposed_fixture_date: proposedFixtureDate,
+    original_fixture_date: fixture.fixture_date,
+    proposed_fixture_date: null,
     opposing_team_agreed: opposingTeamAgreed,
     reason,
     status: "pending",
