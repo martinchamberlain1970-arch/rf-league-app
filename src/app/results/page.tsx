@@ -245,7 +245,10 @@ export default function ResultsQueuePage() {
     const forfeit = side === "home" ? row.home_forfeit : row.away_forfeit;
     const nominatedName = side === "home" ? row.home_nominated_name : row.away_nominated_name;
     if (forfeit) return "No Show";
-    if (nominated) return nominatedName?.trim() || "Nominated Player";
+    if (nominated) {
+      const label = nominatedName?.trim();
+      return label ? `Nominated Player (${label})` : "Nominated Player";
+    }
     if (row.slot_type === "doubles") {
       return `${named(playerById.get(p1 ?? ""))} & ${named(playerById.get(p2 ?? ""))}`;
     }
