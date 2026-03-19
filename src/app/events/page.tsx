@@ -45,6 +45,8 @@ type LeagueFramePerf = {
   home_player2_id: string | null;
   away_player1_id: string | null;
   away_player2_id: string | null;
+  home_forfeit?: boolean | null;
+  away_forfeit?: boolean | null;
 };
 type LeaguePlayer = {
   id: string;
@@ -278,7 +280,7 @@ export default function EventsPage() {
           fixtureIds.length
             ? client
                 .from("league_fixture_frames")
-                .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id")
+                .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_forfeit,away_forfeit")
                 .in("fixture_id", fixtureIds)
             : Promise.resolve({ data: [] as LeagueFramePerf[] }),
           client
@@ -533,7 +535,7 @@ export default function EventsPage() {
       let won = 0;
       let lost = 0;
       for (const fr of seasonFrames) {
-        if (!completedFixtureIds.has(fr.fixture_id) || !fr.winner_side) continue;
+        if (!completedFixtureIds.has(fr.fixture_id) || !fr.winner_side || fr.home_forfeit || fr.away_forfeit) continue;
         const inHome = fr.home_player1_id === playerId || fr.home_player2_id === playerId;
         const inAway = fr.away_player1_id === playerId || fr.away_player2_id === playerId;
         if (!inHome && !inAway) continue;
@@ -638,7 +640,7 @@ export default function EventsPage() {
     });
     const wins = new Map<string, number>();
     for (const fr of frames) {
-      if (!fr.winner_side) continue;
+      if (!fr.winner_side || fr.home_forfeit || fr.away_forfeit) continue;
       const ids =
         fr.winner_side === "home"
           ? [fr.home_player1_id, fr.home_player2_id]
@@ -683,7 +685,7 @@ export default function EventsPage() {
     const fixtureIds = new Set(weekFixtures.map((f) => f.id));
     const wins = new Map<string, number>();
     for (const fr of seasonFrames) {
-      if (!fixtureIds.has(fr.fixture_id) || !fr.winner_side) continue;
+      if (!fixtureIds.has(fr.fixture_id) || !fr.winner_side || fr.home_forfeit || fr.away_forfeit) continue;
       const ids =
         fr.winner_side === "home"
           ? [fr.home_player1_id, fr.home_player2_id]

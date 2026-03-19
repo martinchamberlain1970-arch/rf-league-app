@@ -878,8 +878,7 @@ export default function PlayerProfilePage() {
         const inHome = s.home_player1_id === id || s.home_player2_id === id;
         const inAway = s.away_player1_id === id || s.away_player2_id === id;
         if (!inHome && !inAway) return false;
-        const noShowBoth = s.home_forfeit && s.away_forfeit;
-        if (noShowBoth) return false;
+        if (s.home_forfeit || s.away_forfeit) return false;
         return s.winner_side !== null;
       }),
     [leagueFrames, id]

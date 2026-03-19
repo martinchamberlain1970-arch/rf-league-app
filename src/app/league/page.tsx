@@ -2135,6 +2135,7 @@ export default function LeaguePage() {
         [`${sidePrefix}_nominated`]: false,
         [`${sidePrefix}_forfeit`]: true,
         [`${sidePrefix}_points_scored`]: 0,
+        [side === "home" ? "away_points_scored" : "home_points_scored"]: 0,
         [nameKey]: null,
       } as Partial<FrameSlot>);
       return;
@@ -2160,7 +2161,7 @@ export default function LeaguePage() {
     const parsedRaw = rawValue === "" ? null : Number.parseInt(rawValue, 10);
     const parsed = parsedRaw === null || Number.isNaN(parsedRaw) ? null : Math.min(200, Math.max(0, parsedRaw));
     const field = side === "home" ? "home_points_scored" : "away_points_scored";
-    await updateFrameWithDerivedWinner(slot, { [field]: parsed } as Partial<FrameSlot>);
+    await updateFrameWithDerivedWinner(slot, { [field]: slot.home_forfeit || slot.away_forfeit ? 0 : parsed } as Partial<FrameSlot>);
   };
 
   const updateNominatedName = async (slot: FrameSlot, side: "home" | "away", value: string) => {
@@ -5338,6 +5339,24 @@ export default function LeaguePage() {
                                   .filter((id): id is string => Boolean(id))
                               )
                             : awayRosterIds;
+                        const homeNominatedOptions =
+                          isWinterFormat
+                            ? sortRosterIds(
+                                fixtureSlots
+                                  .filter((row) => row.slot_type === "singles" && (row.slot_no === 1 || row.slot_no === 2))
+                                  .map((row) => row.home_player1_id)
+                                  .filter((id): id is string => Boolean(id))
+                              )
+                            : [];
+                        const awayNominatedOptions =
+                          isWinterFormat
+                            ? sortRosterIds(
+                                fixtureSlots
+                                  .filter((row) => row.slot_type === "singles" && (row.slot_no === 1 || row.slot_no === 2))
+                                  .map((row) => row.away_player1_id)
+                                  .filter((id): id is string => Boolean(id))
+                              )
+                            : [];
                         const homeSelection = getSinglesSelectionValue(slot, "home");
                         const awaySelection = getSinglesSelectionValue(slot, "away");
                         return (
@@ -5487,7 +5506,7 @@ export default function LeaguePage() {
                                     }}
                                   >
                                     <option value="">Home nominated player (info)</option>
-                                    {homeRosterIds.map((id) => (
+                                    {homeNominatedOptions.map((id) => (
                                       <option key={id} value={named(playerById.get(id))}>
                                         {named(playerById.get(id))}
                                       </option>
@@ -5504,7 +5523,7 @@ export default function LeaguePage() {
                                     }}
                                   >
                                     <option value="">Away nominated player (info)</option>
-                                    {awayRosterIds.map((id) => (
+                                    {awayNominatedOptions.map((id) => (
                                       <option key={id} value={named(playerById.get(id))}>
                                         {named(playerById.get(id))}
                                       </option>

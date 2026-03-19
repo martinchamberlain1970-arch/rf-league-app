@@ -365,6 +365,18 @@ export default function CaptainResultsPage() {
   };
   const homeDoublesOptions = useMemo(() => winterDoublesEligibleIds("home"), [slots, isWinterFormat, homeRosterIds, playerById]);
   const awayDoublesOptions = useMemo(() => winterDoublesEligibleIds("away"), [slots, isWinterFormat, awayRosterIds, playerById]);
+  const winterNominatedEligibleIds = (side: "home" | "away") => {
+    if (!isWinterFormat) return [] as string[];
+    const eligible = new Set<string>();
+    for (const slotNo of [1, 2]) {
+      const slot = slots.find((row) => row.slot_type === "singles" && row.slot_no === slotNo);
+      const playerId = side === "home" ? slot?.home_player1_id : slot?.away_player1_id;
+      if (playerId) eligible.add(playerId);
+    }
+    return sortRosterIds(Array.from(eligible));
+  };
+  const homeNominatedOptions = useMemo(() => winterNominatedEligibleIds("home"), [slots, isWinterFormat, homeRosterIds, playerById]);
+  const awayNominatedOptions = useMemo(() => winterNominatedEligibleIds("away"), [slots, isWinterFormat, awayRosterIds, playerById]);
 
   const playerHandicap = (playerId: string | null | undefined) =>
     Number(playerById.get(playerId ?? "")?.snooker_handicap ?? 0);
@@ -438,6 +450,7 @@ export default function CaptainResultsPage() {
         [`${sidePrefix}_nominated`]: false,
         [`${sidePrefix}_forfeit`]: true,
         [`${sidePrefix}_points_scored`]: 0,
+        [side === "home" ? "away_points_scored" : "home_points_scored"]: 0,
         [nameKey]: null,
       } as Partial<FrameSlot>);
       return;
@@ -731,7 +744,7 @@ export default function CaptainResultsPage() {
                             onChange={(e) => {
                               const raw = e.target.value === "" ? null : Number.parseInt(e.target.value, 10);
                               const parsed = raw === null || Number.isNaN(raw) ? null : Math.min(200, Math.max(0, raw));
-                              updateSlotLocal(slot.id, { home_points_scored: parsed });
+                              updateSlotLocal(slot.id, { home_points_scored: slot.home_forfeit || slot.away_forfeit ? 0 : parsed });
                             }}
                             placeholder="0-200"
                           />
@@ -791,13 +804,13 @@ export default function CaptainResultsPage() {
                             onChange={(e) => {
                               const raw = e.target.value === "" ? null : Number.parseInt(e.target.value, 10);
                               const parsed = raw === null || Number.isNaN(raw) ? null : Math.min(200, Math.max(0, raw));
-                              updateSlotLocal(slot.id, { away_points_scored: parsed });
+                              updateSlotLocal(slot.id, { away_points_scored: slot.home_forfeit || slot.away_forfeit ? 0 : parsed });
                             }}
                             placeholder="0-200"
                           />
                         </div>
 
-                        {slot.slot_type === "singles" && isWinterFormat && slot.slot_no === 4 ? (
+                        {slot.slot_type === "singles" && isWinterFormat && slot.slot_no === 3 ? (
                           <div className="mt-2 grid gap-2 sm:grid-cols-2">
                             {slot.home_nominated ? (
                               <select
@@ -809,7 +822,7 @@ export default function CaptainResultsPage() {
                                 }}
                               >
                                 <option value="">Home nominated player (info)</option>
-                                {homeRosterIds.map((id) => <option key={id} value={named(playerById.get(id))}>{named(playerById.get(id))}</option>)}
+                                {homeNominatedOptions.map((id) => <option key={id} value={named(playerById.get(id))}>{named(playerById.get(id))}</option>)}
                               </select>
                             ) : <div />}
                             {slot.away_nominated ? (
@@ -822,7 +835,7 @@ export default function CaptainResultsPage() {
                                 }}
                               >
                                 <option value="">Away nominated player (info)</option>
-                                {awayRosterIds.map((id) => <option key={id} value={named(playerById.get(id))}>{named(playerById.get(id))}</option>)}
+                                {awayNominatedOptions.map((id) => <option key={id} value={named(playerById.get(id))}>{named(playerById.get(id))}</option>)}
                               </select>
                             ) : <div />}
                           </div>

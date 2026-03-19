@@ -16,6 +16,7 @@ const links = [
   { href: "/events/new", title: "Create Competition", desc: "Optional module: create standalone knockout or league events." },
   { href: "/league", title: "League Manager", desc: "Set up teams, fixtures, and league table." },
   { href: "/handicaps", title: "Handicaps", desc: "See the snooker handicap list and how starts are worked out." },
+  { href: "/high-breaks", title: "High Breaks", desc: "View the published league high-break table." },
   { href: "/captain-results", title: "Captain Results", desc: "Submit your fixture result for approval." },
   { href: "/events", title: "Events", desc: "View open and completed events." },
   { href: "/signups", title: "Competition Sign-ups", desc: "Enter open competitions and track entry status." },
@@ -75,6 +76,7 @@ export default function HomePage() {
         "/handicaps",
         "/players",
         "/signup-requests",
+        "/high-breaks",
         "/signups",
         "/notifications",
         "/results",
@@ -90,7 +92,7 @@ export default function HomePage() {
       // Admins still see these cards, but they can be disabled per-account.
       return true;
     }
-    return ["/events", "/league", "/handicaps", "/captain-results", "/signups", "/help", "/legal", "/notifications"].includes(href);
+    return ["/events", "/league", "/handicaps", "/high-breaks", "/captain-results", "/signups", "/help", "/legal", "/notifications"].includes(href);
   };
 
   const visibleLinks = links.filter((item) => isVisibleLink(item.href));
@@ -107,8 +109,8 @@ export default function HomePage() {
   const primaryHrefs = admin.isSuper
     ? ["/signup-requests", "/players", "/notifications", "/league", "/results", "/backup", "/signups", "/legal"]
     : admin.isAdmin
-      ? ["/league", "/handicaps", "/captain-results", "/events", "/quick-match", "/events/new", "/signups", "/help", "/legal"]
-      : ["/league", "/handicaps", "/captain-results", "/events", "/notifications", "/signups", "/help", "/legal"];
+      ? ["/league", "/handicaps", "/high-breaks", "/captain-results", "/events", "/quick-match", "/events/new", "/signups", "/help", "/legal"]
+      : ["/league", "/handicaps", "/high-breaks", "/captain-results", "/events", "/notifications", "/signups", "/help", "/legal"];
   const quickAccessHrefs = admin.isSuper
     ? ["/audit", "/usage"]
     : admin.isAdmin
@@ -190,6 +192,9 @@ export default function HomePage() {
       return admin.isSuper
         ? "Open/close cup entries and review entrants."
         : "Enter knockout cups and track approval status.";
+    }
+    if (href === "/high-breaks") {
+      return "View recorded 30+ breaks and the published league high-break table.";
     }
     if (href === "/legal") {
       return "Privacy policy, terms, and app credits.";
