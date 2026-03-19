@@ -306,6 +306,7 @@ const describeFixtureReschedule = (request?: FixtureChangeRequest | null) => {
 
 export default function LeaguePage() {
   const admin = useAdminStatus();
+  const [guidedTarget, setGuidedTarget] = useState<null | "create-league" | "add-league-teams" | "assign-players" | "generate-fixtures" | "publish-league">(null);
   const [message, setMessage] = useState<string | null>(null);
   const [infoModal, setInfoModal] = useState<{ title: string; description: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -3434,6 +3435,7 @@ export default function LeaguePage() {
         detail: currentSeason ? `Selected league: ${currentSeason.name}` : "Create the league season and choose format/handicap mode.",
         actionLabel: currentSeason ? "Review league setup" : "Create league",
         view: "setup" as const,
+        target: "create-league" as const,
       },
       {
         key: "teams",
@@ -3442,6 +3444,7 @@ export default function LeaguePage() {
         detail: `${seasonTeams.length} team${seasonTeams.length === 1 ? "" : "s"} added to this league.`,
         actionLabel: "Add teams",
         view: "setup" as const,
+        target: "add-league-teams" as const,
       },
       {
         key: "players",
@@ -3452,6 +3455,7 @@ export default function LeaguePage() {
           : "Use Team Management to add players and assign captain or vice-captain roles for every league team.",
         actionLabel: "Open Team Management",
         view: "teamManagement" as const,
+        target: "assign-players" as const,
       },
       {
         key: "fixtures",
@@ -3460,6 +3464,7 @@ export default function LeaguePage() {
         detail: `${seasonFixtures.length} fixture${seasonFixtures.length === 1 ? "" : "s"} generated.`,
         actionLabel: "Open Fixtures",
         view: "fixtures" as const,
+        target: "generate-fixtures" as const,
       },
       {
         key: "publish",
@@ -3468,11 +3473,31 @@ export default function LeaguePage() {
         detail: currentSeason?.is_published ? "League is published and visible to members." : "Publish once the setup checklist is complete.",
         actionLabel: currentSeason?.is_published ? "Published" : "Publish league",
         view: "setup" as const,
+        target: "publish-league" as const,
       },
     ],
     [setupStepState, currentSeason, seasonTeams.length, seasonFixtures.length]
   );
   const nextGuidedStep = useMemo(() => guidedSetupSteps.find((step) => !step.done) ?? null, [guidedSetupSteps]);
+  const openGuidedTarget = (
+    view: "guide" | "teamManagement" | "venues" | "profiles" | "setup" | "knockouts" | "fixtures" | "table" | "playerTable" | "handicaps",
+    target: "create-league" | "add-league-teams" | "assign-players" | "generate-fixtures" | "publish-league"
+  ) => {
+    setActiveView(view);
+    setGuidedTarget(target);
+  };
+  useEffect(() => {
+    if (!guidedTarget) return;
+    const id = `guided-${guidedTarget}`;
+    const timer = window.setTimeout(() => {
+      const el = document.getElementById(id);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        setGuidedTarget(null);
+      }
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [guidedTarget, activeView]);
   const playerTables = useMemo(() => {
     const seasonTeamById = new Map(seasonTeams.map((t) => [t.id, t]));
     const playerTeamName = new Map<string, string>();
@@ -3787,7 +3812,7 @@ export default function LeaguePage() {
                     {nextGuidedStep ? (
                       <button
                         type="button"
-                        onClick={() => setActiveView(nextGuidedStep.view)}
+                        onClick={() => openGuidedTarget(nextGuidedStep.view, nextGuidedStep.target)}
                         className="rounded-xl border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-900"
                       >
                         Next: {nextGuidedStep.actionLabel}
@@ -3821,7 +3846,7 @@ export default function LeaguePage() {
                               void publishLeague();
                               return;
                             }
-                            setActiveView(step.view);
+                            openGuidedTarget(step.view, step.target);
                           }}
                           disabled={step.key === "publish" && !step.done && publishBlockers.length > 0}
                           className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
@@ -3914,7 +3939,7 @@ export default function LeaguePage() {
                     {nextGuidedStep ? (
                       <button
                         type="button"
-                        onClick={() => setActiveView(nextGuidedStep.view)}
+                        onClick={() => openGuidedTarget(nextGuidedStep.view, nextGuidedStep.target)}
                         className="rounded-xl border border-teal-300 bg-teal-50 px-4 py-2 text-sm font-medium text-teal-900"
                       >
                         Go to {nextGuidedStep.actionLabel}
@@ -3926,7 +3951,7 @@ export default function LeaguePage() {
                   <p className="text-xs uppercase tracking-wide text-slate-500">League body</p>
                   <p className="text-sm font-semibold text-slate-900">{LEAGUE_BODY_NAME}</p>
                 </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                <div id="guided-create-league" className="mt-3 grid gap-2 sm:grid-cols-4 scroll-mt-24">
                   <select
                     className="rounded-xl border border-slate-300 bg-white px-3 py-2"
                     value={seasonTemplate}
@@ -3980,7 +4005,7 @@ export default function LeaguePage() {
                   />
                   Handicap league (maximum start 40)
                 </label>
-                <div className="mt-3">
+                <div id="guided-publish-league" className="mt-3 scroll-mt-24">
                   <button
                     type="button"
                     onClick={deleteSeason}
@@ -4003,7 +4028,7 @@ export default function LeaguePage() {
                     Publish is disabled until the checklist above is complete.
                   </p>
                 ) : null}
-                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div id="guided-add-league-teams" className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 scroll-mt-24">
                   <h3 className="text-sm font-semibold text-slate-900">Created leagues</h3>
                   <div className="mt-2 space-y-2">
                     {seasons
@@ -4999,7 +5024,7 @@ export default function LeaguePage() {
                 ) : null}
                 {showStep3Players ? (
                   <>
-                    <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div id="guided-assign-players" className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 scroll-mt-24">
                       <p className="text-sm font-semibold text-slate-900">Step 3: Register new player for team/club (first-time creation)</p>
                       <p className="mt-2 text-xs text-slate-600">
                         This step creates brand-new players only. If the player already exists, use Step 4 transfer.
@@ -5331,7 +5356,7 @@ export default function LeaguePage() {
                 </div>
                 {canManage ? (
                   <>
-                    <div className="mt-3 grid gap-2 sm:grid-cols-5">
+                      <div id="guided-generate-fixtures" className="mt-3 grid gap-2 sm:grid-cols-5 scroll-mt-24">
                       <input className="rounded-xl border border-slate-300 bg-white px-3 py-2" placeholder="Week no" value={fixtureWeek} onChange={(e) => setFixtureWeek(e.target.value)} />
                       <input type="date" className="rounded-xl border border-slate-300 bg-white px-3 py-2" value={fixtureDate} onChange={(e) => setFixtureDate(e.target.value)} />
                       <select className="rounded-xl border border-slate-300 bg-white px-3 py-2" value={fixtureHome} onChange={(e) => setFixtureHome(e.target.value)}>
