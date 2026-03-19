@@ -730,6 +730,15 @@ export default function LeaguePage() {
     }
     return Array.from(ids);
   }, [fixtureSlots]);
+  const fixtureChangeByFixtureId = useMemo(() => {
+    const map = new Map<string, FixtureChangeRequest>();
+    for (const request of fixtureChangeRequests) {
+      if (!map.has(request.fixture_id) || request.status === "rescheduled") {
+        map.set(request.fixture_id, request);
+      }
+    }
+    return map;
+  }, [fixtureChangeRequests]);
   const currentFixture = useMemo(() => fixtures.find((f) => f.id === fixtureId) ?? null, [fixtures, fixtureId]);
   const currentFixtureReschedule = useMemo(
     () => describeFixtureReschedule(currentFixture ? fixtureChangeByFixtureId.get(currentFixture.id) : null),
@@ -3633,15 +3642,6 @@ export default function LeaguePage() {
     const week = Number.parseInt(fixtureWeekFilter, 10);
     return seasonFixtures.filter((f) => f.week_no === week);
   }, [seasonFixtures, fixtureWeekFilter, fixtureTeamFilter]);
-  const fixtureChangeByFixtureId = useMemo(() => {
-    const map = new Map<string, FixtureChangeRequest>();
-    for (const request of fixtureChangeRequests) {
-      if (!map.has(request.fixture_id) || request.status === "rescheduled") {
-        map.set(request.fixture_id, request);
-      }
-    }
-    return map;
-  }, [fixtureChangeRequests]);
   const selectedTeamFixtures = useMemo(() => {
     if (!fixtureTeamFilter) return [];
     return visibleFixtures
