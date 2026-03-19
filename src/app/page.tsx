@@ -196,7 +196,7 @@ export default function HomePage() {
         }
         return {
           ...item,
-          title: "Fixture Date Requests",
+          title: "Outstanding Fixtures",
           desc:
             outstandingFixtureCount > 0
               ? `${outstandingFixtureCount} fixture${outstandingFixtureCount === 1 ? "" : "s"} currently pending review or a new agreed date.`
