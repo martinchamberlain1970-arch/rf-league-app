@@ -1318,14 +1318,6 @@ export default function LeaguePage() {
   }, [visibleSeasons, seasonId, canManage, currentUserPlayerId, members]);
 
   useEffect(() => {
-    if (canManage || !seasonId || !currentUserPlayerId) return;
-    const memberTeamId =
-      members.find((m) => m.season_id === seasonId && m.player_id === currentUserPlayerId)?.team_id ?? "";
-    if (!memberTeamId) return;
-    if (fixtureTeamFilter !== memberTeamId) setFixtureTeamFilter(memberTeamId);
-  }, [canManage, seasonId, currentUserPlayerId, members, fixtureTeamFilter]);
-
-  useEffect(() => {
     if (admin.loading || canManage) return;
     if (activeView === "guide") setActiveView("fixtures");
   }, [admin.loading, canManage, activeView]);
@@ -5164,7 +5156,7 @@ export default function LeaguePage() {
                       const buttonState =
                         isEditing
                           ? { label: "Editing", className: "border-slate-900 bg-slate-900 text-white" }
-                          : pendingSubmission
+                          : pendingSubmission || f.status === "in_progress"
                             ? { label: "Submitted", className: "border-amber-300 bg-amber-100 text-amber-900" }
                             : computed.status === "complete"
                               ? { label: "Locked", className: "border-emerald-300 bg-emerald-100 text-emerald-900" }
@@ -5226,7 +5218,7 @@ export default function LeaguePage() {
                             const buttonState =
                               isEditing
                                 ? { label: "Editing", className: "border-slate-900 bg-slate-900 text-white" }
-                                : pendingSubmission
+                                : pendingSubmission || f.status === "in_progress"
                                   ? { label: "Submitted", className: "border-amber-300 bg-amber-100 text-amber-900" }
                                   : computed.status === "complete"
                                     ? { label: "Locked", className: "border-emerald-300 bg-emerald-100 text-emerald-900" }

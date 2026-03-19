@@ -277,5 +277,10 @@ export async function POST(req: NextRequest) {
 
   if (reviewUpdate.error) return NextResponse.json({ error: reviewUpdate.error.message }, { status: 400 });
 
+  if (decision === "rejected") {
+    const resetFixture = await adminClient.from("league_fixtures").update({ status: "pending" }).eq("id", submission.fixture_id);
+    if (resetFixture.error) return NextResponse.json({ error: resetFixture.error.message }, { status: 400 });
+  }
+
   return NextResponse.json({ ok: true });
 }

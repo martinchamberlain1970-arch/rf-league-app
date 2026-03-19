@@ -167,5 +167,8 @@ export async function POST(req: NextRequest) {
   });
   if (ins.error) return NextResponse.json({ error: ins.error.message }, { status: 400 });
 
+  const fixtureUpdate = await adminClient.from("league_fixtures").update({ status: "in_progress" }).eq("id", fixture.id);
+  if (fixtureUpdate.error) return NextResponse.json({ error: fixtureUpdate.error.message }, { status: 400 });
+
   return NextResponse.json({ ok: true });
 }
