@@ -477,6 +477,50 @@ export default function EventsPage() {
     if (f.home_points === null && f.away_points === null) return "Result not entered";
     return `${f.home_points ?? 0}-${f.away_points ?? 0}`;
   };
+  const leagueOverviewCards = useMemo(() => {
+    const activeSummaries = leagueSummaries.length;
+    const nextCount = leagueSummaries.filter((summary) => Boolean(summary.nextFixture)).length;
+    const completedCount = leagueSummaries.filter((summary) => summary.lastFixture?.status === "complete").length;
+    const rescheduledCount = fixtureChangeRequests.filter((request) => request.status === "rescheduled").length;
+    return [
+      {
+        title: "Teams in View",
+        value: activeSummaries,
+        detail: "Published leagues currently linked to your team memberships.",
+        tone: "indigo",
+      },
+      {
+        title: "Next Fixtures",
+        value: nextCount,
+        detail: "Fixtures currently sitting in the next-up slot across your leagues.",
+        tone: "sky",
+      },
+      {
+        title: "Completed Results",
+        value: completedCount,
+        detail: "Last-match slots already carrying an approved result.",
+        tone: "emerald",
+      },
+      {
+        title: "Moved Dates",
+        value: rescheduledCount,
+        detail: "Fixtures that were brought forward or moved to a later agreed date.",
+        tone: "amber",
+      },
+    ] as const;
+  }, [fixtureChangeRequests, leagueSummaries]);
+  const overviewCardClass = (tone: "indigo" | "sky" | "emerald" | "amber") => {
+    if (tone === "indigo") return "border-indigo-200 bg-gradient-to-br from-indigo-50 to-white";
+    if (tone === "sky") return "border-sky-200 bg-gradient-to-br from-sky-50 to-white";
+    if (tone === "emerald") return "border-emerald-200 bg-gradient-to-br from-emerald-50 to-white";
+    return "border-amber-200 bg-gradient-to-br from-amber-50 to-white";
+  };
+  const overviewValueClass = (tone: "indigo" | "sky" | "emerald" | "amber") => {
+    if (tone === "indigo") return "text-indigo-700";
+    if (tone === "sky") return "text-sky-700";
+    if (tone === "emerald") return "text-emerald-700";
+    return "text-amber-700";
+  };
   const playersByTeam = useMemo(() => {
     const map = new Map<string, LeaguePlayer[]>();
     const byId = new Map(seasonPlayers.map((p) => [p.id, p]));
@@ -982,6 +1026,29 @@ export default function EventsPage() {
 
           {leagueMode ? (
             <section className="space-y-3">
+              <article className={cardBaseClass}>
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Match Centre</p>
+                    <h2 className="mt-1 text-xl font-black text-slate-950">League Fixture Timeline</h2>
+                    <p className="mt-1 text-sm text-slate-600">
+                      The immediate operational picture for your published league fixtures, including moved dates and next-match visibility.
+                    </p>
+                  </div>
+                  <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                    {leagueSummaries.length > 0 ? `${leagueSummaries.length} linked team view${leagueSummaries.length === 1 ? "" : "s"}` : "No linked league view"}
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                  {leagueOverviewCards.map((card) => (
+                    <div key={card.title} className={`rounded-xl border p-3 shadow-sm ${overviewCardClass(card.tone)}`}>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{card.title}</p>
+                      <p className={`mt-2 text-3xl font-black ${overviewValueClass(card.tone)}`}>{card.value}</p>
+                      <p className="mt-2 text-sm font-medium text-slate-900">{card.detail}</p>
+                    </div>
+                  ))}
+                </div>
+              </article>
               {leagueSummaries.length === 0 ? (
                 <article className={cardBaseClass}>
                   <h2 className="text-lg font-semibold text-slate-900">{teamLabel ?? "My Team"}</h2>
@@ -989,12 +1056,19 @@ export default function EventsPage() {
                 </article>
               ) : (
                 leagueSummaries.map((summary) => (
-                  <article key={summary.key} className={cardBaseClass}>
-                    <h2 className="text-lg font-semibold text-slate-900">{summary.label}</h2>
-                    <p className="mt-1 text-sm text-slate-600">{summary.seasonName}</p>
+                  <article key={summary.key} className={`${cardBaseClass} bg-gradient-to-br from-white via-slate-50 to-white`}>
+                    <div className="flex flex-wrap items-end justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{summary.seasonName}</p>
+                        <h2 className="mt-1 text-xl font-black text-slate-950">{summary.label}</h2>
+                      </div>
+                      <div className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                        {summary.nextFixture ? "Upcoming fixture live" : "Awaiting next fixture"}
+                      </div>
+                    </div>
                     <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Last Match</p>
+                      <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Last Match</p>
                         <p className="mt-1 text-sm font-medium text-slate-900">{leagueFixtureLabel(summary.lastFixture)}</p>
                         <p className="text-xs text-slate-600">{leagueFixtureDate(summary.lastFixture)} · {leagueFixtureScore(summary.lastFixture)}</p>
                         {leagueFixtureReschedule(summary.lastFixture) ? (
@@ -1018,10 +1092,10 @@ export default function EventsPage() {
                       <button
                         type="button"
                         onClick={() => summary.nextFixture && setPredictionFixture(summary.nextFixture)}
-                        className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-left transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-70"
+                        className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-3 text-left shadow-sm transition hover:bg-indigo-100 disabled:cursor-not-allowed disabled:opacity-70"
                         disabled={!summary.nextFixture}
                       >
-                        <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Next Match</p>
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-700">Next Match</p>
                         <p className="mt-1 text-sm font-medium text-slate-900">{leagueFixtureLabel(summary.nextFixture)}</p>
                         <p className="text-xs text-slate-600">{leagueFixtureDate(summary.nextFixture)}</p>
                         {leagueFixtureReschedule(summary.nextFixture) ? (
@@ -1034,8 +1108,8 @@ export default function EventsPage() {
                         ) : null}
                         <p className="mt-2 text-xs font-medium text-indigo-800">Click to view match preview</p>
                       </button>
-                      <div className="rounded-xl border border-teal-200 bg-teal-50 p-3">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Future Match</p>
+                      <div className="rounded-xl border border-teal-200 bg-gradient-to-br from-teal-50 to-white p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700">Future Match</p>
                         <p className="mt-1 text-sm font-medium text-slate-900">{leagueFixtureLabel(summary.followingFixture)}</p>
                         <p className="text-xs text-slate-600">{leagueFixtureDate(summary.followingFixture)}</p>
                         {leagueFixtureReschedule(summary.followingFixture) ? (
