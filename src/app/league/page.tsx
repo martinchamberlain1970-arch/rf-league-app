@@ -901,6 +901,7 @@ export default function LeaguePage() {
       return {
         title: "League Manager Summary",
         points: [
+          "Use the Guided setup panel to work in league-creation order without jumping between tabs.",
           "Use Team Management first to register teams, players, and captain/vice-captain assignments.",
           "Use Venues to maintain club records and contact details.",
           "Use League Setup to create a league season and attach teams.",
@@ -3384,6 +3385,85 @@ export default function LeaguePage() {
       pendingApprovals: allPendingSubmissions.filter((s) => s.season_id === seasonId).length,
     };
   }, [seasonFixtures, seasonTeams.length, allPendingSubmissions, seasonId]);
+  const setupStepState = useMemo(() => {
+    const created = Boolean(currentSeason);
+    const enoughTeams = seasonTeams.length >= 2;
+    const teamPlayerCounts = seasonTeams.map((team) => (teamMembersByTeam.get(team.id) ?? []).length);
+    const teamRoleCoverage = seasonTeams.map((team) =>
+      members.some((m) => m.team_id === team.id && (m.is_captain || Boolean(m.is_vice_captain)))
+    );
+    const playersAssigned = enoughTeams && teamPlayerCounts.every((count) => count > 0) && teamRoleCoverage.every(Boolean);
+    const fixturesGenerated = seasonFixtures.length > 0;
+    const published = Boolean(currentSeason?.is_published);
+    return {
+      created,
+      enoughTeams,
+      playersAssigned,
+      fixturesGenerated,
+      published,
+      teamPlayerCounts,
+      teamRoleCoverage,
+    };
+  }, [currentSeason, seasonTeams, teamMembersByTeam, members, seasonFixtures.length]);
+  const publishBlockers = useMemo(() => {
+    const blockers: string[] = [];
+    if (!setupStepState.created) blockers.push("Create the league first.");
+    if (!setupStepState.enoughTeams) blockers.push("Add at least two teams to the selected league.");
+    seasonTeams.forEach((team, index) => {
+      if ((setupStepState.teamPlayerCounts[index] ?? 0) === 0) blockers.push(`${team.name} has no players assigned.`);
+      if (!setupStepState.teamRoleCoverage[index]) blockers.push(`${team.name} has no captain or vice-captain assigned.`);
+    });
+    if (!setupStepState.fixturesGenerated) blockers.push("Generate fixtures before publishing.");
+    return blockers;
+  }, [setupStepState, seasonTeams]);
+  const guidedSetupSteps = useMemo(
+    () => [
+      {
+        key: "create",
+        title: "1. Create league",
+        done: setupStepState.created,
+        detail: currentSeason ? `Selected league: ${currentSeason.name}` : "Create the league season and choose format/handicap mode.",
+        actionLabel: currentSeason ? "Review league setup" : "Create league",
+        view: "setup" as const,
+      },
+      {
+        key: "teams",
+        title: "2. Add teams",
+        done: setupStepState.enoughTeams,
+        detail: `${seasonTeams.length} team${seasonTeams.length === 1 ? "" : "s"} added to this league.`,
+        actionLabel: "Add teams",
+        view: "setup" as const,
+      },
+      {
+        key: "players",
+        title: "3. Assign players and roles",
+        done: setupStepState.playersAssigned,
+        detail: setupStepState.playersAssigned
+          ? "Every league team has players plus captain/vice-captain coverage."
+          : "Use Team Management to add players and assign captain or vice-captain roles for every league team.",
+        actionLabel: "Open Team Management",
+        view: "teamManagement" as const,
+      },
+      {
+        key: "fixtures",
+        title: "4. Generate fixtures",
+        done: setupStepState.fixturesGenerated,
+        detail: `${seasonFixtures.length} fixture${seasonFixtures.length === 1 ? "" : "s"} generated.`,
+        actionLabel: "Open Fixtures",
+        view: "fixtures" as const,
+      },
+      {
+        key: "publish",
+        title: "5. Publish league",
+        done: setupStepState.published,
+        detail: currentSeason?.is_published ? "League is published and visible to members." : "Publish once the setup checklist is complete.",
+        actionLabel: currentSeason?.is_published ? "Published" : "Publish league",
+        view: "setup" as const,
+      },
+    ],
+    [setupStepState, currentSeason, seasonTeams.length, seasonFixtures.length]
+  );
+  const nextGuidedStep = useMemo(() => guidedSetupSteps.find((step) => !step.done) ?? null, [guidedSetupSteps]);
   const playerTables = useMemo(() => {
     const seasonTeamById = new Map(seasonTeams.map((t) => [t.id, t]));
     const playerTeamName = new Map<string, string>();
@@ -3695,6 +3775,76 @@ export default function LeaguePage() {
                   </details>
                 </section>
               ) : null}
+              {canManage ? (
+                <section className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-white via-indigo-50 to-sky-50 p-4 shadow-sm">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg font-semibold text-slate-900">Guided setup</h2>
+                      <p className="mt-1 text-sm text-slate-600">
+                        Follow the league creation flow in order. The existing tabs still work for direct editing, but this checklist keeps the setup sequence clear.
+                      </p>
+                    </div>
+                    {nextGuidedStep ? (
+                      <button
+                        type="button"
+                        onClick={() => setActiveView(nextGuidedStep.view)}
+                        className="rounded-xl border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-900"
+                      >
+                        Next: {nextGuidedStep.actionLabel}
+                      </button>
+                    ) : (
+                      <span className="rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-900">
+                        Setup complete
+                      </span>
+                    )}
+                  </div>
+                  <div className="mt-4 grid gap-3 lg:grid-cols-5">
+                    {guidedSetupSteps.map((step) => (
+                      <div key={step.key} className="rounded-xl border border-slate-200 bg-white p-3">
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-sm font-semibold text-slate-900">{step.title}</p>
+                          <span
+                            className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                              step.done
+                                ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                                : "border-amber-300 bg-amber-100 text-amber-900"
+                            }`}
+                          >
+                            {step.done ? "Complete" : "Needs attention"}
+                          </span>
+                        </div>
+                        <p className="mt-2 text-xs text-slate-600">{step.detail}</p>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (step.key === "publish" && !step.done && publishBlockers.length === 0) {
+                              void publishLeague();
+                              return;
+                            }
+                            setActiveView(step.view);
+                          }}
+                          disabled={step.key === "publish" && !step.done && publishBlockers.length > 0}
+                          className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          {step.actionLabel}
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+                    <p className="text-sm font-semibold text-slate-900">Publish checklist</p>
+                    {publishBlockers.length === 0 ? (
+                      <p className="mt-2 text-sm text-emerald-800">This league is ready to publish.</p>
+                    ) : (
+                      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
+                        {publishBlockers.map((blocker) => (
+                          <li key={blocker}>{blocker}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                </section>
+              ) : null}
               {!canManage ? (
                 <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
                   <label className="mb-1 block text-xs uppercase tracking-wide text-slate-500">Published League</label>
@@ -3751,6 +3901,27 @@ export default function LeaguePage() {
               {activeView === "setup" ? (
               <section className="rounded-2xl border border-teal-200 bg-gradient-to-br from-white to-teal-50 p-4 shadow-sm">
                 <h2 className="text-lg font-semibold text-teal-900">League Setup</h2>
+                <div className="mt-3 rounded-xl border border-teal-200 bg-white p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Current setup position</p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {nextGuidedStep
+                          ? `Next recommended step: ${nextGuidedStep.title.replace(/^\d+\.\s*/, "")}.`
+                          : "This league setup is complete. You can still return here to edit league details or publish status."}
+                      </p>
+                    </div>
+                    {nextGuidedStep ? (
+                      <button
+                        type="button"
+                        onClick={() => setActiveView(nextGuidedStep.view)}
+                        className="rounded-xl border border-teal-300 bg-teal-50 px-4 py-2 text-sm font-medium text-teal-900"
+                      >
+                        Go to {nextGuidedStep.actionLabel}
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
                 <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-xs uppercase tracking-wide text-slate-500">League body</p>
                   <p className="text-sm font-semibold text-slate-900">{LEAGUE_BODY_NAME}</p>
@@ -3821,12 +3992,17 @@ export default function LeaguePage() {
                   <button
                     type="button"
                     onClick={publishLeague}
-                    disabled={!seasonId || Boolean(currentSeason?.is_published)}
+                    disabled={!seasonId || Boolean(currentSeason?.is_published) || publishBlockers.length > 0}
                     className="ml-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {currentSeason?.is_published ? "League published" : "Publish selected league"}
                   </button>
                 </div>
+                {!currentSeason?.is_published && publishBlockers.length > 0 ? (
+                  <p className="mt-2 text-xs text-slate-600">
+                    Publish is disabled until the checklist above is complete.
+                  </p>
+                ) : null}
                 <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <h3 className="text-sm font-semibold text-slate-900">Created leagues</h3>
                   <div className="mt-2 space-y-2">
