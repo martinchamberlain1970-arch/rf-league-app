@@ -134,7 +134,8 @@ export default function RescheduleFixturePage() {
   );
 
   const activeRequestFixtureIds = useMemo(() => new Set(requests.filter((r) => r.status === "pending" || r.status === "approved_outstanding").map((r) => r.fixture_id)), [requests]);
-  const nextFixture = useMemo(() => captainsFixtures.find((f) => !activeRequestFixtureIds.has(f.id)) ?? null, [captainsFixtures, activeRequestFixtureIds]);
+  const earliestCaptainFixture = useMemo(() => captainsFixtures[0] ?? null, [captainsFixtures]);
+  const nextFixture = earliestCaptainFixture;
   const nextFixtureRequests = useMemo(() => nextFixture ? requests.filter((r) => r.fixture_id === nextFixture.id) : [], [requests, nextFixture]);
   const outstandingRequests = useMemo(
     () => requests.filter((r) => r.status === "pending" || r.status === "approved_outstanding"),
@@ -203,7 +204,7 @@ export default function RescheduleFixturePage() {
     <main className="min-h-screen bg-slate-100 p-6">
       <div className="mx-auto max-w-5xl space-y-4">
         <RequireAuth>
-          <ScreenHeader title="Outstanding Fixtures" eyebrow="League" subtitle="Track approved change requests and, if you're captain or vice-captain, submit the next fixture-date request." />
+          <ScreenHeader title="Fixture Date Requests" eyebrow="League" subtitle="Track active requests and, if you're captain or vice-captain, submit a date-change request for the current fixture only." />
           <MessageModal message={message} onClose={() => setMessage(null)} />
           <InfoModal open={Boolean(info)} title={info?.title ?? ""} description={info?.description ?? ""} onClose={() => setInfo(null)} />
 
@@ -226,7 +227,7 @@ export default function RescheduleFixturePage() {
 
             {hasCaptainPrivileges ? <section className={sectionCardClass}>
               <h2 className={sectionTitleClass}>Next available fixture</h2>
-              {!nextFixture ? <p className="mt-3 text-sm text-slate-600">No outstanding fixture requests are available for your next team fixture right now.</p> : (
+              {!nextFixture ? <p className="mt-3 text-sm text-slate-600">No fixture-date requests are available for your next team fixture right now.</p> : (
                 <div className="mt-3 space-y-4">
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                     <p className="font-medium text-slate-900">{teamById.get(nextFixture.home_team_id) ?? "Home"} vs {teamById.get(nextFixture.away_team_id) ?? "Away"}</p>
@@ -267,7 +268,7 @@ export default function RescheduleFixturePage() {
                   ) : null}
                   {nextFixtureRequests.length > 0 ? (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                      An active request already exists for this fixture and will stay outstanding until the League Secretary rejects it or sets a new agreed date.
+                      An active request already exists for this fixture. You cannot raise a request for a later fixture until this fixture is played or its league date has passed.
                     </div>
                   ) : null}
                   <button
@@ -279,7 +280,7 @@ export default function RescheduleFixturePage() {
                       }
                       void submitRequest();
                     }}
-                    disabled={submitting}
+                    disabled={submitting || nextFixtureRequests.length > 0}
                     className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
                   >
                     {submitting ? "Submitting..." : "Submit request"}
