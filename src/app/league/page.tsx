@@ -1300,10 +1300,20 @@ export default function LeaguePage() {
       if (seasonId) setSeasonId("");
       return;
     }
+    if (!canManage && currentUserPlayerId) {
+      const memberSeasonIds = new Set(
+        members.filter((m) => m.player_id === currentUserPlayerId).map((m) => m.season_id)
+      );
+      const preferredSeason = visibleSeasons.find((s) => memberSeasonIds.has(s.id));
+      if (preferredSeason && preferredSeason.id !== seasonId) {
+        setSeasonId(preferredSeason.id);
+        return;
+      }
+    }
     if (!visibleSeasons.some((s) => s.id === seasonId)) {
       setSeasonId(visibleSeasons[0].id);
     }
-  }, [visibleSeasons, seasonId]);
+  }, [visibleSeasons, seasonId, canManage, currentUserPlayerId, members]);
 
   useEffect(() => {
     if (admin.loading || canManage) return;
