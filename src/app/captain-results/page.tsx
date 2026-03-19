@@ -100,11 +100,13 @@ const sortLabelByFirstName = (a: string, b: string) => {
 
 function isFixtureOpenForSubmission(fixtureDate: string | null) {
   if (!fixtureDate) return false;
-  const parsed = new Date(`${fixtureDate}T12:00:00`);
-  if (Number.isNaN(parsed.getTime())) return false;
+  const fixtureStart = new Date(`${fixtureDate}T00:00:00`);
+  if (Number.isNaN(fixtureStart.getTime())) return false;
+  const submissionDeadline = new Date(fixtureStart);
+  submissionDeadline.setDate(submissionDeadline.getDate() + 1);
+  submissionDeadline.setHours(17, 0, 0, 0);
   const now = new Date();
-  const endOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
-  return parsed <= endOfToday;
+  return now >= fixtureStart && now <= submissionDeadline;
 }
 
 const sectionCardClass = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
@@ -509,7 +511,7 @@ export default function CaptainResultsPage() {
       setMessage("You can only submit results for your own team fixtures.");
       return;
     }
-    if (!isFixtureOpenForSubmission(selectedFixture.fixture_date)) return setMessage("Fixture is not open yet. You can submit on the fixture date.");
+    if (!isFixtureOpenForSubmission(selectedFixture.fixture_date)) return setMessage("Fixture is not open. Captains can submit from match night until 5pm on the following Friday.");
     if (pendingByFixture.has(selectedFixture.id)) return setMessage("A submission is already pending for this fixture.");
 
     const frameResults: SubmissionFrameResult[] = slots.map((s) => ({
@@ -625,7 +627,7 @@ export default function CaptainResultsPage() {
 
               {myCurrentWeekFixtures.length === 0 ? (
                 <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                  No fixtures are open for submission yet. Captains and vice-captains can submit from the fixture date.
+                  No fixtures are open for submission right now. Captains and vice-captains can submit from match night until 5pm on the following Friday.
                 </p>
               ) : null}
               {selectedFixture ? (

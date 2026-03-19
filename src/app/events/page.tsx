@@ -178,36 +178,38 @@ export default function EventsPage() {
           .eq("is_published", true)
           .order("created_at", { ascending: false });
         const publishedSeasons = (seasonsRes.data ?? []) as Array<{ id: string }>;
-        const latestSeasonId = publishedSeasons[0]?.id ?? null;
-        if (!latestSeasonId) return;
+        const publishedSeasonIds = publishedSeasons.map((season) => season.id);
+        if (publishedSeasonIds.length === 0) return;
 
         const memberRes = await client
           .from("league_team_members")
           .select("season_id,team_id,player_id")
           .eq("player_id", linkedPlayerId)
-          .eq("season_id", latestSeasonId);
+          .in("season_id", publishedSeasonIds);
         const members = (memberRes.data ?? []) as LeagueTeamMember[];
         if (members.length === 0) return;
 
-        const selectedSeasonId = latestSeasonId;
+        const relevantSeasonIds = Array.from(new Set(members.map((m) => m.season_id)));
         const memberTeamIds = Array.from(new Set(members.map((m) => m.team_id)));
 
         const [teamsRes, fixturesRes] = await Promise.all([
-          client.from("league_teams").select("id,name").eq("season_id", selectedSeasonId),
+          client.from("league_teams").select("id,name,season_id").in("season_id", relevantSeasonIds),
           client
             .from("league_fixtures")
             .select("id,season_id,week_no,fixture_date,home_team_id,away_team_id,status,home_points,away_points")
-            .eq("season_id", selectedSeasonId)
+            .in("season_id", relevantSeasonIds)
             .order("fixture_date", { ascending: true }),
         ]);
         const teamMap = new Map(((teamsRes.data ?? []) as LeagueTeam[]).map((t) => [t.id, t.name]));
         setTeamById(teamMap);
 
-        const allSeasonFixtures = (fixturesRes.data ?? []) as LeagueFixture[];
-        const fixturesByTeam = (teamId: string) =>
-          allSeasonFixtures.filter((f) => f.home_team_id === teamId || f.away_team_id === teamId);
+        const allSeasonFixtures = ((fixturesRes.data ?? []) as LeagueFixture[]).filter(
+          (fixture) => memberTeamIds.includes(fixture.home_team_id) || memberTeamIds.includes(fixture.away_team_id)
+        );
+        const fixturesForMemberTeams = allSeasonFixtures.filter(
+          (fixture) => memberTeamIds.includes(fixture.home_team_id) || memberTeamIds.includes(fixture.away_team_id)
+        );
 
-        // If user is in multiple teams this season, pick the one with the nearest upcoming fixture.
         const now = new Date();
         const toDayKey = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
         const keyOf = (f: LeagueFixture) => {
@@ -215,38 +217,30 @@ export default function EventsPage() {
           const d = new Date(`${f.fixture_date}T12:00:00`);
           return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
         };
-        const selectedTeamId =
-          memberTeamIds
-            .map((teamId) => {
-              const teamFixtures = fixturesByTeam(teamId);
-              const next = teamFixtures
-                .filter((f) => keyOf(f) >= toDayKey)
-                .sort((a, b) => keyOf(a) - keyOf(b))[0];
-              return {
-                teamId,
-                teamName: teamMap.get(teamId) ?? "My Team",
-                nextDateKey: next ? keyOf(next) : Number.POSITIVE_INFINITY,
-              };
-            })
-            .sort((a, b) => a.nextDateKey - b.nextDateKey || a.teamName.localeCompare(b.teamName))[0]?.teamId ?? memberTeamIds[0];
 
-        setTeamLabel(teamMap.get(selectedTeamId) ?? "My Team");
-        const fixtures = fixturesByTeam(selectedTeamId);
-        const past = fixtures.filter((f) => keyOf(f) <= toDayKey).sort((a, b) => keyOf(b) - keyOf(a));
-        const future = fixtures.filter((f) => keyOf(f) > toDayKey).sort((a, b) => keyOf(a) - keyOf(b));
+        const uniqueTeamLabels = Array.from(
+          new Set(memberTeamIds.map((teamId) => teamMap.get(teamId) ?? "My Team"))
+        ).sort((a, b) => a.localeCompare(b));
+        setTeamLabel(uniqueTeamLabels.join(" / ") || "My Team");
+
+        const past = fixturesForMemberTeams.filter((f) => keyOf(f) <= toDayKey).sort((a, b) => keyOf(b) - keyOf(a));
+        const future = fixturesForMemberTeams.filter((f) => keyOf(f) > toDayKey).sort((a, b) => keyOf(a) - keyOf(b));
         setLastFixture(past[0] ?? null);
         setNextFixture(future[0] ?? null);
         setFollowingFixture(future[1] ?? null);
         setSeasonFixtures(allSeasonFixtures);
+        const fixtureIds = allSeasonFixtures.map((f) => f.id);
         const [membersResAll, framesResAll, playersResAll] = await Promise.all([
           client
             .from("league_team_members")
             .select("season_id,team_id,player_id")
-            .eq("season_id", selectedSeasonId),
-          client
-            .from("league_fixture_frames")
-            .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id")
-            .in("fixture_id", allSeasonFixtures.map((f) => f.id)),
+            .in("season_id", relevantSeasonIds),
+          fixtureIds.length
+            ? client
+                .from("league_fixture_frames")
+                .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id")
+                .in("fixture_id", fixtureIds)
+            : Promise.resolve({ data: [] as LeagueFramePerf[] }),
           client
             .from("players")
             .select("id,display_name,full_name,rating_snooker,snooker_handicap")
@@ -315,25 +309,27 @@ export default function EventsPage() {
               p.full_name?.trim() || p.display_name || "Unknown",
             ])
           );
-          const mapped: UserCompetitionMatch[] = matchRows.map((m) => {
-            const ids = [
-              m.player1_id,
-              m.player2_id,
-              m.team1_player1_id,
-              m.team1_player2_id,
-              m.team2_player1_id,
-              m.team2_player2_id,
-            ].filter(Boolean) as string[];
-            const opponents = ids.filter((id) => id !== linkedPlayerId).map((id) => playerNameById.get(id) ?? "Opponent");
-            return {
-              matchId: m.id,
-              competitionName: compNameById.get(m.competition_id ?? "") ?? "Competition",
-              status: m.status,
-              roundNo: m.round_no,
-              matchNo: m.match_no,
-              opponentLabel: opponents.length ? opponents.join(" / ") : "Opponent TBC",
-            };
-          });
+          const mapped: UserCompetitionMatch[] = matchRows
+            .filter((m) => Boolean(m.competition_id) && compNameById.has(m.competition_id ?? ""))
+            .map((m) => {
+              const ids = [
+                m.player1_id,
+                m.player2_id,
+                m.team1_player1_id,
+                m.team1_player2_id,
+                m.team2_player1_id,
+                m.team2_player2_id,
+              ].filter(Boolean) as string[];
+              const opponents = ids.filter((id) => id !== linkedPlayerId).map((id) => playerNameById.get(id) ?? "Opponent");
+              return {
+                matchId: m.id,
+                competitionName: compNameById.get(m.competition_id ?? "") ?? "Competition",
+                status: m.status,
+                roundNo: m.round_no,
+                matchNo: m.match_no,
+                opponentLabel: opponents.length ? opponents.join(" / ") : "Opponent TBC",
+              };
+            });
           setUserCompetitionMatches(mapped);
         }
       };
@@ -386,8 +382,12 @@ export default function EventsPage() {
   };
   const leagueFixtureDate = (f: LeagueFixture | null) =>
     f?.fixture_date ? new Date(`${f.fixture_date}T12:00:00`).toLocaleDateString("en-GB") : "Date TBC";
-  const leagueFixtureScore = (f: LeagueFixture | null) =>
-    f && (f.home_points !== null || f.away_points !== null) ? `${f.home_points ?? 0}-${f.away_points ?? 0}` : "Not played";
+  const leagueFixtureScore = (f: LeagueFixture | null) => {
+    if (!f) return "Not played";
+    if (f.status !== "complete") return "Awaiting result";
+    if (f.home_points === null && f.away_points === null) return "Result not entered";
+    return `${f.home_points ?? 0}-${f.away_points ?? 0}`;
+  };
   const playersByTeam = useMemo(() => {
     const map = new Map<string, LeaguePlayer[]>();
     const byId = new Map(seasonPlayers.map((p) => [p.id, p]));
