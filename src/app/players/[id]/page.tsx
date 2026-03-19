@@ -1281,30 +1281,34 @@ export default function PlayerProfilePage() {
               ) : null}
               {player && rankingCard ? (
                 <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                  <div className="rounded-2xl border border-cyan-200 bg-white p-4 shadow-sm">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-cyan-700">Current Elo</p>
+                  <div className="rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-white p-4 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-700">Current Elo</p>
                     <p className="mt-2 text-3xl font-black text-slate-950">{Math.round(rankingCard.snookerRating)}</p>
-                    <p className="mt-1 text-sm text-slate-600">Live snooker rating after approved results.</p>
+                    <p className="mt-1 text-sm font-medium text-slate-900">Live snooker rating after approved results.</p>
+                    <p className="mt-2 text-xs text-slate-600">Peak {Math.round(rankingCard.snookerPeak)} · Rated matches {rankingCard.snookerMatches}</p>
                   </div>
-                  <div className="rounded-2xl border border-indigo-200 bg-white p-4 shadow-sm">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Rank</p>
+                  <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-4 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-700">Rank</p>
                     <p className="mt-2 text-3xl font-black text-slate-950">#{rankingCard.snookerRank}</p>
-                    <p className="mt-1 text-sm text-slate-600">Out of {rankingCard.totalPlayers} active players.</p>
+                    <p className="mt-1 text-sm font-medium text-slate-900">Out of {rankingCard.totalPlayers} active players.</p>
+                    <p className="mt-2 text-xs text-slate-600">Current position in the live snooker ladder.</p>
                   </div>
-                  <div className="rounded-2xl border border-teal-200 bg-white p-4 shadow-sm">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Current Handicap</p>
+                  <div className="rounded-2xl border border-teal-200 bg-gradient-to-br from-teal-50 to-white p-4 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700">Current Handicap</p>
                     <p className="mt-2 text-3xl font-black text-slate-950">{Number(player.snooker_handicap ?? 0) > 0 ? `+${player.snooker_handicap}` : (player.snooker_handicap ?? 0)}</p>
-                    <p className="mt-1 text-sm text-slate-600">Live points-start figure after latest review.</p>
+                    <p className="mt-1 text-sm font-medium text-slate-900">Live points-start figure after latest review.</p>
+                    <p className="mt-2 text-xs text-slate-600">Baseline {Number(player.snooker_handicap_base ?? 0) > 0 ? `+${player.snooker_handicap_base}` : (player.snooker_handicap_base ?? 0)}</p>
                   </div>
-                  <div className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Frames Won %</p>
+                  <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Frames Won %</p>
                     <p className="mt-2 text-3xl font-black text-slate-950">{pct(effectiveSummary.won, effectiveSummary.played)}%</p>
-                    <p className="mt-1 text-sm text-slate-600">{effectiveSummary.won} wins from {effectiveSummary.played} recorded frames.</p>
+                    <p className="mt-1 text-sm font-medium text-slate-900">{effectiveSummary.won} wins from {effectiveSummary.played} recorded frames.</p>
+                    <p className="mt-2 text-xs text-slate-600">Recent form: {effectiveFormGuide}</p>
                   </div>
                 </section>
               ) : null}
               {rankingCard ? (
-                <section className="rounded-[2rem] border border-slate-200 bg-white p-5 shadow-sm">
+                <section className="rounded-[2rem] border border-slate-200 bg-gradient-to-br from-white via-cyan-50/40 to-white p-5 shadow-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-lg font-semibold text-slate-900">Ranking Card</h2>
                     <button
@@ -1338,10 +1342,10 @@ export default function PlayerProfilePage() {
                     </p>
                   </div>
                   <div className="mt-3 grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-4">
+                    <div className="rounded-xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-white p-4">
                       <p className="text-sm font-semibold text-slate-900">Current Elo</p>
-                      <p className="mt-1 text-2xl font-bold text-slate-900">{Math.round(rankingCard.snookerRating)}</p>
-                      <p className="text-sm text-slate-600">Rank #{rankingCard.snookerRank} of {rankingCard.totalPlayers}</p>
+                      <p className="mt-1 text-3xl font-black text-slate-950">{Math.round(rankingCard.snookerRating)}</p>
+                      <p className="text-sm font-medium text-slate-900">Rank #{rankingCard.snookerRank} of {rankingCard.totalPlayers}</p>
                       <p className="text-xs text-slate-500">Peak {Math.round(rankingCard.snookerPeak)} · Rated matches {rankingCard.snookerMatches}</p>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-white p-4">

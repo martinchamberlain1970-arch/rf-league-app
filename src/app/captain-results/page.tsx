@@ -754,6 +754,49 @@ export default function CaptainResultsPage() {
               ) : null}
               {selectedFixture ? (
                 <div className="space-y-3">
+                  <div className="grid gap-3 lg:grid-cols-3">
+                    <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Selected Fixture</p>
+                      <p className="mt-2 text-lg font-black text-slate-950">
+                        {teamById.get(selectedFixture.home_team_id)?.name ?? "Home"} vs {teamById.get(selectedFixture.away_team_id)?.name ?? "Away"}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {selectedFixture.fixture_date
+                          ? new Date(`${selectedFixture.fixture_date}T12:00:00`).toLocaleDateString()
+                          : `Week ${selectedFixture.week_no ?? "-"}`}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 shadow-sm">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Submission Window</p>
+                      <p className="mt-2 text-lg font-black text-slate-950">
+                        {isFixtureOpenForSubmission(selectedFixture.fixture_date) ? "Open now" : "Closed"}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-700">Match night until 5pm on the following day.</p>
+                    </div>
+                    <div
+                      className={`rounded-xl border p-3 shadow-sm ${
+                        pendingByFixture.has(selectedFixture.id)
+                          ? "border-amber-200 bg-amber-50"
+                          : "border-indigo-200 bg-indigo-50"
+                      }`}
+                    >
+                      <p
+                        className={`text-xs font-semibold uppercase tracking-[0.2em] ${
+                          pendingByFixture.has(selectedFixture.id) ? "text-amber-700" : "text-indigo-700"
+                        }`}
+                      >
+                        Current Status
+                      </p>
+                      <p className="mt-2 text-lg font-black text-slate-950">
+                        {pendingByFixture.has(selectedFixture.id) ? "Submitted" : "Draft in progress"}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-700">
+                        {pendingByFixture.has(selectedFixture.id)
+                          ? "Read-only until Super User review is completed."
+                          : "Save progress locally or submit once every frame is complete."}
+                      </p>
+                    </div>
+                  </div>
                   {pendingByFixture.has(selectedFixture.id) ? (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                       This fixture has been submitted and is pending Super User review. Your submitted details are shown below in read-only mode.

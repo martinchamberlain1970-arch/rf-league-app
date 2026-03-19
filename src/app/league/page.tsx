@@ -3868,13 +3868,18 @@ export default function LeaguePage() {
                   <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
                     <p className="text-sm font-semibold text-slate-900">Publish checklist</p>
                     {publishBlockers.length === 0 ? (
-                      <p className="mt-2 text-sm text-emerald-800">This league is ready to publish.</p>
+                      <p className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
+                        This league is ready to publish.
+                      </p>
                     ) : (
-                      <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-slate-700">
-                        {publishBlockers.map((blocker) => (
-                          <li key={blocker}>{blocker}</li>
-                        ))}
-                      </ul>
+                      <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                        <p className="text-sm font-semibold text-amber-900">Action still required before publish</p>
+                        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900">
+                          {publishBlockers.map((blocker) => (
+                            <li key={blocker}>{blocker}</li>
+                          ))}
+                        </ul>
+                      </div>
                     )}
                   </div>
                 </section>
@@ -3903,30 +3908,50 @@ export default function LeaguePage() {
               ) : null}
               {seasonId && activeView === "guide" ? (
                 <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                  <div className="grid gap-2 sm:grid-cols-6">
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
-                      <p className="text-xs text-slate-500">Teams</p>
-                      <p className="text-lg font-semibold text-slate-900">{seasonSummary.teams}</p>
+                  <div className="flex flex-wrap items-end justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">League Snapshot</p>
+                      <h2 className="mt-1 text-xl font-black text-slate-950">{seasonDisplayLabel(currentSeason ?? { name: "League", handicap_enabled: false })}</h2>
+                      <p className="mt-1 text-sm text-slate-600">Use this as the operating summary for setup progress, fixture completion, and review workload.</p>
                     </div>
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
-                      <p className="text-xs text-slate-500">Fixtures</p>
-                      <p className="text-lg font-semibold text-slate-900">{seasonSummary.fixtures}</p>
+                    <div
+                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                        seasonSummary.pendingApprovals > 0 ? "border border-amber-300 bg-amber-100 text-amber-900" : "border border-emerald-300 bg-emerald-100 text-emerald-900"
+                      }`}
+                    >
+                      {seasonSummary.pendingApprovals > 0 ? `${seasonSummary.pendingApprovals} approval${seasonSummary.pendingApprovals === 1 ? "" : "s"} require attention` : "No approval backlog"}
                     </div>
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
-                      <p className="text-xs text-slate-500">Complete</p>
-                      <p className="text-lg font-semibold text-slate-900">{seasonSummary.complete}</p>
+                  </div>
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+                    <div className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-700">Teams</p>
+                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.teams}</p>
+                      <p className="mt-1 text-xs text-slate-600">League entries in the selected season.</p>
                     </div>
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
-                      <p className="text-xs text-slate-500">In progress</p>
-                      <p className="text-lg font-semibold text-slate-900">{seasonSummary.inProgress}</p>
+                    <div className="rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Fixtures</p>
+                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.fixtures}</p>
+                      <p className="mt-1 text-xs text-slate-600">Scheduled matches generated so far.</p>
                     </div>
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-2">
-                      <p className="text-xs text-slate-500">Pending fixtures</p>
-                      <p className="text-lg font-semibold text-slate-900">{seasonSummary.pending}</p>
+                    <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Complete</p>
+                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.complete}</p>
+                      <p className="mt-1 text-xs text-slate-600">Fixtures with approved results.</p>
                     </div>
-                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-2">
-                      <p className="text-xs text-amber-700">Pending approvals</p>
-                      <p className="text-lg font-semibold text-amber-900">{seasonSummary.pendingApprovals}</p>
+                    <div className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-700">In Progress</p>
+                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.inProgress}</p>
+                      <p className="mt-1 text-xs text-slate-600">Fixtures with a live submission or partial entry.</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-600">Pending Fixtures</p>
+                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.pending}</p>
+                      <p className="mt-1 text-xs text-slate-600">Still waiting to be played or submitted.</p>
+                    </div>
+                    <div className="rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-3">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Pending Approvals</p>
+                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.pendingApprovals}</p>
+                      <p className="mt-1 text-xs text-slate-600">Results or fixture requests awaiting action.</p>
                     </div>
                   </div>
                 </section>

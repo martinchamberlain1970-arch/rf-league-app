@@ -255,6 +255,112 @@ export default function HomePage() {
         ? "Captain"
         : "Vice-captain"
     : "Player";
+  const priorityCards = useMemo(() => {
+    if (admin.isSuper) {
+      return [
+        {
+          href: "/results",
+          title: "Results Awaiting Review",
+          value: resultsQueueCount ?? 0,
+          tone: "rose",
+          detail: "Approve captain submissions and locked result decisions.",
+        },
+        {
+          href: "/results?tab=fixture_changes",
+          title: "Fixture Date Requests",
+          value: fixtureChangeActionCount,
+          tone: "indigo",
+          detail: "Review early-play and exceptional postponement requests.",
+        },
+        {
+          href: "/signup-requests",
+          title: "Pending Governance Requests",
+          value: pendingRequestsCount ?? 0,
+          tone: "amber",
+          detail: "Profile claims, admin requests, and other queued approvals.",
+        },
+      ];
+    }
+    if (hasCaptainRole) {
+      return [
+        {
+          href: "/captain-results",
+          title: "Captain Actions",
+          value: pendingResultSubmissionsCount,
+          tone: "emerald",
+          detail:
+            pendingResultSubmissionsCount > 0
+              ? "Your latest submission is pending league review."
+              : "Submit your current fixture result on match day.",
+        },
+        {
+          href: "/reschedule-fixture",
+          title: "Fixture Date Requests",
+          value: outstandingFixtureCount,
+          tone: "indigo",
+          detail:
+            outstandingFixtureCount > 0
+              ? "A fixture is waiting for review or a new agreed date."
+              : "Request early play or track an approved outstanding fixture.",
+        },
+        {
+          href: "/events",
+          title: "Match Centre",
+          value: openEventsCount ?? 0,
+          tone: "sky",
+          detail: "Check next fixtures, reports, and competition activity.",
+        },
+      ];
+    }
+    return [
+      {
+        href: "/league",
+        title: "Published League",
+        value: openEventsCount ?? 0,
+        tone: "indigo",
+        detail: "View the latest league fixtures, table, and player standings.",
+      },
+      {
+        href: "/notifications",
+        title: "Notifications",
+        value: pendingResultSubmissionsCount,
+        tone: "violet",
+        detail: "Track profile, result, and competition updates in one place.",
+      },
+      {
+        href: "/events",
+        title: "Match Centre",
+        value: openEventsCount ?? 0,
+        tone: "sky",
+        detail: "See your upcoming fixtures and published competition activity.",
+      },
+    ];
+  }, [
+    admin.isSuper,
+    fixtureChangeActionCount,
+    hasCaptainRole,
+    openEventsCount,
+    outstandingFixtureCount,
+    pendingRequestsCount,
+    pendingResultSubmissionsCount,
+    resultsQueueCount,
+  ]);
+  const priorityCardClass = (tone: "rose" | "indigo" | "amber" | "emerald" | "sky" | "violet") => {
+    if (tone === "rose") return "border-rose-200 bg-gradient-to-br from-rose-50 to-white";
+    if (tone === "indigo") return "border-indigo-200 bg-gradient-to-br from-indigo-50 to-white";
+    if (tone === "amber") return "border-amber-200 bg-gradient-to-br from-amber-50 to-white";
+    if (tone === "emerald") return "border-emerald-200 bg-gradient-to-br from-emerald-50 to-white";
+    if (tone === "sky") return "border-sky-200 bg-gradient-to-br from-sky-50 to-white";
+    return "border-violet-200 bg-gradient-to-br from-violet-50 to-white";
+  };
+  const priorityValueClass = (tone: "rose" | "indigo" | "amber" | "emerald" | "sky" | "violet") => {
+    if (tone === "rose") return "text-rose-700";
+    if (tone === "indigo") return "text-indigo-700";
+    if (tone === "amber") return "text-amber-700";
+    if (tone === "emerald") return "text-emerald-700";
+    if (tone === "sky") return "text-sky-700";
+    return "text-violet-700";
+  };
   const accountStatusText = userPlayerId
     ? "Your player profile is linked and active."
     : pendingClaim
@@ -850,6 +956,39 @@ export default function HomePage() {
               </div>
             </section>
           ) : null}
+
+          <section className={subtleCardClass}>
+            <div className="flex flex-wrap items-end justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Operational Focus</p>
+                <h2 className="mt-1 text-xl font-black text-slate-950">Start Here</h2>
+                <p className="mt-1 text-sm text-slate-600">
+                  The highest-priority actions are surfaced first so setup, approvals, and fixture admin do not get buried in the full dashboard.
+                </p>
+              </div>
+              <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
+                {admin.isSuper ? "League Secretary view" : hasCaptainRole ? "Captain workflow view" : "Player view"}
+              </div>
+            </div>
+            <div className="mt-4 grid gap-3 lg:grid-cols-3">
+              {priorityCards.map((card) => (
+                <Link
+                  key={`${card.href}|${card.title}`}
+                  href={card.href}
+                  className={`rounded-2xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${priorityCardClass(card.tone)}`}
+                >
+                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{card.title}</p>
+                  <div className="mt-2 flex items-end justify-between gap-3">
+                    <p className={`text-4xl font-black leading-none ${priorityValueClass(card.tone)}`}>{card.value}</p>
+                    <span className="rounded-full border border-white/70 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700">
+                      Open
+                    </span>
+                  </div>
+                  <p className="mt-3 text-sm font-medium text-slate-900">{card.detail}</p>
+                </Link>
+              ))}
+            </div>
+          </section>
 
           <section className="space-y-2">
             <div className={cardBaseClass}>
