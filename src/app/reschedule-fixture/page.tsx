@@ -53,6 +53,7 @@ export default function RescheduleFixturePage() {
   const [otherExplanation, setOtherExplanation] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [confirmLateRequestOpen, setConfirmLateRequestOpen] = useState(false);
+  const [showLaterFixtures, setShowLaterFixtures] = useState(false);
 
   const loadAll = async () => {
     const client = supabase;
@@ -292,27 +293,38 @@ export default function RescheduleFixturePage() {
 
             {hasCaptainPrivileges && laterCaptainFixtures.length > 0 ? (
               <section className={sectionCardClass}>
-                <h2 className={sectionTitleClass}>Later fixtures currently unavailable</h2>
+                <button
+                  type="button"
+                  onClick={() => setShowLaterFixtures((prev) => !prev)}
+                  className="flex w-full items-center justify-between text-left"
+                >
+                  <span className={sectionTitleClass}>Later fixtures currently unavailable</span>
+                  <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                    {showLaterFixtures ? "Hide" : `Show ${laterCaptainFixtures.length}`}
+                  </span>
+                </button>
                 <p className="mt-2 text-sm text-slate-600">
                   Later fixtures cannot be requested until the current fixture has been played or its league date has passed.
                 </p>
-                <div className="mt-3 space-y-2">
-                  {laterCaptainFixtures.map((fixture) => (
-                    <div key={fixture.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <p className="font-medium text-slate-900">
-                          {teamById.get(fixture.home_team_id) ?? "Home"} vs {teamById.get(fixture.away_team_id) ?? "Away"}
+                {showLaterFixtures ? (
+                  <div className="mt-3 space-y-2">
+                    {laterCaptainFixtures.map((fixture) => (
+                      <div key={fixture.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="font-medium text-slate-900">
+                            {teamById.get(fixture.home_team_id) ?? "Home"} vs {teamById.get(fixture.away_team_id) ?? "Away"}
+                          </p>
+                          <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-semibold uppercase text-slate-700">
+                            unavailable
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs text-slate-600">
+                          League date: {fixture.fixture_date ? new Date(`${fixture.fixture_date}T12:00:00`).toLocaleDateString() : `Week ${fixture.week_no ?? "-"}`}
                         </p>
-                        <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-semibold uppercase text-slate-700">
-                          unavailable
-                        </span>
                       </div>
-                      <p className="mt-1 text-xs text-slate-600">
-                        League date: {fixture.fixture_date ? new Date(`${fixture.fixture_date}T12:00:00`).toLocaleDateString() : `Week ${fixture.week_no ?? "-"}`}
-                      </p>
-                    </div>
-                  ))}
-                </div>
+                    ))}
+                  </div>
+                ) : null}
               </section>
             ) : null}
 

@@ -307,6 +307,7 @@ const describeFixtureReschedule = (request?: FixtureChangeRequest | null) => {
 export default function LeaguePage() {
   const admin = useAdminStatus();
   const [guidedTarget, setGuidedTarget] = useState<null | "create-league" | "add-league-teams" | "assign-players" | "generate-fixtures" | "publish-league">(null);
+  const [highlightedGuidedTarget, setHighlightedGuidedTarget] = useState<null | "create-league" | "add-league-teams" | "assign-players" | "generate-fixtures" | "publish-league">(null);
   const [message, setMessage] = useState<string | null>(null);
   const [infoModal, setInfoModal] = useState<{ title: string; description: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -3493,11 +3494,19 @@ export default function LeaguePage() {
       const el = document.getElementById(id);
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "start" });
+        setHighlightedGuidedTarget(guidedTarget);
         setGuidedTarget(null);
       }
     }, 120);
     return () => window.clearTimeout(timer);
   }, [guidedTarget, activeView]);
+  useEffect(() => {
+    if (!highlightedGuidedTarget) return;
+    const timer = window.setTimeout(() => setHighlightedGuidedTarget(null), 1800);
+    return () => window.clearTimeout(timer);
+  }, [highlightedGuidedTarget]);
+  const guidedSectionClass = (target: "create-league" | "add-league-teams" | "assign-players" | "generate-fixtures" | "publish-league") =>
+    highlightedGuidedTarget === target ? "ring-2 ring-indigo-400 ring-offset-2 transition" : "";
   const playerTables = useMemo(() => {
     const seasonTeamById = new Map(seasonTeams.map((t) => [t.id, t]));
     const playerTeamName = new Map<string, string>();
@@ -3951,7 +3960,7 @@ export default function LeaguePage() {
                   <p className="text-xs uppercase tracking-wide text-slate-500">League body</p>
                   <p className="text-sm font-semibold text-slate-900">{LEAGUE_BODY_NAME}</p>
                 </div>
-                <div id="guided-create-league" className="mt-3 grid gap-2 sm:grid-cols-4 scroll-mt-24">
+                <div id="guided-create-league" className={`mt-3 grid gap-2 sm:grid-cols-4 scroll-mt-24 ${guidedSectionClass("create-league")}`}>
                   <select
                     className="rounded-xl border border-slate-300 bg-white px-3 py-2"
                     value={seasonTemplate}
@@ -4005,7 +4014,7 @@ export default function LeaguePage() {
                   />
                   Handicap league (maximum start 40)
                 </label>
-                <div id="guided-publish-league" className="mt-3 scroll-mt-24">
+                <div id="guided-publish-league" className={`mt-3 scroll-mt-24 ${guidedSectionClass("publish-league")}`}>
                   <button
                     type="button"
                     onClick={deleteSeason}
@@ -4028,7 +4037,7 @@ export default function LeaguePage() {
                     Publish is disabled until the checklist above is complete.
                   </p>
                 ) : null}
-                <div id="guided-add-league-teams" className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 scroll-mt-24">
+                <div id="guided-add-league-teams" className={`mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 scroll-mt-24 ${guidedSectionClass("add-league-teams")}`}>
                   <h3 className="text-sm font-semibold text-slate-900">Created leagues</h3>
                   <div className="mt-2 space-y-2">
                     {seasons
@@ -5024,7 +5033,7 @@ export default function LeaguePage() {
                 ) : null}
                 {showStep3Players ? (
                   <>
-                    <div id="guided-assign-players" className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 scroll-mt-24">
+                    <div id="guided-assign-players" className={`mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 scroll-mt-24 ${guidedSectionClass("assign-players")}`}>
                       <p className="text-sm font-semibold text-slate-900">Step 3: Register new player for team/club (first-time creation)</p>
                       <p className="mt-2 text-xs text-slate-600">
                         This step creates brand-new players only. If the player already exists, use Step 4 transfer.
@@ -5356,7 +5365,7 @@ export default function LeaguePage() {
                 </div>
                 {canManage ? (
                   <>
-                      <div id="guided-generate-fixtures" className="mt-3 grid gap-2 sm:grid-cols-5 scroll-mt-24">
+                      <div id="guided-generate-fixtures" className={`mt-3 grid gap-2 sm:grid-cols-5 scroll-mt-24 ${guidedSectionClass("generate-fixtures")}`}>
                       <input className="rounded-xl border border-slate-300 bg-white px-3 py-2" placeholder="Week no" value={fixtureWeek} onChange={(e) => setFixtureWeek(e.target.value)} />
                       <input type="date" className="rounded-xl border border-slate-300 bg-white px-3 py-2" value={fixtureDate} onChange={(e) => setFixtureDate(e.target.value)} />
                       <select className="rounded-xl border border-slate-300 bg-white px-3 py-2" value={fixtureHome} onChange={(e) => setFixtureHome(e.target.value)}>
@@ -5900,7 +5909,7 @@ export default function LeaguePage() {
                       <section className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <p className="text-xs text-slate-600">
-                            Super User changes save as you edit. Use this to recompute the fixture status and close the entry screen.
+                            Super User changes save as you edit. Use this to keep partial progress, recompute the fixture status, and close the entry screen.
                           </p>
                           <button
                             type="button"
@@ -5910,7 +5919,7 @@ export default function LeaguePage() {
                             }}
                             className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
                           >
-                            {computeFixtureProgress(currentFixture).status === "complete" ? "Save and complete fixture" : "Save and close"}
+                            {computeFixtureProgress(currentFixture).status === "complete" ? "Save and complete fixture" : "Save progress and close"}
                           </button>
                         </div>
                       </section>

@@ -94,6 +94,12 @@ type PendingSubmission = {
   frame_results: SubmissionFrameResult[];
   scorecard_photo_url: string | null;
 };
+type CaptainResultDraft = {
+  slots: FrameSlot[];
+  fixtureBreaks: BreakRow[];
+  scorecardPhotoUrl: string;
+  savedAt: string;
+};
 
 const named = (p?: Player | null) => (p ? (p.full_name?.trim() ? p.full_name : p.display_name) : "Unknown");
 const sortLabelByFirstName = (a: string, b: string) => {
@@ -282,6 +288,7 @@ export default function CaptainResultsPage() {
     () => myCurrentWeekFixtures.find((f) => f.id === selectedFixtureId) ?? null,
     [myCurrentWeekFixtures, selectedFixtureId]
   );
+  const draftStorageKey = selectedFixture ? `rf_league_captain_draft_${selectedFixture.id}` : null;
   useEffect(() => {
     if (!selectedFixtureId) return;
     if (!myCurrentWeekFixtures.some((f) => f.id === selectedFixtureId)) setSelectedFixtureId("");
@@ -365,8 +372,50 @@ export default function CaptainResultsPage() {
     }
     setNominatedNames(nn);
     setScorecardPhotoUrl("");
+    if (typeof window !== "undefined") {
+      const savedDraftRaw = window.localStorage.getItem(`rf_league_captain_draft_${selectedFixture.id}`);
+      if (savedDraftRaw) {
+        try {
+          const savedDraft = JSON.parse(savedDraftRaw) as CaptainResultDraft;
+          if (Array.isArray(savedDraft.slots) && savedDraft.slots.length > 0) {
+            setSlots(savedDraft.slots);
+            const savedNames: Record<string, string> = {};
+            for (const slot of savedDraft.slots) {
+              if (slot.home_nominated_name) savedNames[`${slot.id}:home`] = slot.home_nominated_name;
+              if (slot.away_nominated_name) savedNames[`${slot.id}:away`] = slot.away_nominated_name;
+            }
+            setNominatedNames(savedNames);
+          }
+          if (Array.isArray(savedDraft.fixtureBreaks) && savedDraft.fixtureBreaks.length > 0) {
+            setFixtureBreaks(savedDraft.fixtureBreaks);
+          } else {
+            void loadBreaks(selectedFixture.id);
+          }
+          setScorecardPhotoUrl(savedDraft.scorecardPhotoUrl ?? "");
+          setInfo({
+            title: "Saved progress restored",
+            description: `Draft restored from ${new Date(savedDraft.savedAt).toLocaleString()}.`,
+          });
+          return;
+        } catch {
+          window.localStorage.removeItem(`rf_league_captain_draft_${selectedFixture.id}`);
+        }
+      }
+    }
     void loadBreaks(selectedFixture.id);
   }, [selectedFixture, allSlots, pendingSubmissionMap]);
+
+  const saveProgress = () => {
+    if (!selectedFixture || !draftStorageKey || typeof window === "undefined") return;
+    const draft: CaptainResultDraft = {
+      slots,
+      fixtureBreaks,
+      scorecardPhotoUrl,
+      savedAt: new Date().toISOString(),
+    };
+    window.localStorage.setItem(draftStorageKey, JSON.stringify(draft));
+    setInfo({ title: "Progress saved", description: "Your draft has been saved on this device and can be restored when you return." });
+  };
 
   const teamMembersByTeam = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -652,6 +701,9 @@ export default function CaptainResultsPage() {
     }
 
     setInfo({ title: "Result Submitted", description: "Your result has been submitted for Super User approval." });
+    if (typeof window !== "undefined") {
+      window.localStorage.removeItem(`rf_league_captain_draft_${selectedFixture.id}`);
+    }
     setScorecardPhotoUrl("");
     await loadAll();
   };
@@ -967,7 +1019,7 @@ export default function CaptainResultsPage() {
                   </section>
 
                   <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
-                    <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                    <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">
                       <input
                         className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                         placeholder="Optional scorecard photo URL"
@@ -975,6 +1027,14 @@ export default function CaptainResultsPage() {
                         onChange={(e) => setScorecardPhotoUrl(e.target.value)}
                         disabled={pendingByFixture.has(selectedFixture.id)}
                       />
+                      <button
+                        type="button"
+                        onClick={saveProgress}
+                        disabled={pendingByFixture.has(selectedFixture.id)}
+                        className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
+                      >
+                        Save progress
+                      </button>
                       <button
                         type="button"
                         onClick={submit}
