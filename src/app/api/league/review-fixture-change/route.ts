@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
   const requestRes = await adminClient
     .from("league_fixture_change_requests")
-    .select("id,fixture_id,status")
+    .select("id,fixture_id,status,request_type,proposed_fixture_date")
     .eq("id", requestId)
     .maybeSingle();
   if (requestRes.error || !requestRes.data) {
@@ -52,10 +52,31 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Request is no longer pending." }, { status: 400 });
   }
 
+  if (decision === "approved" && requestRes.data.request_type === "play_early") {
+    const proposedFixtureDate = requestRes.data.proposed_fixture_date;
+    if (!proposedFixtureDate) {
+      return NextResponse.json({ error: "This early-play request does not include an agreed date." }, { status: 400 });
+    }
+    const updFixture = await adminClient
+      .from("league_fixtures")
+      .update({ fixture_date: proposedFixtureDate, status: "pending" })
+      .eq("id", requestRes.data.fixture_id);
+    if (updFixture.error) {
+      return NextResponse.json({ error: updFixture.error.message }, { status: 400 });
+    }
+  }
+
   const updReq = await adminClient
     .from("league_fixture_change_requests")
     .update({
-      status: decision === "approved" ? "approved_outstanding" : "rejected",
+      status: decision === "approved"
+        ? requestRes.data.request_type === "play_early"
+          ? "rescheduled"
+          : "approved_outstanding"
+        : "rejected",
+      agreed_fixture_date: decision === "approved" && requestRes.data.request_type === "play_early"
+        ? requestRes.data.proposed_fixture_date
+        : null,
       review_notes: reviewNotes || null,
       reviewed_by_user_id: authData.user.id,
       reviewed_at: new Date().toISOString(),

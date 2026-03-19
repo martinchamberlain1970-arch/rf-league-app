@@ -522,7 +522,7 @@ export default function ResultsQueuePage() {
           Pending {fixtureChangePending.length} · Outstanding {fixtureChangeOutstanding.length}
         </span>
       </div>
-      <p className="text-sm text-slate-600">Approve or reject requests first. Approved requests stay outstanding until you set the agreed fixture date.</p>
+      <p className="text-sm text-slate-600">Early-play requests can be approved straight onto the agreed date. Exceptional postponement requests stay outstanding until you set the new agreed date.</p>
       <div className="mt-3 space-y-3">
         {fixtureChangePending.length === 0 ? <p className="text-sm text-slate-600">No pending fixture date requests.</p> : null}
         {fixtureChangePending.map((r) => {
@@ -538,6 +538,9 @@ export default function ResultsQueuePage() {
                 <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold uppercase text-amber-800">pending</span>
               </div>
               <p className="mt-1 text-sm text-slate-700">{requestTypeLabel(r.request_type)}</p>
+              {r.request_type === "play_early" && r.proposed_fixture_date ? (
+                <p className="text-xs text-slate-600">Requested early-play date: {new Date(`${r.proposed_fixture_date}T12:00:00`).toLocaleDateString()}</p>
+              ) : null}
               <p className="text-xs text-slate-600">Original date: {r.original_fixture_date ? new Date(`${r.original_fixture_date}T12:00:00`).toLocaleDateString() : "Not set"}</p>
               <p className="mt-2 text-sm text-slate-700">{r.reason}</p>
               <p className="mt-1 text-xs text-slate-600">Opposing team agreed: {r.opposing_team_agreed ? "Yes" : "No"}</p>
@@ -555,7 +558,7 @@ export default function ResultsQueuePage() {
                     onClick={() => void onReviewFixtureChange(r.id, "approved")}
                     disabled={busyId === r.id}
                   >
-                    Approve
+                    {r.request_type === "play_early" ? "Approve date" : "Approve"}
                   </button>
                   <button
                     type="button"
@@ -594,6 +597,7 @@ export default function ResultsQueuePage() {
               <p className="mt-1 text-sm text-slate-700">{requestTypeLabel(r.request_type)}</p>
               <p className="text-xs text-slate-600">Original date: {r.original_fixture_date ? new Date(`${r.original_fixture_date}T12:00:00`).toLocaleDateString() : "Not set"}</p>
               <p className="mt-2 text-sm text-slate-700">{r.reason}</p>
+              <p className="mt-1 text-xs text-slate-600">If the fixture is not played by the agreed date, the home team will receive a 5-0 walkover victory.</p>
               {admin.isSuper ? (
                 <div className="mt-3 grid gap-2 sm:grid-cols-[180px_1fr_auto] sm:items-center">
                   <input

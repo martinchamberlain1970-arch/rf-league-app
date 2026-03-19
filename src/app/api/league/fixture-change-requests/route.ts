@@ -26,6 +26,11 @@ type FixtureRow = {
   status: "pending" | "in_progress" | "complete";
 };
 
+function parseDateOnly(value: string) {
+  const date = new Date(`${value}T12:00:00Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
 function requireEnv() {
   if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
     return NextResponse.json({ error: "Server is not configured." }, { status: 500 });
@@ -121,6 +126,7 @@ export async function POST(req: NextRequest) {
   const body = await req.json().catch(() => ({}));
   const fixtureId = typeof body?.fixtureId === "string" ? body.fixtureId : "";
   const requestType = body?.requestType === "play_early" || body?.requestType === "play_late" ? body.requestType : null;
+  const proposedFixtureDate = typeof body?.proposedFixtureDate === "string" ? body.proposedFixtureDate : "";
   const reason = typeof body?.reason === "string" ? body.reason.trim() : "";
   const opposingTeamAgreed = Boolean(body?.opposingTeamAgreed);
 
@@ -161,6 +167,17 @@ export async function POST(req: NextRequest) {
   if (requestType === "play_early" && !opposingTeamAgreed) {
     return NextResponse.json({ error: "Play-before requests require confirmation that the opposing team agrees." }, { status: 400 });
   }
+  if (requestType === "play_early") {
+    const fixtureDate = parseDateOnly(fixture.fixture_date);
+    const proposedDate = parseDateOnly(proposedFixtureDate);
+    if (!fixtureDate || !proposedDate) {
+      return NextResponse.json({ error: "Choose the agreed early-play date." }, { status: 400 });
+    }
+    const diffDays = Math.round((fixtureDate.getTime() - proposedDate.getTime()) / 86400000);
+    if (diffDays < 1 || diffDays > 3) {
+      return NextResponse.json({ error: "Play-before requests must use a date in the 3 days before the league fixture." }, { status: 400 });
+    }
+  }
 
   const pendingRes = await adminClient
     .from("league_fixture_change_requests")
@@ -184,7 +201,7 @@ export async function POST(req: NextRequest) {
     requester_team_id: requesterTeamId,
     request_type: requestType,
     original_fixture_date: fixture.fixture_date,
-    proposed_fixture_date: null,
+    proposed_fixture_date: requestType === "play_early" ? proposedFixtureDate : null,
     opposing_team_agreed: opposingTeamAgreed,
     reason,
     status: "pending",

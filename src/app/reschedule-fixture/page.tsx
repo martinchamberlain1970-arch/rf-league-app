@@ -5,6 +5,7 @@ import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
 import InfoModal from "@/components/InfoModal";
+import ConfirmModal from "@/components/ConfirmModal";
 import useAdminStatus from "@/components/useAdminStatus";
 import { supabase } from "@/lib/supabase";
 
@@ -46,10 +47,12 @@ export default function RescheduleFixturePage() {
   const [linkedPlayerId, setLinkedPlayerId] = useState<string | null>(null);
   const [requests, setRequests] = useState<FixtureChangeRequest[]>([]);
   const [requestType, setRequestType] = useState<"play_early" | "play_late">("play_early");
+  const [proposedEarlyDate, setProposedEarlyDate] = useState("");
   const [opposingTeamAgreed, setOpposingTeamAgreed] = useState(false);
   const [lateReason, setLateReason] = useState<(typeof exceptionalReasons)[number]>("Illness");
   const [otherExplanation, setOtherExplanation] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [confirmLateRequestOpen, setConfirmLateRequestOpen] = useState(false);
 
   const loadAll = async () => {
     const client = supabase;
@@ -137,9 +140,24 @@ export default function RescheduleFixturePage() {
     () => requests.filter((r) => r.status === "pending" || r.status === "approved_outstanding"),
     [requests]
   );
+  const earlyDateWindow = useMemo(() => {
+    if (!nextFixture?.fixture_date) return { min: "", max: "" };
+    const fixtureDate = new Date(`${nextFixture.fixture_date}T12:00:00`);
+    const toDateOnly = (value: Date) => {
+      const year = value.getFullYear();
+      const month = `${value.getMonth() + 1}`.padStart(2, "0");
+      const day = `${value.getDate()}`.padStart(2, "0");
+      return `${year}-${month}-${day}`;
+    };
+    const max = new Date(fixtureDate);
+    max.setDate(fixtureDate.getDate() - 1);
+    const min = new Date(fixtureDate);
+    min.setDate(fixtureDate.getDate() - 3);
+    return { min: toDateOnly(min), max: toDateOnly(max) };
+  }, [nextFixture]);
 
   const buildReason = () => {
-    if (requestType === "play_early") return `Play before league date requested. Opposing team agreement: ${opposingTeamAgreed ? "confirmed" : "not confirmed"}.`;
+    if (requestType === "play_early") return `Play before league date requested for ${proposedEarlyDate}. Opposing team agreement: ${opposingTeamAgreed ? "confirmed" : "not confirmed"}.`;
     if (lateReason === "Other") return `Exceptional postponement requested: Other. ${otherExplanation.trim()}`.trim();
     return `Exceptional postponement requested: ${lateReason}.`;
   };
@@ -150,6 +168,7 @@ export default function RescheduleFixturePage() {
     const sessionRes = await client.auth.getSession();
     const token = sessionRes.data.session?.access_token;
     if (!token) return setMessage("Session expired. Please sign in again.");
+    if (requestType === "play_early" && !proposedEarlyDate) return setMessage("Choose the agreed early-play date.");
     if (requestType === "play_late" && lateReason === "Other" && !otherExplanation.trim()) return setMessage("Add an explanation for the exceptional circumstance.");
     setSubmitting(true);
     let res: Response;
@@ -157,7 +176,7 @@ export default function RescheduleFixturePage() {
       res = await fetch("/api/league/fixture-change-requests", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ fixtureId: nextFixture.id, requestType, opposingTeamAgreed, reason: buildReason() }),
+        body: JSON.stringify({ fixtureId: nextFixture.id, requestType, proposedFixtureDate: requestType === "play_early" ? proposedEarlyDate : null, opposingTeamAgreed, reason: buildReason() }),
       });
     } catch {
       setSubmitting(false);
@@ -166,7 +185,14 @@ export default function RescheduleFixturePage() {
     const payload = (await res.json().catch(() => ({}))) as { error?: string };
     setSubmitting(false);
     if (!res.ok) return setMessage(payload.error ?? "Failed to submit fixture date request.");
-    setInfo({ title: "Request submitted", description: "Your fixture date request is now pending League Secretary review." });
+    setInfo({
+      title: "Request submitted",
+      description:
+        requestType === "play_early"
+          ? "Your early-play request is now pending League Secretary review."
+          : "Your postponement request is now pending League Secretary review. If approved, the fixture will remain outstanding until the League Secretary sets the agreed date.",
+    });
+    setProposedEarlyDate("");
     setOtherExplanation("");
     await loadAll();
   };
@@ -218,10 +244,23 @@ export default function RescheduleFixturePage() {
                     ) : <div />}
                   </div>
                   {requestType === "play_early" ? (
-                    <label className="flex items-start gap-2 text-sm text-slate-700">
-                      <input type="checkbox" checked={opposingTeamAgreed} onChange={(e) => setOpposingTeamAgreed(e.target.checked)} className="mt-1" />
-                      <span>The opposing team has agreed to playing before the league date.</span>
-                    </label>
+                    <div className="space-y-3">
+                      <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3 text-xs text-indigo-900">
+                        Early-play requests must use one of the 3 days before the league date. For a standard Thursday fixture, that means Monday, Tuesday, or Wednesday.
+                      </div>
+                      <input
+                        type="date"
+                        min={earlyDateWindow.min}
+                        max={earlyDateWindow.max}
+                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                        value={proposedEarlyDate}
+                        onChange={(e) => setProposedEarlyDate(e.target.value)}
+                      />
+                      <label className="flex items-start gap-2 text-sm text-slate-700">
+                        <input type="checkbox" checked={opposingTeamAgreed} onChange={(e) => setOpposingTeamAgreed(e.target.checked)} className="mt-1" />
+                        <span>The opposing team has agreed to the date entered above.</span>
+                      </label>
+                    </div>
                   ) : null}
                   {requestType === "play_late" && lateReason === "Other" ? (
                     <textarea className="min-h-[96px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm" placeholder="Explain the exceptional circumstance." value={otherExplanation} onChange={(e) => setOtherExplanation(e.target.value)} />
@@ -231,7 +270,18 @@ export default function RescheduleFixturePage() {
                       An active request already exists for this fixture and will stay outstanding until the League Secretary rejects it or sets a new agreed date.
                     </div>
                   ) : null}
-                  <button type="button" onClick={() => void submitRequest()} disabled={submitting} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (requestType === "play_late") {
+                        setConfirmLateRequestOpen(true);
+                        return;
+                      }
+                      void submitRequest();
+                    }}
+                    disabled={submitting}
+                    className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                  >
                     {submitting ? "Submitting..." : "Submit request"}
                   </button>
                 </div>
@@ -250,9 +300,10 @@ export default function RescheduleFixturePage() {
                       <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold uppercase ${request.status === "approved_outstanding" ? "border-indigo-200 bg-indigo-50 text-indigo-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>{request.status === "approved_outstanding" ? "Outstanding" : "Pending review"}</span>
                     </div>
                     <p className="mt-1 text-xs text-slate-600">{requestTypeLabel(request.request_type)} · Original date: {request.original_fixture_date ? new Date(`${request.original_fixture_date}T12:00:00`).toLocaleDateString() : "Not set"}</p>
+                    {request.request_type === "play_early" && request.agreed_fixture_date ? <p className="mt-1 text-xs text-slate-600">Approved early-play date: {new Date(`${request.agreed_fixture_date}T12:00:00`).toLocaleDateString()}</p> : null}
                     <p className="mt-1">{request.reason}</p>
                     {request.status === "approved_outstanding" ? (
-                      <p className="mt-1 text-xs text-indigo-700">Awaiting the League Secretary to set the new agreed date.</p>
+                      <p className="mt-1 text-xs text-indigo-700">Awaiting the League Secretary to set the new agreed date. If the fixture is not played by that date, the home team will be awarded a 5-0 walkover victory.</p>
                     ) : null}
                     {request.review_notes ? <p className="mt-1 text-xs text-slate-600">League Secretary note: {request.review_notes}</p> : null}
                   </div>;
@@ -260,6 +311,18 @@ export default function RescheduleFixturePage() {
               </div>
             </section>
           </> : null}
+          <ConfirmModal
+            open={confirmLateRequestOpen}
+            title="Submit postponement request?"
+            description="This request will be submitted for review by the League Secretary. If approved and a reschedule date is later agreed, that date will be set by the League Secretary. If the fixture is not played by that date, the home team will be awarded a 5-0 walkover victory."
+            confirmLabel="Submit for review"
+            cancelLabel="Cancel"
+            onConfirm={() => {
+              setConfirmLateRequestOpen(false);
+              void submitRequest();
+            }}
+            onCancel={() => setConfirmLateRequestOpen(false)}
+          />
         </RequireAuth>
       </div>
     </main>
