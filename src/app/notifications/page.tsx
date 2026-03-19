@@ -571,7 +571,6 @@ export default function NotificationsPage() {
         if (leagueResultRes.error || claimRes.error || updateRes.error || adminReqRes.error || competitionEntryRes.error) {
           const firstError =
             leagueResultRes.error?.message ??
-            fixtureChangePendingRes.error?.message ??
             claimRes.error?.message ??
             updateRes.error?.message ??
             adminReqRes.error?.message ??
