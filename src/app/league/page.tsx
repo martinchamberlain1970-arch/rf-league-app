@@ -2461,6 +2461,30 @@ export default function LeaguePage() {
     }
   };
 
+  const syncRegisteredRoleToLeagueTeams = async (
+    member: RegisteredTeamMember,
+    patch: { is_captain: boolean; is_vice_captain: boolean },
+    clearField: "is_captain" | "is_vice_captain" | null
+  ) => {
+    const client = supabase;
+    if (!client) return null;
+    const registeredTeam = registeredTeams.find((team) => team.id === member.team_id);
+    if (!registeredTeam) return null;
+    const matchingLeagueTeams = teams.filter((team) => team.name.trim().toLowerCase() === registeredTeam.name.trim().toLowerCase());
+    if (matchingLeagueTeams.length === 0) return null;
+    const leagueTeamIds = matchingLeagueTeams.map((team) => team.id);
+    if (clearField) {
+      const clearRes = await client.from("league_team_members").update({ [clearField]: false }).in("team_id", leagueTeamIds);
+      if (clearRes.error) return clearRes.error.message;
+    }
+    const updateRes = await client
+      .from("league_team_members")
+      .update(patch)
+      .eq("player_id", member.player_id)
+      .in("team_id", leagueTeamIds);
+    return updateRes.error?.message ?? null;
+  };
+
   const setRegisteredCaptain = async (member: RegisteredTeamMember, next: boolean) => {
     const client = supabase;
     if (!client) return;
@@ -2481,6 +2505,15 @@ export default function LeaguePage() {
       .eq("id", member.id);
     if (error) {
       setMessage(error.message);
+      return;
+    }
+    const liveSyncError = await syncRegisteredRoleToLeagueTeams(
+      member,
+      { is_captain: next, is_vice_captain: next ? false : member.is_vice_captain },
+      next ? "is_captain" : null
+    );
+    if (liveSyncError) {
+      setMessage(liveSyncError);
       return;
     }
     await loadAll();
@@ -2506,6 +2539,15 @@ export default function LeaguePage() {
       .eq("id", member.id);
     if (error) {
       setMessage(error.message);
+      return;
+    }
+    const liveSyncError = await syncRegisteredRoleToLeagueTeams(
+      member,
+      { is_vice_captain: next, is_captain: next ? false : member.is_captain },
+      next ? "is_vice_captain" : null
+    );
+    if (liveSyncError) {
+      setMessage(liveSyncError);
       return;
     }
     await loadAll();
