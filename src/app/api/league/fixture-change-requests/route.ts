@@ -75,6 +75,26 @@ export async function GET(req: NextRequest) {
     if (!isSuper && !isAdmin) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
+  } else if (scope === "published") {
+    const publishedSeasonsRes = await adminClient
+      .from("league_seasons")
+      .select("id")
+      .eq("is_published", true);
+    if (publishedSeasonsRes.error) {
+      return NextResponse.json({ error: publishedSeasonsRes.error.message }, { status: 400 });
+    }
+    const seasonIds = (publishedSeasonsRes.data ?? []).map((row: { id: string }) => row.id);
+    if (seasonIds.length === 0) return NextResponse.json({ rows: [] });
+    const fixtureRes = await adminClient
+      .from("league_fixtures")
+      .select("id")
+      .in("season_id", seasonIds);
+    if (fixtureRes.error) {
+      return NextResponse.json({ error: fixtureRes.error.message }, { status: 400 });
+    }
+    const ids = (fixtureRes.data ?? []).map((row: { id: string }) => row.id);
+    if (ids.length === 0) return NextResponse.json({ rows: [] });
+    query = query.in("fixture_id", ids);
   } else {
     const appUserRes = await adminClient.from("app_users").select("linked_player_id").eq("id", userId).maybeSingle();
     const linkedPlayerId = (appUserRes.data?.linked_player_id as string | null) ?? null;

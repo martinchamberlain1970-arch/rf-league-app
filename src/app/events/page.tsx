@@ -67,6 +67,15 @@ type LeagueFixture = {
   home_points: number | null;
   away_points: number | null;
 };
+type FixtureChangeRequest = {
+  id: string;
+  fixture_id: string;
+  request_type: "play_early" | "play_late";
+  original_fixture_date: string | null;
+  agreed_fixture_date?: string | null;
+  status: "pending" | "approved_outstanding" | "rescheduled" | "rejected";
+  created_at: string;
+};
 type LeagueReportInsert = {
   report_type: "match" | "weekly";
   season_id: string;
@@ -110,6 +119,14 @@ function tabFromUrl(): Tab {
 }
 
 const fmtDate = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
+const formatFixtureReschedule = (request?: FixtureChangeRequest | null) => {
+  if (!request || request.status !== "rescheduled" || !request.original_fixture_date || !request.agreed_fixture_date) return null;
+  const movedEarlier = request.agreed_fixture_date < request.original_fixture_date;
+  return {
+    chip: movedEarlier ? "Brought forward" : "Rescheduled",
+    detail: `Originally ${new Date(`${request.original_fixture_date}T12:00:00`).toLocaleDateString("en-GB")} · now ${new Date(`${request.agreed_fixture_date}T12:00:00`).toLocaleDateString("en-GB")}`,
+  };
+};
 
 export default function EventsPage() {
   const admin = useAdminStatus();
@@ -118,6 +135,7 @@ export default function EventsPage() {
   const [leagueMode, setLeagueMode] = useState(false);
   const [teamLabel, setTeamLabel] = useState<string | null>(null);
   const [lastFixture, setLastFixture] = useState<LeagueFixture | null>(null);
+  const [fixtureChangeRequests, setFixtureChangeRequests] = useState<FixtureChangeRequest[]>([]);
   const [nextFixture, setNextFixture] = useState<LeagueFixture | null>(null);
   const [followingFixture, setFollowingFixture] = useState<LeagueFixture | null>(null);
   const [leagueSummaries, setLeagueSummaries] = useState<LeagueFixtureSummary[]>([]);
@@ -213,13 +231,14 @@ export default function EventsPage() {
         const relevantSeasonIds = Array.from(new Set(members.map((m) => m.season_id)));
         const memberTeamIds = Array.from(new Set(members.map((m) => m.team_id)));
 
-        const [teamsRes, fixturesRes] = await Promise.all([
+        const [teamsRes, fixturesRes, sessionRes] = await Promise.all([
           client.from("league_teams").select("id,name,season_id").in("season_id", relevantSeasonIds),
           client
             .from("league_fixtures")
             .select("id,season_id,week_no,fixture_date,home_team_id,away_team_id,status,home_points,away_points")
             .in("season_id", relevantSeasonIds)
             .order("fixture_date", { ascending: true }),
+          client.auth.getSession(),
         ]);
         const teamMap = new Map(((teamsRes.data ?? []) as LeagueTeam[]).map((t) => [t.id, t.name]));
         setTeamById(teamMap);
@@ -227,6 +246,20 @@ export default function EventsPage() {
         const allSeasonFixtures = ((fixturesRes.data ?? []) as LeagueFixture[]).filter(
           (fixture) => memberTeamIds.includes(fixture.home_team_id) || memberTeamIds.includes(fixture.away_team_id)
         );
+        const token = sessionRes.data.session?.access_token;
+        if (token) {
+          const requestRes = await fetch("/api/league/fixture-change-requests?scope=published", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const payload = (await requestRes.json().catch(() => ({}))) as { rows?: FixtureChangeRequest[] };
+          if (requestRes.ok) {
+            setFixtureChangeRequests(payload.rows ?? []);
+          } else {
+            setFixtureChangeRequests([]);
+          }
+        } else {
+          setFixtureChangeRequests([]);
+        }
         const fixturesForMemberTeams = allSeasonFixtures.filter(
           (fixture) => memberTeamIds.includes(fixture.home_team_id) || memberTeamIds.includes(fixture.away_team_id)
         );
@@ -426,6 +459,16 @@ export default function EventsPage() {
     const away = teamById.get(f.away_team_id) ?? "Away";
     return `${home} vs ${away}`;
   };
+  const fixtureChangeByFixtureId = useMemo(() => {
+    const map = new Map<string, FixtureChangeRequest>();
+    for (const request of fixtureChangeRequests) {
+      if (!map.has(request.fixture_id) || request.status === "rescheduled") {
+        map.set(request.fixture_id, request);
+      }
+    }
+    return map;
+  }, [fixtureChangeRequests]);
+  const leagueFixtureReschedule = (f: LeagueFixture | null) => (f ? formatFixtureReschedule(fixtureChangeByFixtureId.get(f.id)) : null);
   const leagueFixtureDate = (f: LeagueFixture | null) =>
     f?.fixture_date ? new Date(`${f.fixture_date}T12:00:00`).toLocaleDateString("en-GB") : "Date TBC";
   const leagueFixtureScore = (f: LeagueFixture | null) => {
@@ -954,6 +997,14 @@ export default function EventsPage() {
                         <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Last Match</p>
                         <p className="mt-1 text-sm font-medium text-slate-900">{leagueFixtureLabel(summary.lastFixture)}</p>
                         <p className="text-xs text-slate-600">{leagueFixtureDate(summary.lastFixture)} · {leagueFixtureScore(summary.lastFixture)}</p>
+                        {leagueFixtureReschedule(summary.lastFixture) ? (
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                            <span className={`rounded-full border px-2 py-0.5 font-semibold ${leagueFixtureReschedule(summary.lastFixture)?.chip === "Brought forward" ? "border-indigo-200 bg-indigo-50 text-indigo-800" : "border-sky-200 bg-sky-50 text-sky-800"}`}>
+                              {leagueFixtureReschedule(summary.lastFixture)?.chip}
+                            </span>
+                            <span className="text-slate-600">{leagueFixtureReschedule(summary.lastFixture)?.detail}</span>
+                          </div>
+                        ) : null}
                         {summary.lastFixture?.status === "complete" ? (
                           <button
                             type="button"
@@ -973,12 +1024,28 @@ export default function EventsPage() {
                         <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Next Match</p>
                         <p className="mt-1 text-sm font-medium text-slate-900">{leagueFixtureLabel(summary.nextFixture)}</p>
                         <p className="text-xs text-slate-600">{leagueFixtureDate(summary.nextFixture)}</p>
+                        {leagueFixtureReschedule(summary.nextFixture) ? (
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                            <span className={`rounded-full border px-2 py-0.5 font-semibold ${leagueFixtureReschedule(summary.nextFixture)?.chip === "Brought forward" ? "border-indigo-200 bg-indigo-50 text-indigo-800" : "border-sky-200 bg-sky-50 text-sky-800"}`}>
+                              {leagueFixtureReschedule(summary.nextFixture)?.chip}
+                            </span>
+                            <span className="text-slate-600">{leagueFixtureReschedule(summary.nextFixture)?.detail}</span>
+                          </div>
+                        ) : null}
                         <p className="mt-2 text-xs font-medium text-indigo-800">Click to view match preview</p>
                       </button>
                       <div className="rounded-xl border border-teal-200 bg-teal-50 p-3">
                         <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Future Match</p>
                         <p className="mt-1 text-sm font-medium text-slate-900">{leagueFixtureLabel(summary.followingFixture)}</p>
                         <p className="text-xs text-slate-600">{leagueFixtureDate(summary.followingFixture)}</p>
+                        {leagueFixtureReschedule(summary.followingFixture) ? (
+                          <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                            <span className={`rounded-full border px-2 py-0.5 font-semibold ${leagueFixtureReschedule(summary.followingFixture)?.chip === "Brought forward" ? "border-indigo-200 bg-indigo-50 text-indigo-800" : "border-sky-200 bg-sky-50 text-sky-800"}`}>
+                              {leagueFixtureReschedule(summary.followingFixture)?.chip}
+                            </span>
+                            <span className="text-slate-600">{leagueFixtureReschedule(summary.followingFixture)?.detail}</span>
+                          </div>
+                        ) : null}
                       </div>
                     </div>
                   </article>

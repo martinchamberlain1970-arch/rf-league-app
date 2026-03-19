@@ -55,6 +55,15 @@ type Fixture = {
   home_points: number;
   away_points: number;
 };
+type FixtureChangeRequest = {
+  id: string;
+  fixture_id: string;
+  request_type: "play_early" | "play_late";
+  original_fixture_date: string | null;
+  agreed_fixture_date?: string | null;
+  status: "pending" | "approved_outstanding" | "rescheduled" | "rejected";
+  created_at: string;
+};
 type FrameSlot = {
   id: string;
   fixture_id: string;
@@ -277,6 +286,23 @@ const isFixtureDueNow = (fixtureDate: string | null) => {
   const fixtureLocal = new Date(`${fixtureDate}T12:00:00`);
   return fixtureLocal <= new Date(today.getFullYear(), today.getMonth(), today.getDate(), 23, 59, 59, 999);
 };
+const formatFixtureDateLong = (fixtureDate: string | null) =>
+  fixtureDate
+    ? new Date(`${fixtureDate}T12:00:00`).toLocaleDateString(undefined, {
+        weekday: "short",
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+      })
+    : null;
+const describeFixtureReschedule = (request?: FixtureChangeRequest | null) => {
+  if (!request || request.status !== "rescheduled" || !request.original_fixture_date || !request.agreed_fixture_date) return null;
+  const movedEarlier = request.agreed_fixture_date < request.original_fixture_date;
+  return {
+    chip: movedEarlier ? "Brought forward" : "Rescheduled",
+    detail: `Originally ${formatFixtureDateLong(request.original_fixture_date)} · now ${formatFixtureDateLong(request.agreed_fixture_date)}`,
+  };
+};
 
 export default function LeaguePage() {
   const admin = useAdminStatus();
@@ -294,6 +320,7 @@ export default function LeaguePage() {
   const [slots, setSlots] = useState<FrameSlot[]>([]);
   const [tableRows, setTableRows] = useState<TableRow[]>([]);
   const [submissions, setSubmissions] = useState<LeagueSubmission[]>([]);
+  const [fixtureChangeRequests, setFixtureChangeRequests] = useState<FixtureChangeRequest[]>([]);
   const [leagueCompetitions, setLeagueCompetitions] = useState<LeagueCompetition[]>([]);
   const [leagueCompetitionEntries, setLeagueCompetitionEntries] = useState<LeagueCompetitionEntry[]>([]);
   const [competitionRoundDeadlines, setCompetitionRoundDeadlines] = useState<CompetitionRoundDeadline[]>([]);
@@ -704,6 +731,10 @@ export default function LeaguePage() {
     return Array.from(ids);
   }, [fixtureSlots]);
   const currentFixture = useMemo(() => fixtures.find((f) => f.id === fixtureId) ?? null, [fixtures, fixtureId]);
+  const currentFixtureReschedule = useMemo(
+    () => describeFixtureReschedule(currentFixture ? fixtureChangeByFixtureId.get(currentFixture.id) : null),
+    [currentFixture, fixtureChangeByFixtureId]
+  );
   const fixtureRosterPlayerIds = useMemo(() => {
     if (!currentFixture) return [] as string[];
     const ids = new Set<string>();
@@ -1140,6 +1171,22 @@ export default function LeaguePage() {
       regTeamsRes.error?.message ||
       regMembersRes.error?.message ||
       null;
+
+    const sessionRes = await client.auth.getSession();
+    const token = sessionRes.data.session?.access_token;
+    if (token) {
+      const requestRes = await fetch("/api/league/fixture-change-requests?scope=published", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = (await requestRes.json().catch(() => ({}))) as { error?: string; rows?: FixtureChangeRequest[] };
+      if (requestRes.ok) {
+        setFixtureChangeRequests(payload.rows ?? []);
+      } else if (!firstError) {
+        setMessage(payload.error ?? "Failed to load fixture date requests.");
+      }
+    } else {
+      setFixtureChangeRequests([]);
+    }
 
     if (firstError) {
       setMessage(`Partial load: ${firstError}`);
@@ -3207,6 +3254,10 @@ export default function LeaguePage() {
     () => (selectedTeamResultFixtureId ? seasonFixtures.find((f) => f.id === selectedTeamResultFixtureId) ?? null : null),
     [selectedTeamResultFixtureId, seasonFixtures]
   );
+  const selectedTeamResultReschedule = useMemo(
+    () => describeFixtureReschedule(selectedTeamResultFixture ? fixtureChangeByFixtureId.get(selectedTeamResultFixture.id) : null),
+    [selectedTeamResultFixture, fixtureChangeByFixtureId]
+  );
   const selectedTeamResultSeason = useMemo(
     () => (selectedTeamResultFixture ? seasonById.get(selectedTeamResultFixture.season_id) ?? null : null),
     [selectedTeamResultFixture, seasonById]
@@ -3502,6 +3553,15 @@ export default function LeaguePage() {
     const week = Number.parseInt(fixtureWeekFilter, 10);
     return seasonFixtures.filter((f) => f.week_no === week);
   }, [seasonFixtures, fixtureWeekFilter, fixtureTeamFilter]);
+  const fixtureChangeByFixtureId = useMemo(() => {
+    const map = new Map<string, FixtureChangeRequest>();
+    for (const request of fixtureChangeRequests) {
+      if (!map.has(request.fixture_id) || request.status === "rescheduled") {
+        map.set(request.fixture_id, request);
+      }
+    }
+    return map;
+  }, [fixtureChangeRequests]);
   const selectedTeamFixtures = useMemo(() => {
     if (!fixtureTeamFilter) return [];
     return visibleFixtures
@@ -5151,6 +5211,7 @@ export default function LeaguePage() {
                   {fixtureTeamFilter ? (
                     selectedTeamFixtures.map((f) => {
                       const computed = computeFixtureProgress(f);
+                      const fixtureChange = describeFixtureReschedule(fixtureChangeByFixtureId.get(f.id));
                       const pendingSubmission = pendingSubmissionByFixtureId.get(f.id);
                       const isEditing = fixtureId === f.id && resultEntryOpen;
                       const buttonState =
@@ -5167,21 +5228,23 @@ export default function LeaguePage() {
                       return (
                         <div key={f.id} className="grid items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 sm:grid-cols-[180px_1fr_auto]">
                           <p className="text-sm font-medium text-slate-700">
-                            {f.fixture_date
-                              ? new Date(`${f.fixture_date}T12:00:00`).toLocaleDateString(undefined, {
-                                  weekday: "short",
-                                  year: "numeric",
-                                  month: "short",
-                                  day: "numeric",
-                                })
-                              : `Week ${f.week_no ?? "-"}`}
+                            {f.week_no ? `Week ${f.week_no}` : "Week -"}
+                            {f.fixture_date ? ` (${formatFixtureDateLong(f.fixture_date)})` : ""}
                           </p>
-                          <p className="text-sm text-slate-800">
+                          <div className="text-sm text-slate-800">
                             {teamById.get(f.home_team_id)?.name ?? "Home"} vs {teamById.get(f.away_team_id)?.name ?? "Away"}
                             <span className="ml-2 text-xs text-slate-600">
                               ({computed.homePoints}-{computed.awayPoints}) · {statusLabel(computed.status)}
                             </span>
-                          </p>
+                            {fixtureChange ? (
+                              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                                <span className={`rounded-full border px-2 py-0.5 font-semibold ${fixtureChange.chip === "Brought forward" ? "border-indigo-200 bg-indigo-50 text-indigo-800" : "border-sky-200 bg-sky-50 text-sky-800"}`}>
+                                  {fixtureChange.chip}
+                                </span>
+                                <span className="text-slate-600">{fixtureChange.detail}</span>
+                              </div>
+                            ) : null}
+                          </div>
                           {canOpenFixture ? (
                             <button
                               type="button"
@@ -5213,6 +5276,7 @@ export default function LeaguePage() {
                         {group.items.map((f) => (
                           (() => {
                             const computed = computeFixtureProgress(f);
+                            const fixtureChange = describeFixtureReschedule(fixtureChangeByFixtureId.get(f.id));
                             const pendingSubmission = pendingSubmissionByFixtureId.get(f.id);
                             const isEditing = fixtureId === f.id && resultEntryOpen;
                             const buttonState =
@@ -5227,12 +5291,20 @@ export default function LeaguePage() {
                                       : { label: "Action required", className: "border-rose-300 bg-rose-100 text-rose-900" };
                             return (
                               <div key={f.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
-                                <p className="text-sm text-slate-800">
+                                <div className="text-sm text-slate-800">
                                   {teamById.get(f.home_team_id)?.name ?? "Home"} vs {teamById.get(f.away_team_id)?.name ?? "Away"}
                                   <span className="ml-2 text-xs text-slate-600">
                                     ({computed.homePoints}-{computed.awayPoints}) · {statusLabel(computed.status)}
                                   </span>
-                                </p>
+                                  {fixtureChange ? (
+                                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
+                                      <span className={`rounded-full border px-2 py-0.5 font-semibold ${fixtureChange.chip === "Brought forward" ? "border-indigo-200 bg-indigo-50 text-indigo-800" : "border-sky-200 bg-sky-50 text-sky-800"}`}>
+                                        {fixtureChange.chip}
+                                      </span>
+                                      <span className="text-slate-600">{fixtureChange.detail}</span>
+                                    </div>
+                                  ) : null}
+                                </div>
                                 {(canManage || (captainTeamIds.has(f.home_team_id) || captainTeamIds.has(f.away_team_id))) ? (
                                   <button
                                     type="button"
@@ -5305,6 +5377,16 @@ export default function LeaguePage() {
                       <p className="mt-2 inline-flex rounded-lg border border-emerald-300 bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-900">
                         Locked: result approved/finalized (read-only)
                       </p>
+                    ) : null}
+                    {currentFixtureReschedule ? (
+                      <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`rounded-full border px-2 py-0.5 font-semibold ${currentFixtureReschedule.chip === "Brought forward" ? "border-indigo-200 bg-indigo-50 text-indigo-800" : "border-sky-200 bg-sky-50 text-sky-800"}`}>
+                            {currentFixtureReschedule.chip}
+                          </span>
+                          <span>{currentFixtureReschedule.detail}</span>
+                        </div>
+                      </div>
                     ) : null}
                     <div className="mt-3 space-y-3">
                       <fieldset disabled={isCurrentFixtureLocked} className={isCurrentFixtureLocked ? "cursor-not-allowed opacity-85" : ""}>
@@ -6188,6 +6270,14 @@ export default function LeaguePage() {
                         ? new Date(`${selectedTeamResultFixture.fixture_date}T12:00:00`).toLocaleDateString()
                         : "No date"}
                     </p>
+                    {selectedTeamResultReschedule ? (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                        <span className={`rounded-full border px-2 py-0.5 font-semibold ${selectedTeamResultReschedule.chip === "Brought forward" ? "border-indigo-200 bg-indigo-50 text-indigo-800" : "border-sky-200 bg-sky-50 text-sky-800"}`}>
+                          {selectedTeamResultReschedule.chip}
+                        </span>
+                        <span className="text-slate-600">{selectedTeamResultReschedule.detail}</span>
+                      </div>
+                    ) : null}
                     <p className="mt-1 text-sm font-medium text-slate-900">
                       Final: {computeFixtureProgress(selectedTeamResultFixture).homePoints} -{" "}
                       {computeFixtureProgress(selectedTeamResultFixture).awayPoints}

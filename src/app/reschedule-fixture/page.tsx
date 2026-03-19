@@ -137,6 +137,7 @@ export default function RescheduleFixturePage() {
   const earliestCaptainFixture = useMemo(() => captainsFixtures[0] ?? null, [captainsFixtures]);
   const nextFixture = earliestCaptainFixture;
   const nextFixtureRequests = useMemo(() => nextFixture ? requests.filter((r) => r.fixture_id === nextFixture.id) : [], [requests, nextFixture]);
+  const laterCaptainFixtures = useMemo(() => (nextFixture ? captainsFixtures.filter((f) => f.id !== nextFixture.id) : captainsFixtures), [captainsFixtures, nextFixture]);
   const outstandingRequests = useMemo(
     () => requests.filter((r) => r.status === "pending" || r.status === "approved_outstanding"),
     [requests]
@@ -226,7 +227,7 @@ export default function RescheduleFixturePage() {
             </section>
 
             {hasCaptainPrivileges ? <section className={sectionCardClass}>
-              <h2 className={sectionTitleClass}>Next available fixture</h2>
+              <h2 className={sectionTitleClass}>Current fixture eligible for request</h2>
               {!nextFixture ? <p className="mt-3 text-sm text-slate-600">No fixture-date requests are available for your next team fixture right now.</p> : (
                 <div className="mt-3 space-y-4">
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
@@ -288,6 +289,32 @@ export default function RescheduleFixturePage() {
                 </div>
               )}
             </section> : null}
+
+            {hasCaptainPrivileges && laterCaptainFixtures.length > 0 ? (
+              <section className={sectionCardClass}>
+                <h2 className={sectionTitleClass}>Later fixtures currently unavailable</h2>
+                <p className="mt-2 text-sm text-slate-600">
+                  Later fixtures cannot be requested until the current fixture has been played or its league date has passed.
+                </p>
+                <div className="mt-3 space-y-2">
+                  {laterCaptainFixtures.map((fixture) => (
+                    <div key={fixture.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="font-medium text-slate-900">
+                          {teamById.get(fixture.home_team_id) ?? "Home"} vs {teamById.get(fixture.away_team_id) ?? "Away"}
+                        </p>
+                        <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-semibold uppercase text-slate-700">
+                          unavailable
+                        </span>
+                      </div>
+                      <p className="mt-1 text-xs text-slate-600">
+                        League date: {fixture.fixture_date ? new Date(`${fixture.fixture_date}T12:00:00`).toLocaleDateString() : `Week ${fixture.week_no ?? "-"}`}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : null}
 
             <section className={sectionCardClass}>
               <h2 className={sectionTitleClass}>Outstanding fixtures</h2>
