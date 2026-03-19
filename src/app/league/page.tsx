@@ -726,7 +726,7 @@ export default function LeaguePage() {
   const captainTeamIds = useMemo(() => {
     if (!currentUserPlayerId) return new Set<string>();
     const ids = members
-      .filter((m) => m.player_id === currentUserPlayerId && m.is_captain)
+      .filter((m) => m.player_id === currentUserPlayerId && (m.is_captain || Boolean(m.is_vice_captain)))
       .map((m) => m.team_id);
     return new Set(ids);
   }, [members, currentUserPlayerId]);
