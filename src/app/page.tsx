@@ -19,7 +19,7 @@ const links = [
   { href: "/high-breaks", title: "High Breaks", desc: "View the published league high-break table." },
   { href: "/captain-results", title: "Captain Results", desc: "Submit your fixture result for approval." },
   { href: "/reschedule-fixture", title: "Reschedule Fixture", desc: "Request permission to play early or, exceptionally, later." },
-  { href: "/events", title: "Events", desc: "View open and completed events." },
+  { href: "/events", title: "Match Centre", desc: "View your fixtures, reports, and competition activity." },
   { href: "/signups", title: "Competition Sign-ups", desc: "Enter open competitions and track entry status." },
   { href: "/backup", title: "Data Management", desc: "Backup, restore, and controlled data reset." },
   { href: "/audit", title: "Audit Log", desc: "Super User action trail across the system." },
