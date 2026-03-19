@@ -225,6 +225,8 @@ const isHamiltonCompetitionName = (name: string) =>
 const isAlberyCompetitionName = (name: string) =>
   name === "Albery Cup (Billiards 3-Man Team)" || name.startsWith("Albery Cup (Billiards 3-Man Team) - ");
 type LeagueTemplateKey = keyof typeof LEAGUE_TEMPLATES;
+const seasonDisplayLabel = (season: Pick<Season, "name" | "handicap_enabled">) =>
+  `${season.name}${season.handicap_enabled ? " (Handicap)" : " (Non-handicap)"}`;
 const extractSeasonYearLabel = (name: string) => {
   const m = name.match(/(20\d{2}(?:\/20\d{2})?)/);
   return m ? m[1] : name.trim();
@@ -3609,7 +3611,7 @@ export default function LeaguePage() {
                     <option value="">Select published league</option>
                     {visibleSeasons.map((s) => (
                       <option key={s.id} value={s.id}>
-                        {s.name}
+                        {seasonDisplayLabel(s)}
                       </option>
                     ))}
                   </select>

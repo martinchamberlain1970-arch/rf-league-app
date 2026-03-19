@@ -889,10 +889,11 @@ export default function PlayerProfilePage() {
       matches.filter((m) => {
         if (m.status !== "complete") return false;
         if (isWalkoverMatch(m)) return false;
+        if (!compMap.has(m.competition_id)) return false;
         if (m.match_mode === "singles") return m.player1_id === id || m.player2_id === id;
         return m.team1_player1_id === id || m.team1_player2_id === id || m.team2_player1_id === id || m.team2_player2_id === id;
       }),
-    [matches, id, framesByMatch]
+    [matches, id, compMap]
   );
 
   const summary = useMemo(() => {
