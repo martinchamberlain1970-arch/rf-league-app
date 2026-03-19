@@ -5165,7 +5165,7 @@ export default function LeaguePage() {
                         isEditing
                           ? { label: "Editing", className: "border-slate-900 bg-slate-900 text-white" }
                           : pendingSubmission
-                            ? { label: "Lodged", className: "border-amber-300 bg-amber-100 text-amber-900" }
+                            ? { label: "Submitted", className: "border-amber-300 bg-amber-100 text-amber-900" }
                             : computed.status === "complete"
                               ? { label: "Locked", className: "border-emerald-300 bg-emerald-100 text-emerald-900" }
                               : !isFixtureDueNow(f.fixture_date)
@@ -5190,10 +5190,14 @@ export default function LeaguePage() {
                               ({computed.homePoints}-{computed.awayPoints}) · {statusLabel(computed.status)}
                             </span>
                           </p>
-                          {canOpenFixture && (computed.status === "complete" || !pendingSubmission || canManage) ? (
+                          {canOpenFixture ? (
                             <button
                               type="button"
                               onClick={() => {
+                                if (!canManage) {
+                                  window.location.assign(`/captain-results?fixtureId=${f.id}`);
+                                  return;
+                                }
                                 setFixtureId(f.id);
                                 setResultEntryOpen(true);
                               }}
@@ -5223,7 +5227,7 @@ export default function LeaguePage() {
                               isEditing
                                 ? { label: "Editing", className: "border-slate-900 bg-slate-900 text-white" }
                                 : pendingSubmission
-                                  ? { label: "Lodged", className: "border-amber-300 bg-amber-100 text-amber-900" }
+                                  ? { label: "Submitted", className: "border-amber-300 bg-amber-100 text-amber-900" }
                                   : computed.status === "complete"
                                     ? { label: "Locked", className: "border-emerald-300 bg-emerald-100 text-emerald-900" }
                                     : !isFixtureDueNow(f.fixture_date)
@@ -5237,10 +5241,14 @@ export default function LeaguePage() {
                                     ({computed.homePoints}-{computed.awayPoints}) · {statusLabel(computed.status)}
                                   </span>
                                 </p>
-                                {(canManage || (captainTeamIds.has(f.home_team_id) || captainTeamIds.has(f.away_team_id))) && (computed.status === "complete" || !pendingSubmission || canManage) ? (
+                                {(canManage || (captainTeamIds.has(f.home_team_id) || captainTeamIds.has(f.away_team_id))) ? (
                                   <button
                                     type="button"
                                     onClick={() => {
+                                      if (!canManage) {
+                                        window.location.assign(`/captain-results?fixtureId=${f.id}`);
+                                        return;
+                                      }
                                       setFixtureId(f.id);
                                       setResultEntryOpen(true);
                                     }}

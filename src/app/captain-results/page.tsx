@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
@@ -88,6 +89,12 @@ type SubmissionFrameResult = {
   away_points_scored: number | null;
   break_entries?: SubmissionBreakEntry[];
 };
+type PendingSubmission = {
+  fixture_id: string;
+  status: "pending";
+  frame_results: SubmissionFrameResult[];
+  scorecard_photo_url: string | null;
+};
 
 const named = (p?: Player | null) => (p ? (p.full_name?.trim() ? p.full_name : p.display_name) : "Unknown");
 const sortLabelByFirstName = (a: string, b: string) => {
@@ -115,6 +122,7 @@ const sectionTitleClass = "text-lg font-semibold text-slate-900";
 
 export default function CaptainResultsPage() {
   const admin = useAdminStatus();
+  const searchParams = useSearchParams();
   const [message, setMessage] = useState<string | null>(null);
   const [info, setInfo] = useState<{ title: string; description: string } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -131,6 +139,7 @@ export default function CaptainResultsPage() {
   const [linkedPlayerId, setLinkedPlayerId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [pendingByFixture, setPendingByFixture] = useState<Set<string>>(new Set());
+  const [pendingSubmissionMap, setPendingSubmissionMap] = useState<Map<string, PendingSubmission>>(new Map());
 
   const [slots, setSlots] = useState<FrameSlot[]>([]);
   const [nominatedNames, setNominatedNames] = useState<Record<string, string>>({});
@@ -209,7 +218,7 @@ export default function CaptainResultsPage() {
         .from("league_fixture_frames")
         .select("id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_forfeit,away_forfeit,winner_side,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored")
         .order("slot_no", { ascending: true }),
-      client.from("league_result_submissions").select("fixture_id,status").eq("status", "pending"),
+      client.from("league_result_submissions").select("fixture_id,status,frame_results,scorecard_photo_url").eq("status", "pending"),
       client.from("players").select("id,display_name,full_name,snooker_handicap").eq("is_archived", false),
     ]);
 
@@ -234,7 +243,9 @@ export default function CaptainResultsPage() {
     setMembers((memberRes.data ?? []) as TeamMember[]);
     setFixtures((fixtureRes.data ?? []) as Fixture[]);
     setAllSlots((slotRes.data ?? []) as FrameSlot[]);
-    setPendingByFixture(new Set((pendingRes.data ?? []).map((r) => r.fixture_id as string)));
+    const pendingRows = (pendingRes.data ?? []) as PendingSubmission[];
+    setPendingByFixture(new Set(pendingRows.map((r) => r.fixture_id as string)));
+    setPendingSubmissionMap(new Map(pendingRows.map((r) => [r.fixture_id, r])));
     setPlayers((playerRes.data ?? []) as Player[]);
     setLoading(false);
   };
@@ -277,6 +288,14 @@ export default function CaptainResultsPage() {
     if (!selectedFixtureId) return;
     if (!myCurrentWeekFixtures.some((f) => f.id === selectedFixtureId)) setSelectedFixtureId("");
   }, [selectedFixtureId, myCurrentWeekFixtures]);
+  useEffect(() => {
+    const requestedFixtureId = searchParams.get("fixtureId");
+    if (!requestedFixtureId) return;
+    if (myCurrentWeekFixtures.some((fixture) => fixture.id === requestedFixtureId)) {
+      setSelectedFixtureId(requestedFixtureId);
+    }
+  }, [searchParams, myCurrentWeekFixtures]);
+
 
   const selectedSeason = useMemo(
     () => (selectedFixture ? seasons.find((s) => s.id === selectedFixture.season_id) ?? null : null),
@@ -290,12 +309,50 @@ export default function CaptainResultsPage() {
     if (!selectedFixture) {
       setSlots([]);
       setNominatedNames({});
+      setScorecardPhotoUrl("");
       setFixtureBreaks([
         { player_id: null, entered_player_name: "", break_value: "" },
         { player_id: null, entered_player_name: "", break_value: "" },
         { player_id: null, entered_player_name: "", break_value: "" },
         { player_id: null, entered_player_name: "", break_value: "" },
       ]);
+      return;
+    }
+    const pendingSubmission = pendingSubmissionMap.get(selectedFixture.id);
+    if (pendingSubmission) {
+      const baseSlots = allSlots
+        .filter((s) => s.fixture_id === selectedFixture.id)
+        .sort((a, b) => a.slot_no - b.slot_no);
+      const pendingBySlot = new Map(pendingSubmission.frame_results.map((row) => [row.slot_no, row]));
+      const mergedSlots = baseSlots.map((slot) => {
+        const pending = pendingBySlot.get(slot.slot_no);
+        return pending ? ({ ...slot, ...pending }) as FrameSlot : slot;
+      });
+      setSlots(mergedSlots);
+      const nn: Record<string, string> = {};
+      for (const slot of mergedSlots) {
+        if (slot.home_nominated_name) nn[`${slot.id}:home`] = slot.home_nominated_name;
+        if (slot.away_nominated_name) nn[`${slot.id}:away`] = slot.away_nominated_name;
+      }
+      setNominatedNames(nn);
+      setScorecardPhotoUrl(pendingSubmission.scorecard_photo_url ?? "");
+      const pendingBreaks = pendingSubmission.frame_results.flatMap((row) => row.break_entries ?? []);
+      if (pendingBreaks.length > 0) {
+        const rows = pendingBreaks.map((row) => ({
+          player_id: row.player_id ?? null,
+          entered_player_name: row.entered_player_name ?? "",
+          break_value: String(row.break_value ?? ""),
+        }));
+        while (rows.length < 4) rows.push({ player_id: null, entered_player_name: "", break_value: "" });
+        setFixtureBreaks(rows);
+      } else {
+        setFixtureBreaks([
+          { player_id: null, entered_player_name: "", break_value: "" },
+          { player_id: null, entered_player_name: "", break_value: "" },
+          { player_id: null, entered_player_name: "", break_value: "" },
+          { player_id: null, entered_player_name: "", break_value: "" },
+        ]);
+      }
       return;
     }
     const nextSlots = allSlots
@@ -308,8 +365,9 @@ export default function CaptainResultsPage() {
       if (slot.away_nominated_name) nn[`${slot.id}:away`] = slot.away_nominated_name;
     }
     setNominatedNames(nn);
+    setScorecardPhotoUrl("");
     void loadBreaks(selectedFixture.id);
-  }, [selectedFixture, allSlots]);
+  }, [selectedFixture, allSlots, pendingSubmissionMap]);
 
   const teamMembersByTeam = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -645,6 +703,11 @@ export default function CaptainResultsPage() {
               ) : null}
               {selectedFixture ? (
                 <div className="space-y-3">
+                  {pendingByFixture.has(selectedFixture.id) ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                      This fixture has been submitted and is pending Super User review. Your submitted details are shown below in read-only mode.
+                    </div>
+                  ) : null}
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                     {isWinterFormat ? (
                       <p>
@@ -659,6 +722,7 @@ export default function CaptainResultsPage() {
                       <p className="mt-1">In doubles, team handicap = (player 1 handicap + player 2 handicap) ÷ 2, with the live start capped at {MAX_SNOOKER_START}.</p>
                     ) : null}
                   </div>
+                  <fieldset disabled={pendingByFixture.has(selectedFixture.id)} className={pendingByFixture.has(selectedFixture.id) ? "cursor-not-allowed opacity-80" : ""}>
                   {slots.map((slot) => {
                     const homeSinglesCount = new Map<string, number>();
                     const awaySinglesCount = new Map<string, number>();
@@ -847,6 +911,8 @@ export default function CaptainResultsPage() {
                       </div>
                     );
                   })}
+
+                  </fieldset>
 
                   <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4">
                     <h3 className="text-base font-semibold text-slate-900">Breaks 30+</h3>

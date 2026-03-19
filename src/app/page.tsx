@@ -726,9 +726,15 @@ export default function HomePage() {
             <section className={subtleCardClass}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-semibold text-slate-900">Welcome & User Guide</p>
-                <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                  {roleGuideLabel}
-                </span>
+                {hasCaptainRole ? (
+                  <Link href="/captain-results" className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">
+                    {roleGuideLabel}
+                  </Link>
+                ) : (
+                  <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                    {roleGuideLabel}
+                  </span>
+                )}
               </div>
               <p className="mt-1 text-xs text-slate-600">{accountStatusText}</p>
               {leagueRole.teamNames.length > 0 ? (
