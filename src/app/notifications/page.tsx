@@ -387,7 +387,7 @@ export default function NotificationsPage() {
             title: "League result submission pending approval",
             detail: labels.get(r.fixture_id) ?? `Fixture ${r.fixture_id.slice(0, 8)}`,
             created_at: r.created_at,
-            href: "/league",
+            href: "/results",
             status: r.status,
           });
         });
@@ -482,7 +482,7 @@ export default function NotificationsPage() {
             title: "League result submission pending approval",
             detail: labels.get(r.fixture_id) ?? `Fixture ${r.fixture_id.slice(0, 8)}`,
             created_at: r.created_at,
-            href: "/league",
+            href: "/results",
             status: r.status,
           });
         });
