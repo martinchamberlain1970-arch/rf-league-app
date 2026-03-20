@@ -375,6 +375,8 @@ export default function LeaguePage() {
   const [showUnassignedPlayers, setShowUnassignedPlayers] = useState(false);
   const [showAllRegisteredVenues, setShowAllRegisteredVenues] = useState(false);
   const [profileVenueFilterId, setProfileVenueFilterId] = useState("");
+  const [seasonRosterTeamId, setSeasonRosterTeamId] = useState("");
+  const [seasonRosterPlayerId, setSeasonRosterPlayerId] = useState("");
 
   const [fixtureWeek, setFixtureWeek] = useState("");
   const [fixtureWeekFilter, setFixtureWeekFilter] = useState("");
@@ -471,6 +473,10 @@ export default function LeaguePage() {
   const seasonFixtures = useMemo(() => fixtures.filter((f) => f.season_id === seasonId), [fixtures, seasonId]);
   const fixtureById = useMemo(() => new Map(fixtures.map((f) => [f.id, f])), [fixtures]);
   const playerById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
+  const selectedSeasonRosterTeam = useMemo(
+    () => seasonTeams.find((team) => team.id === seasonRosterTeamId) ?? null,
+    [seasonTeams, seasonRosterTeamId]
+  );
   const locationById = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations]);
   const knockoutCompetitions = useMemo(
     () =>
@@ -577,6 +583,25 @@ export default function LeaguePage() {
     );
     return selectedVenuePlayers.filter((p) => !assignedPlayerIds.has(p.id));
   }, [selectedVenueTeamRoster, selectedVenuePlayers]);
+  const selectedSeasonRosterMembers = useMemo(() => {
+    if (!selectedSeasonRosterTeam) return [] as Array<TeamMember & { player: Player | null }>;
+    return members
+      .filter((member) => member.season_id === seasonId && member.team_id === selectedSeasonRosterTeam.id)
+      .map((member) => ({ ...member, player: playerById.get(member.player_id) ?? null }))
+      .sort((a, b) => named(a.player).localeCompare(named(b.player)));
+  }, [members, playerById, seasonId, selectedSeasonRosterTeam]);
+  const availableSeasonRosterPlayers = useMemo(() => {
+    if (!selectedSeasonRosterTeam) return [] as Player[];
+    const currentTeamPlayerIds = new Set(selectedSeasonRosterMembers.map((member) => member.player_id));
+    return players
+      .filter((player) => player.location_id === selectedSeasonRosterTeam.location_id)
+      .filter((player) => !currentTeamPlayerIds.has(player.id))
+      .filter((player) => {
+        const seasonMemberships = seasonMembershipByPlayer.get(player.id) ?? [];
+        return seasonMemberships.every((membership) => membership.team_id === selectedSeasonRosterTeam.id);
+      })
+      .sort((a, b) => named(a).localeCompare(named(b)));
+  }, [players, seasonMembershipByPlayer, selectedSeasonRosterMembers, selectedSeasonRosterTeam]);
   const filteredSelectedVenueTeamRoster = useMemo(() => {
     const query = venuePlayerSearch.trim().toLowerCase();
     if (!query) return selectedVenueTeamRoster;
@@ -1399,6 +1424,18 @@ export default function LeaguePage() {
       setSeasonId(visibleSeasons[0].id);
     }
   }, [visibleSeasons, seasonId, canManage, currentUserPlayerId, members]);
+
+  useEffect(() => {
+    if (!seasonTeams.length) {
+      if (seasonRosterTeamId) setSeasonRosterTeamId("");
+      if (seasonRosterPlayerId) setSeasonRosterPlayerId("");
+      return;
+    }
+    if (!seasonTeams.some((team) => team.id === seasonRosterTeamId)) {
+      setSeasonRosterTeamId(seasonTeams[0]?.id ?? "");
+      setSeasonRosterPlayerId("");
+    }
+  }, [seasonRosterPlayerId, seasonRosterTeamId, seasonTeams]);
 
   useEffect(() => {
     if (admin.loading || canManage) return;
@@ -2647,6 +2684,90 @@ export default function LeaguePage() {
     );
     if (liveSyncError) {
       setMessage(liveSyncError);
+      return;
+    }
+    await loadAll();
+  };
+
+  const addSeasonRosterPlayer = async () => {
+    const client = supabase;
+    if (!client) return;
+    if (!canManage) {
+      setMessage("Only Super User can edit season rosters.");
+      return;
+    }
+    if (!seasonId || !seasonRosterTeamId) {
+      setMessage("Select a league and team first.");
+      return;
+    }
+    if (!seasonRosterPlayerId) {
+      setMessage("Select a player to add to the season roster.");
+      return;
+    }
+    const existingMemberships = (seasonMembershipByPlayer.get(seasonRosterPlayerId) ?? []).filter(
+      (member) => member.team_id !== seasonRosterTeamId
+    );
+    if (existingMemberships.length > 0) {
+      const teamNames = Array.from(
+        new Set(existingMemberships.map((member) => teamById.get(member.team_id)?.name).filter(Boolean) as string[])
+      ).sort((a, b) => a.localeCompare(b));
+      setInfoModal({
+        title: "Season Roster Conflict",
+        description: `${named(playerById.get(seasonRosterPlayerId))} is already assigned in this league season to ${teamNames.join(", ")}.`,
+      });
+      return;
+    }
+    const insert = await client.from("league_team_members").insert({
+      season_id: seasonId,
+      team_id: seasonRosterTeamId,
+      player_id: seasonRosterPlayerId,
+      is_captain: false,
+      is_vice_captain: false,
+    });
+    if (insert.error) {
+      setMessage(insert.error.message);
+      return;
+    }
+    await loadAll();
+    setSeasonRosterPlayerId("");
+  };
+
+  const removeSeasonRosterMember = async (memberId: string) => {
+    const client = supabase;
+    if (!client) return;
+    if (!canManage) {
+      setMessage("Only Super User can edit season rosters.");
+      return;
+    }
+    const { error } = await client.from("league_team_members").delete().eq("id", memberId);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    await loadAll();
+  };
+
+  const setSeasonRosterRole = async (
+    member: TeamMember,
+    patch: { is_captain: boolean; is_vice_captain: boolean },
+    clearField: "is_captain" | "is_vice_captain" | null
+  ) => {
+    const client = supabase;
+    if (!client) return;
+    if (!canManage) {
+      setMessage("Only Super User can set season roster roles.");
+      return;
+    }
+    if (clearField) {
+      const clear = await client.from("league_team_members").update({ [clearField]: false }).eq("team_id", member.team_id);
+      if (clear.error) {
+        setMessage(clear.error.message);
+        return;
+      }
+    }
+    const update = await client.from("league_team_members").update(patch).eq("id", member.id);
+    if (update.error) {
+      setMessage(update.error.message);
       return;
     }
     await loadAll();
@@ -5103,6 +5224,127 @@ export default function LeaguePage() {
               <section className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-white to-indigo-50 p-4 shadow-sm">
                 <h2 className="text-lg font-semibold text-indigo-900">Team Management</h2>
                 <p className="mt-2 text-sm text-slate-600">Follow steps in order. You can skip and return later.</p>
+                {seasonId ? (
+                  <div className="mt-3 rounded-xl border border-indigo-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">Season roster editor</p>
+                        <p className="mt-1 text-xs text-slate-600">
+                          Edit the live roster for the selected league season directly. This is separate from the reusable registered-team template.
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-800">
+                        One team per player in this season
+                      </span>
+                    </div>
+                    <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,240px)_minmax(0,1fr)_auto]">
+                      <select
+                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                        value={seasonRosterTeamId}
+                        onChange={(e) => {
+                          setSeasonRosterTeamId(e.target.value);
+                          setSeasonRosterPlayerId("");
+                        }}
+                      >
+                        <option value="">Select league team</option>
+                        {seasonTeams.map((team) => (
+                          <option key={team.id} value={team.id}>
+                            {team.name}
+                          </option>
+                        ))}
+                      </select>
+                      <select
+                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                        value={seasonRosterPlayerId}
+                        onChange={(e) => setSeasonRosterPlayerId(e.target.value)}
+                        disabled={!selectedSeasonRosterTeam}
+                      >
+                        <option value="">
+                          {selectedSeasonRosterTeam ? "Select player to add to this season roster" : "Select league team first"}
+                        </option>
+                        {availableSeasonRosterPlayers.map((player) => (
+                          <option key={player.id} value={player.id}>
+                            {named(player)}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => void addSeasonRosterPlayer()}
+                        className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white"
+                        disabled={!selectedSeasonRosterTeam || !seasonRosterPlayerId}
+                      >
+                        Add to season roster
+                      </button>
+                    </div>
+                    {selectedSeasonRosterTeam ? (
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">{selectedSeasonRosterTeam.name}</p>
+                            <p className="mt-1 text-xs text-slate-600">
+                              Changes here affect this selected league season only.
+                            </p>
+                          </div>
+                          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                            {selectedSeasonRosterMembers.length} player(s)
+                          </span>
+                        </div>
+                        <ul className="mt-3 space-y-2 text-sm text-slate-700">
+                          {selectedSeasonRosterMembers.map((member) => (
+                            <li key={member.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                              <div>
+                                <span className="font-medium text-slate-900">{named(member.player)}</span>
+                                {member.is_captain ? <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">Captain</span> : null}
+                                {member.is_vice_captain ? <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800">Vice-captain</span> : null}
+                              </div>
+                              <div className="flex flex-wrap items-center gap-2 text-xs">
+                                <label className="inline-flex items-center gap-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={member.is_captain}
+                                    onChange={(e) =>
+                                      void setSeasonRosterRole(
+                                        member,
+                                        { is_captain: e.target.checked, is_vice_captain: e.target.checked ? false : member.is_vice_captain },
+                                        e.target.checked ? "is_captain" : null
+                                      )
+                                    }
+                                  />
+                                  Captain
+                                </label>
+                                <label className="inline-flex items-center gap-1">
+                                  <input
+                                    type="checkbox"
+                                    checked={member.is_vice_captain}
+                                    onChange={(e) =>
+                                      void setSeasonRosterRole(
+                                        member,
+                                        { is_vice_captain: e.target.checked, is_captain: e.target.checked ? false : member.is_captain },
+                                        e.target.checked ? "is_vice_captain" : null
+                                      )
+                                    }
+                                  />
+                                  Vice-captain
+                                </label>
+                                <button
+                                  type="button"
+                                  className="rounded border border-rose-300 bg-white px-2 py-1 text-xs text-rose-700"
+                                  onClick={() => void removeSeasonRosterMember(member.id)}
+                                >
+                                  Remove
+                                </button>
+                              </div>
+                            </li>
+                          ))}
+                          {selectedSeasonRosterMembers.length === 0 ? (
+                            <li className="text-slate-500">No players assigned to this season team yet.</li>
+                          ) : null}
+                        </ul>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm font-semibold text-slate-900">Step 1: Register venue</p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-4">
