@@ -3810,79 +3810,117 @@ export default function LeaguePage() {
                 </section>
               ) : null}
               {canManage ? (
-                <section className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-white via-indigo-50 to-sky-50 p-4 shadow-sm">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <h2 className="text-lg font-semibold text-slate-900">Guided setup</h2>
-                      <p className="mt-1 text-sm text-slate-600">
-                        Follow the league creation flow in order. The existing tabs still work for direct editing, but this checklist keeps the setup sequence clear.
-                      </p>
-                    </div>
-                    {nextGuidedStep ? (
-                      <button
-                        type="button"
-                        onClick={() => openGuidedTarget(nextGuidedStep.view, nextGuidedStep.target)}
-                        className="rounded-xl border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-900"
-                      >
-                        Next: {nextGuidedStep.actionLabel}
-                      </button>
-                    ) : (
+                currentSeason?.is_published ? (
+                  <section className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-white via-emerald-50 to-sky-50 p-4 shadow-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-lg font-semibold text-slate-900">League is live</h2>
+                        <p className="mt-1 text-sm text-slate-600">
+                          This league has already been published. Setup guidance is hidden so the page can focus on maintenance, fixtures, and live administration.
+                        </p>
+                      </div>
                       <span className="rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-900">
-                        Setup complete
+                        Published
                       </span>
-                    )}
-                  </div>
-                  <div className="mt-4 grid gap-3 lg:grid-cols-5">
-                    {guidedSetupSteps.map((step) => (
-                      <div key={step.key} className="rounded-xl border border-slate-200 bg-white p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-semibold text-slate-900">{step.title}</p>
-                          <span
-                            className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                              step.done
-                                ? "border-emerald-300 bg-emerald-100 text-emerald-900"
-                                : "border-amber-300 bg-amber-100 text-amber-900"
-                            }`}
-                          >
-                            {step.done ? "Complete" : "Needs attention"}
-                          </span>
-                        </div>
-                        <p className="mt-2 text-xs text-slate-600">{step.detail}</p>
+                    </div>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                      <div className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-700">Teams</p>
+                        <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.teams}</p>
+                        <p className="mt-1 text-xs text-slate-600">League teams currently assigned.</p>
+                      </div>
+                      <div className="rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Fixtures</p>
+                        <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.fixtures}</p>
+                        <p className="mt-1 text-xs text-slate-600">Generated and available in the published season.</p>
+                      </div>
+                      <div className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">In Progress</p>
+                        <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.inProgress}</p>
+                        <p className="mt-1 text-xs text-slate-600">Fixtures currently carrying live admin or captain activity.</p>
+                      </div>
+                      <div className="rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-3">
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Pending Approvals</p>
+                        <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.pendingApprovals}</p>
+                        <p className="mt-1 text-xs text-slate-600">Use Fixtures and Results Queue for any remaining actions.</p>
+                      </div>
+                    </div>
+                  </section>
+                ) : (
+                  <section className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-white via-indigo-50 to-sky-50 p-4 shadow-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <h2 className="text-lg font-semibold text-slate-900">Guided setup</h2>
+                        <p className="mt-1 text-sm text-slate-600">
+                          Follow the league creation flow in order. The existing tabs still work for direct editing, but this checklist keeps the setup sequence clear.
+                        </p>
+                      </div>
+                      {nextGuidedStep ? (
                         <button
                           type="button"
-                          onClick={() => {
-                            if (step.key === "publish" && !step.done && publishBlockers.length === 0) {
-                              void publishLeague();
-                              return;
-                            }
-                            openGuidedTarget(step.view, step.target);
-                          }}
-                          disabled={step.key === "publish" && !step.done && publishBlockers.length > 0}
-                          className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          onClick={() => openGuidedTarget(nextGuidedStep.view, nextGuidedStep.target)}
+                          className="rounded-xl border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-900"
                         >
-                          {step.actionLabel}
+                          Next: {nextGuidedStep.actionLabel}
                         </button>
-                      </div>
-                    ))}
-                  </div>
-                  <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
-                    <p className="text-sm font-semibold text-slate-900">Publish checklist</p>
-                    {publishBlockers.length === 0 ? (
-                      <p className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
-                        This league is ready to publish.
-                      </p>
-                    ) : (
-                      <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                        <p className="text-sm font-semibold text-amber-900">Action still required before publish</p>
-                        <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900">
-                          {publishBlockers.map((blocker) => (
-                            <li key={blocker}>{blocker}</li>
-                          ))}
-                        </ul>
-                      </div>
-                    )}
-                  </div>
-                </section>
+                      ) : (
+                        <span className="rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-900">
+                          Setup complete
+                        </span>
+                      )}
+                    </div>
+                    <div className="mt-4 grid gap-3 lg:grid-cols-5">
+                      {guidedSetupSteps.map((step) => (
+                        <div key={step.key} className="rounded-xl border border-slate-200 bg-white p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-sm font-semibold text-slate-900">{step.title}</p>
+                            <span
+                              className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                                step.done
+                                  ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                                  : "border-amber-300 bg-amber-100 text-amber-900"
+                              }`}
+                            >
+                              {step.done ? "Complete" : "Needs attention"}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-xs text-slate-600">{step.detail}</p>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (step.key === "publish" && !step.done && publishBlockers.length === 0) {
+                                void publishLeague();
+                                return;
+                              }
+                              openGuidedTarget(step.view, step.target);
+                            }}
+                            disabled={step.key === "publish" && !step.done && publishBlockers.length > 0}
+                            className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
+                          >
+                            {step.actionLabel}
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+                      <p className="text-sm font-semibold text-slate-900">Publish checklist</p>
+                      {publishBlockers.length === 0 ? (
+                        <p className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
+                          This league is ready to publish.
+                        </p>
+                      ) : (
+                        <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                          <p className="text-sm font-semibold text-amber-900">Action still required before publish</p>
+                          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900">
+                            {publishBlockers.map((blocker) => (
+                              <li key={blocker}>{blocker}</li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  </section>
+                )
               ) : null}
               {!canManage ? (
                 <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -3965,12 +4003,18 @@ export default function LeaguePage() {
                     <div>
                       <p className="text-sm font-semibold text-slate-900">Current setup position</p>
                       <p className="mt-1 text-sm text-slate-600">
-                        {nextGuidedStep
+                        {currentSeason?.is_published
+                          ? "This league is already published. Use the tabs below for maintenance, fixture management, and any live updates."
+                          : nextGuidedStep
                           ? `Next recommended step: ${nextGuidedStep.title.replace(/^\d+\.\s*/, "")}.`
                           : "This league setup is complete. You can still return here to edit league details or publish status."}
                       </p>
                     </div>
-                    {nextGuidedStep ? (
+                    {currentSeason?.is_published ? (
+                      <span className="rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-900">
+                        League published
+                      </span>
+                    ) : nextGuidedStep ? (
                       <button
                         type="button"
                         onClick={() => openGuidedTarget(nextGuidedStep.view, nextGuidedStep.target)}
