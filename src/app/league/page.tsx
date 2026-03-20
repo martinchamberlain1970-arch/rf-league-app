@@ -4029,60 +4029,88 @@ export default function LeaguePage() {
                   <p className="text-xs uppercase tracking-wide text-slate-500">League body</p>
                   <p className="text-sm font-semibold text-slate-900">{LEAGUE_BODY_NAME}</p>
                 </div>
-                <div id="guided-create-league" className={`mt-3 grid gap-2 sm:grid-cols-4 scroll-mt-24 ${guidedSectionClass("create-league")}`}>
-                  <select
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2"
-                    value={seasonTemplate}
-                    onChange={(e) => setSeasonTemplate(e.target.value as LeagueTemplateKey)}
+                <div
+                  className={`mt-3 rounded-2xl border p-3 ${
+                    currentSeason?.is_published
+                      ? "border-slate-200 bg-slate-50/80"
+                      : "border-slate-200 bg-white"
+                  }`}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Create a new league</p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {currentSeason?.is_published
+                          ? "The selected league is already live. These creation controls are softened so the tab reads as maintenance-first. Use them only when you are creating the next league."
+                          : "Use these controls to create the next draft league before you move on to teams, fixtures, and publishing."}
+                      </p>
+                    </div>
+                    {currentSeason?.is_published ? (
+                      <span className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
+                        Creation controls softened
+                      </span>
+                    ) : null}
+                  </div>
+                  <div
+                    id="guided-create-league"
+                    className={`mt-3 grid gap-2 sm:grid-cols-4 scroll-mt-24 ${guidedSectionClass("create-league")} ${
+                      currentSeason?.is_published ? "opacity-60" : ""
+                    }`}
                   >
-                    <option value="winter">{LEAGUE_BODY_NAME} - {LEAGUE_TEMPLATES.winter.label} ({formatLabel(LEAGUE_TEMPLATES.winter.singlesCount, LEAGUE_TEMPLATES.winter.doublesCount)})</option>
-                    <option value="summer">{LEAGUE_BODY_NAME} - {LEAGUE_TEMPLATES.summer.label} ({formatLabel(LEAGUE_TEMPLATES.summer.singlesCount, LEAGUE_TEMPLATES.summer.doublesCount)})</option>
-                  </select>
-                  <input
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2 sm:col-span-2"
-                    placeholder="Season label (optional, e.g. 2026/2027)"
-                    value={seasonName}
-                    onChange={(e) => setSeasonName(e.target.value)}
-                  />
-                  <button type="button" onClick={createSeason} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">
-                    Create league
-                  </button>
+                    <select
+                      className="rounded-xl border border-slate-300 bg-white px-3 py-2"
+                      value={seasonTemplate}
+                      onChange={(e) => setSeasonTemplate(e.target.value as LeagueTemplateKey)}
+                    >
+                      <option value="winter">{LEAGUE_BODY_NAME} - {LEAGUE_TEMPLATES.winter.label} ({formatLabel(LEAGUE_TEMPLATES.winter.singlesCount, LEAGUE_TEMPLATES.winter.doublesCount)})</option>
+                      <option value="summer">{LEAGUE_BODY_NAME} - {LEAGUE_TEMPLATES.summer.label} ({formatLabel(LEAGUE_TEMPLATES.summer.singlesCount, LEAGUE_TEMPLATES.summer.doublesCount)})</option>
+                    </select>
+                    <input
+                      className="rounded-xl border border-slate-300 bg-white px-3 py-2 sm:col-span-2"
+                      placeholder="Season label (optional, e.g. 2026/2027)"
+                      value={seasonName}
+                      onChange={(e) => setSeasonName(e.target.value)}
+                    />
+                    <button type="button" onClick={createSeason} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">
+                      Create league
+                    </button>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-600">
+                    Selected format:{" "}
+                    <span className="font-semibold text-slate-800">
+                      {formatLabel(LEAGUE_TEMPLATES[seasonTemplate].singlesCount, LEAGUE_TEMPLATES[seasonTemplate].doublesCount)}
+                    </span>
+                  </p>
+                  {seasonTemplate === "summer" ? (
+                    <div className={`mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 ${currentSeason?.is_published ? "opacity-70" : ""}`}>
+                      <p className="font-semibold">Summer League rules applied</p>
+                      <ul className="mt-1 space-y-1 text-xs text-amber-800">
+                        <li>6 singles frames and no doubles.</li>
+                        <li>Each player can play a maximum of 2 singles frames.</li>
+                        <li>If a side only has 2 players, frames 5 and 6 should be recorded as No Show.</li>
+                        <li>No Show on both sides gives no frame point and no player stats.</li>
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className={`mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900 ${currentSeason?.is_published ? "opacity-70" : ""}`}>
+                      <p className="font-semibold">Winter League rules applied</p>
+                      <ul className="mt-1 space-y-1 text-xs text-sky-800">
+                        <li>4 singles frames and 1 doubles frame.</li>
+                        <li>Singles players can appear once only per fixture.</li>
+                        <li>Singles frame 3 allows Nominated Player where team points count but player stats do not.</li>
+                        <li>Singles frame 4 allows No Show if a side is short.</li>
+                      </ul>
+                    </div>
+                  )}
+                  <label className={`mt-2 inline-flex items-center gap-2 text-sm text-slate-700 ${currentSeason?.is_published ? "opacity-70" : ""}`}>
+                    <input
+                      type="checkbox"
+                      checked={seasonHandicapEnabled}
+                      onChange={(e) => setSeasonHandicapEnabled(e.target.checked)}
+                    />
+                    Handicap league (maximum start 40)
+                  </label>
                 </div>
-                <p className="mt-2 text-xs text-slate-600">
-                  Selected format:{" "}
-                  <span className="font-semibold text-slate-800">
-                    {formatLabel(LEAGUE_TEMPLATES[seasonTemplate].singlesCount, LEAGUE_TEMPLATES[seasonTemplate].doublesCount)}
-                  </span>
-                </p>
-                {seasonTemplate === "summer" ? (
-                  <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                    <p className="font-semibold">Summer League rules applied</p>
-                    <ul className="mt-1 space-y-1 text-xs text-amber-800">
-                      <li>6 singles frames and no doubles.</li>
-                      <li>Each player can play a maximum of 2 singles frames.</li>
-                      <li>If a side only has 2 players, frames 5 and 6 should be recorded as No Show.</li>
-                      <li>No Show on both sides gives no frame point and no player stats.</li>
-                    </ul>
-                  </div>
-                ) : (
-                  <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">
-                    <p className="font-semibold">Winter League rules applied</p>
-                    <ul className="mt-1 space-y-1 text-xs text-sky-800">
-                      <li>4 singles frames and 1 doubles frame.</li>
-                      <li>Singles players can appear once only per fixture.</li>
-                      <li>Singles frame 3 allows Nominated Player where team points count but player stats do not.</li>
-                      <li>Singles frame 4 allows No Show if a side is short.</li>
-                    </ul>
-                  </div>
-                )}
-                <label className="mt-2 inline-flex items-center gap-2 text-sm text-slate-700">
-                  <input
-                    type="checkbox"
-                    checked={seasonHandicapEnabled}
-                    onChange={(e) => setSeasonHandicapEnabled(e.target.checked)}
-                  />
-                  Handicap league (maximum start 40)
-                </label>
                 <div id="guided-publish-league" className={`mt-3 scroll-mt-24 ${guidedSectionClass("publish-league")}`}>
                   <button
                     type="button"
