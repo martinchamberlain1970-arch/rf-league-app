@@ -525,6 +525,15 @@ export default function LeaguePage() {
     }
     return map;
   }, [registeredMembers]);
+  const seasonMembershipByPlayer = useMemo(() => {
+    const map = new Map<string, TeamMember[]>();
+    for (const member of members.filter((member) => member.season_id === seasonId)) {
+      const prev = map.get(member.player_id) ?? [];
+      prev.push(member);
+      map.set(member.player_id, prev);
+    }
+    return map;
+  }, [members, seasonId]);
   const fallbackRosterByLeagueTeamId = useMemo(() => {
     const map = new Map<string, string[]>();
     const regTeamByKey = new Map(
@@ -1508,8 +1517,30 @@ export default function LeaguePage() {
     if (!registeredTeam) return null;
     const roster = registeredMembers.filter((m) => m.team_id === registeredTeam.id);
     if (roster.length === 0) return null;
+    const conflicts = roster
+      .map((member) => {
+        const existingSeasonMemberships = (seasonMembershipByPlayer.get(member.player_id) ?? []).filter(
+          (existing) => existing.team_id !== leagueTeamId && existing.season_id === seasonIdValue
+        );
+        if (existingSeasonMemberships.length === 0) return null;
+        const playerName = named(playerById.get(member.player_id));
+        const existingTeams = Array.from(
+          new Set(existingSeasonMemberships.map((existing) => teamById.get(existing.team_id)?.name).filter(Boolean) as string[])
+        ).sort((a, b) => a.localeCompare(b));
+        return `${playerName} is already assigned in this season to ${existingTeams.join(", ")}`;
+      })
+      .filter((value): value is string => Boolean(value));
+    const eligibleRoster = roster.filter((member) => {
+      const existingSeasonMemberships = (seasonMembershipByPlayer.get(member.player_id) ?? []).filter(
+        (existing) => existing.team_id !== leagueTeamId && existing.season_id === seasonIdValue
+      );
+      return existingSeasonMemberships.length === 0;
+    });
+    if (eligibleRoster.length === 0) {
+      return conflicts.join(" | ");
+    }
     const copyRes = await client.from("league_team_members").upsert(
-      roster.map((m) => ({
+      eligibleRoster.map((m) => ({
         season_id: seasonIdValue,
         team_id: leagueTeamId,
         player_id: m.player_id,
@@ -1518,7 +1549,8 @@ export default function LeaguePage() {
       })),
       { onConflict: "season_id,team_id,player_id" }
     );
-    return copyRes.error?.message ?? null;
+    if (copyRes.error?.message) return copyRes.error.message;
+    return conflicts.length > 0 ? conflicts.join(" | ") : null;
   };
 
   const addTeamsToLeague = async () => {
@@ -1547,6 +1579,7 @@ export default function LeaguePage() {
     }
     let added = 0;
     const failed: string[] = [];
+    const warnings: string[] = [];
     for (const teamName of toAdd) {
       const ins = await client
         .from("league_teams")
@@ -1564,8 +1597,7 @@ export default function LeaguePage() {
       }
       const rosterError = await copyRegisteredRosterToLeagueTeam(ins.data.id, teamName, seasonId);
       if (rosterError) {
-        failed.push(`${teamName}: ${rosterError}`);
-        continue;
+        warnings.push(`${teamName}: ${rosterError}`);
       }
       added += 1;
     }
@@ -1575,7 +1607,13 @@ export default function LeaguePage() {
       setMessage(`Added ${added} team(s). Some failed: ${failed.join(" | ")}`);
       return;
     }
-    setInfoModal({ title: "Teams Added", description: `Added ${added} team(s) to the selected league.` });
+    setInfoModal({
+      title: "Teams Added",
+      description:
+        warnings.length > 0
+          ? `Added ${added} team(s) to the selected league.\n\nSeason roster warnings:\n- ${warnings.slice(0, 5).join("\n- ")}${warnings.length > 5 ? `\n- ${warnings.length - 5} more warning(s)` : ""}\n\nA player can only belong to one team in the same season, but can play for a different team in another season.`
+          : `Added ${added} team(s) to the selected league.`,
+    });
   };
 
   const deleteRegisteredTeam = async (teamId: string) => {
@@ -1964,7 +2002,7 @@ export default function LeaguePage() {
     const teamName = registeredTeams.find((t) => t.id === transferDestinationTeamId)?.name ?? "selected team";
     setInfoModal({
       title: "Transfer Complete",
-      description: `${playerName} moved to ${venueName} and was assigned to ${teamName}. Previous team links were removed.`,
+      description: `${playerName} moved to ${venueName} and was assigned to ${teamName} in the registered-team template. Existing published season team memberships were not changed.`,
     });
     setTransferFromVenueId("");
     setTransferPlayerId("");
@@ -4196,6 +4234,9 @@ export default function LeaguePage() {
                 </div>
                 <div className="mt-4 border-t border-slate-200 pt-4">
                   <h3 className="text-sm font-semibold text-slate-900">Selected League Teams</h3>
+                  <p className="mt-1 text-xs text-slate-600">
+                    These are season entries. A player can play for one team in this league season and a different team in a later winter or summer season.
+                  </p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     {seasonId && seasonTeams.length > 0 ? (
                       seasonTeams.map((t) => (
@@ -4210,6 +4251,9 @@ export default function LeaguePage() {
                 </div>
                 <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm font-semibold text-slate-900">Add registered team into selected league</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    Registered teams are reusable templates. Adding them here creates the season-specific team entry and copies the current template roster into this league only.
+                  </p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-slate-300 bg-white p-2">
                       {registeredTeamOptions
@@ -5142,7 +5186,7 @@ export default function LeaguePage() {
                     <div id="guided-assign-players" className={`mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 scroll-mt-24 ${guidedSectionClass("assign-players")}`}>
                       <p className="text-sm font-semibold text-slate-900">Step 3: Register new player for team/club (first-time creation)</p>
                       <p className="mt-2 text-xs text-slate-600">
-                        This step creates brand-new players only. If the player already exists, use Step 4 transfer.
+                        This step creates brand-new player records only. If the player already exists, use the existing record. Team selection here updates the reusable registered-team template, not historical season rosters.
                       </p>
                       <div className="mt-2 grid gap-2 sm:grid-cols-6">
                         <input
@@ -5269,6 +5313,9 @@ export default function LeaguePage() {
                 ) : null}
                 <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm font-semibold text-slate-900">Step 4: Transfer player club/team</p>
+                  <p className="mt-1 text-xs text-slate-600">
+                    This updates the player&apos;s club and registered-team template for future league setup. Published season team memberships remain season-specific and are not rewritten.
+                  </p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-5">
                     <select
                       className="rounded-xl border border-slate-300 bg-white px-3 py-2"
