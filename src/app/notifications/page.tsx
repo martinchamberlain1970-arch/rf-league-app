@@ -37,6 +37,16 @@ type LeagueSeasonRow = { id: string; name: string };
 type LeagueSubmissionRow = { id: string; fixture_id: string; status: string; created_at: string };
 type FixtureChangeRequestRow = { id: string; fixture_id: string; status: string; created_at: string; request_type: "play_early" | "play_late"; proposed_fixture_date: string };
 type LeagueFixtureRow = { id: string; home_team_id: string; away_team_id: string; fixture_date: string | null };
+type FixtureLineupNotifyRow = {
+  id: string;
+  home_team_id: string;
+  away_team_id: string;
+  fixture_date: string | null;
+  status: string;
+  home_lineup_submitted_at: string | null;
+  away_lineup_submitted_at: string | null;
+  pre_match_paper_record: boolean | null;
+};
 type LeagueTeamNameRow = { id: string; name: string };
 type CompetitionEntryNotifyRow = {
   id: string;
@@ -639,6 +649,45 @@ export default function NotificationsPage() {
             status: r.status,
           });
         });
+
+        if (captainTeamIds.size > 0) {
+          let lineupRows: FixtureLineupNotifyRow[] = [];
+          const lineupRes = await client
+            .from("league_fixtures")
+            .select("id,home_team_id,away_team_id,fixture_date,status,home_lineup_submitted_at,away_lineup_submitted_at,pre_match_paper_record")
+            .in("away_team_id", Array.from(captainTeamIds))
+            .in("status", ["pending", "in_progress"])
+            .not("home_lineup_submitted_at", "is", null)
+            .is("away_lineup_submitted_at", null)
+            .eq("pre_match_paper_record", false)
+            .order("fixture_date", { ascending: true });
+          if (!lineupRes.error) {
+            lineupRows = (lineupRes.data ?? []) as FixtureLineupNotifyRow[];
+          } else if (!lineupRes.error.message.toLowerCase().includes("pre_match_")) {
+            setMessage(`Failed to load notifications: ${lineupRes.error.message}`);
+            return;
+          }
+          if (lineupRows.length > 0) {
+            const labels = await loadLeagueFixtureLabels(
+              lineupRows.map((row) => ({
+                id: row.id,
+                fixture_id: row.id,
+                status: row.status,
+                created_at: row.home_lineup_submitted_at ?? row.fixture_date ?? new Date().toISOString(),
+              }))
+            );
+            lineupRows.forEach((row) => {
+              out.push({
+                key: `away_lineup_due:${row.id}:${row.home_lineup_submitted_at ?? ""}`,
+                title: "Away lineup required",
+                detail: `${labels.get(row.id) ?? `Fixture ${row.id.slice(0, 8)}`} · Home team has submitted its lineup`,
+                created_at: row.home_lineup_submitted_at ?? row.fixture_date ?? new Date().toISOString(),
+                href: `/captain-results?fixtureId=${row.id}`,
+                status: "pending",
+              });
+            });
+          }
+        }
 
         if (linkedPlayerId) {
           const matchRes = await softQuery<CompetitionMatchNotifyRow>(
