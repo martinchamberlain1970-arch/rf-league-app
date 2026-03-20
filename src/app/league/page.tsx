@@ -471,6 +471,7 @@ export default function LeaguePage() {
   const seasonFixtures = useMemo(() => fixtures.filter((f) => f.season_id === seasonId), [fixtures, seasonId]);
   const fixtureById = useMemo(() => new Map(fixtures.map((f) => [f.id, f])), [fixtures]);
   const playerById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
+  const locationById = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations]);
   const knockoutCompetitions = useMemo(
     () =>
       leagueCompetitions
@@ -611,6 +612,20 @@ export default function LeaguePage() {
     }
     return map;
   }, [registeredMembers, registeredTeams]);
+  const describeExistingPlayerPlacement = (player: Player | null | undefined) => {
+    if (!player) return "Existing player record found.";
+    const venueName = player.location_id ? locationById.get(player.location_id)?.name ?? "Unknown club" : "Unknown club";
+    const teamNames = registeredTeamNamesByPlayer.get(player.id) ?? [];
+    const teamText = teamNames.length > 0 ? ` Team${teamNames.length === 1 ? "" : "s"}: ${teamNames.join(", ")}.` : " Not currently assigned to a team.";
+    return `${named(player)} already exists at ${venueName}.${teamText}`;
+  };
+  const findExistingPlayerRecord = (fullName: string) => {
+    const normalizedFullName = fullName.trim().toLowerCase();
+    return (
+      players.find((player) => (player.full_name ?? "").trim().toLowerCase() === normalizedFullName) ??
+      null
+    );
+  };
   const handicapRows = useMemo(
     () =>
       players
@@ -1631,22 +1646,19 @@ export default function LeaguePage() {
     let created = 0;
     let addedToTeam = 0;
     const issues: string[] = [];
+    const seenFullNames = new Set<string>();
     for (const row of parsed) {
       const fullName = `${row.first.trim()} ${row.second.trim()}`.trim();
-      const displayName = row.first.trim();
-      const duplicateCheck = await client
-        .from("players")
-        .select("id")
-        .eq("location_id", locationId)
-        .ilike("full_name", fullName)
-        .eq("is_archived", false)
-        .limit(1);
-      if (duplicateCheck.error) {
-        issues.push(`${fullName}: duplicate check failed`);
+      const displayName = fullName;
+      const normalizedFullName = fullName.toLowerCase();
+      if (seenFullNames.has(normalizedFullName)) {
+        issues.push(`${fullName}: entered more than once in this batch`);
         continue;
       }
-      if ((duplicateCheck.data ?? []).length > 0) {
-        issues.push(`${fullName}: already exists`);
+      seenFullNames.add(normalizedFullName);
+      const existingPlayer = findExistingPlayerRecord(fullName);
+      if (existingPlayer) {
+        issues.push(describeExistingPlayerPlacement(existingPlayer));
         continue;
       }
       const playerInsert = await client
@@ -1662,7 +1674,11 @@ export default function LeaguePage() {
         .select("id")
         .single();
       if (playerInsert.error || !playerInsert.data) {
-        issues.push(`${fullName}: ${playerInsert.error?.message ?? "create failed"}`);
+        if (playerInsert.error?.message.includes("players_display_name_lower_uniq")) {
+          issues.push(`${fullName}: a player record using that display name already exists. Search for the existing player and add them to the team instead.`);
+        } else {
+          issues.push(`${fullName}: ${playerInsert.error?.message ?? "create failed"}`);
+        }
         continue;
       }
       created += 1;
@@ -1686,7 +1702,7 @@ export default function LeaguePage() {
       title: "Bulk Player Register Complete",
       description:
         issues.length > 0
-          ? `Created ${created}. Added to team ${addedToTeam}. Issues: ${issues.slice(0, 5).join(" | ")}${issues.length > 5 ? " ..." : ""}`
+          ? `Created ${created}. Added to team ${addedToTeam}.\n\nThe following names were not created:\n- ${issues.slice(0, 5).join("\n- ")}${issues.length > 5 ? `\n- ${issues.length - 5} more issue(s)` : ""}\n\nIf a player already exists, use the existing player record and add them to the required team.`
           : `Created ${created} player(s)${registryTeamId ? ` and added ${addedToTeam} to selected team` : ""}.`,
     });
   };
@@ -1823,22 +1839,12 @@ export default function LeaguePage() {
       return;
     }
     const fullName = `${first} ${second}`;
-    const displayName = first;
-    const duplicateCheck = await client
-      .from("players")
-      .select("id")
-      .eq("location_id", newPlayerLocationId)
-      .ilike("full_name", fullName)
-      .eq("is_archived", false)
-      .limit(1);
-    if (duplicateCheck.error) {
-      setMessage(`Failed to check duplicates: ${duplicateCheck.error.message}`);
-      return;
-    }
-    if ((duplicateCheck.data ?? []).length > 0) {
+    const displayName = fullName;
+    const existingPlayer = findExistingPlayerRecord(fullName);
+    if (existingPlayer) {
       setInfoModal({
-        title: "Possible Duplicate",
-        description: `${fullName} already exists at this venue. Use the transfer flow in Step 4 if this is the same person moving club/team.`,
+        title: "Player Already Exists",
+        description: `${describeExistingPlayerPlacement(existingPlayer)} Use the existing player record instead of creating a new one.`,
       });
       return;
     }
@@ -1856,7 +1862,10 @@ export default function LeaguePage() {
       .single();
     if (playerInsert.error) {
       if (playerInsert.error.message.includes("players_display_name_lower_uniq")) {
-        setMessage(`A player with display name "${displayName}" already exists. Use Select player instead.`);
+        setInfoModal({
+          title: "Player Already Exists",
+          description: `A player record using the name "${displayName}" already exists. Search for the existing player and add them to the team instead of creating a new player.`,
+        });
         return;
       }
       setMessage(`Failed to register player: ${playerInsert.error.message}`);
