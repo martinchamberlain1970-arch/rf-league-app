@@ -50,7 +50,7 @@ type MatchRow = {
   status: "pending" | "in_progress" | "complete" | "bye";
   updated_at: string | null;
 };
-type Competition = { id: string; sport_type: "snooker"; competition_format: "knockout" | "league" };
+type Competition = { id: string; name: string; sport_type: "snooker"; competition_format: "knockout" | "league" };
 type Frame = { match_id: string; winner_player_id: string | null; is_walkover_award: boolean };
 type LeagueFixtureLite = {
   id: string;
@@ -214,7 +214,7 @@ export default function PlayerProfilePage() {
           )
           .eq("is_archived", false),
         client.from("matches").select("id,competition_id,match_mode,player1_id,player2_id,team1_player1_id,team1_player2_id,team2_player1_id,team2_player2_id,winner_player_id,status,updated_at"),
-        client.from("competitions").select("id,sport_type,competition_format"),
+        client.from("competitions").select("id,name,sport_type,competition_format"),
         client.from("frames").select("match_id,winner_player_id,is_walkover_award"),
         client.from("locations").select("id,name").order("name"),
         client.from("app_users").select("id,email,linked_player_id"),
