@@ -451,6 +451,10 @@ export default function LeaguePage() {
     }
     return Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   }, [registeredTeams, teams]);
+  const registeredTeamByNormalizedName = useMemo(
+    () => new Map(registeredTeams.map((team) => [team.name.trim().toLowerCase(), team])),
+    [registeredTeams]
+  );
   const selectedVenue = useMemo(
     () => locations.find((l) => l.id === manageVenueId) ?? null,
     [locations, manageVenueId]
@@ -478,6 +482,11 @@ export default function LeaguePage() {
     () => seasonTeams.find((team) => team.id === seasonRosterTeamId) ?? null,
     [seasonTeams, seasonRosterTeamId]
   );
+  const selectedSeasonRosterVenueId = useMemo(() => {
+    if (!selectedSeasonRosterTeam) return null;
+    const templateTeam = registeredTeamByNormalizedName.get(selectedSeasonRosterTeam.name.trim().toLowerCase());
+    return templateTeam?.location_id ?? selectedSeasonRosterTeam.location_id ?? null;
+  }, [registeredTeamByNormalizedName, selectedSeasonRosterTeam]);
   const locationById = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations]);
   const knockoutCompetitions = useMemo(
     () =>
@@ -592,17 +601,17 @@ export default function LeaguePage() {
       .sort((a, b) => named(a.player).localeCompare(named(b.player)));
   }, [members, playerById, seasonId, selectedSeasonRosterTeam]);
   const availableSeasonRosterPlayers = useMemo(() => {
-    if (!selectedSeasonRosterTeam) return [] as Player[];
+    if (!selectedSeasonRosterTeam || !selectedSeasonRosterVenueId) return [] as Player[];
     const currentTeamPlayerIds = new Set(selectedSeasonRosterMembers.map((member) => member.player_id));
     return players
-      .filter((player) => player.location_id === selectedSeasonRosterTeam.location_id)
+      .filter((player) => player.location_id === selectedSeasonRosterVenueId)
       .filter((player) => !currentTeamPlayerIds.has(player.id))
       .filter((player) => {
         const seasonMemberships = seasonMembershipByPlayer.get(player.id) ?? [];
         return seasonMemberships.every((membership) => membership.team_id === selectedSeasonRosterTeam.id);
       })
       .sort((a, b) => named(a).localeCompare(named(b)));
-  }, [players, seasonMembershipByPlayer, selectedSeasonRosterMembers, selectedSeasonRosterTeam]);
+  }, [players, seasonMembershipByPlayer, selectedSeasonRosterMembers, selectedSeasonRosterTeam, selectedSeasonRosterVenueId]);
   const filteredSelectedVenueTeamRoster = useMemo(() => {
     const query = venuePlayerSearch.trim().toLowerCase();
     if (!query) return selectedVenueTeamRoster;
@@ -1627,11 +1636,12 @@ export default function LeaguePage() {
     const failed: string[] = [];
     const warnings: string[] = [];
     for (const teamName of toAdd) {
+      const registeredTeam = registeredTeamByNormalizedName.get(teamName.trim().toLowerCase());
       const ins = await client
         .from("league_teams")
         .insert({
           season_id: seasonId,
-          location_id: season.location_id,
+          location_id: registeredTeam?.location_id ?? season.location_id,
           name: teamName,
           is_active: true,
         })
@@ -5379,6 +5389,7 @@ export default function LeaguePage() {
                             <p className="text-sm font-semibold text-slate-900">{selectedSeasonRosterTeam.name}</p>
                             <p className="mt-1 text-xs text-slate-600">
                               Changes here affect this selected league season only.
+                              {selectedSeasonRosterVenueId ? ` Venue: ${locationLabel(locationById.get(selectedSeasonRosterVenueId)?.name ?? "Unknown venue")}.` : ""}
                             </p>
                           </div>
                           <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
