@@ -377,6 +377,7 @@ export default function LeaguePage() {
   const [profileVenueFilterId, setProfileVenueFilterId] = useState("");
   const [seasonRosterTeamId, setSeasonRosterTeamId] = useState("");
   const [seasonRosterPlayerId, setSeasonRosterPlayerId] = useState("");
+  const [seasonRosterBulkPlayerIds, setSeasonRosterBulkPlayerIds] = useState<string[]>([]);
 
   const [fixtureWeek, setFixtureWeek] = useState("");
   const [fixtureWeekFilter, setFixtureWeekFilter] = useState("");
@@ -1429,13 +1430,21 @@ export default function LeaguePage() {
     if (!seasonTeams.length) {
       if (seasonRosterTeamId) setSeasonRosterTeamId("");
       if (seasonRosterPlayerId) setSeasonRosterPlayerId("");
+      if (seasonRosterBulkPlayerIds.length > 0) setSeasonRosterBulkPlayerIds([]);
       return;
     }
     if (!seasonTeams.some((team) => team.id === seasonRosterTeamId)) {
       setSeasonRosterTeamId(seasonTeams[0]?.id ?? "");
       setSeasonRosterPlayerId("");
+      setSeasonRosterBulkPlayerIds([]);
     }
-  }, [seasonRosterPlayerId, seasonRosterTeamId, seasonTeams]);
+  }, [seasonRosterBulkPlayerIds.length, seasonRosterPlayerId, seasonRosterTeamId, seasonTeams]);
+
+  useEffect(() => {
+    if (seasonRosterBulkPlayerIds.length === 0) return;
+    const allowed = new Set(availableSeasonRosterPlayers.map((player) => player.id));
+    setSeasonRosterBulkPlayerIds((prev) => prev.filter((playerId) => allowed.has(playerId)));
+  }, [availableSeasonRosterPlayers, seasonRosterBulkPlayerIds.length]);
 
   useEffect(() => {
     if (admin.loading || canManage) return;
@@ -2689,7 +2698,7 @@ export default function LeaguePage() {
     await loadAll();
   };
 
-  const addSeasonRosterPlayer = async () => {
+  const addPlayersToSeasonRoster = async (playerIds: string[]) => {
     const client = supabase;
     if (!client) return;
     if (!canManage) {
@@ -2700,36 +2709,57 @@ export default function LeaguePage() {
       setMessage("Select a league and team first.");
       return;
     }
-    if (!seasonRosterPlayerId) {
-      setMessage("Select a player to add to the season roster.");
+    if (playerIds.length === 0) {
+      setMessage("Select at least one player to add to the season roster.");
       return;
     }
-    const existingMemberships = (seasonMembershipByPlayer.get(seasonRosterPlayerId) ?? []).filter(
-      (member) => member.team_id !== seasonRosterTeamId
-    );
-    if (existingMemberships.length > 0) {
-      const teamNames = Array.from(
-        new Set(existingMemberships.map((member) => teamById.get(member.team_id)?.name).filter(Boolean) as string[])
-      ).sort((a, b) => a.localeCompare(b));
+    const conflicts = playerIds
+      .map((playerId) => {
+        const existingMemberships = (seasonMembershipByPlayer.get(playerId) ?? []).filter(
+          (member) => member.team_id !== seasonRosterTeamId
+        );
+        if (existingMemberships.length === 0) return null;
+        const teamNames = Array.from(
+          new Set(existingMemberships.map((member) => teamById.get(member.team_id)?.name).filter(Boolean) as string[])
+        ).sort((a, b) => a.localeCompare(b));
+        return `${named(playerById.get(playerId))} is already assigned in this league season to ${teamNames.join(", ")}.`;
+      })
+      .filter((value): value is string => Boolean(value));
+    if (conflicts.length > 0) {
       setInfoModal({
         title: "Season Roster Conflict",
-        description: `${named(playerById.get(seasonRosterPlayerId))} is already assigned in this league season to ${teamNames.join(", ")}.`,
+        description: conflicts.slice(0, 5).join("\n"),
       });
       return;
     }
-    const insert = await client.from("league_team_members").insert({
-      season_id: seasonId,
-      team_id: seasonRosterTeamId,
-      player_id: seasonRosterPlayerId,
-      is_captain: false,
-      is_vice_captain: false,
-    });
+    const insert = await client.from("league_team_members").insert(
+      playerIds.map((playerId) => ({
+        season_id: seasonId,
+        team_id: seasonRosterTeamId,
+        player_id: playerId,
+        is_captain: false,
+        is_vice_captain: false,
+      }))
+    );
     if (insert.error) {
       setMessage(insert.error.message);
       return;
     }
     await loadAll();
     setSeasonRosterPlayerId("");
+    setSeasonRosterBulkPlayerIds([]);
+  };
+
+  const addSeasonRosterPlayer = async () => {
+    if (!seasonRosterPlayerId) {
+      setMessage("Select a player to add to the season roster.");
+      return;
+    }
+    await addPlayersToSeasonRoster([seasonRosterPlayerId]);
+  };
+
+  const addSeasonRosterPlayersBulk = async () => {
+    await addPlayersToSeasonRoster(seasonRosterBulkPlayerIds);
   };
 
   const removeSeasonRosterMember = async (memberId: string) => {
@@ -5282,6 +5312,66 @@ export default function LeaguePage() {
                         Add to season roster
                       </button>
                     </div>
+                    {selectedSeasonRosterTeam ? (
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">Bulk add existing players</p>
+                            <p className="mt-1 text-xs text-slate-600">
+                              Choose existing players from the same venue and add them to this season team in one action.
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700"
+                              onClick={() => setSeasonRosterBulkPlayerIds(availableSeasonRosterPlayers.map((player) => player.id))}
+                              disabled={availableSeasonRosterPlayers.length === 0}
+                            >
+                              Select all available
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700"
+                              onClick={() => setSeasonRosterBulkPlayerIds([])}
+                              disabled={seasonRosterBulkPlayerIds.length === 0}
+                            >
+                              Clear
+                            </button>
+                          </div>
+                        </div>
+                        <div className="mt-3 max-h-48 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
+                          {availableSeasonRosterPlayers.map((player) => (
+                            <label key={`season-roster-bulk-${player.id}`} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800">
+                              <input
+                                type="checkbox"
+                                checked={seasonRosterBulkPlayerIds.includes(player.id)}
+                                onChange={(e) =>
+                                  setSeasonRosterBulkPlayerIds((prev) =>
+                                    e.target.checked ? Array.from(new Set([...prev, player.id])) : prev.filter((id) => id !== player.id)
+                                  )
+                                }
+                              />
+                              <span>{named(player)}</span>
+                            </label>
+                          ))}
+                          {availableSeasonRosterPlayers.length === 0 ? (
+                            <p className="text-sm text-slate-500">No eligible existing players are currently available for this season team.</p>
+                          ) : null}
+                        </div>
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-xs text-slate-600">{seasonRosterBulkPlayerIds.length} player(s) selected.</p>
+                          <button
+                            type="button"
+                            onClick={() => void addSeasonRosterPlayersBulk()}
+                            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700"
+                            disabled={seasonRosterBulkPlayerIds.length === 0}
+                          >
+                            Add selected existing players
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
                     {selectedSeasonRosterTeam ? (
                       <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                         <div className="flex flex-wrap items-center justify-between gap-2">
