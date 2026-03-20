@@ -1096,9 +1096,9 @@ export default function PlayerProfilePage() {
   }, [leagueRelevant, leagueFixtureById, leagueTeamById, id]);
   const competitionHistory = useMemo<RecentHistoryItem[]>(() => {
     return relevant
-      .map((m) => {
+      .flatMap((m) => {
         const competition = compMap.get(m.competition_id);
-        if (!competition) return null;
+        if (!competition) return [];
         const inTeam1 = m.team1_player1_id === id || m.team1_player2_id === id;
         const winnerIsTeam1 = m.winner_player_id === m.team1_player1_id || m.winner_player_id === m.team1_player2_id;
         const winnerIsTeam2 = m.winner_player_id === m.team2_player1_id || m.winner_player_id === m.team2_player2_id;
@@ -1115,7 +1115,7 @@ export default function PlayerProfilePage() {
                 .filter((playerId) => Boolean(playerId) && playerId !== id)
                 .map((playerId) => nameMap.get(playerId as string) ?? "Opponent")
                 .join(" / ") || "Opponent";
-        return {
+        return [{
           key: `match-${m.id}`,
           kind: "competition_match",
           itemId: m.id,
@@ -1123,9 +1123,8 @@ export default function PlayerProfilePage() {
           label: `${competition.name} · ${opponentLabel}`,
           result: isWin ? "W" : "L",
           sublabel: competition.competition_format === "knockout" ? "Knockout competition" : "Competition match",
-        } satisfies RecentHistoryItem;
-      })
-      .filter((row): row is RecentHistoryItem => Boolean(row));
+        } satisfies RecentHistoryItem];
+      });
   }, [relevant, compMap, id, nameMap]);
   const recentHistory = useMemo<RecentHistoryItem[]>(
     () =>
