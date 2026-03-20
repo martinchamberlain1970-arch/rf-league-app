@@ -5224,19 +5224,24 @@ export default function LeaguePage() {
               <section className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-white to-indigo-50 p-4 shadow-sm">
                 <h2 className="text-lg font-semibold text-indigo-900">Team Management</h2>
                 <p className="mt-2 text-sm text-slate-600">Follow steps in order. You can skip and return later.</p>
-                {seasonId ? (
-                  <div className="mt-3 rounded-xl border border-indigo-200 bg-white p-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <p className="text-sm font-semibold text-slate-900">Season roster editor</p>
-                        <p className="mt-1 text-xs text-slate-600">
-                          Edit the live roster for the selected league season directly. This is separate from the reusable registered-team template.
-                        </p>
-                      </div>
-                      <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-800">
-                        One team per player in this season
-                      </span>
+                <div className="mt-3 rounded-xl border border-indigo-200 bg-white p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Season roster editor</p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        Edit the live roster for the selected league season directly. This is separate from the reusable registered-team template.
+                      </p>
                     </div>
+                    <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-800">
+                      One team per player in this season
+                    </span>
+                  </div>
+                  {!seasonId ? (
+                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
+                      Select a league season in <strong>League Setup</strong> first, then return here to manage the live season roster.
+                    </div>
+                  ) : (
+                    <>
                     <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,240px)_minmax(0,1fr)_auto]">
                       <select
                         className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
@@ -5342,9 +5347,12 @@ export default function LeaguePage() {
                           ) : null}
                         </ul>
                       </div>
-                    ) : null}
-                  </div>
-                ) : null}
+                    ) : (
+                      <p className="mt-3 text-sm text-slate-600">Select a league team above to edit its live season roster.</p>
+                    )}
+                    </>
+                  )}
+                </div>
                 <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm font-semibold text-slate-900">Step 1: Register venue</p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-4">
