@@ -250,15 +250,14 @@ export default function CaptainResultsPage() {
       client.from("league_result_submissions").select("fixture_id,status,frame_results,scorecard_photo_url").eq("status", "pending"),
       client.from("players").select("id,display_name,full_name,snooker_handicap").eq("is_archived", false),
     ]);
-    let fixtureRes = initialFixtureRes;
-    if (fixtureRes.error && fixtureRes.error.message.toLowerCase().includes("pre_match_")) {
+    let fixtureRows = initialFixtureRes.data ?? [];
+    let fixtureError = initialFixtureRes.error?.message ?? null;
+    if (initialFixtureRes.error && initialFixtureRes.error.message.toLowerCase().includes("pre_match_")) {
       const fallbackFixtureRes = await client
         .from("league_fixtures")
         .select("id,season_id,home_team_id,away_team_id,fixture_date,week_no,status")
         .order("fixture_date", { ascending: true });
-      fixtureRes = {
-        ...fallbackFixtureRes,
-        data: (fallbackFixtureRes.data ?? []).map((row) => ({
+      fixtureRows = (fallbackFixtureRes.data ?? []).map((row) => ({
           ...row,
           pre_match_paper_record: false,
           pre_match_paper_at: null,
@@ -267,15 +266,15 @@ export default function CaptainResultsPage() {
           home_lineup_submitted_by_user_id: null,
           away_lineup_submitted_at: null,
           away_lineup_submitted_by_user_id: null,
-        })),
-      };
+        }));
+      fixtureError = fallbackFixtureRes.error?.message ?? null;
     }
 
     const firstError =
       seasonRes.error?.message ||
       teamRes.error?.message ||
       memberRes.error?.message ||
-      fixtureRes.error?.message ||
+      fixtureError ||
       slotRes.error?.message ||
       pendingRes.error?.message ||
       playerRes.error?.message ||
@@ -290,7 +289,7 @@ export default function CaptainResultsPage() {
     setSeasons((seasonRes.data ?? []) as Season[]);
     setTeams((teamRes.data ?? []) as Team[]);
     setMembers((memberRes.data ?? []) as TeamMember[]);
-    setFixtures((fixtureRes.data ?? []) as Fixture[]);
+    setFixtures(fixtureRows as Fixture[]);
     setAllSlots((slotRes.data ?? []) as FrameSlot[]);
     const pendingRows = (pendingRes.data ?? []) as PendingSubmission[];
     setPendingByFixture(new Set(pendingRows.map((r) => r.fixture_id as string)));
