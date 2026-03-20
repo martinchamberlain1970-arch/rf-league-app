@@ -33,6 +33,13 @@ type Fixture = {
   fixture_date: string | null;
   week_no: number | null;
   status: "pending" | "in_progress" | "complete";
+  pre_match_paper_record?: boolean | null;
+  pre_match_paper_at?: string | null;
+  pre_match_paper_by_user_id?: string | null;
+  home_lineup_submitted_at?: string | null;
+  home_lineup_submitted_by_user_id?: string | null;
+  away_lineup_submitted_at?: string | null;
+  away_lineup_submitted_by_user_id?: string | null;
 };
 type Player = {
   id: string;
@@ -121,6 +128,24 @@ function isFixtureOpenForSubmission(fixtureDate: string | null) {
   return now >= fixtureStart && now <= submissionDeadline;
 }
 
+function isFixtureDay(fixtureDate: string | null) {
+  if (!fixtureDate) return false;
+  const now = new Date();
+  const fixtureLocal = new Date(`${fixtureDate}T12:00:00`);
+  return (
+    now.getFullYear() === fixtureLocal.getFullYear() &&
+    now.getMonth() === fixtureLocal.getMonth() &&
+    now.getDate() === fixtureLocal.getDate()
+  );
+}
+
+function isBeforeFixtureStart(fixtureDate: string | null) {
+  if (!fixtureDate) return false;
+  const start = new Date(`${fixtureDate}T19:30:00`);
+  if (Number.isNaN(start.getTime())) return false;
+  return new Date() < start;
+}
+
 const sectionCardClass = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
 const sectionCardTintClass = "bg-gradient-to-br from-teal-50 via-white to-emerald-50";
 const sectionTitleClass = "text-lg font-semibold text-slate-900";
@@ -206,7 +231,7 @@ export default function CaptainResultsPage() {
       return;
     }
 
-    const [seasonRes, teamRes, memberRes, fixtureRes, slotRes, pendingRes, playerRes] = await Promise.all([
+    const [seasonRes, teamRes, memberRes, initialFixtureRes, slotRes, pendingRes, playerRes] = await Promise.all([
       client
         .from("league_seasons")
         .select("id,name,is_published,handicap_enabled,singles_count,doubles_count")
@@ -216,7 +241,7 @@ export default function CaptainResultsPage() {
       client.from("league_team_members").select("season_id,team_id,player_id,is_captain,is_vice_captain"),
       client
         .from("league_fixtures")
-        .select("id,season_id,home_team_id,away_team_id,fixture_date,week_no,status")
+        .select("id,season_id,home_team_id,away_team_id,fixture_date,week_no,status,pre_match_paper_record,pre_match_paper_at,pre_match_paper_by_user_id,home_lineup_submitted_at,home_lineup_submitted_by_user_id,away_lineup_submitted_at,away_lineup_submitted_by_user_id")
         .order("fixture_date", { ascending: true }),
       client
         .from("league_fixture_frames")
@@ -225,6 +250,26 @@ export default function CaptainResultsPage() {
       client.from("league_result_submissions").select("fixture_id,status,frame_results,scorecard_photo_url").eq("status", "pending"),
       client.from("players").select("id,display_name,full_name,snooker_handicap").eq("is_archived", false),
     ]);
+    let fixtureRes = initialFixtureRes;
+    if (fixtureRes.error && fixtureRes.error.message.toLowerCase().includes("pre_match_")) {
+      const fallbackFixtureRes = await client
+        .from("league_fixtures")
+        .select("id,season_id,home_team_id,away_team_id,fixture_date,week_no,status")
+        .order("fixture_date", { ascending: true });
+      fixtureRes = {
+        ...fallbackFixtureRes,
+        data: (fallbackFixtureRes.data ?? []).map((row) => ({
+          ...row,
+          pre_match_paper_record: false,
+          pre_match_paper_at: null,
+          pre_match_paper_by_user_id: null,
+          home_lineup_submitted_at: null,
+          home_lineup_submitted_by_user_id: null,
+          away_lineup_submitted_at: null,
+          away_lineup_submitted_by_user_id: null,
+        })),
+      };
+    }
 
     const firstError =
       seasonRes.error?.message ||
@@ -287,6 +332,33 @@ export default function CaptainResultsPage() {
   const selectedFixture = useMemo(
     () => myCurrentWeekFixtures.find((f) => f.id === selectedFixtureId) ?? null,
     [myCurrentWeekFixtures, selectedFixtureId]
+  );
+  const selectedFixtureSide = useMemo<"home" | "away" | null>(() => {
+    if (!selectedFixture) return null;
+    if (captainTeamIds.has(selectedFixture.home_team_id)) return "home";
+    if (captainTeamIds.has(selectedFixture.away_team_id)) return "away";
+    return null;
+  }, [captainTeamIds, selectedFixture]);
+  const preMatchPaperRecord = Boolean(selectedFixture?.pre_match_paper_record);
+  const homeLineupSubmitted = Boolean(selectedFixture?.home_lineup_submitted_at);
+  const awayLineupSubmitted = Boolean(selectedFixture?.away_lineup_submitted_at);
+  const lineupsLocked = Boolean(preMatchPaperRecord || (homeLineupSubmitted && awayLineupSubmitted));
+  const lineupWindowOpen = Boolean(selectedFixture && isFixtureDay(selectedFixture.fixture_date) && isBeforeFixtureStart(selectedFixture.fixture_date));
+  const canSubmitHomeLineup = Boolean(
+    selectedFixture &&
+      selectedFixtureSide === "home" &&
+      lineupWindowOpen &&
+      !preMatchPaperRecord &&
+      !homeLineupSubmitted &&
+      !awayLineupSubmitted
+  );
+  const canSubmitAwayLineup = Boolean(
+    selectedFixture &&
+      selectedFixtureSide === "away" &&
+      lineupWindowOpen &&
+      !preMatchPaperRecord &&
+      homeLineupSubmitted &&
+      !awayLineupSubmitted
   );
   const draftStorageKey = selectedFixture ? `rf_league_captain_draft_${selectedFixture.id}` : null;
   useEffect(() => {
@@ -615,6 +687,123 @@ export default function CaptainResultsPage() {
     return { error: null, rows: valid as SubmissionBreakEntry[] };
   };
 
+  const isSideSelectionLocked = (side: "home" | "away") => {
+    if (!selectedFixture) return true;
+    if (pendingByFixture.has(selectedFixture.id)) return true;
+    if (preMatchPaperRecord) return false;
+    if (side === "home" && homeLineupSubmitted) return true;
+    if (side === "away" && awayLineupSubmitted) return true;
+    if (!lineupWindowOpen) return false;
+    if (side === "home") return selectedFixtureSide !== "home";
+    if (!homeLineupSubmitted) return true;
+    return selectedFixtureSide !== "away";
+  };
+
+  const validateLineupForSide = (side: "home" | "away") => {
+    for (const slot of slots) {
+      if (slot.slot_type === "doubles") {
+        const p1 = side === "home" ? slot.home_player1_id : slot.away_player1_id;
+        const p2 = side === "home" ? slot.home_player2_id : slot.away_player2_id;
+        if (!p1 || !p2) {
+          return `Complete every ${side} doubles slot before submitting the lineup.`;
+        }
+        continue;
+      }
+      const playerId = side === "home" ? slot.home_player1_id : slot.away_player1_id;
+      const nominated = side === "home" ? slot.home_nominated : slot.away_nominated;
+      const nominatedName = side === "home" ? slot.home_nominated_name : slot.away_nominated_name;
+      const forfeit = side === "home" ? slot.home_forfeit : slot.away_forfeit;
+      if (!playerId && !nominated && !forfeit) {
+        return `Complete every ${side} singles slot before submitting the lineup.`;
+      }
+      if (nominated && !nominatedName?.trim()) {
+        return `Enter the nominated player name for ${side} before submitting the lineup.`;
+      }
+    }
+    return null;
+  };
+
+  const submitLineupForSide = async (side: "home" | "away") => {
+    const client = supabase;
+    if (!client || !selectedFixture || !currentUserId) return;
+    const validationError = validateLineupForSide(side);
+    if (validationError) {
+      setMessage(validationError);
+      return;
+    }
+    setSubmitting(true);
+    const sideFields = slots.map((slot) => ({
+      id: slot.id,
+      ...(side === "home"
+        ? {
+            home_player1_id: slot.home_player1_id,
+            home_player2_id: slot.home_player2_id,
+            home_nominated: slot.home_nominated,
+            home_forfeit: slot.home_forfeit,
+            home_nominated_name: slot.home_nominated_name ?? null,
+          }
+        : {
+            away_player1_id: slot.away_player1_id,
+            away_player2_id: slot.away_player2_id,
+            away_nominated: slot.away_nominated,
+            away_forfeit: slot.away_forfeit,
+            away_nominated_name: slot.away_nominated_name ?? null,
+          }),
+    }));
+    try {
+      const nowIso = new Date().toISOString();
+      for (const patch of sideFields) {
+        const { id, ...updatePatch } = patch;
+        const res = await client.from("league_fixture_frames").update(updatePatch).eq("id", id);
+        if (res.error) throw new Error(res.error.message);
+      }
+      const fixturePatch =
+        side === "home"
+          ? { home_lineup_submitted_at: nowIso, home_lineup_submitted_by_user_id: currentUserId }
+          : { away_lineup_submitted_at: nowIso, away_lineup_submitted_by_user_id: currentUserId };
+      const fixtureUpdate = await client.from("league_fixtures").update(fixturePatch).eq("id", selectedFixture.id);
+      if (fixtureUpdate.error) throw new Error(fixtureUpdate.error.message);
+      await loadAll();
+      setInfo({
+        title: side === "home" ? "Home lineup submitted" : "Away lineup submitted",
+        description:
+          side === "home"
+            ? "Home lineup saved. The away captain can now complete their lineup before 19:30."
+            : "Away lineup saved. Lineups are now locked and the fixture is ready for score entry.",
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to submit lineup.");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const markPaperLineup = async () => {
+    const client = supabase;
+    if (!client || !selectedFixture || !currentUserId) return;
+    setSubmitting(true);
+    const nowIso = new Date().toISOString();
+    const res = await client
+      .from("league_fixtures")
+      .update({
+        pre_match_paper_record: true,
+        pre_match_paper_at: nowIso,
+        pre_match_paper_by_user_id: currentUserId,
+      })
+      .eq("id", selectedFixture.id);
+    if (res.error) {
+      setSubmitting(false);
+      setMessage(res.error.message);
+      return;
+    }
+    await loadAll();
+    setSubmitting(false);
+    setInfo({
+      title: "Paper lineup selected",
+      description: "This fixture has been marked for a paper pre-match card. Results can still be entered later in the usual way.",
+    });
+  };
+
   const submit = async () => {
     const client = supabase;
     if (!client || !selectedFixture || !currentUserId) return;
@@ -731,7 +920,7 @@ export default function CaptainResultsPage() {
             <section className={`${sectionCardClass} ${sectionCardTintClass} space-y-4`}>
               <div>
                 <h2 className={sectionTitleClass}>Fixture Entry</h2>
-                <p className="mt-1 text-sm text-slate-600">Choose a fixture, complete each frame, then submit for review.</p>
+                <p className="mt-1 text-sm text-slate-600">Choose a fixture, handle pre-match lineups if needed, then complete the frame scores and submit for review.</p>
               </div>
               <select
                 className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
@@ -749,12 +938,12 @@ export default function CaptainResultsPage() {
 
               {myCurrentWeekFixtures.length === 0 ? (
                 <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-600">
-                  No fixtures are open for submission right now. Captains and vice-captains can submit from match night until 5pm on the following Friday.
+                  No fixtures are currently available for pre-match lineup or result submission.
                 </p>
               ) : null}
               {selectedFixture ? (
                 <div className="space-y-3">
-                  <div className="grid gap-3 lg:grid-cols-3">
+                  <div className="grid gap-3 lg:grid-cols-4">
                     <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Selected Fixture</p>
                       <p className="mt-2 text-lg font-black text-slate-950">
@@ -796,6 +985,68 @@ export default function CaptainResultsPage() {
                           : "Save progress locally or submit once every frame is complete."}
                       </p>
                     </div>
+                    <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 shadow-sm">
+                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Pre-Match Lineup</p>
+                      <p className="mt-2 text-lg font-black text-slate-950">
+                        {preMatchPaperRecord
+                          ? "Paper card"
+                          : homeLineupSubmitted && awayLineupSubmitted
+                            ? "Locked"
+                            : homeLineupSubmitted
+                              ? "Awaiting away team"
+                              : "Awaiting home team"}
+                      </p>
+                      <p className="mt-1 text-sm text-slate-700">Home submits on fixture day. Away can respond after home submits and before 19:30.</p>
+                    </div>
+                  </div>
+                  <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-3 text-sm text-slate-700">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="space-y-1">
+                        <p>
+                          Home lineup: <strong>{homeLineupSubmitted ? "Submitted" : "Pending"}</strong>
+                        </p>
+                        <p>
+                          Away lineup: <strong>{awayLineupSubmitted ? "Submitted" : "Pending"}</strong>
+                        </p>
+                        {preMatchPaperRecord ? (
+                          <p className="text-sky-800"><strong>Paper record selected.</strong> Pre-match lineup is being handled off-app for this fixture.</p>
+                        ) : null}
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        {canSubmitHomeLineup ? (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() => void submitLineupForSide("home")}
+                              disabled={submitting}
+                              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
+                            >
+                              {submitting ? "Saving..." : "Submit home lineup"}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                if (window.confirm("Mark this fixture to use a paper pre-match card instead?")) void markPaperLineup();
+                              }}
+                              disabled={submitting}
+                              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
+                            >
+                              Use paper record instead
+                            </button>
+                          </>
+                        ) : null}
+                        {canSubmitAwayLineup ? (
+                          <button
+                            type="button"
+                            onClick={() => void submitLineupForSide("away")}
+                            disabled={submitting}
+                            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
+                          >
+                            {submitting ? "Saving..." : "Submit away lineup"}
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
                   </div>
                   {pendingByFixture.has(selectedFixture.id) ? (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -821,6 +1072,8 @@ export default function CaptainResultsPage() {
                   {slots.map((slot) => {
                     const homeSinglesCount = new Map<string, number>();
                     const awaySinglesCount = new Map<string, number>();
+                    const homeSelectionLocked = isSideSelectionLocked("home");
+                    const awaySelectionLocked = isSideSelectionLocked("away");
                     for (const s of slots) {
                       if (s.slot_type !== "singles" || s.id === slot.id) continue;
                       if (s.home_player1_id) homeSinglesCount.set(s.home_player1_id, (homeSinglesCount.get(s.home_player1_id) ?? 0) + 1);
@@ -856,6 +1109,7 @@ export default function CaptainResultsPage() {
                                   className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
                                   value={slot.home_player1_id ?? ""}
                                   onChange={(e) => updateSlotLocal(slot.id, { home_player1_id: e.target.value || null, home_forfeit: false })}
+                                  disabled={homeSelectionLocked}
                                 >
                                   <option value="">Home player 1</option>
                                   {homeDoublesOptions.map((id) => (
@@ -866,6 +1120,7 @@ export default function CaptainResultsPage() {
                                   className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
                                   value={slot.home_player2_id ?? ""}
                                   onChange={(e) => updateSlotLocal(slot.id, { home_player2_id: e.target.value || null })}
+                                  disabled={homeSelectionLocked}
                                 >
                                   <option value="">Home player 2</option>
                                   {homeDoublesOptions.map((id) => (
@@ -878,6 +1133,7 @@ export default function CaptainResultsPage() {
                                 className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
                                 value={homeSelection}
                                 onChange={(e) => applySinglesSelection(slot, "home", e.target.value)}
+                                disabled={homeSelectionLocked}
                               >
                                 <option value="">Home player</option>
                                 {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
@@ -916,6 +1172,7 @@ export default function CaptainResultsPage() {
                                   className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
                                   value={slot.away_player1_id ?? ""}
                                   onChange={(e) => updateSlotLocal(slot.id, { away_player1_id: e.target.value || null, away_forfeit: false })}
+                                  disabled={awaySelectionLocked}
                                 >
                                   <option value="">Away player 1</option>
                                   {awayDoublesOptions.map((id) => (
@@ -926,6 +1183,7 @@ export default function CaptainResultsPage() {
                                   className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
                                   value={slot.away_player2_id ?? ""}
                                   onChange={(e) => updateSlotLocal(slot.id, { away_player2_id: e.target.value || null })}
+                                  disabled={awaySelectionLocked}
                                 >
                                   <option value="">Away player 2</option>
                                   {awayDoublesOptions.map((id) => (
@@ -938,6 +1196,7 @@ export default function CaptainResultsPage() {
                                 className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
                                 value={awaySelection}
                                 onChange={(e) => applySinglesSelection(slot, "away", e.target.value)}
+                                disabled={awaySelectionLocked}
                               >
                                 <option value="">Away player</option>
                                 {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
@@ -979,6 +1238,7 @@ export default function CaptainResultsPage() {
                                   setNominatedNames((prev) => ({ ...prev, [`${slot.id}:home`]: e.target.value }));
                                   updateSlotLocal(slot.id, { home_nominated_name: e.target.value || null });
                                 }}
+                                disabled={homeSelectionLocked}
                               >
                                 <option value="">Home nominated player (info)</option>
                                 {homeNominatedOptions.map((id) => <option key={id} value={named(playerById.get(id))}>{named(playerById.get(id))}</option>)}
@@ -992,6 +1252,7 @@ export default function CaptainResultsPage() {
                                   setNominatedNames((prev) => ({ ...prev, [`${slot.id}:away`]: e.target.value }));
                                   updateSlotLocal(slot.id, { away_nominated_name: e.target.value || null });
                                 }}
+                                disabled={awaySelectionLocked}
                               >
                                 <option value="">Away nominated player (info)</option>
                                 {awayNominatedOptions.map((id) => <option key={id} value={named(playerById.get(id))}>{named(playerById.get(id))}</option>)}

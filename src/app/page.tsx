@@ -17,7 +17,7 @@ const links = [
   { href: "/league", title: "League Manager", desc: "Set up teams, fixtures, and league table." },
   { href: "/handicaps", title: "Handicaps", desc: "See the snooker handicap list and how starts are worked out." },
   { href: "/high-breaks", title: "High Breaks", desc: "View the published league high-break table." },
-  { href: "/captain-results", title: "Captain Results", desc: "Submit your fixture result for approval." },
+  { href: "/captain-results", title: "Captain Results", desc: "Handle pre-match lineups and submit your fixture result for approval." },
   { href: "/reschedule-fixture", title: "Reschedule Fixture", desc: "Request permission to play early or, exceptionally, later." },
   { href: "/events", title: "Match Centre", desc: "View your fixtures, reports, and competition activity." },
   { href: "/signups", title: "Competition Sign-ups", desc: "Enter open competitions and track entry status." },
