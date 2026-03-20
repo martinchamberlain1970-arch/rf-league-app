@@ -91,6 +91,15 @@ type HandicapHistoryEntry = {
   reason: string | null;
   created_at: string;
 };
+type RecentHistoryItem = {
+  key: string;
+  kind: "league_fixture" | "competition_match";
+  itemId: string;
+  date: string | null;
+  label: string;
+  result: "W" | "L";
+  sublabel: string;
+};
 
 function pct(w: number, p: number) {
   if (!p) return 0;
@@ -152,7 +161,7 @@ export default function PlayerProfilePage() {
   const [editGuardianEmail, setEditGuardianEmail] = useState("");
   const [editGuardianUserId, setEditGuardianUserId] = useState("");
   const [opponentDetail, setOpponentDetail] = useState<{ opponentId: string; opponentName: string } | null>(null);
-  const [historyDetail, setHistoryDetail] = useState<{ fixtureId: string; title: string } | null>(null);
+  const [historyDetail, setHistoryDetail] = useState<{ kind: "league_fixture" | "competition_match"; itemId: string; title: string } | null>(null);
   const [infoModal, setInfoModal] = useState<{ title: string; description: string } | null>(null);
   const [confirmModal, setConfirmModal] = useState<{
     title: string;
@@ -1085,6 +1094,54 @@ export default function PlayerProfilePage() {
       .sort((a, b) => Date.parse(b.date ?? "0") - Date.parse(a.date ?? "0"))
       .slice(0, 20);
   }, [leagueRelevant, leagueFixtureById, leagueTeamById, id]);
+  const competitionHistory = useMemo<RecentHistoryItem[]>(() => {
+    return relevant
+      .map((m) => {
+        const competition = compMap.get(m.competition_id);
+        if (!competition) return null;
+        const inTeam1 = m.team1_player1_id === id || m.team1_player2_id === id;
+        const winnerIsTeam1 = m.winner_player_id === m.team1_player1_id || m.winner_player_id === m.team1_player2_id;
+        const winnerIsTeam2 = m.winner_player_id === m.team2_player1_id || m.winner_player_id === m.team2_player2_id;
+        const isWin = m.match_mode === "singles" ? m.winner_player_id === id : inTeam1 ? winnerIsTeam1 : winnerIsTeam2;
+        const opponentLabel =
+          m.match_mode === "singles"
+            ? nameMap.get(m.player1_id === id ? (m.player2_id ?? "") : (m.player1_id ?? "")) ?? "Opponent"
+            : [
+                m.team1_player1_id,
+                m.team1_player2_id,
+                m.team2_player1_id,
+                m.team2_player2_id,
+              ]
+                .filter((playerId) => Boolean(playerId) && playerId !== id)
+                .map((playerId) => nameMap.get(playerId as string) ?? "Opponent")
+                .join(" / ") || "Opponent";
+        return {
+          key: `match-${m.id}`,
+          kind: "competition_match",
+          itemId: m.id,
+          date: m.updated_at ?? null,
+          label: `${competition.name} · ${opponentLabel}`,
+          result: isWin ? "W" : "L",
+          sublabel: competition.competition_format === "knockout" ? "Knockout competition" : "Competition match",
+        } satisfies RecentHistoryItem;
+      })
+      .filter((row): row is RecentHistoryItem => Boolean(row));
+  }, [relevant, compMap, id, nameMap]);
+  const recentHistory = useMemo<RecentHistoryItem[]>(
+    () =>
+      [
+        ...leagueHistory.map((row) => ({
+          ...row,
+          kind: "league_fixture" as const,
+          itemId: row.fixtureId,
+          sublabel: "League fixture",
+        })),
+        ...competitionHistory,
+      ]
+        .sort((a, b) => Date.parse(b.date ?? "0") - Date.parse(a.date ?? "0"))
+        .slice(0, 20),
+    [competitionHistory, leagueHistory]
+  );
   const opponentFrameDetails = useMemo(() => {
     if (!opponentDetail) return [];
     return leagueRelevant
@@ -1112,10 +1169,28 @@ export default function PlayerProfilePage() {
   }, [opponentDetail, leagueRelevant, leagueFixtureById, leagueTeamById, id]);
   const historyFrameDetails = useMemo(() => {
     if (!historyDetail) return [];
-    const selectedFixture = leagueFixtureById.get(historyDetail.fixtureId) ?? null;
+    if (historyDetail.kind === "competition_match") {
+      const selectedMatch = relevant.find((match) => match.id === historyDetail.itemId) ?? null;
+      if (!selectedMatch) return [];
+      return (framesByMatch.get(selectedMatch.id) ?? [])
+        .filter((frame) => !frame.is_walkover_award)
+        .map((frame, index) => {
+          const isWin = frame.winner_player_id === id;
+          return {
+            key: `${selectedMatch.id}-${index + 1}`,
+            slotLabel: `Frame ${index + 1}`,
+            opponentName: selectedMatch.match_mode === "singles"
+              ? nameMap.get(selectedMatch.player1_id === id ? (selectedMatch.player2_id ?? "") : (selectedMatch.player1_id ?? "")) ?? "Opponent"
+              : "Competition frame",
+            scoreLabel: "Approved result",
+            myResult: isWin ? "W" : "L",
+          };
+        });
+    }
+    const selectedFixture = leagueFixtureById.get(historyDetail.itemId) ?? null;
     return leagueFrames
       .filter((s) => {
-        if (s.fixture_id !== historyDetail.fixtureId) return false;
+        if (s.fixture_id !== historyDetail.itemId) return false;
         return s.home_player1_id === id || s.home_player2_id === id || s.away_player1_id === id || s.away_player2_id === id;
       })
       .sort((a, b) => a.slot_no - b.slot_no)
@@ -1137,10 +1212,31 @@ export default function PlayerProfilePage() {
           myResult,
         };
       });
-  }, [historyDetail, leagueFixtureById, leagueFrames, nameMap, id]);
+  }, [historyDetail, leagueFixtureById, leagueFrames, nameMap, id, relevant, framesByMatch]);
   const historyMatchSummary = useMemo(() => {
     if (!historyDetail) return null;
-    const fixture = leagueFixtureById.get(historyDetail.fixtureId);
+    if (historyDetail.kind === "competition_match") {
+      const match = relevant.find((row) => row.id === historyDetail.itemId);
+      if (!match) return null;
+      const competition = compMap.get(match.competition_id);
+      const opponentLabel =
+        match.match_mode === "singles"
+          ? nameMap.get(match.player1_id === id ? (match.player2_id ?? "") : (match.player1_id ?? "")) ?? "Opponent"
+          : [
+              match.team1_player1_id,
+              match.team1_player2_id,
+              match.team2_player1_id,
+              match.team2_player2_id,
+            ]
+              .filter((playerId) => Boolean(playerId) && playerId !== id)
+              .map((playerId) => nameMap.get(playerId as string) ?? "Opponent")
+              .join(" / ") || "Opponent";
+      return {
+        line: `${competition?.name ?? "Competition"} · ${opponentLabel}`,
+        date: match.updated_at,
+      };
+    }
+    const fixture = leagueFixtureById.get(historyDetail.itemId);
     if (!fixture) return null;
     const homeTeam = leagueTeamById.get(fixture.home_team_id) ?? "Home";
     const awayTeam = leagueTeamById.get(fixture.away_team_id) ?? "Away";
@@ -1150,7 +1246,7 @@ export default function PlayerProfilePage() {
       line: `${homeTeam} ${homePts} - ${awayPts} ${awayTeam}`,
       date: fixture.fixture_date,
     };
-  }, [historyDetail, leagueFixtureById, leagueTeamById]);
+  }, [historyDetail, leagueFixtureById, leagueTeamById, relevant, compMap, nameMap, id]);
   const historyPlayerContribution = useMemo(() => {
     const won = historyFrameDetails.filter((r) => r.myResult === "W").length;
     const lost = historyFrameDetails.filter((r) => r.myResult === "L").length;
@@ -1789,19 +1885,20 @@ export default function PlayerProfilePage() {
                 </button>
                 {showHistory ? (
                   <>
-                    {leagueHistory.length === 0 ? (
+                    {recentHistory.length === 0 ? (
                       <p className="mt-2 text-slate-600">No completed history yet.</p>
                     ) : (
                       <div className="mt-2 space-y-2">
-                        {leagueHistory.map((h) => (
+                        {recentHistory.map((h) => (
                           <button
                             key={h.key}
                             type="button"
-                            onClick={() => setHistoryDetail({ fixtureId: h.fixtureId, title: h.label })}
+                            onClick={() => setHistoryDetail({ kind: h.kind, itemId: h.itemId, title: h.label })}
                             className="flex w-full items-center justify-between rounded-lg border border-slate-200 px-3 py-2 text-left hover:border-slate-300 hover:bg-slate-50"
                           >
                             <div>
                               <p className="font-medium text-slate-900">{h.label}</p>
+                              <p className="text-xs font-medium text-slate-600">{h.sublabel}</p>
                               <p className="text-xs text-slate-500">{h.date ? new Date(h.date).toLocaleDateString() : "Date not set"}</p>
                             </div>
                             <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${h.result === "W" ? "bg-emerald-100 text-emerald-800" : "bg-rose-100 text-rose-800"}`}>
@@ -1857,7 +1954,9 @@ export default function PlayerProfilePage() {
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4">
             <div className="w-[min(94vw,42rem)] rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
               <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-slate-900">Fixture Frame Details</h3>
+                <h3 className="text-lg font-semibold text-slate-900">
+                  {historyDetail.kind === "league_fixture" ? "Fixture Frame Details" : "Recent Match Details"}
+                </h3>
                 <button
                   type="button"
                   onClick={() => setHistoryDetail(null)}
