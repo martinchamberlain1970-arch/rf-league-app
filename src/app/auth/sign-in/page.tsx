@@ -17,6 +17,11 @@ function readSignupState(): string | null {
   if (typeof window === "undefined") return null;
   return new URLSearchParams(window.location.search).get("signup");
 }
+
+function readResetState(): string | null {
+  if (typeof window === "undefined") return null;
+  return new URLSearchParams(window.location.search).get("reset");
+}
 function hasDob(dob: string | null | undefined) {
   return Boolean(dob && dob.trim());
 }
@@ -25,6 +30,7 @@ export default function SignInPage() {
   const router = useRouter();
   const nextPath = useMemo(() => readNextPath(), []);
   const signupState = useMemo(() => readSignupState(), []);
+  const resetState = useMemo(() => readResetState(), []);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -33,8 +39,12 @@ export default function SignInPage() {
   useEffect(() => {
     if (signupState === "created") {
       setMessage("Account created. Once your profile has been approved, sign in to continue.");
+      return;
     }
-  }, [signupState]);
+    if (resetState === "success") {
+      setMessage("Password updated. Sign in with your new password.");
+    }
+  }, [resetState, signupState]);
 
   const onSignIn = async (e: FormEvent) => {
     e.preventDefault();
@@ -251,7 +261,12 @@ export default function SignInPage() {
                 />
               </div>
               <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700">Password</label>
+                <div className="mb-2 flex items-center justify-between gap-3">
+                  <label className="block text-sm font-medium text-slate-700">Password</label>
+                  <Link href="/auth/forgot-password" className="text-sm font-semibold text-teal-700 underline underline-offset-4">
+                    Forgot password?
+                  </Link>
+                </div>
                 <input
                   type="password"
                   required
