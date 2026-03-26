@@ -865,7 +865,7 @@ export default function PlayerProfilePage() {
         .filter((value): value is string => Boolean(value))
         .forEach((playerId) => result.add(playerId));
     });
-    return players.filter((entry) => result.has(entry.id));
+    return players.filter((entry) => result.has(entry.id) && Number(entry.rated_matches_snooker ?? 0) > 0);
   }, [competitions, leagueFixtures, leagueFrames, leagueMembers, leagueSeasons, matches, players]);
   const rankingCard = useMemo(() => {
     if (!player) return null;

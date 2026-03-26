@@ -12,6 +12,7 @@ type Player = {
   full_name: string | null;
   claimed_by?: string | null;
   rating_snooker?: number | null;
+  rated_matches_snooker?: number | null;
   snooker_handicap?: number | null;
   snooker_handicap_base?: number | null;
 };
@@ -70,7 +71,7 @@ export default function HandicapsPage() {
       const [playerRes, competitionRes, matchRes, seasonRes, memberRes] = await Promise.all([
         client
           .from("players")
-          .select("id,display_name,full_name,claimed_by,rating_snooker,snooker_handicap,snooker_handicap_base")
+          .select("id,display_name,full_name,claimed_by,rating_snooker,rated_matches_snooker,snooker_handicap,snooker_handicap_base")
           .eq("is_archived", false),
         client.from("competitions").select("id,sport_type,is_archived,is_completed"),
         client.from("matches").select("competition_id,status,updated_at,player1_id,player2_id,team1_player1_id,team1_player2_id,team2_player1_id,team2_player2_id"),
@@ -133,7 +134,10 @@ export default function HandicapsPage() {
     });
     return result;
   }, [competitions, leagueMembers, leagueSeasons, matches, players]);
-  const livePlayers = useMemo(() => players.filter((entry) => livePlayerIds.has(entry.id)), [livePlayerIds, players]);
+  const livePlayers = useMemo(
+    () => players.filter((entry) => livePlayerIds.has(entry.id) && Number(entry.rated_matches_snooker ?? 0) > 0),
+    [livePlayerIds, players]
+  );
 
   const rows = useMemo(
     () =>

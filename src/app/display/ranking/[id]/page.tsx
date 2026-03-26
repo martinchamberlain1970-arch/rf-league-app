@@ -160,7 +160,10 @@ export default function RankingDisplayPage() {
     }
     return result;
   }, [competitions, leagueMembers, leagueSeasons, matches, players]);
-  const livePlayers = useMemo(() => players.filter((entry) => livePlayerIds.has(entry.id)), [livePlayerIds, players]);
+  const livePlayers = useMemo(
+    () => players.filter((entry) => livePlayerIds.has(entry.id) && Number(entry.rated_matches_snooker ?? 0) > 0),
+    [livePlayerIds, players]
+  );
 
   const card = useMemo(() => {
     if (!player) return null;
