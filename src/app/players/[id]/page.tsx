@@ -50,7 +50,14 @@ type MatchRow = {
   status: "pending" | "in_progress" | "complete" | "bye";
   updated_at: string | null;
 };
-type Competition = { id: string; name: string; sport_type: "snooker"; competition_format: "knockout" | "league" };
+type Competition = {
+  id: string;
+  name: string;
+  sport_type: "snooker";
+  competition_format: "knockout" | "league";
+  is_archived?: boolean | null;
+  is_completed?: boolean | null;
+};
 type Frame = { match_id: string; winner_player_id: string | null; is_walkover_award: boolean };
 type LeagueFixtureLite = {
   id: string;
@@ -65,6 +72,7 @@ type LeagueFixtureLite = {
 };
 type LeagueTeamLite = { id: string; name: string };
 type LeagueTeamMemberLite = { season_id: string; team_id: string; player_id: string };
+type LeagueSeasonLite = { id: string; is_published?: boolean | null };
 type LeagueFrameLite = {
   fixture_id: string;
   slot_no: number;
@@ -100,6 +108,8 @@ type RecentHistoryItem = {
   result: "W" | "L";
   sublabel: string;
 };
+
+const LIVE_ACTIVITY_WINDOW_MS = 180 * 24 * 60 * 60 * 1000;
 
 function pct(w: number, p: number) {
   if (!p) return 0;
@@ -139,6 +149,7 @@ export default function PlayerProfilePage() {
   const [leagueFixtures, setLeagueFixtures] = useState<LeagueFixtureLite[]>([]);
   const [leagueTeams, setLeagueTeams] = useState<LeagueTeamLite[]>([]);
   const [leagueMembers, setLeagueMembers] = useState<LeagueTeamMemberLite[]>([]);
+  const [leagueSeasons, setLeagueSeasons] = useState<LeagueSeasonLite[]>([]);
   const [leagueFrames, setLeagueFrames] = useState<LeagueFrameLite[]>([]);
   const [handicapHistory, setHandicapHistory] = useState<HandicapHistoryEntry[]>([]);
   const [message, setMessage] = useState<string | null>(null);
@@ -198,7 +209,7 @@ export default function PlayerProfilePage() {
     }
     let active = true;
     const run = async () => {
-      const [authRes, pRes, allPlayersRes, mRes, cRes, fRes, locRes, usersRes, pendingDeleteRes, lfRes, ltRes, ltmRes, lfrRes] = await Promise.all([
+      const [authRes, pRes, allPlayersRes, mRes, cRes, fRes, locRes, usersRes, pendingDeleteRes, lfRes, ltRes, ltmRes, lsRes, lfrRes] = await Promise.all([
         client.auth.getUser(),
         client
           .from("players")
@@ -210,11 +221,11 @@ export default function PlayerProfilePage() {
         client
           .from("players")
           .select(
-            "id,display_name,full_name,date_of_birth,avatar_url,location_id,age_band,guardian_consent,guardian_user_id,rating_snooker,peak_rating_snooker,rated_matches_snooker,snooker_handicap,snooker_handicap_base"
+            "id,display_name,full_name,date_of_birth,avatar_url,claimed_by,location_id,age_band,guardian_consent,guardian_user_id,rating_snooker,peak_rating_snooker,rated_matches_snooker,snooker_handicap,snooker_handicap_base"
           )
           .eq("is_archived", false),
         client.from("matches").select("id,competition_id,match_mode,player1_id,player2_id,team1_player1_id,team1_player2_id,team2_player1_id,team2_player2_id,winner_player_id,status,updated_at"),
-        client.from("competitions").select("id,name,sport_type,competition_format"),
+        client.from("competitions").select("id,name,sport_type,competition_format,is_archived,is_completed"),
         client.from("frames").select("match_id,winner_player_id,is_walkover_award"),
         client.from("locations").select("id,name").order("name"),
         client.from("app_users").select("id,email,linked_player_id"),
@@ -228,6 +239,7 @@ export default function PlayerProfilePage() {
         client.from("league_fixtures").select("id,season_id,fixture_date,week_no,home_team_id,away_team_id,home_points,away_points,status"),
         client.from("league_teams").select("id,name"),
         client.from("league_team_members").select("season_id,team_id,player_id"),
+        client.from("league_seasons").select("id,is_published"),
         client
           .from("league_fixture_frames")
           .select("fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,winner_side,home_forfeit,away_forfeit,home_points_scored,away_points_scored"),
@@ -295,6 +307,7 @@ export default function PlayerProfilePage() {
       setLeagueFixtures((lfRes.error ? [] : (lfRes.data ?? [])) as LeagueFixtureLite[]);
       setLeagueTeams((ltRes.error ? [] : (ltRes.data ?? [])) as LeagueTeamLite[]);
       setLeagueMembers((ltmRes.error ? [] : (ltmRes.data ?? [])) as LeagueTeamMemberLite[]);
+      setLeagueSeasons((lsRes.error ? [] : (lsRes.data ?? [])) as LeagueSeasonLite[]);
       setLeagueFrames((lfrRes.error ? [] : (lfrRes.data ?? [])) as LeagueFrameLite[]);
       const handicapRes = await client
         .from("league_handicap_history")
@@ -808,25 +821,71 @@ export default function PlayerProfilePage() {
     : player?.phone_share_consent
       ? player?.phone_number?.trim() || null
       : null;
+  const liveSnookerPlayers = useMemo(() => {
+    const result = new Set<string>();
+    const publishedSeasonIds = new Set(leagueSeasons.filter((season) => season.is_published).map((season) => season.id));
+    const competitionById = new Map(competitions.map((competition) => [competition.id, competition]));
+    const fixtureById = new Map(leagueFixtures.map((fixture) => [fixture.id, fixture]));
+    const recentCutoff = Date.now() - LIVE_ACTIVITY_WINDOW_MS;
+    players.forEach((entry) => {
+      if (entry.claimed_by) result.add(entry.id);
+    });
+    leagueMembers.forEach((member) => {
+      if (publishedSeasonIds.has(member.season_id)) result.add(member.player_id);
+    });
+    matches.forEach((match) => {
+      const competition = competitionById.get(match.competition_id);
+      if (!competition) return;
+      const participantIds = [
+        match.player1_id,
+        match.player2_id,
+        match.team1_player1_id,
+        match.team1_player2_id,
+        match.team2_player1_id,
+        match.team2_player2_id,
+      ].filter((value): value is string => Boolean(value));
+      if (!competition.is_archived && !competition.is_completed) {
+        participantIds.forEach((playerId) => result.add(playerId));
+      }
+      if (match.status === "complete" && match.updated_at && new Date(match.updated_at).getTime() >= recentCutoff) {
+        participantIds.forEach((playerId) => result.add(playerId));
+      }
+    });
+    leagueFrames.forEach((frame) => {
+      const fixture = fixtureById.get(frame.fixture_id);
+      if (!fixture || !fixture.fixture_date) return;
+      const fixtureTime = new Date(`${fixture.fixture_date}T19:30:00`).getTime();
+      if (Number.isNaN(fixtureTime) || fixtureTime < recentCutoff) return;
+      [
+        frame.home_player1_id,
+        frame.home_player2_id,
+        frame.away_player1_id,
+        frame.away_player2_id,
+      ]
+        .filter((value): value is string => Boolean(value))
+        .forEach((playerId) => result.add(playerId));
+    });
+    return players.filter((entry) => result.has(entry.id));
+  }, [competitions, leagueFixtures, leagueFrames, leagueMembers, leagueSeasons, matches, players]);
   const rankingCard = useMemo(() => {
     if (!player) return null;
-    const bySnooker = [...players].sort((a, b) => (b.rating_snooker ?? 1000) - (a.rating_snooker ?? 1000));
-    const snookerRank = Math.max(1, bySnooker.findIndex((p) => p.id === player.id) + 1);
+    const bySnooker = [...liveSnookerPlayers].sort((a, b) => (b.rating_snooker ?? 1000) - (a.rating_snooker ?? 1000));
+    const snookerIndex = bySnooker.findIndex((p) => p.id === player.id);
     return {
-      snookerRank,
+      snookerRank: snookerIndex >= 0 ? snookerIndex + 1 : null,
       snookerRating: player.rating_snooker ?? 1000,
       snookerPeak: player.peak_rating_snooker ?? 1000,
       snookerMatches: player.rated_matches_snooker ?? 0,
-      totalPlayers: players.length,
+      totalPlayers: liveSnookerPlayers.length,
     };
-  }, [player, players]);
+  }, [liveSnookerPlayers, player]);
   const locationName = useMemo(
     () => (player?.location_id ? locations.find((l) => l.id === player.location_id)?.name ?? "Assigned club" : "No club assigned"),
     [locations, player?.location_id]
   );
   const eloLeaderboard = useMemo(
     () =>
-      [...players]
+      [...liveSnookerPlayers]
         .sort((a, b) => {
           const ratingDiff = Number(b.rating_snooker ?? 1000) - Number(a.rating_snooker ?? 1000);
           if (ratingDiff !== 0) return ratingDiff;
@@ -839,7 +898,7 @@ export default function PlayerProfilePage() {
           rating: Math.round(Number(p.rating_snooker ?? 1000)),
           handicap: Number(p.snooker_handicap ?? 0),
         })),
-    [players]
+    [liveSnookerPlayers]
   );
   const handicapExplain = useMemo(() => {
     const current = Number(player?.snooker_handicap ?? 0);
@@ -1384,8 +1443,12 @@ export default function PlayerProfilePage() {
                   </div>
                   <div className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-4 shadow-sm">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-700">Rank</p>
-                    <p className="mt-2 text-3xl font-black text-slate-950">#{rankingCard.snookerRank}</p>
-                    <p className="mt-1 text-sm font-medium text-slate-900">Out of {rankingCard.totalPlayers} active players.</p>
+                    <p className="mt-2 text-3xl font-black text-slate-950">{rankingCard.snookerRank ? `#${rankingCard.snookerRank}` : "—"}</p>
+                    <p className="mt-1 text-sm font-medium text-slate-900">
+                      {rankingCard.snookerRank
+                        ? `Out of ${rankingCard.totalPlayers} live players.`
+                        : "Not currently included in live rankings."}
+                    </p>
                     <p className="mt-2 text-xs text-slate-600">Current position in the live snooker ladder.</p>
                   </div>
                   <div className="rounded-2xl border border-teal-200 bg-gradient-to-br from-teal-50 to-white p-4 shadow-sm">
@@ -1440,7 +1503,11 @@ export default function PlayerProfilePage() {
                     <div className="rounded-xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-white p-4">
                       <p className="text-sm font-semibold text-slate-900">Current Elo</p>
                       <p className="mt-1 text-3xl font-black text-slate-950">{Math.round(rankingCard.snookerRating)}</p>
-                      <p className="text-sm font-medium text-slate-900">Rank #{rankingCard.snookerRank} of {rankingCard.totalPlayers}</p>
+                      <p className="text-sm font-medium text-slate-900">
+                        {rankingCard.snookerRank
+                          ? `Rank #${rankingCard.snookerRank} of ${rankingCard.totalPlayers}`
+                          : "Not currently included in live rankings"}
+                      </p>
                       <p className="text-xs text-slate-500">Peak {Math.round(rankingCard.snookerPeak)} · Rated matches {rankingCard.snookerMatches}</p>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-white p-4">

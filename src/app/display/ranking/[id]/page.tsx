@@ -9,11 +9,28 @@ type Player = {
   display_name: string;
   full_name: string | null;
   avatar_url?: string | null;
+  claimed_by?: string | null;
   rating_snooker?: number | null;
   peak_rating_snooker?: number | null;
   rated_matches_snooker?: number | null;
   snooker_handicap?: number | null;
 };
+type Competition = { id: string; sport_type: "snooker"; is_archived?: boolean | null; is_completed?: boolean | null };
+type MatchRow = {
+  competition_id: string;
+  status: "pending" | "in_progress" | "complete" | "bye";
+  updated_at: string | null;
+  player1_id: string | null;
+  player2_id: string | null;
+  team1_player1_id: string | null;
+  team1_player2_id: string | null;
+  team2_player1_id: string | null;
+  team2_player2_id: string | null;
+};
+type LeagueSeason = { id: string; is_published?: boolean | null };
+type LeagueTeamMember = { season_id: string; player_id: string };
+
+const LIVE_ACTIVITY_WINDOW_MS = 180 * 24 * 60 * 60 * 1000;
 
 function displayPlayerName(player: Pick<Player, "full_name" | "display_name">) {
   return player.full_name?.trim() || player.display_name || "Player";
@@ -24,6 +41,10 @@ export default function RankingDisplayPage() {
   const playerId = String(params.id ?? "");
   const [player, setPlayer] = useState<Player | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
+  const [competitions, setCompetitions] = useState<Competition[]>([]);
+  const [matches, setMatches] = useState<MatchRow[]>([]);
+  const [leagueSeasons, setLeagueSeasons] = useState<LeagueSeason[]>([]);
+  const [leagueMembers, setLeagueMembers] = useState<LeagueTeamMember[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -36,16 +57,20 @@ export default function RankingDisplayPage() {
       return;
     }
     setLoading(true);
-    const [playerRes, playersRes] = await Promise.all([
+    const [playerRes, playersRes, competitionRes, matchRes, seasonRes, memberRes] = await Promise.all([
       client
         .from("players")
-        .select("id,display_name,full_name,avatar_url,rating_snooker,peak_rating_snooker,rated_matches_snooker,snooker_handicap")
+        .select("id,display_name,full_name,avatar_url,claimed_by,rating_snooker,peak_rating_snooker,rated_matches_snooker,snooker_handicap")
         .eq("id", playerId)
         .maybeSingle(),
       client
         .from("players")
-        .select("id,display_name,full_name,avatar_url,rating_snooker,peak_rating_snooker,rated_matches_snooker,snooker_handicap")
+        .select("id,display_name,full_name,avatar_url,claimed_by,rating_snooker,peak_rating_snooker,rated_matches_snooker,snooker_handicap")
         .eq("is_archived", false),
+      client.from("competitions").select("id,sport_type,is_archived,is_completed"),
+      client.from("matches").select("competition_id,status,updated_at,player1_id,player2_id,team1_player1_id,team1_player2_id,team2_player1_id,team2_player2_id"),
+      client.from("league_seasons").select("id,is_published"),
+      client.from("league_team_members").select("season_id,player_id"),
     ]);
     if (playerRes.error || !playerRes.data) {
       setMessage(playerRes.error?.message ?? "Player profile not found.");
@@ -54,6 +79,10 @@ export default function RankingDisplayPage() {
     }
     setPlayer(playerRes.data as Player);
     setPlayers((playersRes.data ?? []) as Player[]);
+    setCompetitions((competitionRes.data ?? []) as Competition[]);
+    setMatches((matchRes.data ?? []) as MatchRow[]);
+    setLeagueSeasons((seasonRes.data ?? []) as LeagueSeason[]);
+    setLeagueMembers((memberRes.data ?? []) as LeagueTeamMember[]);
     setMessage(null);
     setLoading(false);
   };
@@ -100,18 +129,52 @@ export default function RankingDisplayPage() {
     }
   };
 
+  const livePlayerIds = useMemo(() => {
+    const result = new Set<string>();
+    const publishedSeasonIds = new Set(leagueSeasons.filter((season) => season.is_published).map((season) => season.id));
+    const competitionById = new Map(competitions.map((competition) => [competition.id, competition]));
+    const recentCutoff = Date.now() - LIVE_ACTIVITY_WINDOW_MS;
+    for (const entry of players) {
+      if (entry.claimed_by) result.add(entry.id);
+    }
+    for (const member of leagueMembers) {
+      if (publishedSeasonIds.has(member.season_id)) result.add(member.player_id);
+    }
+    for (const match of matches) {
+      const competition = competitionById.get(match.competition_id);
+      if (!competition) continue;
+      const participantIds = [
+        match.player1_id,
+        match.player2_id,
+        match.team1_player1_id,
+        match.team1_player2_id,
+        match.team2_player1_id,
+        match.team2_player2_id,
+      ].filter((value): value is string => Boolean(value));
+      if (!competition.is_archived && !competition.is_completed) {
+        participantIds.forEach((playerId) => result.add(playerId));
+      }
+      if (match.status === "complete" && match.updated_at && new Date(match.updated_at).getTime() >= recentCutoff) {
+        participantIds.forEach((playerId) => result.add(playerId));
+      }
+    }
+    return result;
+  }, [competitions, leagueMembers, leagueSeasons, matches, players]);
+  const livePlayers = useMemo(() => players.filter((entry) => livePlayerIds.has(entry.id)), [livePlayerIds, players]);
+
   const card = useMemo(() => {
     if (!player) return null;
-    const bySnooker = [...players].sort((a, b) => (b.rating_snooker ?? 1000) - (a.rating_snooker ?? 1000));
+    const bySnooker = [...livePlayers].sort((a, b) => (b.rating_snooker ?? 1000) - (a.rating_snooker ?? 1000));
+    const snookerIndex = bySnooker.findIndex((p) => p.id === player.id);
     return {
-      totalPlayers: players.length,
-      snookerRank: Math.max(1, bySnooker.findIndex((p) => p.id === player.id) + 1),
+      totalPlayers: livePlayers.length,
+      snookerRank: snookerIndex >= 0 ? snookerIndex + 1 : null,
       snookerRating: player.rating_snooker ?? 1000,
       snookerPeak: player.peak_rating_snooker ?? 1000,
       snookerMatches: player.rated_matches_snooker ?? 0,
       handicap: player.snooker_handicap ?? 0,
     };
-  }, [player, players]);
+  }, [livePlayers, player]);
 
   const playerName = player ? displayPlayerName(player) : "Player";
 
@@ -147,7 +210,7 @@ export default function RankingDisplayPage() {
               </div>
               <div>
                 <p className="text-3xl font-semibold text-white">{playerName}</p>
-                <p className="text-sm text-slate-300">Active players ranked: {card.totalPlayers}</p>
+                <p className="text-sm text-slate-300">Live players ranked: {card.totalPlayers}</p>
               </div>
             </div>
 
@@ -155,7 +218,7 @@ export default function RankingDisplayPage() {
               <div className="rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
                 <p className="text-sm font-semibold uppercase tracking-wide text-slate-300">Snooker Elo</p>
                 <p className="mt-2 text-5xl font-bold text-white">{Math.round(card.snookerRating)}</p>
-                <p className="mt-2 text-lg text-emerald-300">Rank #{card.snookerRank}</p>
+                <p className="mt-2 text-lg text-emerald-300">{card.snookerRank ? `Rank #${card.snookerRank}` : "Not in live rankings"}</p>
                 <p className="mt-1 text-sm text-slate-300">Peak {Math.round(card.snookerPeak)} · Rated matches {card.snookerMatches}</p>
               </div>
               <div className="rounded-2xl border border-slate-700 bg-slate-950/50 p-4">

@@ -10,10 +10,27 @@ type Player = {
   id: string;
   display_name: string;
   full_name: string | null;
+  claimed_by?: string | null;
   rating_snooker?: number | null;
   snooker_handicap?: number | null;
   snooker_handicap_base?: number | null;
 };
+type Competition = { id: string; sport_type: "snooker"; is_archived?: boolean | null; is_completed?: boolean | null };
+type MatchRow = {
+  competition_id: string;
+  status: "pending" | "in_progress" | "complete" | "bye";
+  updated_at: string | null;
+  player1_id: string | null;
+  player2_id: string | null;
+  team1_player1_id: string | null;
+  team1_player2_id: string | null;
+  team2_player1_id: string | null;
+  team2_player2_id: string | null;
+};
+type LeagueSeason = { id: string; is_published?: boolean | null };
+type LeagueTeamMember = { season_id: string; player_id: string };
+
+const LIVE_ACTIVITY_WINDOW_MS = 180 * 24 * 60 * 60 * 1000;
 
 const guideRows = [
   { elo: 1160, handicap: -32 },
@@ -31,6 +48,10 @@ const formatHandicap = (value: number | null | undefined) => {
 
 export default function HandicapsPage() {
   const [players, setPlayers] = useState<Player[]>([]);
+  const [competitions, setCompetitions] = useState<Competition[]>([]);
+  const [matches, setMatches] = useState<MatchRow[]>([]);
+  const [leagueSeasons, setLeagueSeasons] = useState<LeagueSeason[]>([]);
+  const [leagueMembers, setLeagueMembers] = useState<LeagueTeamMember[]>([]);
   const [linkedPlayerId, setLinkedPlayerId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -46,17 +67,34 @@ export default function HandicapsPage() {
         const linkRes = await client.from("app_users").select("linked_player_id").eq("id", userId).maybeSingle();
         currentLinkedPlayerId = linkRes.data?.linked_player_id ?? null;
       }
-      const playerRes = await client
-        .from("players")
-        .select("id,display_name,full_name,rating_snooker,snooker_handicap,snooker_handicap_base")
-        .eq("is_archived", false);
+      const [playerRes, competitionRes, matchRes, seasonRes, memberRes] = await Promise.all([
+        client
+          .from("players")
+          .select("id,display_name,full_name,claimed_by,rating_snooker,snooker_handicap,snooker_handicap_base")
+          .eq("is_archived", false),
+        client.from("competitions").select("id,sport_type,is_archived,is_completed"),
+        client.from("matches").select("competition_id,status,updated_at,player1_id,player2_id,team1_player1_id,team1_player2_id,team2_player1_id,team2_player2_id"),
+        client.from("league_seasons").select("id,is_published"),
+        client.from("league_team_members").select("season_id,player_id"),
+      ]);
       if (!active) return;
-      if (playerRes.error) {
-        setMessage(playerRes.error.message);
+      if (playerRes.error || competitionRes.error || matchRes.error || seasonRes.error || memberRes.error) {
+        setMessage(
+          playerRes.error?.message ||
+          competitionRes.error?.message ||
+          matchRes.error?.message ||
+          seasonRes.error?.message ||
+          memberRes.error?.message ||
+          "Failed to load handicap list."
+        );
         return;
       }
       setLinkedPlayerId(currentLinkedPlayerId);
       setPlayers((playerRes.data ?? []) as Player[]);
+      setCompetitions((competitionRes.data ?? []) as Competition[]);
+      setMatches((matchRes.data ?? []) as MatchRow[]);
+      setLeagueSeasons((seasonRes.data ?? []) as LeagueSeason[]);
+      setLeagueMembers((memberRes.data ?? []) as LeagueTeamMember[]);
     };
     run();
     return () => {
@@ -64,9 +102,42 @@ export default function HandicapsPage() {
     };
   }, []);
 
+  const livePlayerIds = useMemo(() => {
+    const result = new Set<string>();
+    const publishedSeasonIds = new Set(leagueSeasons.filter((season) => season.is_published).map((season) => season.id));
+    const competitionById = new Map(competitions.map((competition) => [competition.id, competition]));
+    const recentCutoff = Date.now() - LIVE_ACTIVITY_WINDOW_MS;
+    players.forEach((entry) => {
+      if (entry.claimed_by) result.add(entry.id);
+    });
+    leagueMembers.forEach((member) => {
+      if (publishedSeasonIds.has(member.season_id)) result.add(member.player_id);
+    });
+    matches.forEach((match) => {
+      const competition = competitionById.get(match.competition_id);
+      if (!competition) return;
+      const participantIds = [
+        match.player1_id,
+        match.player2_id,
+        match.team1_player1_id,
+        match.team1_player2_id,
+        match.team2_player1_id,
+        match.team2_player2_id,
+      ].filter((value): value is string => Boolean(value));
+      if (!competition.is_archived && !competition.is_completed) {
+        participantIds.forEach((playerId) => result.add(playerId));
+      }
+      if (match.status === "complete" && match.updated_at && new Date(match.updated_at).getTime() >= recentCutoff) {
+        participantIds.forEach((playerId) => result.add(playerId));
+      }
+    });
+    return result;
+  }, [competitions, leagueMembers, leagueSeasons, matches, players]);
+  const livePlayers = useMemo(() => players.filter((entry) => livePlayerIds.has(entry.id)), [livePlayerIds, players]);
+
   const rows = useMemo(
     () =>
-      [...players]
+      [...livePlayers]
         .sort(
           (a, b) =>
             Number(b.rating_snooker ?? 1000) - Number(a.rating_snooker ?? 1000) ||
@@ -80,7 +151,7 @@ export default function HandicapsPage() {
           current: Number(player.snooker_handicap ?? 0),
           baseline: Number(player.snooker_handicap_base ?? player.snooker_handicap ?? 0),
         })),
-    [players]
+    [livePlayers]
   );
 
   const currentPlayer = rows.find((row) => row.id === linkedPlayerId) ?? null;
@@ -154,7 +225,7 @@ export default function HandicapsPage() {
 
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">Current handicap list</h2>
-              <p className="mt-1 text-sm text-slate-600">All active players, ranked by current snooker Elo.</p>
+              <p className="mt-1 text-sm text-slate-600">All live players, ranked by current snooker Elo.</p>
               <div className="mt-3 max-h-[32rem] overflow-auto rounded-xl border border-slate-200">
                 <table className="min-w-full border-collapse text-sm">
                   <thead>
