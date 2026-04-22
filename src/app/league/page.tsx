@@ -6961,88 +6961,100 @@ export default function LeaguePage() {
                       ) : null}
                     </div>
                     <div className="px-5 py-4">
-                    <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50 p-4">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <h4 className="text-sm font-semibold text-emerald-900">Season roster</h4>
-                        <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-800">
-                          {selectedTeamRoster.length} player{selectedTeamRoster.length === 1 ? "" : "s"}
-                        </span>
-                      </div>
-                      {selectedTeamRoster.length > 0 ? (
-                        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-                          {selectedTeamRoster.map((player) => (
-                            <div key={`${selectedTableTeamId}-${player.id}`} className="rounded-2xl border border-emerald-100 bg-white px-3 py-3 text-sm text-slate-800 shadow-sm">
-                              <div className="flex items-start justify-between gap-3">
-                                <div>
-                                  <Link
-                                    href={`/players/${player.id}`}
-                                    className="font-medium text-slate-900 underline decoration-emerald-200 underline-offset-2 hover:text-emerald-800"
-                                  >
-                                    {player.name}
-                                  </Link>
-                                  <p className="mt-1 text-xs text-slate-600">
-                                    Handicap{" "}
-                                    <span className="font-semibold text-slate-800">
-                                      {player.handicap === null
-                                        ? "—"
-                                        : player.handicap > 0
-                                          ? `+${player.handicap}`
-                                          : `${player.handicap}`}
+                      <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50 p-4">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h4 className="text-sm font-semibold text-emerald-900">Season roster</h4>
+                          <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                            {selectedTeamRoster.length} player{selectedTeamRoster.length === 1 ? "" : "s"}
+                          </span>
+                        </div>
+                        {selectedTeamRoster.length > 0 ? (
+                          <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
+                            {selectedTeamRoster.map((player) => (
+                              <div key={`${selectedTableTeamId}-${player.id}`} className="rounded-2xl border border-emerald-100 bg-white px-3 py-3 text-sm text-slate-800 shadow-sm">
+                                <div className="flex items-start justify-between gap-3">
+                                  <div>
+                                    <Link
+                                      href={`/players/${player.id}`}
+                                      className="font-medium text-slate-900 underline decoration-emerald-200 underline-offset-2 hover:text-emerald-800"
+                                    >
+                                      {player.name}
+                                    </Link>
+                                    <p className="mt-1 text-xs text-slate-600">
+                                      Handicap{" "}
+                                      <span className="font-semibold text-slate-800">
+                                        {player.handicap === null
+                                          ? "—"
+                                          : player.handicap > 0
+                                            ? `+${player.handicap}`
+                                            : `${player.handicap}`}
+                                      </span>
+                                    </p>
+                                  </div>
+                                  {player.isCaptain || player.isViceCaptain ? (
+                                    <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                      {player.isCaptain ? "C" : "VC"}
                                     </span>
-                                  </p>
+                                  ) : null}
                                 </div>
-                                {player.isCaptain || player.isViceCaptain ? (
-                                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
-                                    {player.isCaptain ? "C" : "VC"}
-                                  </span>
-                                ) : null}
                               </div>
-                            </div>
-                          ))}
-                        </div>
-                      ) : (
-                        <p className="mt-2 text-sm text-slate-600">No players are currently assigned to this season team.</p>
-                      )}
-                    </div>
-                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
-                      <div className="mb-3 flex items-center justify-between gap-2">
-                        <div>
-                          <h4 className="text-sm font-semibold text-slate-900">Fixture results</h4>
-                          <p className="mt-1 text-xs text-slate-600">Recent and upcoming fixtures for this team.</p>
-                        </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-sm text-slate-600">No players are currently assigned to this season team.</p>
+                        )}
                       </div>
-                    <div className="overflow-x-auto">
-                      <table className="min-w-full border-collapse text-sm">
+                      <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <div className="mb-3 flex items-center justify-between gap-2">
+                          <div>
+                            <h4 className="text-sm font-semibold text-slate-900">Fixture results</h4>
+                            <p className="mt-1 text-xs text-slate-600">Recent and upcoming fixtures for this team.</p>
+                          </div>
+                        </div>
+                        <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-slate-50/50">
+                          <table className="min-w-full border-separate border-spacing-0 text-sm">
                         <thead>
-                          <tr className="border-b border-slate-200 text-left text-slate-600">
-                            <th className="px-2 py-2">Week</th>
-                            <th className="px-2 py-2">Date</th>
-                            <th className="px-2 py-2">Venue</th>
-                            <th className="px-2 py-2">Opponent</th>
-                            <th className="px-2 py-2">Score</th>
-                            <th className="px-2 py-2">Result</th>
-                            <th className="px-2 py-2">Status</th>
-                            <th className="px-2 py-2">Summary</th>
+                          <tr className="text-left text-[11px] uppercase tracking-[0.18em] text-slate-500">
+                            <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Week</th>
+                            <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Date</th>
+                            <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Venue</th>
+                            <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Opponent</th>
+                            <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Score</th>
+                            <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Result</th>
+                            <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Status</th>
+                            <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Summary</th>
                           </tr>
                         </thead>
                         <tbody>
                           {selectedTeamResults.map((r) => (
                             <tr
                               key={r.id}
-                              className={`border-b text-slate-800 ${
+                              className={`text-slate-800 ${
                                 r.status === "complete"
-                                  ? "border-emerald-100 bg-emerald-50/40"
+                                  ? "bg-emerald-50/55"
                                   : r.status === "in_progress"
-                                    ? "border-amber-100 bg-amber-50/40"
-                                    : "border-slate-100 bg-white"
+                                    ? "bg-amber-50/55"
+                                    : "bg-white"
                               }`}
                             >
-                              <td className="px-2 py-2">{r.week ?? "-"}</td>
-                              <td className="px-2 py-2">{r.date ? new Date(`${r.date}T12:00:00`).toLocaleDateString() : "No date"}</td>
-                              <td className="px-2 py-2">{r.isHome ? "Home" : "Away"}</td>
-                              <td className="px-2 py-2">{r.opponent}</td>
-                              <td className="px-2 py-2">{r.score}</td>
-                              <td className="px-2 py-2">
+                              <td className="border-b border-slate-100 px-3 py-3 font-medium text-slate-700">{r.week ?? "-"}</td>
+                              <td className="border-b border-slate-100 px-3 py-3">{r.date ? new Date(`${r.date}T12:00:00`).toLocaleDateString() : "No date"}</td>
+                              <td className="border-b border-slate-100 px-3 py-3">
+                                <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
+                                  r.isHome
+                                    ? "border-indigo-200 bg-indigo-50 text-indigo-800"
+                                    : "border-slate-200 bg-slate-100 text-slate-700"
+                                }`}>
+                                  {r.isHome ? "Home" : "Away"}
+                                </span>
+                              </td>
+                              <td className="border-b border-slate-100 px-3 py-3 font-medium text-slate-900">{r.opponent}</td>
+                              <td className="border-b border-slate-100 px-3 py-3">
+                                <span className="rounded-lg bg-white px-2.5 py-1 font-semibold text-slate-900 shadow-sm ring-1 ring-slate-200">
+                                  {r.score}
+                                </span>
+                              </td>
+                              <td className="border-b border-slate-100 px-3 py-3">
                                 <span
                                   className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${
                                     r.result === "W"
@@ -7057,7 +7069,7 @@ export default function LeaguePage() {
                                   {r.result}
                                 </span>
                               </td>
-                              <td className="px-2 py-2">
+                              <td className="border-b border-slate-100 px-3 py-3">
                                 <span
                                   className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-medium ${
                                     r.status === "complete"
@@ -7070,12 +7082,12 @@ export default function LeaguePage() {
                                   {statusLabel(r.status)}
                                 </span>
                               </td>
-                              <td className="px-2 py-2">
+                              <td className="border-b border-slate-100 px-3 py-3">
                                 {r.status === "complete" ? (
                                   <button
                                     type="button"
                                     onClick={() => setSelectedTeamResultFixtureId(r.id)}
-                                    className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-xs text-slate-700 hover:bg-slate-50"
+                                    className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-xs font-medium text-slate-700 shadow-sm hover:bg-slate-50"
                                   >
                                     View match
                                   </button>
@@ -7086,10 +7098,11 @@ export default function LeaguePage() {
                             </tr>
                           ))}
                         </tbody>
-                      </table>
-                      {selectedTeamResults.length === 0 ? <p className="mt-2 text-sm text-slate-600">No results for this team yet.</p> : null}
+                          </table>
+                          {selectedTeamResults.length === 0 ? <p className="mt-3 px-1 text-sm text-slate-600">No results for this team yet.</p> : null}
+                        </div>
+                      </div>
                     </div>
-                  </div>
                   </div>
                 </div>
               ) : null}
