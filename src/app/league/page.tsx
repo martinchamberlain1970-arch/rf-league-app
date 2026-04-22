@@ -409,6 +409,7 @@ export default function LeaguePage() {
   const [handicapPlayerId, setHandicapPlayerId] = useState("");
   const [handicapVenueId, setHandicapVenueId] = useState("");
   const [handicapTeamId, setHandicapTeamId] = useState("");
+  const [fixtureStatusFilter, setFixtureStatusFilter] = useState<"all" | "pending" | "in_progress" | "complete" | "pending_review">("all");
   const [handicapTargetValue, setHandicapTargetValue] = useState("");
   const [handicapReason, setHandicapReason] = useState("");
   const [recalculatingHandicaps, setRecalculatingHandicaps] = useState(false);
@@ -3819,10 +3820,16 @@ export default function LeaguePage() {
   };
   const openLeagueSnapshotTarget = (
     view: "guide" | "teamManagement" | "venues" | "profiles" | "setup" | "knockouts" | "fixtures" | "table" | "playerTable" | "handicaps",
-    target?: "create-league" | "add-league-teams" | "assign-players" | "generate-fixtures" | "publish-league"
+    target?: "create-league" | "add-league-teams" | "assign-players" | "generate-fixtures" | "publish-league",
+    fixtureStatus?: "all" | "pending" | "in_progress" | "complete" | "pending_review"
   ) => {
     setActiveView(view);
     setGuidedTarget(target ?? null);
+    if (view === "fixtures") {
+      setFixtureStatusFilter(fixtureStatus ?? "all");
+      setFixtureTeamFilter("");
+      setFixtureWeekFilter("");
+    }
   };
   useEffect(() => {
     if (!guidedTarget) return;
@@ -4006,13 +4013,22 @@ export default function LeaguePage() {
     return weeks.sort((a, b) => a - b);
   }, [seasonFixtures]);
   const visibleFixtures = useMemo(() => {
-    if (fixtureTeamFilter) {
-      return seasonFixtures.filter((f) => f.home_team_id === fixtureTeamFilter || f.away_team_id === fixtureTeamFilter);
+    let filtered = seasonFixtures.slice();
+    if (fixtureStatusFilter !== "all") {
+      filtered = filtered.filter((fixture) => {
+        const hasPendingSubmission = pendingSubmissionByFixtureId.has(fixture.id);
+        if (fixtureStatusFilter === "pending_review") return hasPendingSubmission;
+        if (fixtureStatusFilter === "in_progress") return !hasPendingSubmission && fixture.status === "in_progress";
+        return fixture.status === fixtureStatusFilter;
+      });
     }
-    if (!fixtureWeekFilter) return seasonFixtures;
+    if (fixtureTeamFilter) {
+      filtered = filtered.filter((f) => f.home_team_id === fixtureTeamFilter || f.away_team_id === fixtureTeamFilter);
+    }
+    if (!fixtureWeekFilter) return filtered;
     const week = Number.parseInt(fixtureWeekFilter, 10);
-    return seasonFixtures.filter((f) => f.week_no === week);
-  }, [seasonFixtures, fixtureWeekFilter, fixtureTeamFilter]);
+    return filtered.filter((f) => f.week_no === week);
+  }, [fixtureStatusFilter, seasonFixtures, fixtureWeekFilter, fixtureTeamFilter, pendingSubmissionByFixtureId]);
   const selectedTeamFixtures = useMemo(() => {
     if (!fixtureTeamFilter) return [];
     return visibleFixtures
@@ -4173,7 +4189,7 @@ export default function LeaguePage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => openLeagueSnapshotTarget("fixtures")}
+                        onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "all")}
                         className="rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                       >
                         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Fixtures</p>
@@ -4183,7 +4199,7 @@ export default function LeaguePage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => openLeagueSnapshotTarget("fixtures")}
+                        onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "in_progress")}
                         className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                       >
                         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">In Progress</p>
@@ -4193,7 +4209,7 @@ export default function LeaguePage() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => openLeagueSnapshotTarget("fixtures")}
+                        onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "pending_review")}
                         className="rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                       >
                         <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Pending Approvals</p>
@@ -4330,7 +4346,7 @@ export default function LeaguePage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => openLeagueSnapshotTarget("fixtures")}
+                      onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "all")}
                       className="rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                     >
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Fixtures</p>
@@ -4340,7 +4356,7 @@ export default function LeaguePage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => openLeagueSnapshotTarget("fixtures")}
+                      onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "complete")}
                       className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                     >
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Complete</p>
@@ -4350,7 +4366,7 @@ export default function LeaguePage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => openLeagueSnapshotTarget("fixtures")}
+                      onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "in_progress")}
                       className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                     >
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-700">In Progress</p>
@@ -4360,7 +4376,7 @@ export default function LeaguePage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => openLeagueSnapshotTarget("fixtures")}
+                      onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "pending")}
                       className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                     >
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-600">Pending Fixtures</p>
@@ -4370,7 +4386,7 @@ export default function LeaguePage() {
                     </button>
                     <button
                       type="button"
-                      onClick={() => openLeagueSnapshotTarget("fixtures")}
+                      onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "pending_review")}
                       className="rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
                     >
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Pending Approvals</p>
@@ -6084,8 +6100,21 @@ export default function LeaguePage() {
                         <option key={team.id} value={team.id}>
                           {team.name}
                         </option>
-                      ))}
+                    ))}
                   </select>
+                  <select
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
+                    value={fixtureStatusFilter}
+                    onChange={(e) => setFixtureStatusFilter(e.target.value as "all" | "pending" | "in_progress" | "complete" | "pending_review")}
+                  >
+                    <option value="all">All statuses</option>
+                    <option value="pending">Pending fixtures</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="complete">Complete</option>
+                    <option value="pending_review">Pending approvals</option>
+                  </select>
+                </div>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
                   <select
                     className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
                     value={fixtureWeekFilter}
