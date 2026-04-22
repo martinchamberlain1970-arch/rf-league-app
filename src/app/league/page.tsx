@@ -726,6 +726,65 @@ export default function LeaguePage() {
     }
     return lines.join("\n");
   }, [handicapPlayersFiltered, locations]);
+  const seasonWideHandicapBroadcastText = useMemo(() => {
+    if (!seasonId) return "";
+    const season = seasonById.get(seasonId) ?? null;
+    const teamSections = seasonTeams
+      .slice()
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .map((team) => {
+        const seasonMembers = members
+          .filter((member) => member.season_id === seasonId && member.team_id === team.id)
+          .map((member) => ({
+            playerId: member.player_id,
+            isCaptain: member.is_captain,
+            isViceCaptain: member.is_vice_captain,
+          }));
+        const fallbackMembers =
+          seasonMembers.length > 0
+            ? seasonMembers
+            : (() => {
+                const registeredTeam = registeredTeams.find(
+                  (candidate) =>
+                    (candidate.name ?? "").trim().toLowerCase() === (team.name ?? "").trim().toLowerCase() &&
+                    (candidate.location_id ?? "") === (team.location_id ?? "")
+                );
+                return registeredTeam
+                  ? (registeredMembersByTeam.get(registeredTeam.id) ?? []).map((member) => ({
+                      playerId: member.player_id,
+                      isCaptain: member.is_captain,
+                      isViceCaptain: member.is_vice_captain,
+                    }))
+                  : [];
+              })();
+        const rosterLines = fallbackMembers
+          .map((member) => {
+            const player = playerById.get(member.playerId) ?? null;
+            if (!player) return null;
+            const handicap = Number(player.snooker_handicap ?? 0);
+            const roleLabel = member.isCaptain ? " (Captain)" : member.isViceCaptain ? " (Vice-captain)" : "";
+            return `${named(player)}${roleLabel} ${handicap > 0 ? `+${handicap}` : handicap}`;
+          })
+          .filter((line): line is string => Boolean(line))
+          .sort(sortLabelByFirstName);
+        if (rosterLines.length === 0) return null;
+        const venueName = locationLabel(locationById.get(team.location_id)?.name ?? "Unassigned club");
+        return {
+          heading: `${team.name} (${venueName})`,
+          lines: rosterLines,
+        };
+      })
+      .filter((section): section is { heading: string; lines: string[] } => Boolean(section));
+    if (teamSections.length === 0) return "";
+    const lines: string[] = [`${season?.name ?? "Selected League"} Starting Handicaps`, ""];
+    for (const section of teamSections) {
+      lines.push(section.heading);
+      lines.push(...section.lines);
+      lines.push("");
+    }
+    while (lines[lines.length - 1] === "") lines.pop();
+    return lines.join("\n");
+  }, [locationById, members, playerById, registeredMembersByTeam, registeredTeams, seasonById, seasonId, seasonTeams]);
   const eloHandicapGuideRows = useMemo(
     () => [
       { elo: "1160", handicap: "-32" },
@@ -6720,6 +6779,38 @@ export default function LeaguePage() {
                     value={handicapBroadcastText}
                     className="mt-3 min-h-48 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-800"
                     placeholder="Select club and team to build a copy-ready handicap list."
+                  />
+                </div>
+                <div className="mt-3 rounded-xl border border-emerald-200 bg-white p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Season-wide captain share list</p>
+                      <p className="text-xs text-slate-600">
+                        Builds one grouped list for every team in the currently selected league so you can send starting handicaps to all captains in one go.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!seasonWideHandicapBroadcastText}
+                      onClick={async () => {
+                        if (!seasonWideHandicapBroadcastText) return;
+                        try {
+                          await navigator.clipboard.writeText(seasonWideHandicapBroadcastText);
+                          setInfoModal({ title: "Season Handicap List Copied", description: "Grouped team handicap list copied to clipboard." });
+                        } catch {
+                          setMessage("Could not copy the season handicap list. Select the text manually instead.");
+                        }
+                      }}
+                      className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50"
+                    >
+                      Copy all teams
+                    </button>
+                  </div>
+                  <textarea
+                    readOnly
+                    value={seasonWideHandicapBroadcastText}
+                    className="mt-3 min-h-64 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-800"
+                    placeholder="Select the league first to generate a grouped captain-share handicap list."
                   />
                 </div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-6">
