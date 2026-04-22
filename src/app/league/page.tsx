@@ -3435,20 +3435,21 @@ export default function LeaguePage() {
     );
   }, [seasonTeams, seasonFixtures]);
   const selectedTeamRoster = useMemo(() => {
-    if (!selectedTableTeamId) return [] as Array<{ id: string; name: string; isCaptain: boolean; isViceCaptain: boolean }>;
+    if (!selectedTableTeamId) return [] as Array<{ id: string; name: string; handicap: number | null; isCaptain: boolean; isViceCaptain: boolean }>;
     const directMembers = members.filter((member) => member.season_id === seasonId && member.team_id === selectedTableTeamId);
     if (directMembers.length > 0) {
       return directMembers
         .map((member) => ({
           id: member.player_id,
           name: named(playerById.get(member.player_id) ?? null),
+          handicap: playerById.get(member.player_id)?.snooker_handicap ?? null,
           isCaptain: member.is_captain,
           isViceCaptain: member.is_vice_captain,
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
     }
     const selectedTeam = seasonTeams.find((team) => team.id === selectedTableTeamId) ?? null;
-    if (!selectedTeam) return [] as Array<{ id: string; name: string; isCaptain: boolean; isViceCaptain: boolean }>;
+    if (!selectedTeam) return [] as Array<{ id: string; name: string; handicap: number | null; isCaptain: boolean; isViceCaptain: boolean }>;
     const matchingRegisteredTeam = registeredTeams.find(
       (team) =>
         (team.name ?? "").trim().toLowerCase() === (selectedTeam.name ?? "").trim().toLowerCase() &&
@@ -3458,6 +3459,7 @@ export default function LeaguePage() {
       ? (registeredMembersByTeam.get(matchingRegisteredTeam.id) ?? []).map((member) => ({
           id: member.player_id,
           name: named(playerById.get(member.player_id) ?? null),
+          handicap: playerById.get(member.player_id)?.snooker_handicap ?? null,
           isCaptain: member.is_captain,
           isViceCaptain: member.is_vice_captain,
         }))
@@ -3508,6 +3510,17 @@ export default function LeaguePage() {
     () => describeFixtureReschedule(selectedTeamResultFixture ? fixtureChangeByFixtureId.get(selectedTeamResultFixture.id) : null),
     [selectedTeamResultFixture, fixtureChangeByFixtureId]
   );
+  const selectedTeamResultsSummary = useMemo(() => {
+    const played = selectedTeamResults.filter((result) => result.status === "complete").length;
+    const upcoming = selectedTeamResults.filter((result) => result.status === "pending").length;
+    const inProgress = selectedTeamResults.filter((result) => result.status === "in_progress").length;
+    return {
+      total: selectedTeamResults.length,
+      played,
+      upcoming,
+      inProgress,
+    };
+  }, [selectedTeamResults]);
   const selectedTeamResultSeason = useMemo(
     () => (selectedTeamResultFixture ? seasonById.get(selectedTeamResultFixture.season_id) ?? null : null),
     [selectedTeamResultFixture, seasonById]
@@ -6903,6 +6916,20 @@ export default function LeaguePage() {
                           Team Details: {teamById.get(selectedTableTeamId)?.name ?? "Team"}
                         </h3>
                         <p className="mt-1 text-xs text-slate-600">Season roster and results for the selected team.</p>
+                        {selectedTeamRoster.some((player) => player.isCaptain || player.isViceCaptain) ? (
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {selectedTeamRoster
+                              .filter((player) => player.isCaptain || player.isViceCaptain)
+                              .map((player) => (
+                                <span
+                                  key={`${selectedTableTeamId}-${player.id}-role`}
+                                  className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800"
+                                >
+                                  {player.isCaptain ? "Captain" : "Vice-captain"}: {player.name}
+                                </span>
+                              ))}
+                          </div>
+                        ) : null}
                       </div>
                       <button
                         type="button"
@@ -6923,7 +6950,12 @@ export default function LeaguePage() {
                         <div className="mt-3 flex flex-wrap gap-2">
                           {selectedTeamRoster.map((player) => (
                             <div key={`${selectedTableTeamId}-${player.id}`} className="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm">
-                              <p className="font-medium text-slate-900">{player.name}</p>
+                              <Link
+                                href={`/players/${player.id}`}
+                                className="font-medium text-slate-900 underline decoration-emerald-200 underline-offset-2 hover:text-emerald-800"
+                              >
+                                {player.name}
+                              </Link>
                               {player.isCaptain || player.isViceCaptain ? (
                                 <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
                                   {player.isCaptain ? "Captain" : "Vice-captain"}
