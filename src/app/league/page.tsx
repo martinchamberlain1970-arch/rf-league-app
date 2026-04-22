@@ -632,6 +632,31 @@ export default function LeaguePage() {
     [registeredTeams, manageVenueId]
   );
   const seasonTeams = useMemo(() => teams.filter((t) => t.season_id === seasonId), [teams, seasonId]);
+  const seasonVenueCapacitySummary = useMemo(() => {
+    const counts = new Map<string, number>();
+    seasonTeams.forEach((team) => {
+      counts.set(team.location_id, (counts.get(team.location_id) ?? 0) + 1);
+    });
+    return locations
+      .map((location) => {
+        const tableCount = Math.max(1, Number(location.snooker_table_count ?? 1));
+        const teamCount = counts.get(location.id) ?? 0;
+        return {
+          locationId: location.id,
+          venueName: locationLabel(location.name),
+          tableCount,
+          maxTeams: tableCount * 2,
+          teamCount,
+          remainingSlots: tableCount * 2 - teamCount,
+        };
+      })
+      .filter((row) => row.teamCount > 0)
+      .sort((a, b) => a.venueName.localeCompare(b.venueName));
+  }, [locations, seasonTeams]);
+  const seasonVenueCapacityByLocationId = useMemo(
+    () => new Map(seasonVenueCapacitySummary.map((row) => [row.locationId, row])),
+    [seasonVenueCapacitySummary]
+  );
   const seasonFixtures = useMemo(() => fixtures.filter((f) => f.season_id === seasonId), [fixtures, seasonId]);
   const fixtureById = useMemo(() => new Map(fixtures.map((f) => [f.id, f])), [fixtures]);
   const playerById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
@@ -1862,16 +1887,31 @@ export default function LeaguePage() {
       setMessage("All selected teams are already in this league.");
       return;
     }
+    const projectedVenueCounts = new Map<string, number>();
+    seasonTeams.forEach((team) => {
+      projectedVenueCounts.set(team.location_id, (projectedVenueCounts.get(team.location_id) ?? 0) + 1);
+    });
     let added = 0;
     const failed: string[] = [];
     const warnings: string[] = [];
     for (const teamName of toAdd) {
       const registeredTeam = registeredTeamByNormalizedName.get(teamName.trim().toLowerCase());
+      const venueId = registeredTeam?.location_id ?? season.location_id;
+      const venue = locations.find((location) => location.id === venueId);
+      const tableCount = Math.max(1, Number(venue?.snooker_table_count ?? 1));
+      const maxTeams = tableCount * 2;
+      const currentVenueTeams = projectedVenueCounts.get(venueId) ?? 0;
+      if (currentVenueTeams >= maxTeams) {
+        failed.push(
+          `${teamName}: ${locationLabel(venue?.name ?? "Venue")} has ${tableCount} snooker table${tableCount === 1 ? "" : "s"} and already has ${currentVenueTeams} league team${currentVenueTeams === 1 ? "" : "s"} entered.`
+        );
+        continue;
+      }
       const ins = await client
         .from("league_teams")
         .insert({
           season_id: seasonId,
-          location_id: registeredTeam?.location_id ?? season.location_id,
+          location_id: venueId,
           name: teamName,
           is_active: true,
         })
@@ -1885,6 +1925,7 @@ export default function LeaguePage() {
       if (rosterError) {
         warnings.push(`${teamName}: ${rosterError}`);
       }
+      projectedVenueCounts.set(venueId, currentVenueTeams + 1);
       added += 1;
     }
     setSelectedLeagueTeamNames([]);
@@ -3877,7 +3918,7 @@ export default function LeaguePage() {
       .sort((a, b) => {
         const aSort = a.date ? new Date(`${a.date}T12:00:00`).getTime() : (a.week ?? 0);
         const bSort = b.date ? new Date(`${b.date}T12:00:00`).getTime() : (b.week ?? 0);
-        return bSort - aSort;
+        return aSort - bSort;
       });
   }, [selectedTableTeamId, seasonFixtures, teamById]);
   const selectedTeamResultFixture = useMemo(
@@ -4908,6 +4949,39 @@ export default function LeaguePage() {
                   <p className="mt-1 text-xs text-slate-600">
                     Registered teams are reusable templates. Adding them here creates the season-specific team entry and copies the current template roster into this league only.
                   </p>
+                  {seasonId ? (
+                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                      <p className="text-sm font-semibold text-amber-900">Venue capacity check</p>
+                      <p className="mt-1 text-xs text-amber-800">
+                        Warning only until the limit is reached. Adding a team that would take a venue above `tables x 2` is blocked automatically.
+                      </p>
+                      <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                        {seasonVenueCapacitySummary.length > 0 ? (
+                          seasonVenueCapacitySummary.map((row) => {
+                            const atCapacity = row.remainingSlots === 0;
+                            return (
+                              <div
+                                key={`venue-capacity-${row.locationId}`}
+                                className={`rounded-lg border px-3 py-2 text-sm ${
+                                  atCapacity ? "border-rose-200 bg-rose-50 text-rose-900" : "border-amber-200 bg-white text-slate-800"
+                                }`}
+                              >
+                                <p className="font-medium">{row.venueName}</p>
+                                <p className="mt-1 text-xs">
+                                  {row.teamCount} team{row.teamCount === 1 ? "" : "s"} entered · {row.tableCount} table{row.tableCount === 1 ? "" : "s"} · max {row.maxTeams} teams
+                                </p>
+                                <p className="mt-1 text-xs">
+                                  {atCapacity ? "At capacity — another team at this venue will be blocked." : `${row.remainingSlots} team slot${row.remainingSlots === 1 ? "" : "s"} remaining.`}
+                                </p>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p className="text-xs text-slate-600">No teams added yet for this league.</p>
+                        )}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="mt-2 grid gap-2 sm:grid-cols-2">
                     <div className="max-h-56 space-y-2 overflow-y-auto rounded-xl border border-slate-300 bg-white p-2">
                       {registeredTeamOptions
@@ -5475,11 +5549,25 @@ export default function LeaguePage() {
                                 : "border-slate-200 bg-white text-slate-800"
                             }`}
                           >
+                            {(() => {
+                              const capacity = seasonVenueCapacityByLocationId.get(location.id) ?? null;
+                              const atCapacity = capacity ? capacity.remainingSlots === 0 : false;
+                              return (
+                                <>
                             <div className="font-medium">{locationLabel(location.name)}</div>
                             <div className={`mt-1 text-xs ${manageVenueId === location.id ? "text-cyan-100" : "text-slate-500"}`}>
                               {Math.max(1, Number(location.snooker_table_count ?? 1))} snooker table
                               {Math.max(1, Number(location.snooker_table_count ?? 1)) === 1 ? "" : "s"}
                             </div>
+                                  {seasonId && capacity ? (
+                                    <div className={`mt-1 text-xs ${manageVenueId === location.id ? "text-cyan-100" : atCapacity ? "text-rose-600" : "text-amber-700"}`}>
+                                      {capacity.teamCount} team{capacity.teamCount === 1 ? "" : "s"} in selected league · max {capacity.maxTeams}
+                                      {atCapacity ? " · full" : ` · ${capacity.remainingSlots} slot${capacity.remainingSlots === 1 ? "" : "s"} left`}
+                                    </div>
+                                  ) : null}
+                                </>
+                              );
+                            })()}
                           </button>
                         ))}
                       {venueLocations.length === 0 ? (
@@ -5495,6 +5583,18 @@ export default function LeaguePage() {
                       <p className="mt-1 text-base font-semibold text-slate-900">
                         {selectedVenue ? locationLabel(selectedVenue.name) : "Selected venue"}
                       </p>
+                      {selectedVenue && seasonId ? (
+                        <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+                          {(() => {
+                            const capacity = seasonVenueCapacityByLocationId.get(selectedVenue.id);
+                            if (!capacity) return "No teams from the selected league are currently assigned to this venue.";
+                            if (capacity.remainingSlots === 0) {
+                              return `${capacity.teamCount} team${capacity.teamCount === 1 ? "" : "s"} from the selected league are already assigned here. This venue is at capacity for ${capacity.tableCount} snooker table${capacity.tableCount === 1 ? "" : "s"}.`;
+                            }
+                            return `${capacity.teamCount} team${capacity.teamCount === 1 ? "" : "s"} from the selected league are assigned here. ${capacity.remainingSlots} team slot${capacity.remainingSlots === 1 ? "" : "s"} remain before reaching the ${capacity.maxTeams}-team limit.`;
+                          })()}
+                        </div>
+                      ) : null}
                       {(() => {
                         const rawAddress = selectedVenue?.address ?? "";
                         const [addressLine, postcode] = rawAddress.split(" | ");
