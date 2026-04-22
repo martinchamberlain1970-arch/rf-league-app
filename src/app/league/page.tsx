@@ -415,6 +415,7 @@ export default function LeaguePage() {
   const [recalculatingHandicaps, setRecalculatingHandicaps] = useState(false);
   const [savingHandicap, setSavingHandicap] = useState(false);
   const [refreshingLeagueHandicapList, setRefreshingLeagueHandicapList] = useState(false);
+  const [leagueHandicapListRefreshedAt, setLeagueHandicapListRefreshedAt] = useState<string | null>(null);
 
   const canManage = admin.isSuper;
   const canViewLeague = !admin.loading;
@@ -772,10 +773,24 @@ export default function LeaguePage() {
     while (lines[lines.length - 1] === "") lines.pop();
     return lines.length > 1 ? lines.join("\n") : "";
   }, [currentSeason, members, playerById, seasonId, seasonTeams]);
+  const leagueHandicapListRefreshedLabel = useMemo(() => {
+    if (!leagueHandicapListRefreshedAt) return "Not refreshed yet";
+    const parsed = new Date(leagueHandicapListRefreshedAt);
+    if (Number.isNaN(parsed.getTime())) return "Not refreshed yet";
+    return parsed.toLocaleString(undefined, {
+      weekday: "short",
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  }, [leagueHandicapListRefreshedAt]);
   const refreshLeagueHandicapList = async () => {
     setRefreshingLeagueHandicapList(true);
     try {
       await loadAll();
+      setLeagueHandicapListRefreshedAt(new Date().toISOString());
     } finally {
       setRefreshingLeagueHandicapList(false);
     }
@@ -6835,6 +6850,9 @@ export default function LeaguePage() {
                       <p className="text-sm font-semibold text-slate-900">Current league player handicap list</p>
                       <p className="text-xs text-slate-600">
                         Shows the players currently assigned to the selected league season, grouped by season team, with their live handicaps.
+                      </p>
+                      <p className="mt-1 text-[11px] font-medium text-slate-500">
+                        Last refreshed: {leagueHandicapListRefreshedLabel}
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
