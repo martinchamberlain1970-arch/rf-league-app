@@ -414,6 +414,7 @@ export default function LeaguePage() {
   const [handicapReason, setHandicapReason] = useState("");
   const [recalculatingHandicaps, setRecalculatingHandicaps] = useState(false);
   const [savingHandicap, setSavingHandicap] = useState(false);
+  const [refreshingLeagueHandicapList, setRefreshingLeagueHandicapList] = useState(false);
 
   const canManage = admin.isSuper;
   const canViewLeague = !admin.loading;
@@ -771,6 +772,14 @@ export default function LeaguePage() {
     while (lines[lines.length - 1] === "") lines.pop();
     return lines.length > 1 ? lines.join("\n") : "";
   }, [currentSeason, members, playerById, seasonId, seasonTeams]);
+  const refreshLeagueHandicapList = async () => {
+    setRefreshingLeagueHandicapList(true);
+    try {
+      await loadAll();
+    } finally {
+      setRefreshingLeagueHandicapList(false);
+    }
+  };
   const eloHandicapGuideRows = useMemo(
     () => [
       { elo: "1160", handicap: "-32" },
@@ -6828,22 +6837,32 @@ export default function LeaguePage() {
                         Shows the players currently assigned to the selected league season, grouped by season team, with their live handicaps.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      disabled={!currentLeagueHandicapListText}
-                      onClick={async () => {
-                        if (!currentLeagueHandicapListText) return;
-                        try {
-                          await navigator.clipboard.writeText(currentLeagueHandicapListText);
-                          setInfoModal({ title: "League Handicap List Copied", description: "Current league player handicap list copied to clipboard." });
-                        } catch {
-                          setMessage("Could not copy the current league handicap list. Select the text manually instead.");
-                        }
-                      }}
-                      className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50"
-                    >
-                      Copy league list
-                    </button>
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => void refreshLeagueHandicapList()}
+                        disabled={refreshingLeagueHandicapList}
+                        className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50"
+                      >
+                        {refreshingLeagueHandicapList ? "Refreshing..." : "Refresh list"}
+                      </button>
+                      <button
+                        type="button"
+                        disabled={!currentLeagueHandicapListText}
+                        onClick={async () => {
+                          if (!currentLeagueHandicapListText) return;
+                          try {
+                            await navigator.clipboard.writeText(currentLeagueHandicapListText);
+                            setInfoModal({ title: "League Handicap List Copied", description: "Current league player handicap list copied to clipboard." });
+                          } catch {
+                            setMessage("Could not copy the current league handicap list. Select the text manually instead.");
+                          }
+                        }}
+                        className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50"
+                      >
+                        Copy league list
+                      </button>
+                    </div>
                   </div>
                   <textarea
                     readOnly
