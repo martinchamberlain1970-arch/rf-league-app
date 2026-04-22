@@ -17,6 +17,7 @@ type Location = {
   address: string | null;
   contact_phone: string | null;
   contact_email: string | null;
+  snooker_table_count?: number | null;
 };
 type Player = {
   id: string;
@@ -205,6 +206,158 @@ const sortLabelByFirstName = (a: string, b: string) => {
 };
 const statusLabel = (s: Fixture["status"]) =>
   s === "in_progress" ? "in progress" : s === "pending" ? "scheduled" : "complete";
+type UndirectedMatch = { teamAId: string; teamBId: string };
+type DirectedMatch = { homeTeamId: string; awayTeamId: string };
+const shuffleArray = <T,>(items: T[]) => {
+  const copy = [...items];
+  for (let i = copy.length - 1; i > 0; i -= 1) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [copy[i], copy[j]] = [copy[j], copy[i]];
+  }
+  return copy;
+};
+const pairKey = (a: string, b: string) => [a, b].sort().join("::");
+const addDays = (dateValue: string, days: number) => {
+  const dt = new Date(`${dateValue}T12:00:00`);
+  dt.setDate(dt.getDate() + days);
+  return dt.toISOString().slice(0, 10);
+};
+const buildRoundRobinRounds = (teamIds: string[]) => {
+  const ids = [...teamIds];
+  const bye = "__BYE__";
+  if (ids.length % 2 === 1) ids.push(bye);
+  const rounds: UndirectedMatch[][] = [];
+  const rotation = [...ids];
+  for (let roundIndex = 0; roundIndex < rotation.length - 1; roundIndex += 1) {
+    const pairings: UndirectedMatch[] = [];
+    for (let idx = 0; idx < rotation.length / 2; idx += 1) {
+      const left = rotation[idx];
+      const right = rotation[rotation.length - 1 - idx];
+      if (left !== bye && right !== bye) {
+        pairings.push({ teamAId: left, teamBId: right });
+      }
+    }
+    rounds.push(pairings);
+    const fixed = rotation[0];
+    const rest = rotation.slice(1);
+    rest.unshift(rest.pop() as string);
+    rotation.splice(0, rotation.length, fixed, ...rest);
+  }
+  return rounds;
+};
+const assignHomeAwayForRounds = (
+  rounds: UndirectedMatch[][],
+  teamVenueById: Map<string, string>,
+  venueCapacityById: Map<string, number>
+) => {
+  const matchCountByTeam = new Map<string, number>();
+  rounds.forEach((round) => {
+    round.forEach((match) => {
+      matchCountByTeam.set(match.teamAId, (matchCountByTeam.get(match.teamAId) ?? 0) + 1);
+      matchCountByTeam.set(match.teamBId, (matchCountByTeam.get(match.teamBId) ?? 0) + 1);
+    });
+  });
+  const maxHomeByTeam = new Map<string, number>();
+  matchCountByTeam.forEach((count, teamId) => {
+    maxHomeByTeam.set(teamId, Math.ceil(count / 2));
+  });
+  const assigned: DirectedMatch[][] = rounds.map(() => []);
+  const homeCountByTeam = new Map<string, number>();
+  const backtrack = (roundIndex: number, matchIndex: number): boolean => {
+    if (roundIndex >= rounds.length) return true;
+    const round = rounds[roundIndex];
+    if (matchIndex >= round.length) return backtrack(roundIndex + 1, 0);
+    const match = round[matchIndex];
+    const venueHomeCount = new Map<string, number>();
+    assigned[roundIndex].forEach((item) => {
+      const venueId = teamVenueById.get(item.homeTeamId);
+      if (venueId) venueHomeCount.set(venueId, (venueHomeCount.get(venueId) ?? 0) + 1);
+    });
+    const candidates: DirectedMatch[] = [
+      { homeTeamId: match.teamAId, awayTeamId: match.teamBId },
+      { homeTeamId: match.teamBId, awayTeamId: match.teamAId },
+    ].sort((left, right) => {
+      const leftMax = maxHomeByTeam.get(left.homeTeamId) ?? Number.MAX_SAFE_INTEGER;
+      const rightMax = maxHomeByTeam.get(right.homeTeamId) ?? Number.MAX_SAFE_INTEGER;
+      const leftCount = homeCountByTeam.get(left.homeTeamId) ?? 0;
+      const rightCount = homeCountByTeam.get(right.homeTeamId) ?? 0;
+      const leftPenalty = leftCount >= leftMax ? 1 : 0;
+      const rightPenalty = rightCount >= rightMax ? 1 : 0;
+      if (leftPenalty !== rightPenalty) return leftPenalty - rightPenalty;
+      return leftCount - rightCount;
+    });
+    for (const candidate of candidates) {
+      const venueId = teamVenueById.get(candidate.homeTeamId);
+      if (!venueId) continue;
+      const venueCapacity = Math.max(1, venueCapacityById.get(venueId) ?? 1);
+      if ((venueHomeCount.get(venueId) ?? 0) >= venueCapacity) continue;
+      assigned[roundIndex].push(candidate);
+      homeCountByTeam.set(candidate.homeTeamId, (homeCountByTeam.get(candidate.homeTeamId) ?? 0) + 1);
+      if (backtrack(roundIndex, matchIndex + 1)) return true;
+      assigned[roundIndex].pop();
+      const currentCount = (homeCountByTeam.get(candidate.homeTeamId) ?? 1) - 1;
+      if (currentCount <= 0) homeCountByTeam.delete(candidate.homeTeamId);
+      else homeCountByTeam.set(candidate.homeTeamId, currentCount);
+    }
+    return false;
+  };
+  return backtrack(0, 0) ? assigned : null;
+};
+const scheduleDirectedMatchesIntoRounds = (
+  matches: DirectedMatch[],
+  roundCount: number,
+  matchesPerRound: number,
+  teamVenueById: Map<string, string>,
+  venueCapacityById: Map<string, number>
+) => {
+  const rounds: DirectedMatch[][] = Array.from({ length: roundCount }, () => []);
+  const roundTeams = Array.from({ length: roundCount }, () => new Set<string>());
+  const roundVenueHomes = Array.from({ length: roundCount }, () => new Map<string, number>());
+  const placeMatch = (remaining: DirectedMatch[]): boolean => {
+    if (remaining.length === 0) return true;
+    let bestIndex = -1;
+    let bestOptions: number[] | null = null;
+    for (let index = 0; index < remaining.length; index += 1) {
+      const match = remaining[index];
+      const venueId = teamVenueById.get(match.homeTeamId);
+      if (!venueId) return false;
+      const capacity = Math.max(1, venueCapacityById.get(venueId) ?? 1);
+      const options: number[] = [];
+      for (let roundIndex = 0; roundIndex < roundCount; roundIndex += 1) {
+        if (rounds[roundIndex].length >= matchesPerRound) continue;
+        if (roundTeams[roundIndex].has(match.homeTeamId) || roundTeams[roundIndex].has(match.awayTeamId)) continue;
+        if ((roundVenueHomes[roundIndex].get(venueId) ?? 0) >= capacity) continue;
+        options.push(roundIndex);
+      }
+      if (options.length === 0) return false;
+      if (!bestOptions || options.length < bestOptions.length) {
+        bestIndex = index;
+        bestOptions = options;
+        if (options.length === 1) break;
+      }
+    }
+    if (bestIndex < 0 || !bestOptions) return false;
+    const match = remaining[bestIndex];
+    const venueId = teamVenueById.get(match.homeTeamId);
+    if (!venueId) return false;
+    const nextRemaining = remaining.filter((_, index) => index !== bestIndex);
+    for (const roundIndex of bestOptions.sort((a, b) => rounds[a].length - rounds[b].length)) {
+      rounds[roundIndex].push(match);
+      roundTeams[roundIndex].add(match.homeTeamId);
+      roundTeams[roundIndex].add(match.awayTeamId);
+      roundVenueHomes[roundIndex].set(venueId, (roundVenueHomes[roundIndex].get(venueId) ?? 0) + 1);
+      if (placeMatch(nextRemaining)) return true;
+      rounds[roundIndex].pop();
+      roundTeams[roundIndex].delete(match.homeTeamId);
+      roundTeams[roundIndex].delete(match.awayTeamId);
+      const nextVenueCount = (roundVenueHomes[roundIndex].get(venueId) ?? 1) - 1;
+      if (nextVenueCount <= 0) roundVenueHomes[roundIndex].delete(venueId);
+      else roundVenueHomes[roundIndex].set(venueId, nextVenueCount);
+    }
+    return false;
+  };
+  return placeMatch(matches) ? rounds : null;
+};
 const LEAGUE_BODY_NAME = "Gravesend & District Indoor Games League";
 const LEAGUE_TEMPLATES = {
   winter: { label: "Winter League", singlesCount: 4, doublesCount: 1 },
@@ -369,6 +522,7 @@ export default function LeaguePage() {
   const [manageVenuePostcode, setManageVenuePostcode] = useState("");
   const [manageVenuePhone, setManageVenuePhone] = useState("");
   const [manageVenueEmail, setManageVenueEmail] = useState("");
+  const [manageVenueTableCount, setManageVenueTableCount] = useState("1");
   const [venuePlayerSearch, setVenuePlayerSearch] = useState("");
   const [expandedVenueTeams, setExpandedVenueTeams] = useState<Record<string, boolean>>({});
   const [showAllVenueTeamMembers, setShowAllVenueTeamMembers] = useState<Record<string, boolean>>({});
@@ -1176,7 +1330,7 @@ export default function LeaguePage() {
       roundDeadlinesRes,
     ] = await Promise.all([
       client.auth.getUser(),
-      client.from("locations").select("id,name,address,contact_phone,contact_email").order("name"),
+      client.from("locations").select("id,name,address,contact_phone,contact_email,snooker_table_count").order("name"),
       client
         .from("players")
         .select("id,display_name,full_name,location_id,rating_snooker,snooker_handicap,snooker_handicap_base")
@@ -1236,7 +1390,12 @@ export default function LeaguePage() {
 
     let locationRows = locRes.data ?? [];
     let locationErrorMessage = locRes.error?.message ?? null;
-    if (locRes.error && (locRes.error.message.toLowerCase().includes("address") || locRes.error.message.toLowerCase().includes("contact_"))) {
+    if (
+      locRes.error &&
+      (locRes.error.message.toLowerCase().includes("address") ||
+        locRes.error.message.toLowerCase().includes("contact_") ||
+        locRes.error.message.toLowerCase().includes("snooker_table_count"))
+    ) {
       const fallbackLocs = await client.from("locations").select("id,name").order("name");
       if (!fallbackLocs.error) {
         locationRows = (fallbackLocs.data ?? []).map((l) => ({
@@ -1245,6 +1404,7 @@ export default function LeaguePage() {
           address: null,
           contact_phone: null,
           contact_email: null,
+          snooker_table_count: 1,
         }));
         locationErrorMessage = null;
       }
@@ -1558,6 +1718,7 @@ export default function LeaguePage() {
     setManageVenuePostcode(postcode ?? "");
     setManageVenuePhone(venue.contact_phone ?? "");
     setManageVenueEmail(venue.contact_email ?? "");
+    setManageVenueTableCount(String(Math.max(1, Number(venue.snooker_table_count ?? 1))));
     setVenuePlayerSearch("");
     setExpandedVenueTeams({});
     setShowAllVenueTeamMembers({});
@@ -1910,7 +2071,7 @@ export default function LeaguePage() {
       setMessage("Enter a venue name.");
       return;
     }
-    const { data, error } = await client.from("locations").insert({ name }).select("id").single();
+    const { data, error } = await client.from("locations").insert({ name, snooker_table_count: 1 }).select("id").single();
     if (error) {
       if (error.message?.includes("locations_name_key")) {
         setInfoModal({
@@ -1941,8 +2102,13 @@ export default function LeaguePage() {
       return;
     }
     const cleanName = manageVenueName.trim();
+    const parsedTableCount = Number.parseInt(manageVenueTableCount, 10);
     if (!cleanName) {
       setMessage("Venue name is required.");
+      return;
+    }
+    if (!Number.isInteger(parsedTableCount) || parsedTableCount < 1 || parsedTableCount > 12) {
+      setMessage("Enter a valid snooker table count between 1 and 12.");
       return;
     }
     const { error } = await client
@@ -1952,6 +2118,7 @@ export default function LeaguePage() {
         address: [manageVenueAddress.trim(), manageVenuePostcode.trim()].filter(Boolean).join(" | ") || null,
         contact_phone: manageVenuePhone.trim() || null,
         contact_email: manageVenueEmail.trim() || null,
+        snooker_table_count: parsedTableCount,
       })
       .eq("id", manageVenueId);
     if (error) {
@@ -2151,12 +2318,17 @@ export default function LeaguePage() {
       return;
     }
     const season = seasons.find((s) => s.id === seasonId);
+    const homeTeam = teams.find((team) => team.id === fixtureHome);
     if (!season) return;
+    if (!homeTeam?.location_id) {
+      setMessage("The selected home team does not have a venue assigned.");
+      return;
+    }
     const ins = await client
       .from("league_fixtures")
       .insert({
         season_id: seasonId,
-        location_id: season.location_id,
+        location_id: homeTeam.location_id,
         week_no: fixtureWeek ? Number.parseInt(fixtureWeek, 10) : null,
         fixture_date: fixtureDate || null,
         home_team_id: fixtureHome,
@@ -2203,21 +2375,158 @@ export default function LeaguePage() {
       setMessage("Select a start date before adding reserved weeks.");
       return;
     }
-    const { data, error } = await client.rpc("generate_league_fixtures", {
-      p_season_id: seasonId,
-      p_start_date: genStartDate || null,
-      p_double_round: genDoubleRound,
-      p_clear_existing: genClearExisting,
-      p_break_weeks: getBreakWeeksFromDates(),
-    });
-    if (error) {
-      setMessage(error.message);
+    const seasonTeams = teams
+      .filter((team) => team.season_id === seasonId && team.is_active)
+      .sort((left, right) => left.name.localeCompare(right.name));
+    if (seasonTeams.length < 2) {
+      setMessage("Add at least two active season teams before generating fixtures.");
       return;
+    }
+    const teamVenueById = new Map(seasonTeams.map((team) => [team.id, team.location_id]));
+    const venueCapacityById = new Map(
+      locations.map((location) => [location.id, Math.max(1, Number(location.snooker_table_count ?? 1))])
+    );
+    const venueTeamCount = new Map<string, number>();
+    for (const team of seasonTeams) {
+      if (!team.location_id) {
+        setMessage(`${team.name} does not have a venue assigned. Update the season team before generating fixtures.`);
+        return;
+      }
+      venueTeamCount.set(team.location_id, (venueTeamCount.get(team.location_id) ?? 0) + 1);
+    }
+    const overCapacityVenue = Array.from(venueTeamCount.entries()).find(([venueId, count]) => {
+      const capacity = venueCapacityById.get(venueId) ?? 1;
+      return count > capacity * 2;
+    });
+    if (overCapacityVenue) {
+      const [venueId, count] = overCapacityVenue;
+      const venueName = locationById.get(venueId)?.name ?? "Selected venue";
+      const capacity = venueCapacityById.get(venueId) ?? 1;
+      setMessage(
+        `${venueName} has ${capacity} snooker table${capacity === 1 ? "" : "s"}, so it can support up to ${capacity * 2} league teams. It currently has ${count}. Update the venue or move a team before generating fixtures.`
+      );
+      return;
+    }
+    const firstLegRoundsCount = seasonTeams.length % 2 === 0 ? seasonTeams.length - 1 : seasonTeams.length;
+    const matchesPerRound = Math.floor(seasonTeams.length / 2);
+    const tryBuildFirstLeg = () => {
+      for (let attempt = 0; attempt < 200; attempt += 1) {
+        const rounds = buildRoundRobinRounds(shuffleArray(seasonTeams.map((team) => team.id)));
+        const assigned = assignHomeAwayForRounds(rounds, teamVenueById, venueCapacityById);
+        if (assigned) return assigned;
+      }
+      return null;
+    };
+    const firstLegRounds = tryBuildFirstLeg();
+    if (!firstLegRounds) {
+      setMessage("We couldn't generate a valid first-half fixture list with the current venue table limits. Try reducing teams at one-table venues or adjusting venue capacities.");
+      return;
+    }
+    const allRounds: DirectedMatch[][] = [...firstLegRounds];
+    if (genDoubleRound) {
+      const secondLegMatches = firstLegRounds.flatMap((round) =>
+        round.map((match) => ({ homeTeamId: match.awayTeamId, awayTeamId: match.homeTeamId }))
+      );
+      const secondLegRounds = scheduleDirectedMatchesIntoRounds(
+        secondLegMatches,
+        firstLegRoundsCount,
+        matchesPerRound,
+        teamVenueById,
+        venueCapacityById
+      );
+      if (!secondLegRounds) {
+        setMessage("The return fixtures could not be arranged without breaking venue table limits. Try increasing table counts or reducing teams at the busiest venues.");
+        return;
+      }
+      allRounds.push(...secondLegRounds);
+    }
+    const breakWeeks = getBreakWeeksFromDates();
+    const breakWeekSet = new Set(breakWeeks);
+    let currentWeekNo = 0;
+    const fixturePayload = allRounds.flatMap((round) => {
+      currentWeekNo += 1;
+      while (breakWeekSet.has(currentWeekNo)) currentWeekNo += 1;
+      const fixtureDate = genStartDate ? addDays(genStartDate, (currentWeekNo - 1) * 7) : null;
+      return round.map((match) => ({
+        season_id: seasonId,
+        location_id: teamVenueById.get(match.homeTeamId) ?? currentSeason?.location_id ?? null,
+        week_no: currentWeekNo,
+        fixture_date: fixtureDate,
+        home_team_id: match.homeTeamId,
+        away_team_id: match.awayTeamId,
+      }));
+    });
+    if (genClearExisting) {
+      const clearRes = await client.from("league_fixtures").delete().eq("season_id", seasonId);
+      if (clearRes.error) {
+        setMessage(clearRes.error.message);
+        return;
+      }
+    }
+    const insertRes = await client
+      .from("league_fixtures")
+      .insert(fixturePayload)
+      .select("id,season_id,week_no,home_team_id,away_team_id");
+    if (insertRes.error) {
+      setMessage(insertRes.error.message);
+      return;
+    }
+    const insertedFixtures = insertRes.data ?? [];
+    if (insertedFixtures.length > 0) {
+      const frameCheck = await client.from("league_fixture_frames").select("fixture_id").in("fixture_id", insertedFixtures.map((row) => row.id)).limit(1);
+      if (!frameCheck.error && (frameCheck.data?.length ?? 0) === 0) {
+        const frameRows = insertedFixtures.flatMap((fixture) => {
+          const season = seasonById.get(fixture.season_id) ?? currentSeason;
+          const cfg = getSeasonFrameConfig(season);
+          const singlesRows = Array.from({ length: cfg.singles }, (_, index) => ({
+            fixture_id: fixture.id,
+            slot_no: index + 1,
+            slot_type: "singles" as const,
+            home_player1_id: null,
+            home_player2_id: null,
+            away_player1_id: null,
+            away_player2_id: null,
+            home_nominated: false,
+            away_nominated: false,
+            home_forfeit: false,
+            away_forfeit: false,
+            winner_side: null,
+            home_nominated_name: null,
+            away_nominated_name: null,
+            home_points_scored: null,
+            away_points_scored: null,
+          }));
+          const doublesRows = Array.from({ length: cfg.doubles }, (_, index) => ({
+            fixture_id: fixture.id,
+            slot_no: cfg.singles + index + 1,
+            slot_type: "doubles" as const,
+            home_player1_id: null,
+            home_player2_id: null,
+            away_player1_id: null,
+            away_player2_id: null,
+            home_nominated: false,
+            away_nominated: false,
+            home_forfeit: false,
+            away_forfeit: false,
+            winner_side: null,
+            home_nominated_name: null,
+            away_nominated_name: null,
+            home_points_scored: null,
+            away_points_scored: null,
+          }));
+          return [...singlesRows, ...doublesRows];
+        });
+        const frameInsertRes = await client.from("league_fixture_frames").insert(frameRows);
+        if (frameInsertRes.error) {
+          setMessage(frameInsertRes.error.message);
+          return;
+        }
+      }
     }
     await loadAll();
     setInfoModal({
       title: "Fixtures Generated",
-      description: `Generated ${Number(data ?? 0)} fixtures for the selected league.`,
+      description: `Generated ${fixturePayload.length} fixtures for the selected league with venue table limits applied.`,
     });
   };
 
@@ -5087,7 +5396,7 @@ export default function LeaguePage() {
                     Register venue
                   </button>
                 </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-5">
+                <div className="mt-3 grid gap-2 sm:grid-cols-6">
                   <input
                     className="rounded-xl border border-slate-300 bg-white px-3 py-2"
                     placeholder="Venue name"
@@ -5118,7 +5427,19 @@ export default function LeaguePage() {
                     value={manageVenueEmail}
                     onChange={(e) => setManageVenueEmail(e.target.value)}
                   />
+                  <input
+                    className="rounded-xl border border-slate-300 bg-white px-3 py-2"
+                    type="number"
+                    min={1}
+                    max={12}
+                    placeholder="Snooker tables"
+                    value={manageVenueTableCount}
+                    onChange={(e) => setManageVenueTableCount(e.target.value)}
+                  />
                 </div>
+                <p className="mt-2 text-xs text-slate-600">
+                  Fixture generation respects snooker table count. One table allows one home fixture at a time, so a one-table venue will normally support up to two league teams.
+                </p>
                 {!manageVenueId ? (
                   <p className="mt-2 text-xs text-slate-600">Click a venue in “All Registered Venues” to edit details.</p>
                 ) : null}
@@ -5154,7 +5475,11 @@ export default function LeaguePage() {
                                 : "border-slate-200 bg-white text-slate-800"
                             }`}
                           >
-                            {locationLabel(location.name)}
+                            <div className="font-medium">{locationLabel(location.name)}</div>
+                            <div className={`mt-1 text-xs ${manageVenueId === location.id ? "text-cyan-100" : "text-slate-500"}`}>
+                              {Math.max(1, Number(location.snooker_table_count ?? 1))} snooker table
+                              {Math.max(1, Number(location.snooker_table_count ?? 1)) === 1 ? "" : "s"}
+                            </div>
                           </button>
                         ))}
                       {venueLocations.length === 0 ? (
@@ -5190,6 +5515,10 @@ export default function LeaguePage() {
                         <p>
                           <span className="font-medium text-slate-900">Email: </span>
                           {selectedVenue?.contact_email?.trim() || "Not set"}
+                        </p>
+                        <p>
+                          <span className="font-medium text-slate-900">Snooker tables: </span>
+                          {Math.max(1, Number(selectedVenue?.snooker_table_count ?? 1))}
                         </p>
                       </div>
                         );
