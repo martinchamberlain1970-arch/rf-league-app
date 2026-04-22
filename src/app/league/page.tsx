@@ -6806,7 +6806,7 @@ export default function LeaguePage() {
                     <div>
                       <p className="text-sm font-semibold text-slate-900">Season-wide captain share list</p>
                       <p className="text-xs text-slate-600">
-                        Builds one grouped list for every team in the currently selected league so you can send starting handicaps to all captains in one go.
+                        Builds one grouped list for every season team in the currently selected league so you can send starting handicaps to all captains in one go.
                       </p>
                     </div>
                     <button
@@ -6835,6 +6835,7 @@ export default function LeaguePage() {
                 </div>
                 <div className="mt-3 grid gap-2 sm:grid-cols-6">
                   <select
+                    aria-label="Select club for handicap management"
                     className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
                     value={handicapVenueId}
                     onChange={(e) => {
@@ -6850,11 +6851,12 @@ export default function LeaguePage() {
                     ))}
                   </select>
                   <select
+                    aria-label="Select season team for handicap management"
                     className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
                     value={handicapTeamId}
                     onChange={(e) => setHandicapTeamId(e.target.value)}
                   >
-                    <option value="">Select team</option>
+                    <option value="">{seasonId ? "Select season team" : "Select team"}</option>
                     {handicapTeamsForVenue.map((t) => (
                       <option key={t.id} value={t.id}>
                         {t.name}
@@ -6872,7 +6874,11 @@ export default function LeaguePage() {
                     }}
                   >
                     <option value="">
-                      {handicapVenueId && handicapTeamId ? "Select player" : "Select club and team first"}
+                      {handicapVenueId && handicapTeamId
+                        ? "Select player"
+                        : seasonId
+                          ? "Select club and season team first"
+                          : "Select club and team first"}
                     </option>
                     {handicapPlayersFiltered.map((row) => (
                       <option key={row.id} value={row.id}>
@@ -6953,8 +6959,12 @@ export default function LeaguePage() {
                         <tr>
                           <td className="px-2 py-2 text-slate-500" colSpan={4}>
                             {handicapVenueId && handicapTeamId
-                              ? "No players match the selected club/team."
-                              : "Select club and team to load players."}
+                              ? seasonId
+                                ? "No players match the selected club/season team."
+                                : "No players match the selected club/team."
+                              : seasonId
+                                ? "Select club and season team to load players."
+                                : "Select club and team to load players."}
                           </td>
                         </tr>
                       ) : null}
