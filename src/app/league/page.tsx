@@ -656,6 +656,20 @@ export default function LeaguePage() {
     }
     return map;
   }, [registeredMembers, registeredTeams]);
+  const seasonTeamNamesByPlayer = useMemo(() => {
+    const teamNameById = new Map(seasonTeams.map((t) => [t.id, t.name]));
+    const map = new Map<string, string[]>();
+    for (const member of members.filter((member) => member.season_id === seasonId)) {
+      const prev = map.get(member.player_id) ?? [];
+      const teamName = teamNameById.get(member.team_id);
+      if (teamName) prev.push(teamName);
+      map.set(member.player_id, prev);
+    }
+    for (const [playerId, names] of map.entries()) {
+      map.set(playerId, Array.from(new Set(names)).sort((a, b) => a.localeCompare(b)));
+    }
+    return map;
+  }, [members, seasonId, seasonTeams]);
   const describeExistingPlayerPlacement = (player: Player | null | undefined) => {
     if (!player) return "Existing player record found.";
     const venueName = player.location_id ? locationById.get(player.location_id)?.name ?? "Unknown club" : "Unknown club";
@@ -677,22 +691,28 @@ export default function LeaguePage() {
         .sort((a, b) => named(a).localeCompare(named(b)))
         .map((p) => ({
           ...p,
-          teams: registeredTeamNamesByPlayer.get(p.id) ?? [],
+          teams: Array.from(new Set([...(seasonTeamNamesByPlayer.get(p.id) ?? []), ...(registeredTeamNamesByPlayer.get(p.id) ?? [])])).sort((a, b) => a.localeCompare(b)),
         })),
-    [players, registeredTeamNamesByPlayer]
+    [players, registeredTeamNamesByPlayer, seasonTeamNamesByPlayer]
   );
-  const handicapTeamsForVenue = useMemo(
-    () =>
-      registeredTeams
-        .filter((t) => (handicapVenueId ? t.location_id === handicapVenueId : true))
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [registeredTeams, handicapVenueId]
-  );
+  const handicapTeamsForVenue = useMemo(() => {
+    const sourceTeams = seasonId ? seasonTeams : registeredTeams;
+    return sourceTeams
+      .filter((t) => (handicapVenueId ? t.location_id === handicapVenueId : true))
+      .sort((a, b) => a.name.localeCompare(b.name));
+  }, [handicapVenueId, registeredTeams, seasonId, seasonTeams]);
   const handicapPlayersFiltered = useMemo(() => {
     if (!handicapVenueId || !handicapTeamId) return [];
-    const teamMemberIds = new Set((registeredMembersByTeam.get(handicapTeamId) ?? []).map((m) => m.player_id));
+    const selectedSeasonTeam = seasonTeams.find((team) => team.id === handicapTeamId) ?? null;
+    const teamMemberIds = selectedSeasonTeam
+      ? new Set(
+          members
+            .filter((member) => member.season_id === seasonId && member.team_id === handicapTeamId)
+            .map((member) => member.player_id)
+        )
+      : new Set((registeredMembersByTeam.get(handicapTeamId) ?? []).map((member) => member.player_id));
     return handicapRows.filter((p) => p.location_id === handicapVenueId && teamMemberIds.has(p.id));
-  }, [handicapRows, handicapVenueId, handicapTeamId, registeredMembersByTeam]);
+  }, [handicapRows, handicapTeamId, handicapVenueId, members, registeredMembersByTeam, seasonId, seasonTeams]);
   const handicapHistoryFiltered = useMemo(
     () =>
       handicapHistory.filter((h) => (handicapPlayerId ? h.player_id === handicapPlayerId : true)),
