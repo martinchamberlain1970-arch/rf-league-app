@@ -3434,6 +3434,36 @@ export default function LeaguePage() {
         a.team_name.localeCompare(b.team_name)
     );
   }, [seasonTeams, seasonFixtures]);
+  const selectedTeamRoster = useMemo(() => {
+    if (!selectedTableTeamId) return [] as Array<{ id: string; name: string; isCaptain: boolean; isViceCaptain: boolean }>;
+    const directMembers = members.filter((member) => member.season_id === seasonId && member.team_id === selectedTableTeamId);
+    if (directMembers.length > 0) {
+      return directMembers
+        .map((member) => ({
+          id: member.player_id,
+          name: named(playerById.get(member.player_id) ?? null),
+          isCaptain: member.is_captain,
+          isViceCaptain: member.is_vice_captain,
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+    }
+    const selectedTeam = seasonTeams.find((team) => team.id === selectedTableTeamId) ?? null;
+    if (!selectedTeam) return [] as Array<{ id: string; name: string; isCaptain: boolean; isViceCaptain: boolean }>;
+    const matchingRegisteredTeam = registeredTeams.find(
+      (team) =>
+        (team.name ?? "").trim().toLowerCase() === (selectedTeam.name ?? "").trim().toLowerCase() &&
+        (team.location_id ?? "") === (selectedTeam.location_id ?? "")
+    );
+    const fallbackMembers = matchingRegisteredTeam
+      ? (registeredMembersByTeam.get(matchingRegisteredTeam.id) ?? []).map((member) => ({
+          id: member.player_id,
+          name: named(playerById.get(member.player_id) ?? null),
+          isCaptain: member.is_captain,
+          isViceCaptain: member.is_vice_captain,
+        }))
+      : [];
+    return fallbackMembers.sort((a, b) => a.name.localeCompare(b.name));
+  }, [members, playerById, registeredMembersByTeam, registeredTeams, seasonId, seasonTeams, selectedTableTeamId]);
   const selectedTeamResults = useMemo(() => {
     if (!selectedTableTeamId) return [];
     return seasonFixtures
@@ -6868,9 +6898,12 @@ export default function LeaguePage() {
                 <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/40 p-4">
                   <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
                     <div className="flex items-center justify-between">
-                      <h3 className="text-lg font-semibold text-slate-900">
-                        Team Results: {teamById.get(selectedTableTeamId)?.name ?? "Team"}
-                      </h3>
+                      <div>
+                        <h3 className="text-lg font-semibold text-slate-900">
+                          Team Details: {teamById.get(selectedTableTeamId)?.name ?? "Team"}
+                        </h3>
+                        <p className="mt-1 text-xs text-slate-600">Season roster and results for the selected team.</p>
+                      </div>
                       <button
                         type="button"
                         onClick={() => setSelectedTableTeamId(null)}
@@ -6879,7 +6912,31 @@ export default function LeaguePage() {
                         Close
                       </button>
                     </div>
-                    <div className="mt-3 overflow-x-auto">
+                    <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <h4 className="text-sm font-semibold text-emerald-900">Season roster</h4>
+                        <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-800">
+                          {selectedTeamRoster.length} player{selectedTeamRoster.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      {selectedTeamRoster.length > 0 ? (
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {selectedTeamRoster.map((player) => (
+                            <div key={`${selectedTableTeamId}-${player.id}`} className="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm">
+                              <p className="font-medium text-slate-900">{player.name}</p>
+                              {player.isCaptain || player.isViceCaptain ? (
+                                <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
+                                  {player.isCaptain ? "Captain" : "Vice-captain"}
+                                </p>
+                              ) : null}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="mt-2 text-sm text-slate-600">No players are currently assigned to this season team.</p>
+                      )}
+                    </div>
+                    <div className="mt-4 overflow-x-auto">
                       <table className="min-w-full border-collapse text-sm">
                         <thead>
                           <tr className="border-b border-slate-200 text-left text-slate-600">
