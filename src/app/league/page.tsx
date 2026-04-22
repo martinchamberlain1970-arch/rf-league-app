@@ -747,6 +747,30 @@ export default function LeaguePage() {
     }
     return lines.join("\n");
   }, [handicapPlayersFiltered, locations]);
+  const currentLeagueHandicapListText = useMemo(() => {
+    if (!seasonId || seasonTeams.length === 0) return "";
+    const lines: string[] = [`${seasonDisplayLabel(currentSeason ?? { name: "Selected League", handicap_enabled: false })} Player Handicaps`, ""];
+    const sortedTeams = seasonTeams.slice().sort((a, b) => a.name.localeCompare(b.name));
+    for (const team of sortedTeams) {
+      const roster = members
+        .filter((member) => member.season_id === seasonId && member.team_id === team.id)
+        .map((member) => {
+          const player = playerById.get(member.player_id) ?? null;
+          if (!player) return null;
+          const handicap = Number(player.snooker_handicap ?? 0);
+          const role = member.is_captain ? " (Captain)" : member.is_vice_captain ? " (Vice-captain)" : "";
+          return `${named(player)}${role} ${handicap > 0 ? `+${handicap}` : handicap}`;
+        })
+        .filter((entry): entry is string => Boolean(entry))
+        .sort(sortLabelByFirstName);
+      if (roster.length === 0) continue;
+      lines.push(team.name);
+      lines.push(...roster);
+      lines.push("");
+    }
+    while (lines[lines.length - 1] === "") lines.pop();
+    return lines.length > 1 ? lines.join("\n") : "";
+  }, [currentSeason, members, playerById, seasonId, seasonTeams]);
   const eloHandicapGuideRows = useMemo(
     () => [
       { elo: "1160", handicap: "-32" },
@@ -6795,6 +6819,38 @@ export default function LeaguePage() {
                       {recalculatingHandicaps ? "Recalculating..." : "Recalculate from Elo"}
                     </button>
                   </div>
+                </div>
+                <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900">Current league player handicap list</p>
+                      <p className="text-xs text-slate-600">
+                        Shows the players currently assigned to the selected league season, grouped by season team, with their live handicaps.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={!currentLeagueHandicapListText}
+                      onClick={async () => {
+                        if (!currentLeagueHandicapListText) return;
+                        try {
+                          await navigator.clipboard.writeText(currentLeagueHandicapListText);
+                          setInfoModal({ title: "League Handicap List Copied", description: "Current league player handicap list copied to clipboard." });
+                        } catch {
+                          setMessage("Could not copy the current league handicap list. Select the text manually instead.");
+                        }
+                      }}
+                      className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-50"
+                    >
+                      Copy league list
+                    </button>
+                  </div>
+                  <textarea
+                    readOnly
+                    value={currentLeagueHandicapListText}
+                    className="mt-3 min-h-64 w-full rounded-xl border border-slate-300 bg-slate-50 px-3 py-3 text-sm text-slate-800"
+                    placeholder="Select the league first, then this will show the current players and handicaps for that league."
+                  />
                 </div>
                 <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
