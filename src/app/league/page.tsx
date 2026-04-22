@@ -6909,51 +6909,59 @@ export default function LeaguePage() {
 
               {selectedTableTeamId ? (
                 <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/40 p-4">
-                  <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <h3 className="text-lg font-semibold text-slate-900">
+                  <div className="max-h-[90vh] w-full max-w-4xl overflow-auto rounded-3xl border border-slate-200 bg-white shadow-xl">
+                    <div className="border-b border-slate-200 bg-gradient-to-r from-emerald-50 via-white to-sky-50 px-5 py-4">
+                      <div className="flex items-start justify-between gap-4">
+                        <div>
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-700">Team Overview</p>
+                          <h3 className="mt-1 text-xl font-semibold text-slate-900">
                           Team Details: {teamById.get(selectedTableTeamId)?.name ?? "Team"}
-                        </h3>
-                        <p className="mt-1 text-xs text-slate-600">Season roster and results for the selected team.</p>
-                        {selectedTeamRoster.some((player) => player.isCaptain || player.isViceCaptain) ? (
-                          <div className="mt-2 flex flex-wrap gap-2">
+                          </h3>
+                          <p className="mt-1 text-sm text-slate-600">Season roster and fixture summary for the selected team.</p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTableTeamId(null)}
+                          className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 shadow-sm"
+                        >
+                          Close
+                        </button>
+                      </div>
+                      <div className="mt-4 grid gap-3 sm:grid-cols-4">
+                        <div className="rounded-2xl border border-slate-200 bg-white px-3 py-3 shadow-sm">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">Total Fixtures</p>
+                          <p className="mt-1 text-2xl font-semibold text-slate-900">{selectedTeamResultsSummary.total}</p>
+                        </div>
+                        <div className="rounded-2xl border border-emerald-200 bg-white px-3 py-3 shadow-sm">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Played</p>
+                          <p className="mt-1 text-2xl font-semibold text-emerald-900">{selectedTeamResultsSummary.played}</p>
+                        </div>
+                        <div className="rounded-2xl border border-amber-200 bg-white px-3 py-3 shadow-sm">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-amber-700">In Progress</p>
+                          <p className="mt-1 text-2xl font-semibold text-amber-900">{selectedTeamResultsSummary.inProgress}</p>
+                        </div>
+                        <div className="rounded-2xl border border-sky-200 bg-white px-3 py-3 shadow-sm">
+                          <p className="text-[11px] font-semibold uppercase tracking-wide text-sky-700">Upcoming</p>
+                          <p className="mt-1 text-2xl font-semibold text-sky-900">{selectedTeamResultsSummary.upcoming}</p>
+                        </div>
+                      </div>
+                      {selectedTeamRoster.some((player) => player.isCaptain || player.isViceCaptain) ? (
+                        <div className="mt-4 flex flex-wrap gap-2">
                             {selectedTeamRoster
                               .filter((player) => player.isCaptain || player.isViceCaptain)
                               .map((player) => (
                                 <span
                                   key={`${selectedTableTeamId}-${player.id}-role`}
-                                  className="rounded-full border border-emerald-200 bg-emerald-50 px-2.5 py-1 text-[11px] font-semibold text-emerald-800"
+                                  className="rounded-full border border-emerald-200 bg-white px-3 py-1 text-xs font-semibold text-emerald-800 shadow-sm"
                                 >
                                   {player.isCaptain ? "Captain" : "Vice-captain"}: {player.name}
                                 </span>
                               ))}
-                          </div>
-                        ) : null}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setSelectedTableTeamId(null)}
-                        className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700"
-                      >
-                        Close
-                      </button>
+                        </div>
+                      ) : null}
                     </div>
-                    <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-3">
-                      <div className="mb-3 flex flex-wrap gap-2">
-                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700">
-                          Total fixtures: {selectedTeamResultsSummary.total}
-                        </span>
-                        <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-800">
-                          Played: {selectedTeamResultsSummary.played}
-                        </span>
-                        <span className="rounded-full border border-amber-200 bg-white px-2.5 py-1 text-xs font-semibold text-amber-800">
-                          In progress: {selectedTeamResultsSummary.inProgress}
-                        </span>
-                        <span className="rounded-full border border-sky-200 bg-white px-2.5 py-1 text-xs font-semibold text-sky-800">
-                          Upcoming: {selectedTeamResultsSummary.upcoming}
-                        </span>
-                      </div>
+                    <div className="px-5 py-4">
+                    <div className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50 p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <h4 className="text-sm font-semibold text-emerald-900">Season roster</h4>
                         <span className="rounded-full border border-emerald-200 bg-white px-2.5 py-1 text-xs font-semibold text-emerald-800">
@@ -6961,30 +6969,34 @@ export default function LeaguePage() {
                         </span>
                       </div>
                       {selectedTeamRoster.length > 0 ? (
-                        <div className="mt-3 flex flex-wrap gap-2">
+                        <div className="mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
                           {selectedTeamRoster.map((player) => (
-                            <div key={`${selectedTableTeamId}-${player.id}`} className="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-800 shadow-sm">
-                              <Link
-                                href={`/players/${player.id}`}
-                                className="font-medium text-slate-900 underline decoration-emerald-200 underline-offset-2 hover:text-emerald-800"
-                              >
-                                {player.name}
-                              </Link>
-                              <p className="mt-1 text-xs text-slate-600">
-                                Handicap:{" "}
-                                <span className="font-semibold text-slate-800">
-                                  {player.handicap === null
-                                    ? "—"
-                                    : player.handicap > 0
-                                      ? `+${player.handicap}`
-                                      : `${player.handicap}`}
-                                </span>
-                              </p>
-                              {player.isCaptain || player.isViceCaptain ? (
-                                <p className="mt-1 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">
-                                  {player.isCaptain ? "Captain" : "Vice-captain"}
-                                </p>
-                              ) : null}
+                            <div key={`${selectedTableTeamId}-${player.id}`} className="rounded-2xl border border-emerald-100 bg-white px-3 py-3 text-sm text-slate-800 shadow-sm">
+                              <div className="flex items-start justify-between gap-3">
+                                <div>
+                                  <Link
+                                    href={`/players/${player.id}`}
+                                    className="font-medium text-slate-900 underline decoration-emerald-200 underline-offset-2 hover:text-emerald-800"
+                                  >
+                                    {player.name}
+                                  </Link>
+                                  <p className="mt-1 text-xs text-slate-600">
+                                    Handicap{" "}
+                                    <span className="font-semibold text-slate-800">
+                                      {player.handicap === null
+                                        ? "—"
+                                        : player.handicap > 0
+                                          ? `+${player.handicap}`
+                                          : `${player.handicap}`}
+                                    </span>
+                                  </p>
+                                </div>
+                                {player.isCaptain || player.isViceCaptain ? (
+                                  <span className="rounded-full border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-[11px] font-semibold text-emerald-700">
+                                    {player.isCaptain ? "C" : "VC"}
+                                  </span>
+                                ) : null}
+                              </div>
                             </div>
                           ))}
                         </div>
@@ -6992,7 +7004,14 @@ export default function LeaguePage() {
                         <p className="mt-2 text-sm text-slate-600">No players are currently assigned to this season team.</p>
                       )}
                     </div>
-                    <div className="mt-4 overflow-x-auto">
+                    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4">
+                      <div className="mb-3 flex items-center justify-between gap-2">
+                        <div>
+                          <h4 className="text-sm font-semibold text-slate-900">Fixture results</h4>
+                          <p className="mt-1 text-xs text-slate-600">Recent and upcoming fixtures for this team.</p>
+                        </div>
+                      </div>
+                    <div className="overflow-x-auto">
                       <table className="min-w-full border-collapse text-sm">
                         <thead>
                           <tr className="border-b border-slate-200 text-left text-slate-600">
@@ -7070,6 +7089,7 @@ export default function LeaguePage() {
                       </table>
                       {selectedTeamResults.length === 0 ? <p className="mt-2 text-sm text-slate-600">No results for this team yet.</p> : null}
                     </div>
+                  </div>
                   </div>
                 </div>
               ) : null}
