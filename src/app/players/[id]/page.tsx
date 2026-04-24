@@ -5,7 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
-import { supabase } from "@/lib/supabase";
+import { hasSupabaseEnv, supabase } from "@/lib/supabase";
 import { logAudit } from "@/lib/audit";
 import useAdminStatus from "@/components/useAdminStatus";
 import ConfirmModal from "@/components/ConfirmModal";
@@ -136,6 +136,14 @@ function deriveAgeBandFromDob(dob: string | null | undefined): "under_13" | "13_
 }
 function displayPlayerName(player: Pick<Player, "full_name" | "display_name">) {
   return player.full_name?.trim() || player.display_name || "Unnamed player";
+}
+
+function describeAvatarUploadError(error: unknown) {
+  const message = error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
+  if (message === "Failed to fetch") {
+    return "Could not reach photo storage just now. Please try again shortly. If it keeps happening, check the Supabase storage connection and avatar bucket setup.";
+  }
+  return `Avatar upload failed: ${message}`;
 }
 
 export default function PlayerProfilePage() {
@@ -379,55 +387,75 @@ export default function PlayerProfilePage() {
 
   const onUploadAvatar = async (file: File) => {
     const client = supabase;
-    if (!client || !player) return;
+    if (!client || !player) {
+      setMessage(hasSupabaseEnv ? "Photo storage is not available at the moment. Please try again shortly." : "Photo uploads are not available because Supabase is not configured.");
+      return;
+    }
     if (deriveAgeBandFromDob(player.date_of_birth ?? null) !== "18_plus") {
       setMessage("Profile photos are disabled for minors.");
       return;
     }
-    setUploading(true);
-    const ext = file.name.split(".").pop() || "jpg";
-    const path = `avatars/${player.id}-${Date.now()}.${ext}`;
-    const uploadRes = await client.storage.from("avatars").upload(path, file, { upsert: true });
-    if (uploadRes.error) {
-      setUploading(false);
-      setMessage(`Avatar upload failed: ${uploadRes.error.message}`);
+    if (!file.type.startsWith("image/")) {
+      setMessage("Please choose an image file for the profile photo.");
       return;
     }
-    const publicUrl = client.storage.from("avatars").getPublicUrl(path).data.publicUrl;
-    if (!hasAdminPower) {
-      const { error } = await client.from("player_update_requests").insert({
-        player_id: player.id,
-        requester_user_id: userId,
-        requested_full_name: null,
-        requested_location_id: null,
-        requested_avatar_url: publicUrl,
-        status: "pending",
+    if (file.size > 10 * 1024 * 1024) {
+      setMessage("Profile photos must be 10MB or smaller.");
+      return;
+    }
+    setMessage(null);
+    setUploading(true);
+    try {
+      const ext = file.name.split(".").pop() || "jpg";
+      const path = `avatars/${player.id}-${Date.now()}.${ext}`;
+      const uploadRes = await client.storage.from("avatars").upload(path, file, {
+        upsert: true,
+        contentType: file.type || undefined,
       });
-      setUploading(false);
-      if (error) {
-        setMessage(`Failed to submit avatar update: ${error.message}`);
+      if (uploadRes.error) {
+        setMessage(describeAvatarUploadError(uploadRes.error));
+        setUploading(false);
         return;
       }
+      const publicUrl = client.storage.from("avatars").getPublicUrl(path).data.publicUrl;
+      if (!hasAdminPower) {
+        const { error } = await client.from("player_update_requests").insert({
+          player_id: player.id,
+          requester_user_id: userId,
+          requested_full_name: null,
+          requested_location_id: null,
+          requested_avatar_url: publicUrl,
+          status: "pending",
+        });
+        setUploading(false);
+        if (error) {
+          setMessage(`Failed to submit avatar update: ${error.message}`);
+          return;
+        }
+        setMessage(null);
+        setInfoModal({
+          title: "Profile photo submitted",
+          description: "Your profile photo has been sent for administrator approval.",
+        });
+        return;
+      }
+      const { error } = await client.from("players").update({ avatar_url: publicUrl }).eq("id", player.id);
+      setUploading(false);
+      if (error) {
+        setMessage(`Failed to save avatar: ${error.message}`);
+        return;
+      }
+      setPlayer((prev) => (prev ? { ...prev, avatar_url: publicUrl } : prev));
       setMessage(null);
       setInfoModal({
-        title: "Profile photo submitted",
-        description: "Your profile photo has been sent for administrator approval.",
+        title: "Profile photo updated",
+        description: "Your new profile photo has been saved.",
       });
-      return;
+      profileRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    } catch (error) {
+      setUploading(false);
+      setMessage(describeAvatarUploadError(error));
     }
-    const { error } = await client.from("players").update({ avatar_url: publicUrl }).eq("id", player.id);
-    setUploading(false);
-    if (error) {
-      setMessage(`Failed to save avatar: ${error.message}`);
-      return;
-    }
-    setPlayer((prev) => (prev ? { ...prev, avatar_url: publicUrl } : prev));
-    setMessage(null);
-    setInfoModal({
-      title: "Profile photo updated",
-      description: "Your new profile photo has been saved.",
-    });
-    profileRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
   const onArchiveToggle = async () => {
