@@ -963,44 +963,23 @@ export default function PlayersPage() {
       setMessage("Only the Super User can review profile update requests.");
       return;
     }
-    if (approve) {
-      const updatePayload: Record<string, string | boolean | null> = {};
-      if (req.requested_full_name !== null && req.requested_full_name !== undefined) {
-        updatePayload.full_name = req.requested_full_name;
-      }
-      if (req.requested_age_band) {
-        updatePayload.age_band = req.requested_age_band;
-        if (req.requested_age_band !== "18_plus") {
-          const firstOnly = (req.requested_full_name ?? "").split(/\s+/).filter(Boolean)[0];
-          if (firstOnly) updatePayload.display_name = firstOnly;
-          updatePayload.avatar_url = null;
-          updatePayload.guardian_consent = Boolean(req.requested_guardian_consent);
-          if (req.requested_guardian_name) updatePayload.guardian_name = req.requested_guardian_name;
-          if (req.requested_guardian_email) updatePayload.guardian_email = req.requested_guardian_email;
-          if (req.requested_guardian_user_id) updatePayload.guardian_user_id = req.requested_guardian_user_id;
-        }
-      }
-      if (req.requested_location_id !== undefined) {
-        updatePayload.location_id = req.requested_location_id;
-      }
-      if (req.requested_avatar_url && (req.requested_age_band ?? "18_plus") === "18_plus") {
-        updatePayload.avatar_url = req.requested_avatar_url;
-      }
-      if (Object.keys(updatePayload).length) {
-        const { error } = await client.from("players").update(updatePayload).eq("id", req.player_id);
-        if (error) {
-          setMessage(`Failed to update player: ${error.message}`);
-          return;
-        }
-      }
+    const { data: sessionRes } = await client.auth.getSession();
+    const token = sessionRes.session?.access_token;
+    if (!token) {
+      setMessage("Session expired. Please sign in again.");
+      return;
     }
-    const { error } = await client
-      .from("player_update_requests")
-      .update({ status: approve ? "approved" : "rejected" })
-      .eq("id", req.id)
-      .eq("status", "pending");
-    if (error) {
-      setMessage(`Failed to review update request: ${error.message}`);
+    const resp = await fetch("/api/player-update-requests", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ requestId: req.id, action: approve ? "approve" : "reject" }),
+    });
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      setMessage(data?.error ?? "Failed to review update request.");
       return;
     }
     setMessage(approve ? "Profile update approved." : "Profile update rejected.");

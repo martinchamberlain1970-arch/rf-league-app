@@ -81,16 +81,54 @@ export async function POST(req: NextRequest) {
   const publicUrl = adminClient.storage.from("avatars").getPublicUrl(path).data.publicUrl;
 
   if (!canApproveDirectly) {
-    const requestRes = await adminClient.from("player_update_requests").insert({
-      player_id: playerId,
-      requester_user_id: requesterId,
-      requested_full_name: null,
-      requested_location_id: null,
-      requested_avatar_url: publicUrl,
-      status: "pending",
-    });
-    if (requestRes.error) {
-      return NextResponse.json({ error: requestRes.error.message }, { status: 400 });
+    const existingPendingRes = await adminClient
+      .from("player_update_requests")
+      .select("id")
+      .eq("player_id", playerId)
+      .eq("requester_user_id", requesterId)
+      .eq("status", "pending")
+      .not("requested_avatar_url", "is", null)
+      .order("created_at", { ascending: false });
+    if (existingPendingRes.error) {
+      return NextResponse.json({ error: existingPendingRes.error.message }, { status: 400 });
+    }
+
+    const existingRows = (existingPendingRes.data ?? []) as Array<{ id: string }>;
+    if (existingRows.length > 0) {
+      const [keepRow, ...duplicateRows] = existingRows;
+      const updateRes = await adminClient
+        .from("player_update_requests")
+        .update({
+          requested_avatar_url: publicUrl,
+          reviewed_by_user_id: null,
+          reviewed_at: null,
+          status: "pending",
+        })
+        .eq("id", keepRow.id);
+      if (updateRes.error) {
+        return NextResponse.json({ error: updateRes.error.message }, { status: 400 });
+      }
+      if (duplicateRows.length > 0) {
+        const deleteRes = await adminClient
+          .from("player_update_requests")
+          .delete()
+          .in("id", duplicateRows.map((row) => row.id));
+        if (deleteRes.error) {
+          return NextResponse.json({ error: deleteRes.error.message }, { status: 400 });
+        }
+      }
+    } else {
+      const requestRes = await adminClient.from("player_update_requests").insert({
+        player_id: playerId,
+        requester_user_id: requesterId,
+        requested_full_name: null,
+        requested_location_id: null,
+        requested_avatar_url: publicUrl,
+        status: "pending",
+      });
+      if (requestRes.error) {
+        return NextResponse.json({ error: requestRes.error.message }, { status: 400 });
+      }
     }
     return NextResponse.json({ ok: true, mode: "pending", publicUrl });
   }
