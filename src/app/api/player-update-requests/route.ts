@@ -83,7 +83,7 @@ export async function GET(req: NextRequest) {
 
   let rows: UpdateRow[] = [];
   if (!fullRes.error && fullRes.data) {
-    rows = fullRes.data as UpdateRow[];
+    rows = fullRes.data as unknown as UpdateRow[];
   } else if (isMissingColumnError(fullRes.error?.message)) {
     const fallbackRes = await buildQuery(
       "id,player_id,requester_user_id,requested_full_name,requested_location_id,requested_avatar_url,status,created_at"
@@ -91,7 +91,7 @@ export async function GET(req: NextRequest) {
     if (fallbackRes.error || !fallbackRes.data) {
       return NextResponse.json({ error: fallbackRes.error?.message ?? "Failed to load update requests." }, { status: 400 });
     }
-    rows = (fallbackRes.data as Array<Omit<UpdateRow, "requested_age_band" | "requested_guardian_consent" | "requested_guardian_name" | "requested_guardian_email" | "requested_guardian_user_id">>).map((row) => ({
+    rows = ((fallbackRes.data as unknown) as Array<Omit<UpdateRow, "requested_age_band" | "requested_guardian_consent" | "requested_guardian_name" | "requested_guardian_email" | "requested_guardian_user_id">>).map((row) => ({
       ...row,
       requested_age_band: null,
       requested_guardian_consent: null,
