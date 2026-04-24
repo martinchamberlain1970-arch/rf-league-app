@@ -406,31 +406,37 @@ export default function PlayerProfilePage() {
     setMessage(null);
     setUploading(true);
     try {
-      const ext = file.name.split(".").pop() || "jpg";
-      const path = `avatars/${player.id}-${Date.now()}.${ext}`;
-      const uploadRes = await client.storage.from("avatars").upload(path, file, {
-        contentType: file.type || undefined,
+      const { data: sessionRes } = await client.auth.getSession();
+      const token = sessionRes.session?.access_token;
+      if (!token) {
+        setUploading(false);
+        setMessage("Session expired. Please sign in again.");
+        return;
+      }
+
+      const formData = new FormData();
+      formData.append("playerId", player.id);
+      formData.append("file", file);
+
+      const resp = await fetch("/api/player/avatar", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+        body: formData,
       });
-      if (uploadRes.error) {
-        setMessage(describeAvatarUploadError(uploadRes.error));
+      const data = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        setMessage(describeAvatarUploadError(data?.error ?? "Failed to upload avatar."));
         setUploading(false);
         return;
       }
-      const publicUrl = client.storage.from("avatars").getPublicUrl(path).data.publicUrl;
-      if (!hasAdminPower) {
-        const { error } = await client.from("player_update_requests").insert({
-          player_id: player.id,
-          requester_user_id: userId,
-          requested_full_name: null,
-          requested_location_id: null,
-          requested_avatar_url: publicUrl,
-          status: "pending",
-        });
-        setUploading(false);
-        if (error) {
-          setMessage(`Failed to submit avatar update: ${error.message}`);
-          return;
-        }
+
+      const publicUrl = typeof data?.publicUrl === "string" ? data.publicUrl : null;
+      const mode = data?.mode === "direct" ? "direct" : "pending";
+      setUploading(false);
+
+      if (mode === "pending") {
         setMessage(null);
         setInfoModal({
           title: "Profile photo submitted",
@@ -438,13 +444,10 @@ export default function PlayerProfilePage() {
         });
         return;
       }
-      const { error } = await client.from("players").update({ avatar_url: publicUrl }).eq("id", player.id);
-      setUploading(false);
-      if (error) {
-        setMessage(`Failed to save avatar: ${error.message}`);
-        return;
+
+      if (publicUrl) {
+        setPlayer((prev) => (prev ? { ...prev, avatar_url: publicUrl } : prev));
       }
-      setPlayer((prev) => (prev ? { ...prev, avatar_url: publicUrl } : prev));
       setMessage(null);
       setInfoModal({
         title: "Profile photo updated",
