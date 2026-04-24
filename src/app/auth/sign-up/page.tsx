@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { logAudit } from "@/lib/audit";
@@ -11,6 +11,14 @@ import MessageModal from "@/components/MessageModal";
 
 type Location = { id: string; name: string };
 type Team = { id: string; name: string; location_id: string | null };
+type PlayerOption = {
+  id: string;
+  full_name: string | null;
+  display_name: string;
+  claimed_by?: string | null;
+  location_id?: string | null;
+  is_archived?: boolean | null;
+};
 const SIGNUP_DRAFT_KEY = "signup_draft_v1";
 const LEGAL_VERSION = "2026-03-11";
 
@@ -26,17 +34,10 @@ function mapSignUpError(message: string, code?: string, status?: number) {
   return `Sign up failed: ${message}${detail ? ` (${detail})` : ""}`;
 }
 
-function normalizeName(value: string) {
-  return value
-    .toLowerCase()
-    .replace(/[^a-z0-9\s]/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 export default function SignUpPage() {
   const router = useRouter();
   const [step, setStep] = useState<1 | 2>(1);
+  const [matchMode, setMatchMode] = useState<"existing" | "new">("existing");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
@@ -46,8 +47,11 @@ export default function SignUpPage() {
   const [dateOfBirth, setDateOfBirth] = useState("");
   const [locations, setLocations] = useState<Location[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
+  const [players, setPlayers] = useState<PlayerOption[]>([]);
   const [locationId, setLocationId] = useState("");
   const [teamId, setTeamId] = useState("");
+  const [playerSearch, setPlayerSearch] = useState("");
+  const [selectedPlayerId, setSelectedPlayerId] = useState("");
   const [acceptPrivacy, setAcceptPrivacy] = useState(false);
   const [acceptTerms, setAcceptTerms] = useState(false);
   const [infoModal, setInfoModal] = useState<{ title: string; body: string; closeLabel?: string; redirectTo?: string } | null>(null);
@@ -69,6 +73,7 @@ export default function SignUpPage() {
     try {
       const parsed = JSON.parse(raw) as {
         step?: 1 | 2;
+        matchMode?: "existing" | "new";
         email?: string;
         password?: string;
         firstName?: string;
@@ -76,10 +81,13 @@ export default function SignUpPage() {
         dateOfBirth?: string;
         locationId?: string;
         teamId?: string;
+        playerSearch?: string;
+        selectedPlayerId?: string;
         acceptPrivacy?: boolean;
         acceptTerms?: boolean;
       };
       if (parsed.step === 1 || parsed.step === 2) setStep(parsed.step);
+      if (parsed.matchMode === "existing" || parsed.matchMode === "new") setMatchMode(parsed.matchMode);
       if (typeof parsed.email === "string") setEmail(parsed.email);
       if (typeof parsed.password === "string") setPassword(parsed.password);
       if (typeof parsed.firstName === "string") setFirstName(parsed.firstName);
@@ -87,6 +95,8 @@ export default function SignUpPage() {
       if (typeof parsed.dateOfBirth === "string") setDateOfBirth(parsed.dateOfBirth);
       if (typeof parsed.locationId === "string") setLocationId(parsed.locationId);
       if (typeof parsed.teamId === "string") setTeamId(parsed.teamId);
+      if (typeof parsed.playerSearch === "string") setPlayerSearch(parsed.playerSearch);
+      if (typeof parsed.selectedPlayerId === "string") setSelectedPlayerId(parsed.selectedPlayerId);
       if (typeof parsed.acceptPrivacy === "boolean") setAcceptPrivacy(parsed.acceptPrivacy);
       if (typeof parsed.acceptTerms === "boolean") setAcceptTerms(parsed.acceptTerms);
     } catch {
@@ -98,6 +108,7 @@ export default function SignUpPage() {
     if (typeof window === "undefined") return;
     const draft = {
       step,
+      matchMode,
       email,
       password,
       firstName,
@@ -105,11 +116,13 @@ export default function SignUpPage() {
       dateOfBirth,
       locationId,
       teamId,
+      playerSearch,
+      selectedPlayerId,
       acceptPrivacy,
       acceptTerms,
     };
     window.sessionStorage.setItem(SIGNUP_DRAFT_KEY, JSON.stringify(draft));
-  }, [step, email, password, firstName, secondName, dateOfBirth, locationId, teamId, acceptPrivacy, acceptTerms]);
+  }, [step, matchMode, email, password, firstName, secondName, dateOfBirth, locationId, teamId, playerSearch, selectedPlayerId, acceptPrivacy, acceptTerms]);
 
   const askConfirm = (title: string, description: string, confirmLabel = "Yes", cancelLabel = "No") =>
     new Promise<boolean>((resolve) => {
@@ -138,6 +151,9 @@ export default function SignUpPage() {
     if (!selectedLocationId) {
       setTeams([]);
       setTeamId("");
+      setPlayers([]);
+      setSelectedPlayerId("");
+      setPlayerSearch("");
       return;
     }
     fetch(`/api/public/teams?locationId=${encodeURIComponent(selectedLocationId)}`)
@@ -155,6 +171,45 @@ export default function SignUpPage() {
       });
   }, [selectedLocationId, teamId]);
 
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !selectedLocationId) return;
+    let active = true;
+    client
+      .from("players")
+      .select("id,full_name,display_name,claimed_by,location_id,is_archived")
+      .eq("location_id", selectedLocationId)
+      .eq("is_archived", false)
+      .order("full_name", { ascending: true })
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) {
+          setPlayers([]);
+          return;
+        }
+        const rows = ((data ?? []) as PlayerOption[]).filter((player) => !player.claimed_by);
+        setPlayers(rows);
+        setSelectedPlayerId((current) => (current && rows.some((row) => row.id === current) ? current : ""));
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedLocationId]);
+
+  const filteredPlayers = useMemo(() => {
+    const q = playerSearch.trim().toLowerCase();
+    if (!q) return players;
+    return players.filter((player) => {
+      const label = (player.full_name?.trim() || player.display_name).toLowerCase();
+      return label.includes(q);
+    });
+  }, [players, playerSearch]);
+
+  const selectedPlayer = useMemo(
+    () => players.find((player) => player.id === selectedPlayerId) ?? null,
+    [players, selectedPlayerId]
+  );
+
   const validateStepOne = async () => {
     if (!email.trim()) {
       setMessage("Enter your email to create an account.");
@@ -164,18 +219,25 @@ export default function SignUpPage() {
       setMessage("Choose a password with at least 6 characters.");
       return false;
     }
+    if (!locationId.trim()) {
+      setMessage("Select a club to continue.");
+      return false;
+    }
+    if (matchMode === "existing") {
+      if (!selectedPlayerId) {
+        setMessage("Select your player profile from the club list, or switch to “I’m not listed”.");
+        return false;
+      }
+      return true;
+    }
     const first = firstName.trim();
     const second = secondName.trim();
     if (!first || !second) {
-      setMessage("Enter your first and second name so we can check for an existing profile before signup.");
+      setMessage("Enter your first and last name for the new-player request.");
       return false;
     }
     if (!dateOfBirth.trim()) {
-      setMessage("Enter your date of birth.");
-      return false;
-    }
-    if (!locationId.trim()) {
-      setMessage("Select a club to continue.");
+      setMessage("Enter your date of birth for the new-player request.");
       return false;
     }
     return true;
@@ -207,145 +269,59 @@ export default function SignUpPage() {
       return;
     }
 
-    const first = firstName.trim();
-    const second = secondName.trim();
     const selectedLocation = selectedLocationId.trim();
     const selectedTeam = selectedTeamId.trim();
-    if (!first || !second) {
-      setBusy(false);
-      setMessage("Enter your first and second name so we can check for an existing profile before signup.");
-      return;
-    }
     if (!selectedLocation) {
       setBusy(false);
       setMessage("Select an existing club to continue.");
       return;
     }
-    const fullName = `${first} ${second}`.trim();
-    const normalizedFull = normalizeName(fullName);
-    const normalizedFirst = normalizeName(first);
-    const normalizedSecond = normalizeName(second);
-
-    const { data } = await client
-      .from("players")
-      .select("id,full_name,display_name,claimed_by,location_id,is_archived")
-      .eq("location_id", selectedLocation)
-      .limit(300);
-
-    const teamMemberIds = new Set<string>();
-    if (selectedTeam) {
-      const teamMembersRes = await client
-        .from("league_registered_team_members")
-        .select("player_id")
-        .eq("team_id", selectedTeam);
-      if (!teamMembersRes.error) {
-        for (const row of teamMembersRes.data ?? []) {
-          if (row.player_id) teamMemberIds.add(row.player_id as string);
-        }
+    if (matchMode === "existing") {
+      if (!selectedPlayer) {
+        setBusy(false);
+        setMessage("Select your player profile from the club list.");
+        return;
       }
-    }
-
-    const unclaimed = (data ?? []).filter((p) => !p.claimed_by);
-    const scored = unclaimed
-      .map((p) => {
-        const nFull = normalizeName(p.full_name ?? "");
-        const nDisplay = normalizeName(p.display_name ?? "");
-        let score = 0;
-        if (nFull && nFull === normalizedFull) score = 100;
-        else if (nDisplay && nDisplay === normalizedFull) score = 95;
-        else if (nFull.includes(normalizedFirst) && nFull.includes(normalizedSecond)) score = 85;
-        else if (nDisplay.includes(normalizedFirst) && nDisplay.includes(normalizedSecond)) score = 80;
-        else if (nDisplay === normalizedFirst) score = 65;
-        else if (nFull.includes(normalizedFirst)) score = 55;
-        if (selectedTeam && teamMemberIds.has(p.id)) score += 20;
-        if (p.is_archived) score -= 5;
-        return { p, score };
-      })
-      .filter((x) => x.score >= 65)
-      .sort((a, b) => b.score - a.score);
-    const candidate = scored[0]?.p ?? null;
-
-    if (candidate && !candidate.claimed_by) {
-      const ok = await askConfirm(
-        candidate.is_archived ? "Archived profile found" : "Existing profile found",
-        candidate.is_archived
-          ? `An archived profile exists for "${fullName}". Do you want to request restore and claim it after you sign in?`
-          : `A profile already exists for "${fullName}". Would you like to claim it after you sign in?`,
-        candidate.is_archived ? "Restore & claim" : "Claim profile",
-        "Cancel"
+      const fullName = selectedPlayer.full_name?.trim() || selectedPlayer.display_name;
+      window.localStorage.setItem(
+        "pending_claim",
+        JSON.stringify({
+          type: "existing",
+          playerId: selectedPlayer.id,
+          fullName,
+          locationId: selectedLocation,
+          teamId: selectedTeam || null,
+        })
       );
-      if (ok) {
-        if (!candidate.location_id && selectedLocation) {
-          window.localStorage.setItem(
-            "pending_claim",
-            JSON.stringify({
-              type: "existing",
-              playerId: candidate.id,
-              fullName,
-              locationId: selectedLocation,
-              teamId: selectedTeam || null,
-              restoreArchived: Boolean(candidate.is_archived),
-              dateOfBirth,
-            })
-          );
-        } else {
-          window.localStorage.setItem(
-            "pending_claim",
-            JSON.stringify({
-              type: "existing",
-              playerId: candidate.id,
-              fullName,
-              teamId: selectedTeam || null,
-              restoreArchived: Boolean(candidate.is_archived),
-              dateOfBirth,
-            })
-          );
-        }
-      } else {
-        const createOk = await askConfirm(
-          "Create a new profile?",
-          "No claim selected. Would you like to create a new profile after you sign in?",
-          "Create profile",
-          "Cancel"
-        );
-        if (createOk) {
-          window.localStorage.setItem(
-            "pending_claim",
-            JSON.stringify({
-              type: "create",
-              firstName: first,
-              secondName: second,
-              dateOfBirth,
-              locationId: selectedLocation,
-              teamId: selectedTeam || null,
-            })
-          );
-        }
-      }
-    } else if ((data ?? []).some((p) => p.claimed_by)) {
-      setBusy(false);
-      setMessage("An existing account/profile already appears to be linked for this name. Sign in with your existing account or contact support.");
-      return;
     } else {
+      const first = firstName.trim();
+      const second = secondName.trim();
+      if (!first || !second) {
+        setBusy(false);
+        setMessage("Enter your first and last name for the new-player request.");
+        return;
+      }
       const createOk = await askConfirm(
-        "No matching profile found",
-        "Would you like to create a new profile after you sign in? (If a previous profile was permanently deleted, a new profile will be created.)",
-        "Create profile",
+        "Request a new player profile?",
+        "Your name is not listed for this club. We’ll create a pending player profile request for superuser approval after your account is created.",
+        "Continue",
         "Cancel"
       );
-      if (createOk) {
-        window.localStorage.setItem(
-          "pending_claim",
-          JSON.stringify({
-            type: "create",
-            firstName: first,
-            secondName: second,
-            dateOfBirth,
-            locationId: selectedLocation,
-            teamId: selectedTeam || null,
-          })
-        );
+      if (!createOk) {
+        setBusy(false);
+        return;
       }
+      window.localStorage.setItem(
+        "pending_claim",
+        JSON.stringify({
+          type: "create",
+          firstName: first,
+          secondName: second,
+          dateOfBirth,
+          locationId: selectedLocation,
+          teamId: selectedTeam || null,
+        })
+      );
     }
 
     const pending = typeof window !== "undefined" ? window.localStorage.getItem("pending_claim") : null;
@@ -475,9 +451,72 @@ export default function SignUpPage() {
                     </option>
                   ))}
                 </select>
-                <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-                  If your club or team is not listed, please send a WhatsApp message to the league secretary/chairman to update the system.
-                </p>
+              </div>
+              <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                <p className="text-sm font-semibold text-slate-900">Match your player profile</p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMatchMode("existing")}
+                    className={`rounded-full border px-3 py-1 text-sm ${matchMode === "existing" ? "border-teal-700 bg-teal-700 text-white" : "border-slate-300 bg-white text-slate-700"}`}
+                  >
+                    My name is listed
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setMatchMode("new")}
+                    className={`rounded-full border px-3 py-1 text-sm ${matchMode === "new" ? "border-teal-700 bg-teal-700 text-white" : "border-slate-300 bg-white text-slate-700"}`}
+                  >
+                    I’m not listed
+                  </button>
+                </div>
+                {matchMode === "existing" ? (
+                  <div className="mt-3 space-y-2">
+                    <input
+                      type="text"
+                      value={playerSearch}
+                      onChange={(e) => setPlayerSearch(e.target.value)}
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
+                      placeholder={selectedLocationId ? "Search for your name" : "Select club first"}
+                      disabled={!selectedLocationId}
+                    />
+                    <select
+                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
+                      value={selectedPlayerId}
+                      onChange={(e) => setSelectedPlayerId(e.target.value)}
+                      disabled={!selectedLocationId}
+                    >
+                      <option value="">{selectedLocationId ? "Select your player profile" : "Select club first"}</option>
+                      {filteredPlayers.map((player) => (
+                        <option key={player.id} value={player.id}>
+                          {player.full_name?.trim() || player.display_name}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="text-xs text-slate-600">
+                      Choose your club first, then select your existing player profile from the list. This will create a pending claim for approval.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      <input className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
+                      <input className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2" placeholder="Surname" value={secondName} onChange={(e) => setSecondName(e.target.value)} />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-sm font-medium text-slate-700">Date of birth</label>
+                      <input
+                        type="date"
+                        value={dateOfBirth}
+                        onChange={(e) => setDateOfBirth(e.target.value)}
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
+                      />
+                    </div>
+                    <p className="text-xs text-slate-600">
+                      If you are not listed, submit a new-player request here. The superuser will review it before the profile is linked.
+                    </p>
+                  </div>
+                )}
               </div>
             </>
           ) : (
@@ -485,10 +524,17 @@ export default function SignUpPage() {
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                 <p className="font-semibold text-slate-900">Review your details</p>
                 <p className="mt-1">{email.trim()}</p>
-                <p>{firstName.trim()} {secondName.trim()}</p>
-                <p>{dateOfBirth ? new Date(`${dateOfBirth}T12:00:00`).toLocaleDateString() : "Date of birth not entered"}</p>
                 <p>{locations.find((l) => l.id === selectedLocationId)?.name ?? "Club not selected"}</p>
                 <p>{teams.find((t) => t.id === selectedTeamId)?.name ?? "Team not selected"}</p>
+                {matchMode === "existing" ? (
+                  <p>{selectedPlayer ? `Existing player selected: ${selectedPlayer.full_name?.trim() || selectedPlayer.display_name}` : "No player selected"}</p>
+                ) : (
+                  <>
+                    <p>{firstName.trim()} {secondName.trim()}</p>
+                    <p>{dateOfBirth ? new Date(`${dateOfBirth}T12:00:00`).toLocaleDateString() : "Date of birth not entered"}</p>
+                    <p>New player request pending superuser approval</p>
+                  </>
+                )}
               </div>
               <div className="rounded-lg border border-teal-200 bg-teal-50 p-3 text-sm text-teal-900">
                 <p className="font-semibold">Legal summary</p>
