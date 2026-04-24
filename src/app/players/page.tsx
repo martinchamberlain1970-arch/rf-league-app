@@ -1767,7 +1767,7 @@ export default function PlayersPage() {
                   <p className="text-2xl font-semibold text-slate-900">{visibleClaims.length}</p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">Pending profile updates</p>
+                  <p className="text-xs uppercase tracking-wide text-slate-500">Pending profile / photo updates</p>
                   <p className="text-2xl font-semibold text-slate-900">{visibleUpdates.length}</p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -2125,6 +2125,7 @@ export default function PlayersPage() {
                     return (
                       <div key={r.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">
                         <p className="font-medium text-slate-900">{player?.full_name ?? player?.display_name ?? "Unknown player"}</p>
+                        {r.requested_avatar_url ? <p className="text-sm font-medium text-emerald-800">Profile photo update awaiting approval.</p> : null}
                         {r.requested_full_name ? <p className="text-sm text-slate-700">Requested name: {r.requested_full_name}</p> : null}
                         {r.requested_age_band ? (
                           <p className="text-sm text-slate-700">

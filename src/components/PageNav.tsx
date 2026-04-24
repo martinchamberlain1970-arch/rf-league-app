@@ -115,7 +115,13 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
       } else if (admin.isAdmin) {
         const dismissed = typeof window !== "undefined" ? new Set<string>(JSON.parse(window.localStorage.getItem(dismissedKey) ?? "[]")) : new Set<string>();
         const resultRows = await loadResultRows(["pending"]);
-        const ids = [...(resultRows ?? []).map((r: { id: string }) => `result:${r.id}`)];
+        const { data: updateRows } = await applyCreatedFilter(
+          client.from("player_update_requests").select("id").eq("status", "pending")
+        );
+        const ids = [
+          ...(resultRows ?? []).map((r: { id: string }) => `result:${r.id}`),
+          ...(updateRows ?? []).map((r: { id: string }) => `update:${r.id}`),
+        ];
         setPendingCount(ids.filter((id) => !dismissed.has(id)).length);
       } else {
         const dismissed = typeof window !== "undefined" ? new Set<string>(JSON.parse(window.localStorage.getItem(dismissedKey) ?? "[]")) : new Set<string>();
