@@ -19,7 +19,7 @@ type PlayerOption = {
   location_id?: string | null;
   is_archived?: boolean | null;
 };
-type TeamMemberRow = { player_id: string };
+type TeamMemberRow = { player_id: string; team_id?: string | null };
 type LeagueTeamRow = { id: string };
 const SIGNUP_DRAFT_KEY = "signup_draft_v1";
 const LEGAL_VERSION = "2026-03-11";
@@ -244,22 +244,107 @@ export default function SignUpPage() {
     const client = supabase;
     if (!client || !selectedLocationId) return;
     let active = true;
-    client
-      .from("players")
-      .select("id,full_name,display_name,claimed_by,location_id,is_archived")
-      .eq("location_id", selectedLocationId)
-      .eq("is_archived", false)
-      .order("full_name", { ascending: true })
-      .then(({ data, error }) => {
+    const run = async () => {
+      const directPlayersPromise = client
+        .from("players")
+        .select("id,full_name,display_name,claimed_by,location_id,is_archived")
+        .eq("location_id", selectedLocationId)
+        .eq("is_archived", false)
+        .order("full_name", { ascending: true });
+
+      const registeredTeamsPromise = client
+        .from("league_registered_teams")
+        .select("id")
+        .eq("location_id", selectedLocationId);
+
+      const liveTeamsPromise = client
+        .from("league_teams")
+        .select("id")
+        .eq("location_id", selectedLocationId);
+
+      const [directPlayersRes, registeredTeamsRes, liveTeamsRes] = await Promise.all([
+        directPlayersPromise,
+        registeredTeamsPromise,
+        liveTeamsPromise,
+      ]);
+      if (!active) return;
+
+      const combinedById = new Map<string, PlayerOption>();
+
+      if (!directPlayersRes.error) {
+        ((directPlayersRes.data ?? []) as PlayerOption[]).forEach((player) => {
+          combinedById.set(player.id, player);
+        });
+      }
+
+      const registeredTeamIds = !registeredTeamsRes.error
+        ? ((registeredTeamsRes.data ?? []) as LeagueTeamRow[]).map((row) => row.id).filter(Boolean)
+        : [];
+      const liveTeamIds = !liveTeamsRes.error
+        ? ((liveTeamsRes.data ?? []) as LeagueTeamRow[]).map((row) => row.id).filter(Boolean)
+        : [];
+
+      const rosterPlayerIds = new Set<string>();
+
+      if (registeredTeamIds.length > 0 || liveTeamIds.length > 0) {
+        const [registeredMembersRes, liveMembersRes] = await Promise.all([
+          registeredTeamIds.length > 0
+            ? client.from("league_registered_team_members").select("player_id").in("team_id", registeredTeamIds)
+            : Promise.resolve({ data: [], error: null }),
+          liveTeamIds.length > 0
+            ? client.from("league_team_members").select("player_id").in("team_id", liveTeamIds)
+            : Promise.resolve({ data: [], error: null }),
+        ]);
         if (!active) return;
-        if (error) {
-          setPlayers([]);
-          return;
+
+        if (!registeredMembersRes.error) {
+          ((registeredMembersRes.data ?? []) as TeamMemberRow[])
+            .map((row) => row.player_id)
+            .filter(Boolean)
+            .forEach((playerId) => rosterPlayerIds.add(playerId));
         }
-        const rows = ((data ?? []) as PlayerOption[]).filter((player) => !player.claimed_by);
-        setPlayers(rows);
-        setSelectedPlayerId((current) => (current && rows.some((row) => row.id === current) ? current : ""));
-      });
+
+        if (!liveMembersRes.error) {
+          ((liveMembersRes.data ?? []) as TeamMemberRow[])
+            .map((row) => row.player_id)
+            .filter(Boolean)
+            .forEach((playerId) => rosterPlayerIds.add(playerId));
+        }
+      }
+
+      const missingRosterPlayerIds = Array.from(rosterPlayerIds).filter((playerId) => !combinedById.has(playerId));
+      if (missingRosterPlayerIds.length > 0) {
+        const rosterPlayersRes = await client
+          .from("players")
+          .select("id,full_name,display_name,claimed_by,location_id,is_archived")
+          .in("id", missingRosterPlayerIds)
+          .eq("is_archived", false)
+          .order("full_name", { ascending: true });
+        if (!active) return;
+        if (!rosterPlayersRes.error) {
+          ((rosterPlayersRes.data ?? []) as PlayerOption[]).forEach((player) => {
+            combinedById.set(player.id, player);
+          });
+        }
+      }
+
+      const rows = Array.from(combinedById.values())
+        .filter((player) => !player.claimed_by)
+        .sort((a, b) => {
+          const aName = a.full_name?.trim() || a.display_name;
+          const bName = b.full_name?.trim() || b.display_name;
+          return aName.localeCompare(bName);
+        });
+
+      setPlayers(rows);
+      setSelectedPlayerId((current) => (current && rows.some((row) => row.id === current) ? current : ""));
+    };
+
+    run().catch(() => {
+      if (!active) return;
+      setPlayers([]);
+      setSelectedPlayerId("");
+    });
     return () => {
       active = false;
     };
