@@ -20,6 +20,7 @@ type PlayerOption = {
   is_archived?: boolean | null;
 };
 type TeamMemberRow = { player_id: string };
+type LeagueTeamRow = { id: string };
 const SIGNUP_DRAFT_KEY = "signup_draft_v1";
 const LEGAL_VERSION = "2026-03-11";
 
@@ -148,6 +149,10 @@ export default function SignUpPage() {
 
   const selectedLocationId = locationId;
   const selectedTeamId = teamId;
+  const selectedTeam = useMemo(
+    () => teams.find((team) => team.id === selectedTeamId) ?? null,
+    [teams, selectedTeamId]
+  );
 
   useEffect(() => {
     if (!selectedLocationId) {
@@ -176,27 +181,64 @@ export default function SignUpPage() {
 
   useEffect(() => {
     const client = supabase;
-    if (!client || !selectedTeamId) {
+    if (!client || !selectedTeamId || !selectedTeam) {
       setTeamPlayerIds([]);
       return;
     }
     let active = true;
-    client
-      .from("league_registered_team_members")
-      .select("player_id")
-      .eq("team_id", selectedTeamId)
-      .then(({ data, error }) => {
+    const run = async () => {
+      const registeredMembersPromise = client
+        .from("league_registered_team_members")
+        .select("player_id")
+        .eq("team_id", selectedTeamId);
+
+      const liveTeamsPromise = client
+        .from("league_teams")
+        .select("id")
+        .eq("name", selectedTeam.name)
+        .eq("location_id", selectedTeam.location_id);
+
+      const [registeredMembersRes, liveTeamsRes] = await Promise.all([registeredMembersPromise, liveTeamsPromise]);
+      if (!active) return;
+
+      const combinedIds = new Set<string>();
+
+      if (!registeredMembersRes.error) {
+        ((registeredMembersRes.data ?? []) as TeamMemberRow[])
+          .map((row) => row.player_id)
+          .filter(Boolean)
+          .forEach((playerId) => combinedIds.add(playerId));
+      }
+
+      const liveTeamIds = !liveTeamsRes.error
+        ? ((liveTeamsRes.data ?? []) as LeagueTeamRow[]).map((row) => row.id).filter(Boolean)
+        : [];
+
+      if (liveTeamIds.length > 0) {
+        const liveMembersRes = await client
+          .from("league_team_members")
+          .select("player_id")
+          .in("team_id", liveTeamIds);
         if (!active) return;
-        if (error) {
-          setTeamPlayerIds([]);
-          return;
+        if (!liveMembersRes.error) {
+          ((liveMembersRes.data ?? []) as TeamMemberRow[])
+            .map((row) => row.player_id)
+            .filter(Boolean)
+            .forEach((playerId) => combinedIds.add(playerId));
         }
-        setTeamPlayerIds(((data ?? []) as TeamMemberRow[]).map((row) => row.player_id).filter(Boolean));
-      });
+      }
+
+      setTeamPlayerIds(Array.from(combinedIds));
+    };
+
+    run().catch(() => {
+      if (!active) return;
+      setTeamPlayerIds([]);
+    });
     return () => {
       active = false;
     };
-  }, [selectedTeamId]);
+  }, [selectedTeam, selectedTeamId]);
 
   useEffect(() => {
     const client = supabase;
