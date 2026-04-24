@@ -209,7 +209,7 @@ export default function SignInPage() {
             <div className="mt-8 rounded-[1.5rem] border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-5">
               <p className="text-sm font-semibold text-amber-900">League access note</p>
               <p className="mt-2 text-sm leading-7 text-amber-800">
-                New accounts are reviewed before full access is enabled. Approval is usually completed within an hour and can take up to 24 hours.
+                New accounts can sign in straight away. Your player profile link is reviewed separately by the League Secretary or league administrator, usually within an hour and sometimes up to 24 hours.
               </p>
             </div>
           </section>
