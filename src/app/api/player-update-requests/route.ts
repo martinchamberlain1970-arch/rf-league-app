@@ -36,7 +36,7 @@ function isMissingColumnError(message?: string | null) {
   return text.includes("column") && (text.includes("does not exist") || text.includes("schema cache"));
 }
 
-async function loadActor(serviceClient: ReturnType<typeof createClient>, requesterId: string, requesterEmail: string) {
+async function loadActor(serviceClient: any, requesterId: string, requesterEmail: string) {
   const appUserRes = await serviceClient
     .from("app_users")
     .select("id,role,linked_player_id")
@@ -53,7 +53,7 @@ async function loadActor(serviceClient: ReturnType<typeof createClient>, request
   return { appUser, role, isSuper, isAdmin } as const;
 }
 
-async function loadRequestForAction(serviceClient: ReturnType<typeof createClient>, requestId: string) {
+async function loadRequestForAction(serviceClient: any, requestId: string) {
   const fullRes = await serviceClient
     .from("player_update_requests")
     .select("id,player_id,requester_user_id,requested_full_name,requested_location_id,requested_avatar_url,requested_age_band,requested_guardian_consent,requested_guardian_name,requested_guardian_email,requested_guardian_user_id,status,created_at")
