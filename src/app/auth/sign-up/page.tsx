@@ -19,6 +19,7 @@ type PlayerOption = {
   location_id?: string | null;
   is_archived?: boolean | null;
 };
+type TeamMemberRow = { player_id: string };
 const SIGNUP_DRAFT_KEY = "signup_draft_v1";
 const LEGAL_VERSION = "2026-03-11";
 
@@ -48,6 +49,7 @@ export default function SignUpPage() {
   const [locations, setLocations] = useState<Location[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [players, setPlayers] = useState<PlayerOption[]>([]);
+  const [teamPlayerIds, setTeamPlayerIds] = useState<string[]>([]);
   const [locationId, setLocationId] = useState("");
   const [teamId, setTeamId] = useState("");
   const [playerSearch, setPlayerSearch] = useState("");
@@ -152,6 +154,7 @@ export default function SignUpPage() {
       setTeams([]);
       setTeamId("");
       setPlayers([]);
+      setTeamPlayerIds([]);
       setSelectedPlayerId("");
       setPlayerSearch("");
       return;
@@ -170,6 +173,30 @@ export default function SignUpPage() {
         setTeamId("");
       });
   }, [selectedLocationId, teamId]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !selectedTeamId) {
+      setTeamPlayerIds([]);
+      return;
+    }
+    let active = true;
+    client
+      .from("league_registered_team_members")
+      .select("player_id")
+      .eq("team_id", selectedTeamId)
+      .then(({ data, error }) => {
+        if (!active) return;
+        if (error) {
+          setTeamPlayerIds([]);
+          return;
+        }
+        setTeamPlayerIds(((data ?? []) as TeamMemberRow[]).map((row) => row.player_id).filter(Boolean));
+      });
+    return () => {
+      active = false;
+    };
+  }, [selectedTeamId]);
 
   useEffect(() => {
     const client = supabase;
@@ -198,12 +225,15 @@ export default function SignUpPage() {
 
   const filteredPlayers = useMemo(() => {
     const q = playerSearch.trim().toLowerCase();
-    if (!q) return players;
-    return players.filter((player) => {
+    const teamFiltered = selectedTeamId
+      ? players.filter((player) => teamPlayerIds.includes(player.id))
+      : players;
+    if (!q) return teamFiltered;
+    return teamFiltered.filter((player) => {
       const label = (player.full_name?.trim() || player.display_name).toLowerCase();
       return label.includes(q);
     });
-  }, [players, playerSearch]);
+  }, [players, playerSearch, selectedTeamId, teamPlayerIds]);
 
   const selectedPlayer = useMemo(
     () => players.find((player) => player.id === selectedPlayerId) ?? null,
@@ -408,20 +438,6 @@ export default function SignUpPage() {
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
                 />
               </div>
-              <div className="grid gap-2 sm:grid-cols-2">
-                <input className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
-                <input className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2" placeholder="Second name" value={secondName} onChange={(e) => setSecondName(e.target.value)} />
-              </div>
-              <div>
-                <label className="mb-1 block text-sm font-medium text-slate-700">Date of birth</label>
-                <input
-                  type="date"
-                  required
-                  value={dateOfBirth}
-                  onChange={(e) => setDateOfBirth(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-                />
-              </div>
               <div>
                 <select
                   className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
@@ -493,21 +509,39 @@ export default function SignUpPage() {
                       placeholder={selectedLocationId ? "Search for your name" : "Select club first"}
                       disabled={!selectedLocationId}
                     />
-                    <select
-                      className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-                      value={selectedPlayerId}
-                      onChange={(e) => setSelectedPlayerId(e.target.value)}
-                      disabled={!selectedLocationId}
-                    >
-                      <option value="">{selectedLocationId ? "Select your player profile" : "Select club first"}</option>
-                      {filteredPlayers.map((player) => (
-                        <option key={player.id} value={player.id}>
-                          {player.full_name?.trim() || player.display_name}
-                        </option>
-                      ))}
-                    </select>
+                    <div className="rounded-lg border border-slate-300 bg-white">
+                      {!selectedLocationId ? (
+                        <p className="px-3 py-2 text-sm text-slate-500">Select a club first to load the player list.</p>
+                      ) : filteredPlayers.length === 0 ? (
+                        <p className="px-3 py-2 text-sm text-slate-500">
+                          {selectedTeamId ? "No unclaimed players found for that team." : "No unclaimed players found for that club."}
+                        </p>
+                      ) : (
+                        <div className="max-h-56 overflow-y-auto">
+                          {filteredPlayers.map((player) => {
+                            const playerName = player.full_name?.trim() || player.display_name;
+                            const selected = player.id === selectedPlayerId;
+                            return (
+                              <button
+                                key={player.id}
+                                type="button"
+                                onClick={() => setSelectedPlayerId(player.id)}
+                                className={`flex w-full items-center justify-between border-b border-slate-100 px-3 py-2 text-left last:border-b-0 ${
+                                  selected ? "bg-teal-50 text-teal-900" : "bg-white text-slate-800 hover:bg-slate-50"
+                                }`}
+                              >
+                                <span className="font-medium">{playerName}</span>
+                                {selected ? (
+                                  <span className="rounded-full bg-teal-700 px-2 py-0.5 text-xs font-semibold text-white">Selected</span>
+                                ) : null}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
                     <p className="text-xs text-slate-600">
-                      Choose your club first, then select your existing player profile from the list. This will create a pending claim for approval.
+                      Choose your club first, then select your existing player profile from the list. If you choose a team, the list narrows to that team where possible.
                     </p>
                   </div>
                 ) : (
