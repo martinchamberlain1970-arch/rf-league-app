@@ -167,7 +167,7 @@ export default function PlayersPage() {
   const [roleFilter, setRoleFilter] = useState<"all" | "super" | "admin" | "user">("all");
   const [profileLocationFilter, setProfileLocationFilter] = useState("all");
   const superAdminEmail = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
-  const isSuperAdmin = Boolean(superAdminEmail && userEmail && userEmail.toLowerCase() === superAdminEmail);
+  const isSuperAdmin = admin.isSuper;
   const isStandardUser = !admin.isAdmin && !isSuperAdmin;
   const adminLimited = isStandardUser;
   const canRegisterPlayers = admin.isAdmin || isSuperAdmin;
