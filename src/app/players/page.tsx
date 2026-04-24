@@ -1884,6 +1884,10 @@ export default function PlayersPage() {
                   <p className="text-xs uppercase tracking-wide text-slate-500">Pending profile / photo updates</p>
                   <p className="text-2xl font-semibold text-slate-900">{visibleUpdates.length}</p>
                 </div>
+                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                  <p className="text-xs uppercase tracking-wide text-emerald-700">Pending photo approvals</p>
+                  <p className="text-2xl font-semibold text-slate-900">{visiblePhotoUpdates.length}</p>
+                </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-xs uppercase tracking-wide text-slate-500">Unlinked users</p>
                   <p className="text-2xl font-semibold text-slate-900">{unlinkedUsers.length}</p>
@@ -1984,7 +1988,7 @@ export default function PlayersPage() {
                   onClick={() => setTab("claims")}
                   className={tab === "claims" ? pillActiveClass : pillInactiveClass}
                 >
-                  Claim Requests ({pendingClaims.length})
+                  Claims & Updates ({pendingClaims.length + visibleUpdates.length})
                 </button>
               </div>
               {admin.isAdmin && !isSuperAdmin ? (
@@ -2230,8 +2234,8 @@ export default function PlayersPage() {
               </div>
 
               <div className="mt-6">
-                <h3 className="text-xl font-semibold text-slate-900">Profile Update Requests</h3>
-                {!visibleUpdates.length ? <p className="mt-2 text-sm text-slate-600">No pending profile updates.</p> : null}
+                <h3 className="text-xl font-semibold text-slate-900">Profile / Photo Update Requests</h3>
+                {!visibleUpdates.length ? <p className="mt-2 text-sm text-slate-600">No pending profile or photo updates.</p> : null}
                 <div className="mt-3 space-y-2">
                   {visibleUpdates.map((r) => {
                     const player = players.find((p) => p.id === r.player_id);
