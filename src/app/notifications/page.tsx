@@ -123,6 +123,7 @@ async function loadPlayerUpdateNotificationRows(
     if (!token) return { data: [] as Array<{ id: string; player_id: string; requested_avatar_url?: string | null; created_at: string; status: string }>, error: null };
     const resp = await fetch("/api/player-update-requests?mode=approvals", {
       headers: { Authorization: `Bearer ${token}` },
+      cache: "no-store",
     });
     const payload = await resp.json().catch(() => ({}));
     if (!resp.ok) {

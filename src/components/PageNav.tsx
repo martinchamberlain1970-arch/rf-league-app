@@ -101,6 +101,7 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
         if (token) {
           const resp = await fetch("/api/player-update-requests?mode=approvals", {
             headers: { Authorization: `Bearer ${token}` },
+            cache: "no-store",
           });
           const data = await resp.json().catch(() => ({}));
           if (resp.ok) {
@@ -130,6 +131,7 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
         if (token) {
           const resp = await fetch("/api/player-update-requests?mode=approvals", {
             headers: { Authorization: `Bearer ${token}` },
+            cache: "no-store",
           });
           const data = await resp.json().catch(() => ({}));
           if (resp.ok) {

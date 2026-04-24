@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
+export const dynamic = "force-dynamic";
+export const revalidate = 0;
+
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -154,17 +157,17 @@ export async function GET(req: NextRequest) {
   if (mode === "approvals" && !isSuper) {
     const linkedPlayerId = appUser.linked_player_id;
     if (!linkedPlayerId) {
-      return NextResponse.json({ requests: rows, count: rows.length });
+      return NextResponse.json({ requests: rows, count: rows.length }, { headers: { "Cache-Control": "no-store" } });
     }
     const adminPlayerRes = await serviceClient.from("players").select("location_id").eq("id", linkedPlayerId).maybeSingle();
     const adminLocationId = (adminPlayerRes.data?.location_id as string | null) ?? null;
     if (!adminLocationId) {
-      return NextResponse.json({ requests: rows, count: rows.length });
+      return NextResponse.json({ requests: rows, count: rows.length }, { headers: { "Cache-Control": "no-store" } });
     }
 
     const requesterUserIds = Array.from(new Set(rows.map((row) => row.requester_user_id).filter(Boolean)));
     if (!requesterUserIds.length) {
-      return NextResponse.json({ requests: [], count: 0 });
+      return NextResponse.json({ requests: [], count: 0 }, { headers: { "Cache-Control": "no-store" } });
     }
     const requesterPlayersRes = await serviceClient
       .from("players")
@@ -177,7 +180,7 @@ export async function GET(req: NextRequest) {
     rows = rows.filter((row) => requesterLocationByUser.get(row.requester_user_id) === adminLocationId);
   }
 
-  return NextResponse.json({ requests: rows, count: rows.length });
+  return NextResponse.json({ requests: rows, count: rows.length }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(req: NextRequest) {

@@ -287,6 +287,7 @@ export default function PlayersPage() {
       if (!token) return;
       const resp = await fetch("/api/player-update-requests?mode=approvals", {
         headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
       });
       if (!resp.ok) return;
       const data = await resp.json().catch(() => ({}));
