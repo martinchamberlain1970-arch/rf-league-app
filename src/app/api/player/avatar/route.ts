@@ -53,8 +53,9 @@ export async function POST(req: NextRequest) {
 
   const appUser = appUserRes.data as { id: string; role: string | null; linked_player_id: string | null };
   const role = String(appUser.role ?? "").toLowerCase();
-  const hasAdminPower = isSuper || role === "owner" || role === "super" || role === "admin";
-  if (!hasAdminPower && appUser.linked_player_id !== playerId) {
+  const canApproveDirectly = isSuper || role === "owner" || role === "super";
+  const canManageAnyPlayer = canApproveDirectly || role === "admin";
+  if (!canManageAnyPlayer && appUser.linked_player_id !== playerId) {
     return NextResponse.json({ error: "You can only update your own player profile photo." }, { status: 403 });
   }
 
@@ -79,7 +80,7 @@ export async function POST(req: NextRequest) {
 
   const publicUrl = adminClient.storage.from("avatars").getPublicUrl(path).data.publicUrl;
 
-  if (!hasAdminPower) {
+  if (!canApproveDirectly) {
     const requestRes = await adminClient.from("player_update_requests").insert({
       player_id: playerId,
       requester_user_id: requesterId,
