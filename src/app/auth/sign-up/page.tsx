@@ -223,6 +223,10 @@ export default function SignUpPage() {
       setMessage("Select a club to continue.");
       return false;
     }
+    if (!dateOfBirth.trim()) {
+      setMessage("Enter your date of birth. We need this for all players.");
+      return false;
+    }
     if (matchMode === "existing") {
       if (!selectedPlayerId) {
         setMessage("Select your player profile from the club list, or switch to “I’m not listed”.");
@@ -234,10 +238,6 @@ export default function SignUpPage() {
     const second = secondName.trim();
     if (!first || !second) {
       setMessage("Enter your first and last name for the new-player request.");
-      return false;
-    }
-    if (!dateOfBirth.trim()) {
-      setMessage("Enter your date of birth for the new-player request.");
       return false;
     }
     return true;
@@ -452,6 +452,19 @@ export default function SignUpPage() {
                   ))}
                 </select>
               </div>
+              <div>
+                <label className="mb-1 block text-sm font-medium text-slate-700">Date of birth</label>
+                <input
+                  type="date"
+                  required
+                  value={dateOfBirth}
+                  onChange={(e) => setDateOfBirth(e.target.value)}
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
+                />
+                <p className="mt-2 text-xs text-slate-600">
+                  Date of birth is required for all players, whether you are claiming an existing profile or asking us to create a new one.
+                </p>
+              </div>
               <div className="rounded-lg border border-slate-200 bg-slate-50 p-3">
                 <p className="text-sm font-semibold text-slate-900">Match your player profile</p>
                 <div className="mt-3 flex flex-wrap gap-2">
@@ -502,15 +515,6 @@ export default function SignUpPage() {
                     <div className="grid gap-2 sm:grid-cols-2">
                       <input className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2" placeholder="First name" value={firstName} onChange={(e) => setFirstName(e.target.value)} />
                       <input className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2" placeholder="Surname" value={secondName} onChange={(e) => setSecondName(e.target.value)} />
-                    </div>
-                    <div>
-                      <label className="mb-1 block text-sm font-medium text-slate-700">Date of birth</label>
-                      <input
-                        type="date"
-                        value={dateOfBirth}
-                        onChange={(e) => setDateOfBirth(e.target.value)}
-                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-                      />
                     </div>
                     <p className="text-xs text-slate-600">
                       If you are not listed, submit a new-player request here. The superuser will review it before the profile is linked.

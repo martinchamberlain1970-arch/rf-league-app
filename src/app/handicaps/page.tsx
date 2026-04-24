@@ -20,7 +20,6 @@ type Competition = { id: string; sport_type: "snooker"; is_archived?: boolean | 
 type MatchRow = {
   competition_id: string;
   status: "pending" | "in_progress" | "complete" | "bye";
-  updated_at: string | null;
   player1_id: string | null;
   player2_id: string | null;
   team1_player1_id: string | null;
@@ -30,8 +29,6 @@ type MatchRow = {
 };
 type LeagueSeason = { id: string; is_published?: boolean | null };
 type LeagueTeamMember = { season_id: string; player_id: string };
-
-const LIVE_ACTIVITY_WINDOW_MS = 180 * 24 * 60 * 60 * 1000;
 
 const guideRows = [
   { elo: 1160, handicap: -32 },
@@ -74,7 +71,7 @@ export default function HandicapsPage() {
           .select("id,display_name,full_name,claimed_by,rating_snooker,rated_matches_snooker,snooker_handicap,snooker_handicap_base")
           .eq("is_archived", false),
         client.from("competitions").select("id,sport_type,is_archived,is_completed"),
-        client.from("matches").select("competition_id,status,updated_at,player1_id,player2_id,team1_player1_id,team1_player2_id,team2_player1_id,team2_player2_id"),
+        client.from("matches").select("competition_id,status,player1_id,player2_id,team1_player1_id,team1_player2_id,team2_player1_id,team2_player2_id"),
         client.from("league_seasons").select("id,is_published"),
         client.from("league_team_members").select("season_id,player_id"),
       ]);
@@ -107,7 +104,6 @@ export default function HandicapsPage() {
     const result = new Set<string>();
     const publishedSeasonIds = new Set(leagueSeasons.filter((season) => season.is_published).map((season) => season.id));
     const competitionById = new Map(competitions.map((competition) => [competition.id, competition]));
-    const recentCutoff = Date.now() - LIVE_ACTIVITY_WINDOW_MS;
     players.forEach((entry) => {
       if (entry.claimed_by) result.add(entry.id);
     });
@@ -128,7 +124,7 @@ export default function HandicapsPage() {
       if (!competition.is_archived && !competition.is_completed) {
         participantIds.forEach((playerId) => result.add(playerId));
       }
-      if (match.status === "complete" && match.updated_at && new Date(match.updated_at).getTime() >= recentCutoff) {
+      if (match.status === "complete") {
         participantIds.forEach((playerId) => result.add(playerId));
       }
     });
