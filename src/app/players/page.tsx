@@ -281,6 +281,18 @@ export default function PlayersPage() {
   const loadUpdateRequests = async () => {
     const client = supabase;
     if (!client) return;
+    if (admin.isAdmin) {
+      const { data: sessionRes } = await client.auth.getSession();
+      const token = sessionRes.session?.access_token;
+      if (!token) return;
+      const resp = await fetch("/api/player-update-requests?mode=approvals", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!resp.ok) return;
+      const data = await resp.json().catch(() => ({}));
+      setUpdateRequests((data?.requests ?? []) as PlayerUpdateRequest[]);
+      return;
+    }
     const full = await client
       .from("player_update_requests")
       .select("id,player_id,requester_user_id,requested_full_name,requested_location_id,requested_avatar_url,requested_age_band,requested_guardian_consent,requested_guardian_name,requested_guardian_email,requested_guardian_user_id,status,created_at")
@@ -422,7 +434,7 @@ export default function PlayersPage() {
       await loadLocations();
     };
     run();
-  }, []);
+  }, [admin.isAdmin]);
 
   useEffect(() => {
     if (isStandardUser && tab !== "register") {

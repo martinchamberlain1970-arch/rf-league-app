@@ -95,9 +95,18 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
         const { data: claimRows } = await applyCreatedFilter(
           client.from("player_claim_requests").select("id").eq("status", "pending")
         );
-        const { data: updateRows } = await applyCreatedFilter(
-          client.from("player_update_requests").select("id").eq("status", "pending")
-        );
+        const { data: sessionRes } = await client.auth.getSession();
+        const token = sessionRes.session?.access_token;
+        let updateRows: Array<{ id: string }> = [];
+        if (token) {
+          const resp = await fetch("/api/player-update-requests?mode=approvals", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (resp.ok) {
+            updateRows = (data?.requests ?? []) as Array<{ id: string }>;
+          }
+        }
         const { data: adminReqRows } = await applyCreatedFilter(
           client.from("admin_requests").select("id").eq("status", "pending")
         );
@@ -107,7 +116,7 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
         const ids = [
           ...(resultRows ?? []).map((r: { id: string }) => `result:${r.id}`),
           ...(claimRows ?? []).map((r: { id: string }) => `claim:${r.id}`),
-          ...(updateRows ?? []).map((r: { id: string }) => `update:${r.id}`),
+          ...updateRows.map((r: { id: string }) => `update:${r.id}`),
           ...(adminReqRows ?? []).map((r: { id: string }) => `admin:${r.id}`),
           ...(locationReqRows ?? []).map((r: { id: string }) => `location:${r.id}`),
         ];
@@ -115,12 +124,21 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
       } else if (admin.isAdmin) {
         const dismissed = typeof window !== "undefined" ? new Set<string>(JSON.parse(window.localStorage.getItem(dismissedKey) ?? "[]")) : new Set<string>();
         const resultRows = await loadResultRows(["pending"]);
-        const { data: updateRows } = await applyCreatedFilter(
-          client.from("player_update_requests").select("id").eq("status", "pending")
-        );
+        const { data: sessionRes } = await client.auth.getSession();
+        const token = sessionRes.session?.access_token;
+        let updateRows: Array<{ id: string }> = [];
+        if (token) {
+          const resp = await fetch("/api/player-update-requests?mode=approvals", {
+            headers: { Authorization: `Bearer ${token}` },
+          });
+          const data = await resp.json().catch(() => ({}));
+          if (resp.ok) {
+            updateRows = (data?.requests ?? []) as Array<{ id: string }>;
+          }
+        }
         const ids = [
           ...(resultRows ?? []).map((r: { id: string }) => `result:${r.id}`),
-          ...(updateRows ?? []).map((r: { id: string }) => `update:${r.id}`),
+          ...updateRows.map((r: { id: string }) => `update:${r.id}`),
         ];
         setPendingCount(ids.filter((id) => !dismissed.has(id)).length);
       } else {

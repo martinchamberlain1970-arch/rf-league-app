@@ -113,9 +113,29 @@ async function softQuery<T>(query: any) {
 
 async function loadPlayerUpdateNotificationRows(
   client: typeof supabase,
-  filters: { requesterUserId?: string | null; pendingOnly?: boolean }
+  filters: { requesterUserId?: string | null; pendingOnly?: boolean; useAdminRoute?: boolean }
 ) {
   if (!client) return { data: [] as Array<{ id: string; player_id: string; requested_avatar_url?: string | null; created_at: string; status: string }>, error: null };
+
+  if (filters.useAdminRoute) {
+    const { data: sessionRes } = await client.auth.getSession();
+    const token = sessionRes.session?.access_token;
+    if (!token) return { data: [] as Array<{ id: string; player_id: string; requested_avatar_url?: string | null; created_at: string; status: string }>, error: null };
+    const resp = await fetch("/api/player-update-requests?mode=approvals", {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const payload = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      return {
+        data: [] as Array<{ id: string; player_id: string; requested_avatar_url?: string | null; created_at: string; status: string }>,
+        error: { message: payload?.error ?? "Failed to load profile/photo update requests." },
+      };
+    }
+    return {
+      data: (payload?.requests ?? []) as Array<{ id: string; player_id: string; requested_avatar_url?: string | null; created_at: string; status: string }>,
+      error: null,
+    };
+  }
 
   const buildBaseQuery = (selectClause: string) => {
     let query = client.from("player_update_requests").select(selectClause);
@@ -410,7 +430,7 @@ export default function NotificationsPage() {
           softQuery<LeagueSubmissionRow>(client.from("league_result_submissions").select("id,fixture_id,status,created_at").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<FixtureChangeRequestRow>(client.from("league_fixture_change_requests").select("id,fixture_id,status,created_at,request_type,proposed_fixture_date").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<{ id: string; created_at: string; status: string }>(client.from("player_claim_requests").select("id,created_at,status").eq("status", "pending").order("created_at", { ascending: false })),
-          loadPlayerUpdateNotificationRows(client, { pendingOnly: true }),
+          loadPlayerUpdateNotificationRows(client, { pendingOnly: true, useAdminRoute: true }),
           softQuery<{ id: string; created_at: string; status: string }>(client.from("admin_requests").select("id,created_at,status").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<{ id: string; requester_full_name: string; requested_location_name: string; created_at: string; status: string }>(client.from("location_requests").select("id,requester_full_name,requested_location_name,created_at,status").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<CompetitionEntryNotifyRow>(client.from("competition_entries").select("id,competition_id,requester_user_id,player_id,status,created_at").eq("status", "pending").order("created_at", { ascending: false })),
@@ -542,7 +562,7 @@ export default function NotificationsPage() {
               .eq("status", "pending")
               .order("created_at", { ascending: false })
           ),
-          loadPlayerUpdateNotificationRows(client, { pendingOnly: true }),
+          loadPlayerUpdateNotificationRows(client, { pendingOnly: true, useAdminRoute: true }),
         ]);
         if (leaguePendingRes.error || fixtureChangePendingRes.error || updateRes.error) {
           setMessage(`Failed to load notifications: ${leaguePendingRes.error?.message ?? fixtureChangePendingRes.error?.message ?? updateRes.error?.message}`);
