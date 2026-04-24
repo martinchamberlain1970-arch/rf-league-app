@@ -992,6 +992,10 @@ export default function PlayersPage() {
     if (!adminLocationId) return [];
     return pendingUpdateRequests.filter((r) => requesterLocationByUser.get(r.requester_user_id) === adminLocationId);
   }, [pendingUpdateRequests, isSuperAdmin, admin.isAdmin, adminLocationId, requesterLocationByUser]);
+  const visiblePhotoUpdates = useMemo(
+    () => visibleUpdates.filter((r) => Boolean(r.requested_avatar_url)),
+    [visibleUpdates]
+  );
   const visibleAdminRequests = useMemo(() => adminRequests.filter((r) => r.status === "pending"), [adminRequests]);
   const visibleFeatureAccessRequests = useMemo(
     () => (isSuperAdmin ? featureAccessRequests.filter((r) => r.status === "pending") : []),
@@ -1291,6 +1295,116 @@ export default function PlayersPage() {
                   Manage venues & teams
                 </Link>
               </div>
+            </section>
+          ) : null}
+
+          {isSuperAdmin ? (
+            <section id="photo-approvals" className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50 p-5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">Pending photo approvals</h2>
+                  <p className="mt-1 text-sm text-slate-600">Profile photos awaiting superuser approval appear here directly.</p>
+                </div>
+                <div className="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-right shadow-sm">
+                  <p className="text-xs uppercase tracking-wide text-emerald-700">Awaiting approval</p>
+                  <p className="text-2xl font-semibold text-slate-900">{visiblePhotoUpdates.length}</p>
+                </div>
+              </div>
+              {visiblePhotoUpdates.length === 0 ? (
+                <p className="mt-3 text-sm text-slate-600">No pending profile photo requests.</p>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  {visiblePhotoUpdates.map((r) => {
+                    const player = players.find((p) => p.id === r.player_id);
+                    return (
+                      <div key={`photo-${r.id}`} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="font-medium text-slate-900">{player?.full_name ?? player?.display_name ?? "Unknown player"}</p>
+                            <p className="text-sm font-medium text-emerald-800">Profile photo update awaiting approval.</p>
+                            <p className="mt-1 text-xs text-slate-500">Requested at: {new Date(r.created_at).toLocaleString()}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setTab("claims")}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
+                          >
+                            Open full approvals
+                          </button>
+                        </div>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current photo</p>
+                            <div className="mt-2 flex items-center gap-3">
+                              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-slate-200 bg-white">
+                                {player?.avatar_url ? (
+                                  <img src={player.avatar_url} alt={`${player?.full_name ?? player?.display_name ?? "Player"} current photo`} className="h-full w-full object-cover" />
+                                ) : (
+                                  <span className="text-xs font-semibold text-slate-400">None</span>
+                                )}
+                              </div>
+                              <p className="text-sm text-slate-600">{player?.avatar_url ? "Current photo on profile." : "No photo on profile yet."}</p>
+                            </div>
+                          </div>
+                          <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Requested photo</p>
+                            <div className="mt-2 flex items-center gap-3">
+                              <div className="flex h-16 w-16 items-center justify-center overflow-hidden rounded-full border border-emerald-200 bg-white">
+                                <img src={r.requested_avatar_url ?? ""} alt={`${player?.full_name ?? player?.display_name ?? "Player"} requested photo`} className="h-full w-full object-cover" />
+                              </div>
+                              <a
+                                href={r.requested_avatar_url ?? "#"}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="text-sm font-medium text-emerald-800 underline decoration-emerald-300 underline-offset-2"
+                              >
+                                Open full image
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-3 flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setConfirmModal({
+                                title: "Approve Profile Photo",
+                                body: "Are you sure you want to approve this profile photo update?",
+                                confirmLabel: "Approve",
+                                onConfirm: async () => {
+                                  await onReviewUpdateRequest(r, true);
+                                  setConfirmModal(null);
+                                },
+                              })
+                            }
+                            className={buttonSuccessSmClass}
+                          >
+                            Approve
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setConfirmModal({
+                                title: "Reject Profile Photo",
+                                body: "Are you sure you want to reject this profile photo update?",
+                                confirmLabel: "Reject",
+                                tone: "danger",
+                                onConfirm: async () => {
+                                  await onReviewUpdateRequest(r, false);
+                                  setConfirmModal(null);
+                                },
+                              })
+                            }
+                            className={buttonSecondarySmClass}
+                          >
+                            Reject
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </section>
           ) : null}
 
