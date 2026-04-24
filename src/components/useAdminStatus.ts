@@ -10,6 +10,12 @@ function parseRole(value?: string | null): boolean {
   return value.toLowerCase() === "admin" || value.toLowerCase() === "owner";
 }
 
+function parseSuperRole(value?: string | null): boolean {
+  if (!value) return false;
+  const role = value.toLowerCase();
+  return role === "owner" || role === "super";
+}
+
 export default function useAdminStatus(): AdminState {
   const [state, setState] = useState<AdminState>({ loading: true, isAdmin: false, userId: null, email: null, isSuper: false });
   useEffect(() => {
@@ -46,7 +52,7 @@ export default function useAdminStatus(): AdminState {
         isAdmin: isOwner || parseRole(metadataRole) || parseRole(appRole),
         userId: data.user?.id ?? null,
         email: data.user?.email ?? null,
-        isSuper: isOwner,
+        isSuper: isOwner || parseSuperRole(metadataRole) || parseSuperRole(appRole),
       });
     };
     run();
