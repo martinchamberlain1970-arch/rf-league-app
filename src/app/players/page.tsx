@@ -119,6 +119,11 @@ function deriveAgeBandFromDob(dob: string | null | undefined): "under_13" | "13_
   return "18_plus";
 }
 
+function isMissingColumnError(message?: string | null) {
+  const text = (message ?? "").toLowerCase();
+  return text.includes("column") && (text.includes("does not exist") || text.includes("schema cache"));
+}
+
 export default function PlayersPage() {
   const admin = useAdminStatus();
   const [players, setPlayers] = useState<Player[]>([]);
@@ -276,12 +281,32 @@ export default function PlayersPage() {
   const loadUpdateRequests = async () => {
     const client = supabase;
     if (!client) return;
-    const { data, error } = await client
+    const full = await client
       .from("player_update_requests")
       .select("id,player_id,requester_user_id,requested_full_name,requested_location_id,requested_avatar_url,requested_age_band,requested_guardian_consent,requested_guardian_name,requested_guardian_email,requested_guardian_user_id,status,created_at")
       .order("created_at", { ascending: false });
-    if (error || !data) return;
-    setUpdateRequests(data as PlayerUpdateRequest[]);
+    if (!full.error && full.data) {
+      setUpdateRequests(full.data as PlayerUpdateRequest[]);
+      return;
+    }
+
+    if (!isMissingColumnError(full.error?.message)) return;
+
+    const fallback = await client
+      .from("player_update_requests")
+      .select("id,player_id,requester_user_id,requested_full_name,requested_location_id,requested_avatar_url,status,created_at")
+      .order("created_at", { ascending: false });
+    if (fallback.error || !fallback.data) return;
+    setUpdateRequests(
+      (fallback.data as Array<Omit<PlayerUpdateRequest, "requested_age_band" | "requested_guardian_consent" | "requested_guardian_name" | "requested_guardian_email" | "requested_guardian_user_id">>).map((row) => ({
+        ...row,
+        requested_age_band: null,
+        requested_guardian_consent: null,
+        requested_guardian_name: null,
+        requested_guardian_email: null,
+        requested_guardian_user_id: null,
+      }))
+    );
   };
 
   const loadAdminRequests = async () => {
@@ -984,12 +1009,12 @@ export default function PlayersPage() {
   }, [players]);
   const visibleClaims = useMemo(() => {
     if (isSuperAdmin || !admin.isAdmin) return pendingClaims;
-    if (!adminLocationId) return [];
+    if (!adminLocationId) return pendingClaims;
     return pendingClaims.filter((c) => requesterLocationByUser.get(c.requester_user_id) === adminLocationId);
   }, [pendingClaims, isSuperAdmin, admin.isAdmin, adminLocationId, requesterLocationByUser]);
   const visibleUpdates = useMemo(() => {
     if (isSuperAdmin || !admin.isAdmin) return pendingUpdateRequests;
-    if (!adminLocationId) return [];
+    if (!adminLocationId) return pendingUpdateRequests;
     return pendingUpdateRequests.filter((r) => requesterLocationByUser.get(r.requester_user_id) === adminLocationId);
   }, [pendingUpdateRequests, isSuperAdmin, admin.isAdmin, adminLocationId, requesterLocationByUser]);
   const visiblePhotoUpdates = useMemo(

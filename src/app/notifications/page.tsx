@@ -95,6 +95,11 @@ function isMissingTableError(message?: string | null) {
   return m.includes("could not find the table") || m.includes("does not exist");
 }
 
+function isMissingColumnError(message?: string | null) {
+  const m = (message ?? "").toLowerCase();
+  return m.includes("column") && (m.includes("does not exist") || m.includes("schema cache"));
+}
+
 const sectionCardClass = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
 const sectionCardTintClass = "bg-gradient-to-br from-cyan-50 via-white to-emerald-50";
 
@@ -104,6 +109,39 @@ async function softQuery<T>(query: any) {
     return { data: [] as T[], error: null };
   }
   return { data: (res.data ?? []) as T[], error: res.error };
+}
+
+async function loadPlayerUpdateNotificationRows(
+  client: typeof supabase,
+  filters: { requesterUserId?: string | null; pendingOnly?: boolean }
+) {
+  if (!client) return { data: [] as Array<{ id: string; player_id: string; requested_avatar_url?: string | null; created_at: string; status: string }>, error: null };
+
+  const buildBaseQuery = (selectClause: string) => {
+    let query = client.from("player_update_requests").select(selectClause);
+    if (filters.requesterUserId) {
+      query = query.eq("requester_user_id", filters.requesterUserId);
+    }
+    if (filters.pendingOnly) {
+      query = query.eq("status", "pending");
+    } else {
+      query = query.in("status", ["pending", "approved", "rejected"]);
+    }
+    return query.order("created_at", { ascending: false });
+  };
+
+  const full = await softQuery<{ id: string; player_id: string; requested_avatar_url?: string | null; created_at: string; status: string }>(
+    buildBaseQuery("id,player_id,requested_avatar_url,created_at,status")
+  );
+  if (!full.error || !isMissingColumnError(full.error.message)) return full;
+
+  const fallback = await softQuery<{ id: string; player_id: string; created_at: string; status: string }>(
+    buildBaseQuery("id,player_id,created_at,status")
+  );
+  return {
+    data: (fallback.data ?? []).map((row) => ({ ...row, requested_avatar_url: null })),
+    error: fallback.error,
+  };
 }
 
 export default function NotificationsPage() {
@@ -372,13 +410,7 @@ export default function NotificationsPage() {
           softQuery<LeagueSubmissionRow>(client.from("league_result_submissions").select("id,fixture_id,status,created_at").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<FixtureChangeRequestRow>(client.from("league_fixture_change_requests").select("id,fixture_id,status,created_at,request_type,proposed_fixture_date").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<{ id: string; created_at: string; status: string }>(client.from("player_claim_requests").select("id,created_at,status").eq("status", "pending").order("created_at", { ascending: false })),
-          softQuery<{ id: string; player_id: string; requested_avatar_url?: string | null; created_at: string; status: string }>(
-            client
-              .from("player_update_requests")
-              .select("id,player_id,requested_avatar_url,created_at,status")
-              .eq("status", "pending")
-              .order("created_at", { ascending: false })
-          ),
+          loadPlayerUpdateNotificationRows(client, { pendingOnly: true }),
           softQuery<{ id: string; created_at: string; status: string }>(client.from("admin_requests").select("id,created_at,status").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<{ id: string; requester_full_name: string; requested_location_name: string; created_at: string; status: string }>(client.from("location_requests").select("id,requester_full_name,requested_location_name,created_at,status").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<CompetitionEntryNotifyRow>(client.from("competition_entries").select("id,competition_id,requester_user_id,player_id,status,created_at").eq("status", "pending").order("created_at", { ascending: false })),
@@ -495,7 +527,7 @@ export default function NotificationsPage() {
           });
         });
       } else if (admin.isAdmin) {
-        const [leaguePendingRes, fixtureChangePendingRes] = await Promise.all([
+        const [leaguePendingRes, fixtureChangePendingRes, updateRes] = await Promise.all([
           softQuery<LeagueSubmissionRow>(
             client
               .from("league_result_submissions")
@@ -510,9 +542,10 @@ export default function NotificationsPage() {
               .eq("status", "pending")
               .order("created_at", { ascending: false })
           ),
+          loadPlayerUpdateNotificationRows(client, { pendingOnly: true }),
         ]);
-        if (leaguePendingRes.error || fixtureChangePendingRes.error) {
-          setMessage(`Failed to load notifications: ${leaguePendingRes.error?.message ?? fixtureChangePendingRes.error?.message}`);
+        if (leaguePendingRes.error || fixtureChangePendingRes.error || updateRes.error) {
+          setMessage(`Failed to load notifications: ${leaguePendingRes.error?.message ?? fixtureChangePendingRes.error?.message ?? updateRes.error?.message}`);
           return;
         }
         const pendingRows = (leaguePendingRes.data ?? []) as LeagueSubmissionRow[];
@@ -540,6 +573,16 @@ export default function NotificationsPage() {
             status: r.status,
           });
         });
+        (updateRes.data ?? []).forEach((r: { id: string; player_id: string; requested_avatar_url?: string | null; created_at: string; status: string }) => {
+          out.push({
+            key: `update:${r.id}`,
+            title: r.requested_avatar_url ? "Profile photo approval pending" : "Profile update request pending",
+            detail: r.requested_avatar_url ? `Player ${r.player_id} · photo submitted for approval` : `Player ${r.player_id}`,
+            created_at: r.created_at,
+            href: "/players?tab=claims",
+            status: r.status,
+          });
+        });
       } else {
         const [leagueResultRes, claimRes, updateRes, adminReqRes, competitionEntryRes] = await Promise.all([
           softQuery<LeagueSubmissionRow>(
@@ -558,14 +601,7 @@ export default function NotificationsPage() {
               .in("status", ["pending", "approved", "rejected"])
               .order("created_at", { ascending: false })
           ),
-          softQuery<{ id: string; player_id: string; requested_avatar_url?: string | null; created_at: string; status: string }>(
-            client
-              .from("player_update_requests")
-              .select("id,player_id,requested_avatar_url,created_at,status")
-              .eq("requester_user_id", admin.userId)
-              .in("status", ["pending", "approved", "rejected"])
-              .order("created_at", { ascending: false })
-          ),
+          loadPlayerUpdateNotificationRows(client, { requesterUserId: admin.userId, pendingOnly: false }),
           softQuery<{ id: string; created_at: string; status: string }>(
             client
               .from("admin_requests")
