@@ -409,7 +409,6 @@ export default function PlayerProfilePage() {
       const ext = file.name.split(".").pop() || "jpg";
       const path = `avatars/${player.id}-${Date.now()}.${ext}`;
       const uploadRes = await client.storage.from("avatars").upload(path, file, {
-        upsert: true,
         contentType: file.type || undefined,
       });
       if (uploadRes.error) {
