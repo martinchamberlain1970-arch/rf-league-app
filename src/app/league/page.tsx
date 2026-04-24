@@ -110,6 +110,7 @@ type PlayerTableRow = {
   lost: number;
   win_pct: number;
 };
+type PlayerTableView = "all" | "singles" | "doubles" | "total";
 type SubmissionBreakEntry = {
   player_id: string | null;
   entered_player_name: string | null;
@@ -500,6 +501,7 @@ export default function LeaguePage() {
     Record<string, { round1: string; semi_final: string; final: string }>
   >({});
   const [activeView, setActiveView] = useState<"guide" | "teamManagement" | "venues" | "profiles" | "setup" | "knockouts" | "fixtures" | "table" | "playerTable" | "handicaps">("guide");
+  const [playerTableView, setPlayerTableView] = useState<PlayerTableView>("all");
 
   const [selectedLeagueTeamNames, setSelectedLeagueTeamNames] = useState<string[]>([]);
   const [registryTeamName, setRegistryTeamName] = useState("");
@@ -1089,6 +1091,9 @@ export default function LeaguePage() {
     const exists = handicapPlayersFiltered.some((p) => p.id === handicapPlayerId);
     if (!exists) setHandicapPlayerId("");
   }, [handicapPlayerId, handicapPlayersFiltered]);
+  useEffect(() => {
+    setPlayerTableView(currentSeasonDoublesCount === 0 ? "singles" : "all");
+  }, [seasonId, currentSeasonDoublesCount]);
   const canSubmitCurrentFixture = useMemo(() => {
     if (!currentFixture) return false;
     if (canManage) return true;
@@ -4193,11 +4198,20 @@ export default function LeaguePage() {
   const playerTables = useMemo(() => {
     const seasonTeamById = new Map(seasonTeams.map((t) => [t.id, t]));
     const playerTeamName = new Map<string, string>();
+    const rosterPlayerIds = new Set<string>();
     for (const m of members) {
       if (m.season_id !== seasonId) continue;
       const team = seasonTeamById.get(m.team_id);
       if (!team) continue;
+      rosterPlayerIds.add(m.player_id);
       if (!playerTeamName.has(m.player_id)) playerTeamName.set(m.player_id, team.name);
+    }
+    for (const team of seasonTeams) {
+      const fallbackIds = fallbackRosterByLeagueTeamId.get(team.id) ?? [];
+      for (const playerId of fallbackIds) {
+        rosterPlayerIds.add(playerId);
+        if (!playerTeamName.has(playerId)) playerTeamName.set(playerId, team.name);
+      }
     }
 
     const singlesAppearanceByPlayer = new Map<string, Set<string>>();
@@ -4260,7 +4274,7 @@ export default function LeaguePage() {
       appearancesMap: Map<string, Set<string>>,
       resultMap: Map<string, { won: number; lost: number }>
     ): PlayerTableRow[] => {
-      const ids = new Set<string>([...appearancesMap.keys(), ...resultMap.keys()]);
+      const ids = new Set<string>([...rosterPlayerIds, ...appearancesMap.keys(), ...resultMap.keys()]);
       return Array.from(ids)
         .map((id) => {
           const player = playerById.get(id);
@@ -4309,11 +4323,14 @@ export default function LeaguePage() {
       (a, b) => b.win_pct - a.win_pct || b.won - a.won || a.player_name.localeCompare(b.player_name)
     );
     return { singles, doubles, totals };
-  }, [seasonId, seasonTeams, seasonFixtures, slots, members, playerById]);
+  }, [seasonId, seasonTeams, seasonFixtures, slots, members, playerById, fallbackRosterByLeagueTeamId]);
   const singlesRankByPlayer = useMemo(() => {
     const map = new Map<string, number>();
-    playerTables.singles.forEach((row, idx) => {
-      map.set(row.player_id, idx + 1);
+    let rank = 1;
+    playerTables.singles.forEach((row) => {
+      if (row.played <= 0) return;
+      map.set(row.player_id, rank);
+      rank += 1;
     });
     return map;
   }, [playerTables.singles]);
@@ -7144,34 +7161,80 @@ export default function LeaguePage() {
                 {seasonId ? (
                   <>
                     <p className="mt-1 text-[11px] text-slate-600">Ranking is based on Singles results.</p>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-medium text-violet-900">
+                        {currentSeason?.name ?? "Selected league"}
+                      </span>
+                      <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700">
+                        {currentSeasonDoublesCount > 0 ? `${currentSeasonSinglesCount} singles + ${currentSeasonDoublesCount} doubles` : `${currentSeasonSinglesCount} singles only`}
+                      </span>
+                      <div className="ml-auto flex flex-wrap gap-2">
+                        {([
+                          { key: "all", label: "Full table", hidden: currentSeasonDoublesCount === 0 },
+                          { key: "singles", label: "Singles" },
+                          { key: "doubles", label: "Doubles", hidden: currentSeasonDoublesCount === 0 },
+                          { key: "total", label: "Overall", hidden: currentSeasonDoublesCount === 0 },
+                        ] as Array<{ key: PlayerTableView; label: string; hidden?: boolean }>).map((option) =>
+                          option.hidden ? null : (
+                            <button
+                              key={option.key}
+                              type="button"
+                              onClick={() => setPlayerTableView(option.key)}
+                              className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                                playerTableView === option.key
+                                  ? "border-violet-700 bg-violet-700 text-white"
+                                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                              }`}
+                            >
+                              {option.label}
+                            </button>
+                          )
+                        )}
+                      </div>
+                    </div>
                     <div className="mt-3 overflow-auto rounded-xl border border-slate-200 bg-white">
                       <table className="min-w-full border-collapse text-xs">
                         <thead>
-                          <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-500">
-                            <th className="px-2 py-1.5 text-center" rowSpan={2}>Rank</th>
-                            <th className="px-2 py-1.5" rowSpan={2}>Player</th>
-                            <th className="px-2 py-1.5" rowSpan={2}>Team</th>
-                            <th className="px-2 py-1.5 text-center text-violet-800" colSpan={5}>Singles</th>
-                            <th className="px-2 py-1.5 text-center text-indigo-800" colSpan={5}>Doubles</th>
-                            <th className="px-2 py-1.5 text-center text-emerald-800" colSpan={5}>Total</th>
-                          </tr>
-                          <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-600">
-                            <th className="px-2 py-1 text-center">App</th>
-                            <th className="px-2 py-1 text-center">Played</th>
-                            <th className="px-2 py-1 text-center">Won</th>
-                            <th className="px-2 py-1 text-center">Lost</th>
-                            <th className="px-2 py-1 text-center">Win %</th>
-                            <th className="px-2 py-1 text-center">App</th>
-                            <th className="px-2 py-1 text-center">Played</th>
-                            <th className="px-2 py-1 text-center">Won</th>
-                            <th className="px-2 py-1 text-center">Lost</th>
-                            <th className="px-2 py-1 text-center">Win %</th>
-                            <th className="px-2 py-1 text-center">App</th>
-                            <th className="px-2 py-1 text-center">Played</th>
-                            <th className="px-2 py-1 text-center">Won</th>
-                            <th className="px-2 py-1 text-center">Lost</th>
-                            <th className="px-2 py-1 text-center">Win %</th>
-                          </tr>
+                          {playerTableView === "all" ? (
+                            <>
+                              <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-500">
+                                <th className="px-2 py-1.5 text-center" rowSpan={2}>Rank</th>
+                                <th className="px-2 py-1.5" rowSpan={2}>Player</th>
+                                <th className="px-2 py-1.5" rowSpan={2}>Team</th>
+                                <th className="px-2 py-1.5 text-center text-violet-800" colSpan={5}>Singles</th>
+                                <th className="px-2 py-1.5 text-center text-indigo-800" colSpan={5}>Doubles</th>
+                                <th className="px-2 py-1.5 text-center text-emerald-800" colSpan={5}>Total</th>
+                              </tr>
+                              <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-600">
+                                <th className="px-2 py-1 text-center">App</th>
+                                <th className="px-2 py-1 text-center">Played</th>
+                                <th className="px-2 py-1 text-center">Won</th>
+                                <th className="px-2 py-1 text-center">Lost</th>
+                                <th className="px-2 py-1 text-center">Win %</th>
+                                <th className="px-2 py-1 text-center">App</th>
+                                <th className="px-2 py-1 text-center">Played</th>
+                                <th className="px-2 py-1 text-center">Won</th>
+                                <th className="px-2 py-1 text-center">Lost</th>
+                                <th className="px-2 py-1 text-center">Win %</th>
+                                <th className="px-2 py-1 text-center">App</th>
+                                <th className="px-2 py-1 text-center">Played</th>
+                                <th className="px-2 py-1 text-center">Won</th>
+                                <th className="px-2 py-1 text-center">Lost</th>
+                                <th className="px-2 py-1 text-center">Win %</th>
+                              </tr>
+                            </>
+                          ) : (
+                            <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-600">
+                              <th className="px-2 py-1.5 text-center">Rank</th>
+                              <th className="px-2 py-1.5">Player</th>
+                              <th className="px-2 py-1.5">Team</th>
+                              <th className="px-2 py-1.5 text-center">App</th>
+                              <th className="px-2 py-1.5 text-center">Played</th>
+                              <th className="px-2 py-1.5 text-center">Won</th>
+                              <th className="px-2 py-1.5 text-center">Lost</th>
+                              <th className="px-2 py-1.5 text-center">Win %</th>
+                            </tr>
+                          )}
                         </thead>
                         <tbody>
                           {playerSummaryRows.map((r) => (
@@ -7179,26 +7242,48 @@ export default function LeaguePage() {
                               <td className="px-2 py-1 text-center font-semibold">{r.rank ?? "-"}</td>
                               <td className="px-2 py-1">{r.player_name}</td>
                               <td className="px-2 py-1">{r.team_name}</td>
-                              <td className="px-2 py-1 text-center">{r.singles?.appearances ?? 0}</td>
-                              <td className="px-2 py-1 text-center">{r.singles?.played ?? 0}</td>
-                              <td className="px-2 py-1 text-center">{r.singles?.won ?? 0}</td>
-                              <td className="px-2 py-1 text-center">{r.singles?.lost ?? 0}</td>
-                              <td className="px-2 py-1 text-center">{(r.singles?.win_pct ?? 0).toFixed(1)}%</td>
-                              <td className="px-2 py-1 text-center">{r.doubles?.appearances ?? 0}</td>
-                              <td className="px-2 py-1 text-center">{r.doubles?.played ?? 0}</td>
-                              <td className="px-2 py-1 text-center">{r.doubles?.won ?? 0}</td>
-                              <td className="px-2 py-1 text-center">{r.doubles?.lost ?? 0}</td>
-                              <td className="px-2 py-1 text-center">{(r.doubles?.win_pct ?? 0).toFixed(1)}%</td>
-                              <td className="px-2 py-1 text-center">{r.total?.appearances ?? 0}</td>
-                              <td className="px-2 py-1 text-center">{r.total?.played ?? 0}</td>
-                              <td className="px-2 py-1 text-center">{r.total?.won ?? 0}</td>
-                              <td className="px-2 py-1 text-center">{r.total?.lost ?? 0}</td>
-                              <td className="px-2 py-1 text-center">{(r.total?.win_pct ?? 0).toFixed(1)}%</td>
+                              {playerTableView === "all" ? (
+                                <>
+                                  <td className="px-2 py-1 text-center">{r.singles?.appearances ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{r.singles?.played ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{r.singles?.won ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{r.singles?.lost ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{(r.singles?.win_pct ?? 0).toFixed(1)}%</td>
+                                  <td className="px-2 py-1 text-center">{r.doubles?.appearances ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{r.doubles?.played ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{r.doubles?.won ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{r.doubles?.lost ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{(r.doubles?.win_pct ?? 0).toFixed(1)}%</td>
+                                  <td className="px-2 py-1 text-center">{r.total?.appearances ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{r.total?.played ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{r.total?.won ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{r.total?.lost ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{(r.total?.win_pct ?? 0).toFixed(1)}%</td>
+                                </>
+                              ) : (
+                                <>
+                                  <td className="px-2 py-1 text-center">
+                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.appearances ?? 0}
+                                  </td>
+                                  <td className="px-2 py-1 text-center">
+                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.played ?? 0}
+                                  </td>
+                                  <td className="px-2 py-1 text-center">
+                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.won ?? 0}
+                                  </td>
+                                  <td className="px-2 py-1 text-center">
+                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.lost ?? 0}
+                                  </td>
+                                  <td className="px-2 py-1 text-center">
+                                    {((playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.win_pct ?? 0).toFixed(1)}%
+                                  </td>
+                                </>
+                              )}
                             </tr>
                           ))}
                           {playerSummaryRows.length === 0 ? (
                             <tr>
-                              <td className="px-2 py-2 text-slate-500" colSpan={18}>
+                              <td className="px-2 py-2 text-slate-500" colSpan={playerTableView === "all" ? 18 : 8}>
                                 No player data yet.
                               </td>
                             </tr>
