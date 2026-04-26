@@ -40,7 +40,17 @@ type Season = {
   singles_count?: number | null;
   doubles_count?: number | null;
 };
-type Team = { id: string; season_id: string; location_id: string; name: string; is_active: boolean };
+type Team = {
+  id: string;
+  season_id: string;
+  location_id: string;
+  name: string;
+  is_active: boolean;
+  captain_email?: string | null;
+  captain_phone?: string | null;
+  vice_captain_email?: string | null;
+  vice_captain_phone?: string | null;
+};
 type TeamMember = { id: string; season_id: string; team_id: string; player_id: string; is_captain: boolean; is_vice_captain: boolean };
 type RegisteredTeam = { id: string; name: string; location_id: string | null };
 type RegisteredTeamMember = { id: string; team_id: string; player_id: string; is_captain: boolean; is_vice_captain: boolean };
@@ -246,6 +256,15 @@ const buildRoundRobinRounds = (teamIds: string[]) => {
   }
   return rounds;
 };
+const getLastSideBeforeRound = (teamId: string, rounds: DirectedMatch[][], roundExclusive: number): "home" | "away" | null => {
+  for (let roundIndex = roundExclusive - 1; roundIndex >= 0; roundIndex -= 1) {
+    for (const match of rounds[roundIndex] ?? []) {
+      if (match.homeTeamId === teamId) return "home";
+      if (match.awayTeamId === teamId) return "away";
+    }
+  }
+  return null;
+};
 const assignHomeAwayForRounds = (
   rounds: UndirectedMatch[][],
   teamVenueById: Map<string, string>,
@@ -278,6 +297,13 @@ const assignHomeAwayForRounds = (
       { homeTeamId: match.teamAId, awayTeamId: match.teamBId },
       { homeTeamId: match.teamBId, awayTeamId: match.teamAId },
     ].sort((left, right) => {
+      const leftAlternationPenalty =
+        (getLastSideBeforeRound(left.homeTeamId, assigned, roundIndex) === "home" ? 1 : 0) +
+        (getLastSideBeforeRound(left.awayTeamId, assigned, roundIndex) === "away" ? 1 : 0);
+      const rightAlternationPenalty =
+        (getLastSideBeforeRound(right.homeTeamId, assigned, roundIndex) === "home" ? 1 : 0) +
+        (getLastSideBeforeRound(right.awayTeamId, assigned, roundIndex) === "away" ? 1 : 0);
+      if (leftAlternationPenalty !== rightAlternationPenalty) return leftAlternationPenalty - rightAlternationPenalty;
       const leftMax = maxHomeByTeam.get(left.homeTeamId) ?? Number.MAX_SAFE_INTEGER;
       const rightMax = maxHomeByTeam.get(right.homeTeamId) ?? Number.MAX_SAFE_INTEGER;
       const leftCount = homeCountByTeam.get(left.homeTeamId) ?? 0;
@@ -309,11 +335,17 @@ const scheduleDirectedMatchesIntoRounds = (
   roundCount: number,
   matchesPerRound: number,
   teamVenueById: Map<string, string>,
-  venueCapacityById: Map<string, number>
+  venueCapacityById: Map<string, number>,
+  priorRounds: DirectedMatch[][] = []
 ) => {
   const rounds: DirectedMatch[][] = Array.from({ length: roundCount }, () => []);
   const roundTeams = Array.from({ length: roundCount }, () => new Set<string>());
   const roundVenueHomes = Array.from({ length: roundCount }, () => new Map<string, number>());
+  const lastSideBeforeScheduledRound = (teamId: string, roundIndex: number) => {
+    const currentRoundsSide = getLastSideBeforeRound(teamId, rounds, roundIndex);
+    if (currentRoundsSide) return currentRoundsSide;
+    return getLastSideBeforeRound(teamId, priorRounds, priorRounds.length);
+  };
   const placeMatch = (remaining: DirectedMatch[]): boolean => {
     if (remaining.length === 0) return true;
     let bestIndex = -1;
@@ -342,7 +374,16 @@ const scheduleDirectedMatchesIntoRounds = (
     const venueId = teamVenueById.get(match.homeTeamId);
     if (!venueId) return false;
     const nextRemaining = remaining.filter((_, index) => index !== bestIndex);
-    for (const roundIndex of bestOptions.sort((a, b) => rounds[a].length - rounds[b].length)) {
+    for (const roundIndex of bestOptions.sort((a, b) => {
+      const aPenalty =
+        (lastSideBeforeScheduledRound(match.homeTeamId, a) === "home" ? 1 : 0) +
+        (lastSideBeforeScheduledRound(match.awayTeamId, a) === "away" ? 1 : 0);
+      const bPenalty =
+        (lastSideBeforeScheduledRound(match.homeTeamId, b) === "home" ? 1 : 0) +
+        (lastSideBeforeScheduledRound(match.awayTeamId, b) === "away" ? 1 : 0);
+      if (aPenalty !== bPenalty) return aPenalty - bPenalty;
+      return rounds[a].length - rounds[b].length;
+    })) {
       rounds[roundIndex].push(match);
       roundTeams[roundIndex].add(match.homeTeamId);
       roundTeams[roundIndex].add(match.awayTeamId);
@@ -534,6 +575,10 @@ export default function LeaguePage() {
   const [seasonRosterTeamId, setSeasonRosterTeamId] = useState("");
   const [seasonRosterPlayerId, setSeasonRosterPlayerId] = useState("");
   const [seasonRosterBulkPlayerIds, setSeasonRosterBulkPlayerIds] = useState<string[]>([]);
+  const [seasonCaptainEmail, setSeasonCaptainEmail] = useState("");
+  const [seasonCaptainPhone, setSeasonCaptainPhone] = useState("");
+  const [seasonViceCaptainEmail, setSeasonViceCaptainEmail] = useState("");
+  const [seasonViceCaptainPhone, setSeasonViceCaptainPhone] = useState("");
 
   const [fixtureWeek, setFixtureWeek] = useState("");
   const [fixtureWeekFilter, setFixtureWeekFilter] = useState("");
@@ -1370,7 +1415,9 @@ export default function LeaguePage() {
         .from("league_seasons")
         .select("id,name,location_id,is_active,is_published,published_at,created_at,handicap_enabled,singles_count,doubles_count")
         .order("created_at", { ascending: false }),
-      client.from("league_teams").select("id,season_id,location_id,name,is_active"),
+      client
+        .from("league_teams")
+        .select("id,season_id,location_id,name,is_active,captain_email,captain_phone,vice_captain_email,vice_captain_phone"),
       client.from("league_team_members").select("id,season_id,team_id,player_id,is_captain,is_vice_captain"),
       client.from("league_fixtures").select("id,season_id,location_id,week_no,fixture_date,home_team_id,away_team_id,status,home_points,away_points").order("fixture_date", { ascending: true }),
       client.from("league_fixture_frames").select("id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_forfeit,away_forfeit,winner_side,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored"),
@@ -1455,6 +1502,27 @@ export default function LeaguePage() {
         playerErrorMessage = null;
       }
     }
+    let teamRows = teamsRes.data ?? [];
+    let teamErrorMessage = teamsRes.error?.message ?? null;
+    if (
+      teamsRes.error &&
+      (teamsRes.error.message.toLowerCase().includes("captain_email") ||
+        teamsRes.error.message.toLowerCase().includes("captain_phone") ||
+        teamsRes.error.message.toLowerCase().includes("vice_captain_email") ||
+        teamsRes.error.message.toLowerCase().includes("vice_captain_phone"))
+    ) {
+      const fallbackTeams = await client.from("league_teams").select("id,season_id,location_id,name,is_active");
+      if (!fallbackTeams.error) {
+        teamRows = (fallbackTeams.data ?? []).map((team) => ({
+          ...team,
+          captain_email: null,
+          captain_phone: null,
+          vice_captain_email: null,
+          vice_captain_phone: null,
+        }));
+        teamErrorMessage = null;
+      }
+    }
 
     let seasonRows = seasonsRes.data ?? [];
     let seasonErrorMessage = seasonsRes.error?.message ?? null;
@@ -1485,7 +1553,7 @@ export default function LeaguePage() {
       locationErrorMessage ||
       playerErrorMessage ||
       seasonErrorMessage ||
-      teamsRes.error?.message ||
+      teamErrorMessage ||
       membersRes.error?.message ||
       fixturesRes.error?.message ||
       slotsRes.error?.message ||
@@ -1526,7 +1594,7 @@ export default function LeaguePage() {
     setLocations((locationRows ?? []) as Location[]);
     setPlayers(playerRows as Player[]);
     setSeasons(seasonRows as Season[]);
-    setTeams((teamsRes.data ?? []) as Team[]);
+    setTeams(teamRows as Team[]);
     setMembers((membersRes.data ?? []) as TeamMember[]);
     setRegisteredTeams(regTeamsRes.error ? [] : ((regTeamsRes.data ?? []) as RegisteredTeam[]));
     setRegisteredMembers(regMembersRes.error ? [] : ((regMembersRes.data ?? []) as RegisteredTeamMember[]));
@@ -1755,6 +1823,20 @@ export default function LeaguePage() {
     setShowAllVenueTeamMembers({});
     setShowUnassignedPlayers(false);
   }, [locations, manageVenueId]);
+
+  useEffect(() => {
+    if (!selectedSeasonRosterTeam) {
+      setSeasonCaptainEmail("");
+      setSeasonCaptainPhone("");
+      setSeasonViceCaptainEmail("");
+      setSeasonViceCaptainPhone("");
+      return;
+    }
+    setSeasonCaptainEmail(selectedSeasonRosterTeam.captain_email ?? "");
+    setSeasonCaptainPhone(selectedSeasonRosterTeam.captain_phone ?? "");
+    setSeasonViceCaptainEmail(selectedSeasonRosterTeam.vice_captain_email ?? "");
+    setSeasonViceCaptainPhone(selectedSeasonRosterTeam.vice_captain_phone ?? "");
+  }, [selectedSeasonRosterTeam]);
 
   const createSeason = async () => {
     const client = supabase;
@@ -2479,7 +2561,8 @@ export default function LeaguePage() {
         firstLegRoundsCount,
         matchesPerRound,
         teamVenueById,
-        venueCapacityById
+        venueCapacityById,
+        firstLegRounds
       );
       if (!secondLegRounds) {
         setMessage("The return fixtures could not be arranged without breaking venue table limits. Try increasing table counts or reducing teams at the busiest venues.");
@@ -3195,6 +3278,37 @@ export default function LeaguePage() {
 
   const addSeasonRosterPlayersBulk = async () => {
     await addPlayersToSeasonRoster(seasonRosterBulkPlayerIds);
+  };
+
+  const saveSeasonTeamContacts = async () => {
+    const client = supabase;
+    if (!client) return;
+    if (!canManage) {
+      setMessage("Only Super User can update team contact details.");
+      return;
+    }
+    if (!selectedSeasonRosterTeam) {
+      setMessage("Select a season team first.");
+      return;
+    }
+    const { error } = await client
+      .from("league_teams")
+      .update({
+        captain_email: seasonCaptainEmail.trim() || null,
+        captain_phone: seasonCaptainPhone.trim() || null,
+        vice_captain_email: seasonViceCaptainEmail.trim() || null,
+        vice_captain_phone: seasonViceCaptainPhone.trim() || null,
+      })
+      .eq("id", selectedSeasonRosterTeam.id);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    await loadAll();
+    setInfoModal({
+      title: "Team Contacts Saved",
+      description: `Captain and vice-captain contact details were updated for ${selectedSeasonRosterTeam.name}.`,
+    });
   };
 
   const removeSeasonRosterMember = async (memberId: string) => {
@@ -6088,6 +6202,57 @@ export default function LeaguePage() {
                           >
                             Add selected existing players
                           </button>
+                        </div>
+                      </div>
+                    ) : null}
+                    {selectedSeasonRosterTeam ? (
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div>
+                            <p className="text-sm font-semibold text-slate-900">Captain contact details</p>
+                            <p className="mt-1 text-xs text-slate-600">
+                              Store the season-specific captain and vice-captain contact details for this team.
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => void saveSeasonTeamContacts()}
+                            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700"
+                          >
+                            Save contacts
+                          </button>
+                        </div>
+                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+                          <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Captain</p>
+                            <input
+                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                              placeholder="Captain email"
+                              value={seasonCaptainEmail}
+                              onChange={(e) => setSeasonCaptainEmail(e.target.value)}
+                            />
+                            <input
+                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                              placeholder="Captain phone"
+                              value={seasonCaptainPhone}
+                              onChange={(e) => setSeasonCaptainPhone(e.target.value)}
+                            />
+                          </div>
+                          <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
+                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Vice-captain</p>
+                            <input
+                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                              placeholder="Vice-captain email"
+                              value={seasonViceCaptainEmail}
+                              onChange={(e) => setSeasonViceCaptainEmail(e.target.value)}
+                            />
+                            <input
+                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                              placeholder="Vice-captain phone"
+                              value={seasonViceCaptainPhone}
+                              onChange={(e) => setSeasonViceCaptainPhone(e.target.value)}
+                            />
+                          </div>
                         </div>
                       </div>
                     ) : null}
