@@ -14,7 +14,10 @@ const sections = [
     title: "2. Before the match starts",
     bullets: [
       "Open Notifications regularly. This is where lineup prompts, fixture reminders, and league messages appear.",
-      "If the home team has submitted a pre-match lineup, the away captain will see an inbox prompt to complete the away lineup before 19:30.",
+      "Pre-match lineups only open on the day of the fixture.",
+      "The home team must submit its lineup first.",
+      "Once the home team has submitted, the away captain will see an inbox prompt and can then submit the away lineup.",
+      "Both lineup steps must be completed before 19:30.",
       "Use notifications as the starting point when the system is prompting you to act.",
       "If your fixture is using digital pre-match lineups, the home side enters its lineup first on the day of the fixture.",
       "The away side can then respond before the fixture start time.",
