@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 
@@ -44,6 +45,7 @@ const guideSections = [
     title: "Captains And Vice-Captains",
     bullets: [
       "Use Captain Results to submit weekly team results for approval.",
+      "Open the dedicated Captain / Vice-captain Guide for the full registration, lineup, and match-night workflow.",
       "In handicapped doubles, team handicap is based on both players and the live start is capped at 40.",
       "Only approved results affect Elo, standings, and player records.",
     ],
@@ -67,6 +69,17 @@ export default function HelpPage() {
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">Quick Guide</h2>
+            <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-emerald-900">Captain / Vice-captain Guide</p>
+                  <p className="mt-1 text-sm text-emerald-800">A sendable step-by-step guide for registration, lineups, match night, and result submission.</p>
+                </div>
+                <Link href="/captain-guide" className="rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-100">
+                  Open captain guide
+                </Link>
+              </div>
+            </div>
             <div className="mt-3 grid gap-3 md:grid-cols-3">
               {guideSections.map((section) => (
                 <div key={section.title} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
