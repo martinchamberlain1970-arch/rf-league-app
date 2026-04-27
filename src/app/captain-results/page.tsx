@@ -1011,6 +1011,12 @@ export default function CaptainResultsPage() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="space-y-1">
                         <p>
+                          Pre-match lineup window: <strong>fixture day only, before 19:30</strong>
+                        </p>
+                        <p>
+                          Lineup order: <strong>home team first, away team second</strong>
+                        </p>
+                        <p>
                           Result submission responsibility: <strong>Home team by default</strong>
                         </p>
                         <p>
