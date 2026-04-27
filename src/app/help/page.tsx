@@ -44,8 +44,10 @@ const guideSections = [
   {
     title: "Captains And Vice-Captains",
     bullets: [
-      "Use Captain Results to submit weekly team results for approval.",
-      "Open the dedicated Captain / Vice-captain Guide for the full registration, lineup, and match-night workflow.",
+      "Use Captain Results for pre-match lineups and result submission.",
+      "Home teams should submit the result by default, with midnight on the following day as the submission deadline.",
+      "Open the dedicated Captain / Vice-captain Guide for the full lineup, match-night, and correction workflow.",
+      "WhatsApp should be treated as a backup or exception route only, not the normal reporting method.",
       "In handicapped doubles, team handicap is based on both players and the live start is capped at 40.",
       "Only approved results affect Elo, standings, and player records.",
     ],
@@ -73,7 +75,7 @@ export default function HelpPage() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold text-emerald-900">Captain / Vice-captain Guide</p>
-                  <p className="mt-1 text-sm text-emerald-800">A sendable step-by-step guide for registration, lineups, match night, and result submission.</p>
+                  <p className="mt-1 text-sm text-emerald-800">The full operating guide for captains and vice-captains using lineups, notifications, and Captain Results.</p>
                 </div>
                 <Link href="/captain-guide" className="rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-100">
                   Open captain guide

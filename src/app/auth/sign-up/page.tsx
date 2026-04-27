@@ -399,11 +399,11 @@ export default function SignUpPage() {
                 Captains, vice-captains, and players all register here using the same flow. Captain/vice-captain permissions are assigned later by the Super User from team management.
               </p>
               <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
-                Captain or vice-captain? Read the{" "}
+                Captain or vice-captain? After your role is assigned, the in-app{" "}
                 <Link href="/captain-guide" className="font-semibold underline underline-offset-2">
                   Captain / Vice-captain Guide
                 </Link>{" "}
-                before you finish registering.
+                shows how to use Notifications, lineups, and Captain Results.
               </p>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Email</label>

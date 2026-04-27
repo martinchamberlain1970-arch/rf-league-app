@@ -123,7 +123,7 @@ function isFixtureOpenForSubmission(fixtureDate: string | null) {
   if (Number.isNaN(fixtureStart.getTime())) return false;
   const submissionDeadline = new Date(fixtureStart);
   submissionDeadline.setDate(submissionDeadline.getDate() + 1);
-  submissionDeadline.setHours(17, 0, 0, 0);
+  submissionDeadline.setHours(23, 59, 59, 999);
   const now = new Date();
   return now >= fixtureStart && now <= submissionDeadline;
 }
@@ -818,7 +818,7 @@ export default function CaptainResultsPage() {
       setMessage("You can only submit results for your own team fixtures.");
       return;
     }
-    if (!isFixtureOpenForSubmission(selectedFixture.fixture_date)) return setMessage("Fixture is not open. Captains can submit from match night until 5pm on the following day.");
+    if (!isFixtureOpenForSubmission(selectedFixture.fixture_date)) return setMessage("Fixture is not open. Captains can submit from match night until midnight on the following day.");
     if (pendingByFixture.has(selectedFixture.id)) return setMessage("A submission is already pending for this fixture.");
 
     const frameResults: SubmissionFrameResult[] = slots.map((s) => ({
@@ -942,6 +942,15 @@ export default function CaptainResultsPage() {
               ) : null}
               {selectedFixture ? (
                 <div className="space-y-3">
+                  {selectedFixtureSide === "home" ? (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+                      <strong>Home team action:</strong> your team is the default result submitter for this fixture. Please complete the card in the app and submit it by midnight on the following day.
+                    </div>
+                  ) : selectedFixtureSide === "away" ? (
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                      <strong>Away team fallback:</strong> the home team is expected to submit this result. Only submit it yourself if the home team cannot do so or the Super User has asked you to step in.
+                    </div>
+                  ) : null}
                   <div className="grid gap-3 lg:grid-cols-4">
                     <div className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Selected Fixture</p>
@@ -959,7 +968,7 @@ export default function CaptainResultsPage() {
                       <p className="mt-2 text-lg font-black text-slate-950">
                         {isFixtureOpenForSubmission(selectedFixture.fixture_date) ? "Open now" : "Closed"}
                       </p>
-                      <p className="mt-1 text-sm text-slate-700">Match night until 5pm on the following day.</p>
+                      <p className="mt-1 text-sm text-slate-700">Match night until midnight on the following day.</p>
                     </div>
                     <div
                       className={`rounded-xl border p-3 shadow-sm ${
@@ -1002,10 +1011,16 @@ export default function CaptainResultsPage() {
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="space-y-1">
                         <p>
+                          Result submission responsibility: <strong>Home team by default</strong>
+                        </p>
+                        <p>
                           Home lineup: <strong>{homeLineupSubmitted ? "Submitted" : "Pending"}</strong>
                         </p>
                         <p>
                           Away lineup: <strong>{awayLineupSubmitted ? "Submitted" : "Pending"}</strong>
+                        </p>
+                        <p className="text-xs text-slate-600">
+                          Use WhatsApp only as an exception or backup. The app should be the normal route so fixtures, standings, and records update automatically after approval.
                         </p>
                         {preMatchPaperRecord ? (
                           <p className="text-sky-800"><strong>Paper record selected.</strong> Pre-match lineup is being handled off-app for this fixture.</p>

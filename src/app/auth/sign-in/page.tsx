@@ -248,6 +248,13 @@ export default function SignInPage() {
             <p className="mt-4 text-lg leading-8 text-slate-600">
               Captains, vice-captains, and players all sign in here. Team permissions are controlled centrally by the Super User.
             </p>
+            <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
+              Captains and vice-captains: after sign-in, check <span className="font-semibold">Notifications</span>, then open the{" "}
+              <Link href="/captain-guide" className="font-semibold underline underline-offset-2">
+                Captain / Vice-captain Guide
+              </Link>{" "}
+              for the before-match and result-submission steps.
+            </p>
             <form onSubmit={onSignIn} className="mt-8 space-y-5">
               <div>
                 <label className="mb-2 block text-sm font-medium text-slate-700">Email address</label>

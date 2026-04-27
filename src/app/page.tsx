@@ -71,6 +71,7 @@ export default function HomePage() {
   });
   const [pendingFeatureRequests, setPendingFeatureRequests] = useState<Set<string>>(new Set());
   const [showProfilePrompt, setShowProfilePrompt] = useState(false);
+  const [showCaptainGuidePrompt, setShowCaptainGuidePrompt] = useState(false);
   const [confirmState, setConfirmState] = useState<{
     open: boolean;
     title: string;
@@ -719,6 +720,13 @@ export default function HomePage() {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    if (admin.loading || admin.isSuper || !hasCaptainRole || !admin.userId) return;
+    const storageKey = `captain_guide_prompt_dismissed_${admin.userId}`;
+    setShowCaptainGuidePrompt(window.localStorage.getItem(storageKey) !== "1");
+  }, [admin.loading, admin.isSuper, admin.userId, hasCaptainRole]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
     if (admin.loading || admin.isAdmin) return;
     const params = new URLSearchParams(window.location.search);
     if (params.get("claimStatus") !== "1") return;
@@ -941,6 +949,48 @@ export default function HomePage() {
               {leagueRole.teamNames.length > 0 ? (
                 <p className="mt-1 text-xs text-slate-600">Linked team: {leagueRole.teamNames.join(", ")}</p>
               ) : null}
+              {hasCaptainRole && showCaptainGuidePrompt ? (
+                <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div>
+                      <p className="text-sm font-semibold text-emerald-900">Read this before your first fixture</p>
+                      <p className="mt-1 text-sm text-emerald-800">
+                        Check the captain guide for the before-match lineup steps, the home-team submission rule, and the midnight result deadline.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (typeof window !== "undefined" && admin.userId) {
+                          window.localStorage.setItem(`captain_guide_prompt_dismissed_${admin.userId}`, "1");
+                        }
+                        setShowCaptainGuidePrompt(false);
+                      }}
+                      className="rounded-full border border-emerald-300 bg-white px-3 py-1 text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
+                    >
+                      Don&apos;t show again
+                    </button>
+                  </div>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    <Link href="/captain-guide" className="rounded-full border border-emerald-300 bg-white px-3 py-1 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">
+                      Open guide
+                    </Link>
+                    <Link href="/captain-results" className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                      Open captain results
+                    </Link>
+                  </div>
+                </div>
+              ) : null}
+              {hasCaptainRole ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <Link href="/captain-guide" className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">
+                    Open captain guide
+                  </Link>
+                  <Link href="/captain-results" className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                    Open captain results
+                  </Link>
+                </div>
+              ) : null}
               <div className="mt-3 grid gap-2 sm:grid-cols-3">
                 <div className="rounded-xl border border-slate-200 bg-white p-3">
                   <p className="text-xs uppercase tracking-wide text-slate-500">1. View</p>
@@ -952,14 +1002,14 @@ export default function HomePage() {
                   <p className="text-xs uppercase tracking-wide text-slate-500">2. Submit</p>
                   <p className="mt-1 text-sm text-slate-800">
                     {hasCaptainRole
-                      ? "Use Captain Results to submit your fixture result on match day."
+                      ? "Use Captain Results for pre-match lineups. Home teams should then submit the result by midnight on the following day."
                       : "If assigned as captain/vice-captain, Captain Results is used for result submission."}
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-white p-3">
                   <p className="text-xs uppercase tracking-wide text-slate-500">3. Track</p>
                   <p className="mt-1 text-sm text-slate-800">
-                    Check <span className="font-semibold">Notifications</span> for profile claim and result approval updates.
+                    Check <span className="font-semibold">Notifications</span> for lineup prompts, fixture reminders, and result approval updates.
                   </p>
                 </div>
               </div>
