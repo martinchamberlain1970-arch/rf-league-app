@@ -1095,6 +1095,7 @@ export default function CaptainResultsPage() {
                       <div className="mt-1 space-y-1">
                         <p>In doubles, team handicap = (player 1 handicap + player 2 handicap) ÷ 2, with the live start capped at {MAX_SNOOKER_START}.</p>
                         <p>Reviewed handicaps still show the full assessed gap, but the frame start is capped to keep matches competitive.</p>
+                        <p>The {MAX_SNOOKER_START}-point cap is a balance: it gives weaker players a meaningful chance without making the opening score decide too much too early. A lower cap such as 30 can leave bigger strength gaps under-compensated.</p>
                       </div>
                     ) : null}
                   </div>

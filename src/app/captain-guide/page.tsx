@@ -109,6 +109,9 @@ export default function CaptainGuidePage() {
               <p className="mt-1 text-sm text-fuchsia-900">
                 Handicaps are reviewed in full, but the live match start is capped at 40 points. This keeps frames competitive and stops very large starts deciding the frame too early.
               </p>
+              <p className="mt-2 text-sm text-fuchsia-900">
+                The 40-point cap is used as a balance: it still gives weaker players a real chance, but avoids very large starts turning the opening score into too much of the result. A lower cap such as 30 can leave bigger strength gaps under-compensated.
+              </p>
             </div>
           </div>
         </section>

@@ -209,7 +209,7 @@ export default function HandicapsPage() {
               <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/60 p-3">
                 <p className="text-xs font-semibold uppercase tracking-wide text-fuchsia-900">Why?</p>
                 <p className="mt-1 text-sm text-slate-700">
-                  Reviewed handicaps still show the full assessed gap between players. The cap only applies to the starting score in the frame, so stronger and weaker players can still have competitive matches without the opening start deciding too much too soon.
+                  The 40-point cap is a practical balance. It is high enough to give weaker players a meaningful chance in mixed-strength fixtures, but low enough to stop the opening score deciding too much of the frame before play settles. A lower cap such as 30 can leave bigger ability gaps under-compensated, while no cap at all can make the start feel like too much of the contest has already been decided.
                 </p>
               </div>
               <p>
