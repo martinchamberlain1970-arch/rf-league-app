@@ -130,14 +130,25 @@ export default function HandicapsPage() {
     });
     return result;
   }, [competitions, leagueMembers, leagueSeasons, matches, players]);
-  const livePlayers = useMemo(
-    () => players.filter((entry) => livePlayerIds.has(entry.id) && Number(entry.rated_matches_snooker ?? 0) > 0),
-    [livePlayerIds, players]
+  const publishedSeasonIds = useMemo(
+    () => new Set(leagueSeasons.filter((season) => season.is_published).map((season) => season.id)),
+    [leagueSeasons]
+  );
+  const leagueRegisteredPlayerIds = useMemo(() => {
+    const ids = new Set<string>();
+    leagueMembers.forEach((member) => {
+      if (publishedSeasonIds.has(member.season_id)) ids.add(member.player_id);
+    });
+    return ids;
+  }, [leagueMembers, publishedSeasonIds]);
+  const visiblePlayers = useMemo(
+    () => players.filter((entry) => leagueRegisteredPlayerIds.has(entry.id) || livePlayerIds.has(entry.id)),
+    [leagueRegisteredPlayerIds, livePlayerIds, players]
   );
 
   const rows = useMemo(
     () =>
-      [...livePlayers]
+      [...visiblePlayers]
         .sort(
           (a, b) =>
             Number(b.rating_snooker ?? 1000) - Number(a.rating_snooker ?? 1000) ||
@@ -150,11 +161,18 @@ export default function HandicapsPage() {
           elo: Math.round(Number(player.rating_snooker ?? 1000)),
           current: Number(player.snooker_handicap ?? 0),
           baseline: Number(player.snooker_handicap_base ?? player.snooker_handicap ?? 0),
+          ratedMatches: Number(player.rated_matches_snooker ?? 0),
+          seededElo: Math.round(1000 - Number(player.snooker_handicap_base ?? player.snooker_handicap ?? 0) * 5),
+          needsCheck:
+            Number(player.rated_matches_snooker ?? 0) === 0 &&
+            Math.round(Number(player.rating_snooker ?? 1000)) !==
+              Math.round(1000 - Number(player.snooker_handicap_base ?? player.snooker_handicap ?? 0) * 5),
         })),
-    [livePlayers]
+    [visiblePlayers]
   );
 
   const currentPlayer = rows.find((row) => row.id === linkedPlayerId) ?? null;
+  const mismatchRows = rows.filter((row) => row.needsCheck);
 
   return (
     <RequireAuth>
@@ -225,26 +243,44 @@ export default function HandicapsPage() {
 
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">Current handicap list</h2>
-              <p className="mt-1 text-sm text-slate-600">All live players, ranked by current snooker Elo.</p>
-              <div className="mt-3 max-h-[32rem] overflow-auto rounded-xl border border-slate-200">
+              <p className="mt-1 text-sm text-slate-600">All players currently registered in published league rosters, plus any other live league players. Players with no rated frames still appear.</p>
+              {mismatchRows.length > 0 ? (
+                <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                  {mismatchRows.length} player{mismatchRows.length === 1 ? "" : "s"} with no rated snooker frames currently have an Elo that does not match their seeded handicap baseline. These rows are marked for checking.
+                </div>
+              ) : null}
+              <div className="mt-3 max-h-[32rem] overflow-x-auto overflow-y-auto rounded-xl border border-slate-200">
                 <table className="min-w-full border-collapse text-sm">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50 text-left text-slate-600">
                       <th className="px-3 py-2">#</th>
                       <th className="px-3 py-2">Player</th>
                       <th className="px-3 py-2">Elo</th>
+                      <th className="px-3 py-2">Seeded Elo</th>
                       <th className="px-3 py-2">Current</th>
                       <th className="px-3 py-2">Baseline</th>
+                      <th className="px-3 py-2">Rated Frames</th>
+                      <th className="px-3 py-2">Check</th>
                     </tr>
                   </thead>
                   <tbody>
                     {rows.map((row) => (
-                      <tr key={row.id} className={`border-b border-slate-100 last:border-b-0 ${row.id === linkedPlayerId ? "bg-cyan-50" : "bg-white"}`}>
+                      <tr
+                        key={row.id}
+                        className={`border-b border-slate-100 last:border-b-0 ${
+                          row.id === linkedPlayerId ? "bg-cyan-50" : row.needsCheck ? "bg-amber-50" : "bg-white"
+                        }`}
+                      >
                         <td className="px-3 py-2 font-semibold">{row.rank}</td>
                         <td className="px-3 py-2">{row.name}</td>
                         <td className="px-3 py-2">{row.elo}</td>
+                        <td className="px-3 py-2">{row.seededElo}</td>
                         <td className="px-3 py-2 font-semibold">{formatHandicap(row.current)}</td>
                         <td className="px-3 py-2">{formatHandicap(row.baseline)}</td>
+                        <td className="px-3 py-2">{row.ratedMatches}</td>
+                        <td className="px-3 py-2">
+                          {row.needsCheck ? <span className="rounded-full border border-amber-300 bg-amber-100 px-2 py-0.5 text-xs font-semibold text-amber-900">Check seed</span> : "-"}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
