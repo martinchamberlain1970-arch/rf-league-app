@@ -1020,6 +1020,14 @@ export default function CaptainResultsPage() {
                           Result submission responsibility: <strong>Home team by default</strong>
                         </p>
                         <p>
+                          Result deadline: <strong>midnight on the following day</strong>
+                        </p>
+                        {selectedSeason?.handicap_enabled ? (
+                          <p>
+                            Handicap starts: <strong>reviewed in full, but capped at {MAX_SNOOKER_START} points for the live match start</strong>
+                          </p>
+                        ) : null}
+                        <p>
                           Home lineup: <strong>{homeLineupSubmitted ? "Submitted" : "Pending"}</strong>
                         </p>
                         <p>
@@ -1084,7 +1092,10 @@ export default function CaptainResultsPage() {
                       </p>
                     )}
                     {selectedSeason?.handicap_enabled ? (
-                      <p className="mt-1">In doubles, team handicap = (player 1 handicap + player 2 handicap) ÷ 2, with the live start capped at {MAX_SNOOKER_START}.</p>
+                      <div className="mt-1 space-y-1">
+                        <p>In doubles, team handicap = (player 1 handicap + player 2 handicap) ÷ 2, with the live start capped at {MAX_SNOOKER_START}.</p>
+                        <p>Reviewed handicaps still show the full assessed gap, but the frame start is capped to keep matches competitive.</p>
+                      </div>
                     ) : null}
                   </div>
 
