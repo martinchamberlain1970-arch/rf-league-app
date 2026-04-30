@@ -6499,8 +6499,12 @@ export default function LeaguePage() {
                 ) : null}
                 {registryTeamId ? (
                   <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="font-medium text-slate-900">{registeredTeams.find((t) => t.id === registryTeamId)?.name ?? "Team"}</p>
-                    <p className="text-xs text-slate-600">Set captain now. Vice-captain support can be added next.</p>
+                    <p className="font-medium text-slate-900">
+                      Registered-team template: {registeredTeams.find((t) => t.id === registryTeamId)?.name ?? "Team"}
+                    </p>
+                    <p className="text-xs text-slate-600">
+                      This list is the reusable template roster only. Published league season rosters are managed separately in the Season roster editor.
+                    </p>
                     <ul className="mt-2 space-y-1 text-sm text-slate-700">
                       {(registeredMembersByTeam.get(registryTeamId) ?? []).map((m) => (
                         <li key={m.id} className="flex items-center justify-between gap-2">
