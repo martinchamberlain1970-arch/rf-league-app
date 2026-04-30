@@ -1520,9 +1520,9 @@ export default function PlayerProfilePage() {
                     <p className="mt-1 text-sm font-medium text-slate-900">
                       {rankingCard.snookerRank
                         ? `Out of ${rankingCard.totalPlayers} published-league and live players.`
-                        : "Not currently included in the current snooker ladder."}
+                        : "Current rank unavailable."}
                     </p>
-                    <p className="mt-2 text-xs text-slate-600">Current position in the current snooker ladder for published league players and other live players.</p>
+                    <p className="mt-2 text-xs text-slate-600">Current position in the snooker ladder for published league players and other live players.</p>
                   </div>
                   <div className="rounded-2xl border border-teal-200 bg-gradient-to-br from-teal-50 to-white p-4 shadow-sm">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700">Current Handicap</p>
@@ -1579,7 +1579,7 @@ export default function PlayerProfilePage() {
                       <p className="text-sm font-medium text-slate-900">
                         {rankingCard.snookerRank
                           ? `Rank #${rankingCard.snookerRank} of ${rankingCard.totalPlayers}`
-                          : "Not currently included in the current snooker ladder"}
+                          : "Current rank unavailable"}
                       </p>
                       <p className="text-xs text-slate-500">Peak {Math.round(rankingCard.snookerPeak)} · Rated matches {rankingCard.snookerMatches}</p>
                     </div>

@@ -160,24 +160,32 @@ export default function RankingDisplayPage() {
     }
     return result;
   }, [competitions, leagueMembers, leagueSeasons, matches, players]);
-  const livePlayers = useMemo(
-    () => players.filter((entry) => livePlayerIds.has(entry.id) && Number(entry.rated_matches_snooker ?? 0) > 0),
-    [livePlayerIds, players]
+  const publishedLeaguePlayerIds = useMemo(() => {
+    const publishedSeasonIds = new Set(leagueSeasons.filter((season) => season.is_published).map((season) => season.id));
+    const ids = new Set<string>();
+    for (const member of leagueMembers) {
+      if (publishedSeasonIds.has(member.season_id)) ids.add(member.player_id);
+    }
+    return ids;
+  }, [leagueMembers, leagueSeasons]);
+  const visiblePlayers = useMemo(
+    () => players.filter((entry) => publishedLeaguePlayerIds.has(entry.id) || livePlayerIds.has(entry.id)),
+    [livePlayerIds, players, publishedLeaguePlayerIds]
   );
 
   const card = useMemo(() => {
     if (!player) return null;
-    const bySnooker = [...livePlayers].sort((a, b) => (b.rating_snooker ?? 1000) - (a.rating_snooker ?? 1000));
+    const bySnooker = [...visiblePlayers].sort((a, b) => (b.rating_snooker ?? 1000) - (a.rating_snooker ?? 1000));
     const snookerIndex = bySnooker.findIndex((p) => p.id === player.id);
     return {
-      totalPlayers: livePlayers.length,
+      totalPlayers: visiblePlayers.length,
       snookerRank: snookerIndex >= 0 ? snookerIndex + 1 : null,
       snookerRating: player.rating_snooker ?? 1000,
       snookerPeak: player.peak_rating_snooker ?? 1000,
       snookerMatches: player.rated_matches_snooker ?? 0,
       handicap: player.snooker_handicap ?? 0,
     };
-  }, [livePlayers, player]);
+  }, [player, visiblePlayers]);
 
   const playerName = player ? displayPlayerName(player) : "Player";
 
@@ -213,7 +221,7 @@ export default function RankingDisplayPage() {
               </div>
               <div>
                 <p className="text-3xl font-semibold text-white">{playerName}</p>
-                <p className="text-sm text-slate-300">Live players ranked: {card.totalPlayers}</p>
+                <p className="text-sm text-slate-300">Published-league and live players ranked: {card.totalPlayers}</p>
               </div>
             </div>
 
@@ -221,7 +229,7 @@ export default function RankingDisplayPage() {
               <div className="rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
                 <p className="text-sm font-semibold uppercase tracking-wide text-slate-300">Snooker Elo</p>
                 <p className="mt-2 text-5xl font-bold text-white">{Math.round(card.snookerRating)}</p>
-                <p className="mt-2 text-lg text-emerald-300">{card.snookerRank ? `Rank #${card.snookerRank}` : "Not in live rankings"}</p>
+                <p className="mt-2 text-lg text-emerald-300">{card.snookerRank ? `Rank #${card.snookerRank}` : "Current rank unavailable"}</p>
                 <p className="mt-1 text-sm text-slate-300">Peak {Math.round(card.snookerPeak)} · Rated matches {card.snookerMatches}</p>
               </div>
               <div className="rounded-2xl border border-slate-700 bg-slate-950/50 p-4">
