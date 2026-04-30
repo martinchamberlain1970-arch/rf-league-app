@@ -926,27 +926,39 @@ export default function PlayerProfilePage() {
         .filter((value): value is string => Boolean(value))
         .forEach((playerId) => result.add(playerId));
     });
-    return players.filter((entry) => result.has(entry.id) && Number(entry.rated_matches_snooker ?? 0) > 0);
+    return result;
   }, [competitions, leagueFixtures, leagueFrames, leagueMembers, leagueSeasons, matches, players]);
+  const publishedLeaguePlayerIds = useMemo(() => {
+    const publishedSeasonIds = new Set(leagueSeasons.filter((season) => season.is_published).map((season) => season.id));
+    const ids = new Set<string>();
+    leagueMembers.forEach((member) => {
+      if (publishedSeasonIds.has(member.season_id)) ids.add(member.player_id);
+    });
+    return ids;
+  }, [leagueMembers, leagueSeasons]);
+  const visibleSnookerRankingPlayers = useMemo(
+    () => players.filter((entry) => publishedLeaguePlayerIds.has(entry.id) || liveSnookerPlayers.has(entry.id)),
+    [players, publishedLeaguePlayerIds, liveSnookerPlayers]
+  );
   const rankingCard = useMemo(() => {
     if (!player) return null;
-    const bySnooker = [...liveSnookerPlayers].sort((a, b) => (b.rating_snooker ?? 1000) - (a.rating_snooker ?? 1000));
+    const bySnooker = [...visibleSnookerRankingPlayers].sort((a, b) => (b.rating_snooker ?? 1000) - (a.rating_snooker ?? 1000));
     const snookerIndex = bySnooker.findIndex((p) => p.id === player.id);
     return {
       snookerRank: snookerIndex >= 0 ? snookerIndex + 1 : null,
       snookerRating: player.rating_snooker ?? 1000,
       snookerPeak: player.peak_rating_snooker ?? 1000,
       snookerMatches: player.rated_matches_snooker ?? 0,
-      totalPlayers: liveSnookerPlayers.length,
+      totalPlayers: visibleSnookerRankingPlayers.length,
     };
-  }, [liveSnookerPlayers, player]);
+  }, [player, visibleSnookerRankingPlayers]);
   const locationName = useMemo(
     () => (player?.location_id ? locations.find((l) => l.id === player.location_id)?.name ?? "Assigned club" : "No club assigned"),
     [locations, player?.location_id]
   );
   const eloLeaderboard = useMemo(
     () =>
-      [...liveSnookerPlayers]
+      [...visibleSnookerRankingPlayers]
         .sort((a, b) => {
           const ratingDiff = Number(b.rating_snooker ?? 1000) - Number(a.rating_snooker ?? 1000);
           if (ratingDiff !== 0) return ratingDiff;
@@ -959,7 +971,7 @@ export default function PlayerProfilePage() {
           rating: Math.round(Number(p.rating_snooker ?? 1000)),
           handicap: Number(p.snooker_handicap ?? 0),
         })),
-    [liveSnookerPlayers]
+    [visibleSnookerRankingPlayers]
   );
   const handicapExplain = useMemo(() => {
     const current = Number(player?.snooker_handicap ?? 0);
@@ -1507,10 +1519,10 @@ export default function PlayerProfilePage() {
                     <p className="mt-2 text-3xl font-black text-slate-950">{rankingCard.snookerRank ? `#${rankingCard.snookerRank}` : "—"}</p>
                     <p className="mt-1 text-sm font-medium text-slate-900">
                       {rankingCard.snookerRank
-                        ? `Out of ${rankingCard.totalPlayers} live players.`
-                        : "Not currently included in live rankings."}
+                        ? `Out of ${rankingCard.totalPlayers} published-league and live players.`
+                        : "Not currently included in the current snooker ladder."}
                     </p>
-                    <p className="mt-2 text-xs text-slate-600">Current position in the live snooker ladder.</p>
+                    <p className="mt-2 text-xs text-slate-600">Current position in the current snooker ladder for published league players and other live players.</p>
                   </div>
                   <div className="rounded-2xl border border-teal-200 bg-gradient-to-br from-teal-50 to-white p-4 shadow-sm">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700">Current Handicap</p>
@@ -1567,7 +1579,7 @@ export default function PlayerProfilePage() {
                       <p className="text-sm font-medium text-slate-900">
                         {rankingCard.snookerRank
                           ? `Rank #${rankingCard.snookerRank} of ${rankingCard.totalPlayers}`
-                          : "Not currently included in live rankings"}
+                          : "Not currently included in the current snooker ladder"}
                       </p>
                       <p className="text-xs text-slate-500">Peak {Math.round(rankingCard.snookerPeak)} · Rated matches {rankingCard.snookerMatches}</p>
                     </div>
