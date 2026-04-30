@@ -299,6 +299,7 @@ export default function SignUpPage() {
           type: "existing",
           playerId: selectedPlayer.id,
           fullName,
+          dateOfBirth,
           locationId: selectedLocation,
           teamId: selectedTeam || null,
         })
