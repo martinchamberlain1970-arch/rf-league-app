@@ -204,7 +204,16 @@ export default function HandicapsPage() {
                 Elo updates after each valid competitive frame. Handicap is then reviewed from Elo rather than changing automatically after every win or loss.
               </p>
               <p>
-                The reviewed handicap can still show the full longer-term strength gap, but the live match start is capped at {MAX_SNOOKER_START}. This keeps frames competitive and stops very large rating gaps from turning the opening score into the whole contest.
+                Handicaps are reviewed in full, but match starts are capped at {MAX_SNOOKER_START}. This keeps frames competitive and stops very large starts deciding the frame too early, while still reflecting player strength over time.
+              </p>
+              <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/60 p-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-fuchsia-900">Why?</p>
+                <p className="mt-1 text-sm text-slate-700">
+                  Reviewed handicaps still show the full assessed gap between players. The cap only applies to the starting score in the frame, so stronger and weaker players can still have competitive matches without the opening start deciding too much too soon.
+                </p>
+              </div>
+              <p>
+                If the assessed handicap gap is larger than {MAX_SNOOKER_START}, the frame still starts at a maximum of {MAX_SNOOKER_START}.
               </p>
               <p>
                 No-show, nominated-player, and void outcomes are excluded from Elo and handicap review. The Super User can still make manual corrections where league rules require it.

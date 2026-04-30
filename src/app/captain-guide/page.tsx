@@ -30,6 +30,7 @@ const sections = [
     title: "3. During the match",
     bullets: [
       "Open Captain Results and select the relevant fixture.",
+      "Reviewed handicaps are stored in full, but the live match start is capped at 40 points. This keeps frames competitive while still reflecting the longer-term strength gap.",
       "Enter the frame players carefully. For summer leagues, remember the two-singles-per-player rule. For winter leagues, check nominated-player and no-show rules before submitting.",
       "Enter frame points accurately and add any qualifying breaks.",
       "Use Save progress if you need to stop and return before final submission.",
@@ -102,6 +103,12 @@ export default function CaptainGuidePage() {
             <div className="rounded-xl border border-sky-200 bg-sky-50 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Result deadline</p>
               <p className="mt-1 text-sm text-sky-900">Submit the result by midnight on the following day.</p>
+            </div>
+            <div className="rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-4 md:col-span-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-fuchsia-700">Handicap starts</p>
+              <p className="mt-1 text-sm text-fuchsia-900">
+                Handicaps are reviewed in full, but the live match start is capped at 40 points. This keeps frames competitive and stops very large starts deciding the frame too early.
+              </p>
             </div>
           </div>
         </section>
