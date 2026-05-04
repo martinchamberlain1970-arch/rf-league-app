@@ -900,7 +900,7 @@ export default function CaptainResultsPage() {
     <main className="min-h-screen bg-slate-100 p-6">
       <div className="mx-auto max-w-6xl space-y-4">
         <RequireAuth>
-          <ScreenHeader title="Captain Result Submission" eyebrow="League" subtitle="Submit your team result for Super User approval." />
+          <ScreenHeader title="Captain Lineups & Results" eyebrow="League" subtitle="Enter pre-match lineups first, then submit your team result for Super User approval." />
           {loading ? <section className={`${sectionCardClass} text-slate-600`}>Loading...</section> : null}
 
           {!linkedPlayerId && !loading ? (
@@ -919,7 +919,7 @@ export default function CaptainResultsPage() {
             <section className={`${sectionCardClass} ${sectionCardTintClass} space-y-4`}>
               <div>
                 <h2 className={sectionTitleClass}>Fixture Entry</h2>
-                <p className="mt-1 text-sm text-slate-600">Choose a fixture, handle pre-match lineups if needed, then complete the frame scores and submit for review.</p>
+                <p className="mt-1 text-sm text-slate-600">Choose a fixture, enter the pre-match lineup on fixture day before 19:30, then complete the frame scores and submit the result for review.</p>
               </div>
               <select
                 className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2"

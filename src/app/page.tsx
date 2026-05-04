@@ -17,7 +17,7 @@ const links = [
   { href: "/league", title: "League Manager", desc: "Set up teams, fixtures, and league table." },
   { href: "/handicaps", title: "Handicaps", desc: "See the snooker handicap list and how starts are worked out." },
   { href: "/high-breaks", title: "High Breaks", desc: "View the published league high-break table." },
-  { href: "/captain-results", title: "Captain Results", desc: "Handle pre-match lineups and submit your fixture result for approval." },
+  { href: "/captain-results", title: "Lineups & Results", desc: "Enter your pre-match lineup first, then submit your fixture result for approval." },
   { href: "/reschedule-fixture", title: "Reschedule Fixture", desc: "Request permission to play early or, exceptionally, later." },
   { href: "/events", title: "Match Centre", desc: "View your fixtures, reports, and competition activity." },
   { href: "/signups", title: "Competition Sign-ups", desc: "Enter open competitions and track entry status." },
@@ -223,7 +223,7 @@ export default function HomePage() {
     }
     if (href === "/captain-results") {
       if (admin.isSuper) return "Review what captains submit and confirm final results.";
-      return "If you're captain/vice-captain, submit your team result for approval.";
+      return "If you're captain or vice-captain, enter your lineup on match day and submit the result after the fixture.";
     }
     if (href === "/reschedule-fixture") {
       return "Request permission to play before the league date or, exceptionally, later.";
@@ -295,13 +295,13 @@ export default function HomePage() {
       return [
         {
           href: "/captain-results",
-          title: "Captain Actions",
+          title: "Tonight's Lineup",
           value: pendingResultSubmissionsCount,
           tone: "emerald",
           detail:
             pendingResultSubmissionsCount > 0
               ? "Your latest submission is pending league review."
-              : "Submit your current fixture result on match day.",
+              : "Open your fixture to enter the pre-match lineup first, then submit the result later.",
         },
         {
           href: "/reschedule-fixture",
@@ -955,7 +955,7 @@ export default function HomePage() {
                     <div>
                       <p className="text-sm font-semibold text-emerald-900">Read this before your first fixture</p>
                       <p className="mt-1 text-sm text-emerald-800">
-                        Check the captain guide for the before-match lineup steps, the home-team submission rule, and the midnight result deadline.
+                        Check the captain guide for when to enter your lineup, the home-team submission rule, and the midnight result deadline.
                       </p>
                     </div>
                     <button
@@ -976,7 +976,7 @@ export default function HomePage() {
                       Open guide
                     </Link>
                     <Link href="/captain-results" className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                      Open captain results
+                      Enter tonight&apos;s lineup
                     </Link>
                   </div>
                 </div>
