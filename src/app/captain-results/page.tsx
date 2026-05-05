@@ -46,6 +46,7 @@ type Player = {
   display_name: string;
   full_name: string | null;
   snooker_handicap?: number | null;
+  rating_snooker?: number | null;
 };
 type FrameSlot = {
   id: string;
@@ -109,6 +110,7 @@ type CaptainResultDraft = {
 };
 
 const named = (p?: Player | null) => (p ? (p.full_name?.trim() ? p.full_name : p.display_name) : "Unknown");
+const ratingOf = (p?: Player | null) => Number(p?.rating_snooker ?? 1000);
 const sortLabelByFirstName = (a: string, b: string) => {
   const aParts = a.trim().split(/\s+/);
   const bParts = b.trim().split(/\s+/);
@@ -144,6 +146,10 @@ function isBeforeFixtureStart(fixtureDate: string | null) {
   const start = new Date(`${fixtureDate}T19:30:00`);
   if (Number.isNaN(start.getTime())) return false;
   return new Date() < start;
+}
+
+function expectedWinProbability(ownRating: number, opponentRating: number) {
+  return 1 / (1 + 10 ** ((opponentRating - ownRating) / 400));
 }
 
 const sectionCardClass = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
@@ -248,7 +254,7 @@ export default function CaptainResultsPage() {
         .select("id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_forfeit,away_forfeit,winner_side,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored")
         .order("slot_no", { ascending: true }),
       client.from("league_result_submissions").select("fixture_id,status,frame_results,scorecard_photo_url").eq("status", "pending"),
-      client.from("players").select("id,display_name,full_name,snooker_handicap").eq("is_archived", false),
+      client.from("players").select("id,display_name,full_name,snooker_handicap,rating_snooker").eq("is_archived", false),
     ]);
     let fixtureRows = initialFixtureRes.data ?? [];
     let fixtureError = initialFixtureRes.error?.message ?? null;
@@ -557,6 +563,17 @@ export default function CaptainResultsPage() {
 
   const playerHandicap = (playerId: string | null | undefined) =>
     Number(playerById.get(playerId ?? "")?.snooker_handicap ?? 0);
+  const playerRating = (playerId: string | null | undefined) =>
+    ratingOf(playerById.get(playerId ?? ""));
+
+  const singlesHandicapLabel = (slot: FrameSlot) => {
+    const home = playerHandicap(slot.home_player1_id);
+    const away = playerHandicap(slot.away_player1_id);
+    const starts = calculateAdjustedScoresWithCap(0, 0, home, away);
+    if (starts.homeStart > 0) return `Singles handicap: Home receives ${starts.homeStart} start`;
+    if (starts.awayStart > 0) return `Singles handicap: Away receives ${starts.awayStart} start`;
+    return "Singles handicap: Level start";
+  };
 
   const doublesHandicapLabel = (slot: FrameSlot) => {
     const home = (playerHandicap(slot.home_player1_id) + playerHandicap(slot.home_player2_id)) / 2;
@@ -566,6 +583,93 @@ export default function CaptainResultsPage() {
     if (starts.awayStart > 0) return `Doubles handicap: Away receives ${starts.awayStart} start`;
     return "Doubles handicap: Level start";
   };
+
+  const lineupPreviewRows = useMemo(() => {
+    if (!selectedSeason || !selectedFixture || preMatchPaperRecord) return [] as Array<{
+      slotId: string;
+      title: string;
+      matchup: string;
+      startLabel: string;
+      homeProb: number;
+      awayProb: number;
+      expectedWinner: "home" | "away";
+      guide: string;
+    }>;
+    return slots.flatMap((slot) => {
+      const homeReady =
+        slot.slot_type === "doubles"
+          ? Boolean(slot.home_player1_id) && Boolean(slot.home_player2_id)
+          : slot.home_nominated || Boolean(slot.home_player1_id);
+      const awayReady =
+        slot.slot_type === "doubles"
+          ? Boolean(slot.away_player1_id) && Boolean(slot.away_player2_id)
+          : slot.away_nominated || Boolean(slot.away_player1_id);
+      if (!homeReady || !awayReady) return [];
+
+      const homeName =
+        slot.slot_type === "doubles"
+          ? `${named(playerById.get(slot.home_player1_id ?? ""))} / ${named(playerById.get(slot.home_player2_id ?? ""))}`
+          : slot.home_nominated
+            ? slot.home_nominated_name?.trim() || "Nominated Player"
+            : named(playerById.get(slot.home_player1_id ?? ""));
+      const awayName =
+        slot.slot_type === "doubles"
+          ? `${named(playerById.get(slot.away_player1_id ?? ""))} / ${named(playerById.get(slot.away_player2_id ?? ""))}`
+          : slot.away_nominated
+            ? slot.away_nominated_name?.trim() || "Nominated Player"
+            : named(playerById.get(slot.away_player1_id ?? ""));
+
+      const homeHandicap =
+        slot.slot_type === "doubles"
+          ? (playerHandicap(slot.home_player1_id) + playerHandicap(slot.home_player2_id)) / 2
+          : playerHandicap(slot.home_player1_id);
+      const awayHandicap =
+        slot.slot_type === "doubles"
+          ? (playerHandicap(slot.away_player1_id) + playerHandicap(slot.away_player2_id)) / 2
+          : playerHandicap(slot.away_player1_id);
+      const starts = selectedSeason.handicap_enabled
+        ? calculateAdjustedScoresWithCap(0, 0, homeHandicap, awayHandicap)
+        : { homeStart: 0, awayStart: 0, homeAdjusted: 0, awayAdjusted: 0 };
+      const homeRatingBase =
+        slot.slot_type === "doubles"
+          ? (playerRating(slot.home_player1_id) + playerRating(slot.home_player2_id)) / 2
+          : slot.home_nominated
+            ? 1000
+            : playerRating(slot.home_player1_id);
+      const awayRatingBase =
+        slot.slot_type === "doubles"
+          ? (playerRating(slot.away_player1_id) + playerRating(slot.away_player2_id)) / 2
+          : slot.away_nominated
+            ? 1000
+            : playerRating(slot.away_player1_id);
+      const homeEffectiveRating = homeRatingBase + starts.homeStart * 5;
+      const awayEffectiveRating = awayRatingBase + starts.awayStart * 5;
+      const homeProb = expectedWinProbability(homeEffectiveRating, awayEffectiveRating);
+      const awayProb = 1 - homeProb;
+      const expectedWinner = homeProb >= awayProb ? "home" : "away";
+      const startLabel = selectedSeason.handicap_enabled
+        ? slot.slot_type === "doubles"
+          ? doublesHandicapLabel(slot)
+          : singlesHandicapLabel(slot)
+        : "Level start";
+
+      return [
+        {
+          slotId: slot.id,
+          title: slot.slot_type === "doubles" ? `Frame ${slot.slot_no} · Doubles preview` : `Frame ${slot.slot_no} · Singles preview`,
+          matchup: `${homeName} vs ${awayName}`,
+          startLabel,
+          homeProb: Math.round(homeProb * 100),
+          awayProb: Math.round(awayProb * 100),
+          expectedWinner,
+          guide:
+            expectedWinner === "home"
+              ? `${homeName} is the guide-only favourite for this frame.`
+              : `${awayName} is the guide-only favourite for this frame.`,
+        },
+      ];
+    });
+  }, [playerById, preMatchPaperRecord, selectedFixture, selectedSeason, slots]);
 
   const deriveWinnerFromFrame = (row: FrameSlot): "home" | "away" | null => {
     if (row.home_forfeit && row.away_forfeit) return null;
@@ -1099,6 +1203,39 @@ export default function CaptainResultsPage() {
                       </div>
                     ) : null}
                   </div>
+                  {lineupPreviewRows.length > 0 ? (
+                    <div className="rounded-xl border border-violet-200 bg-violet-50/70 p-3">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-violet-900">Frame-by-frame lineup preview</p>
+                          <p className="mt-1 text-xs text-violet-900">
+                            Based on the current lineups, capped handicap starts, and current player Elo. This is a guide only, not a guarantee.
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-violet-200 bg-white px-3 py-1 text-xs font-semibold text-violet-800">
+                          Max start {MAX_SNOOKER_START}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                        {lineupPreviewRows.map((row) => (
+                          <div key={row.slotId} className="rounded-xl border border-violet-200 bg-white p-3 shadow-sm">
+                            <p className="text-sm font-semibold text-slate-900">{row.title}</p>
+                            <p className="mt-1 text-sm text-slate-700">{row.matchup}</p>
+                            <p className="mt-1 text-xs text-slate-600">{row.startLabel}</p>
+                            <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+                              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-900">
+                                Home win chance: <strong>{row.homeProb}%</strong>
+                              </div>
+                              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                                Away win chance: <strong>{row.awayProb}%</strong>
+                              </div>
+                            </div>
+                            <p className="mt-3 text-xs font-medium text-violet-900">{row.guide}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
 
                   <fieldset disabled={pendingByFixture.has(selectedFixture.id)} className={pendingByFixture.has(selectedFixture.id) ? "cursor-not-allowed opacity-80" : ""}>
                   {slots.map((slot) => {
@@ -1125,8 +1262,12 @@ export default function CaptainResultsPage() {
                           <p className="text-sm font-semibold text-slate-900">
                           {slot.slot_type === "doubles" ? `Frame ${slot.slot_no} · Doubles` : `Frame ${slot.slot_no} · Singles`}
                           </p>
-                          {slot.slot_type === "doubles" && selectedSeason?.handicap_enabled ? (
-                            <p className="mt-1 text-xs text-slate-600">{doublesHandicapLabel(slot)} (combined player handicaps ÷ 2)</p>
+                          {selectedSeason?.handicap_enabled ? (
+                            <p className="mt-1 text-xs text-slate-600">
+                              {slot.slot_type === "doubles"
+                                ? `${doublesHandicapLabel(slot)} (combined player handicaps ÷ 2)`
+                                : singlesHandicapLabel(slot)}
+                            </p>
                           ) : null}
                         <div className="mt-2 grid gap-2 sm:grid-cols-5">
                           <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Home</div>
