@@ -118,6 +118,11 @@ function tabFromUrl(): Tab {
   return t === "completed" || t === "archived" ? t : "open";
 }
 
+function formatSignedHandicap(value: number | null | undefined) {
+  const handicap = Number(value ?? 0);
+  return handicap > 0 ? `+${handicap}` : `${handicap}`;
+}
+
 const fmtDate = new Intl.DateTimeFormat("en-GB", { day: "2-digit", month: "short", year: "numeric" });
 const formatFixtureReschedule = (request?: FixtureChangeRequest | null) => {
   if (!request || request.status !== "rescheduled" || !request.original_fixture_date || !request.agreed_fixture_date) return null;
@@ -618,6 +623,9 @@ export default function EventsPage() {
     const homeTeam = teamById.get(f.home_team_id) ?? "Home";
     const awayTeam = teamById.get(f.away_team_id) ?? "Away";
     const completedFixtureIds = new Set(seasonFixtures.filter((x) => x.status === "complete").map((x) => x.id));
+    const fixtureDateById = new Map(
+      seasonFixtures.map((fixture) => [fixture.id, fixture.fixture_date ?? ""])
+    );
     const frameRecordFor = (playerId: string) => {
       let won = 0;
       let lost = 0;
@@ -631,6 +639,50 @@ export default function EventsPage() {
         else lost += 1;
       }
       return { won, lost };
+    };
+    const recentFrameSummaryFor = (playerId: string) => {
+      const results: Array<{ result: "W" | "L"; date: string }> = [];
+      for (const fr of seasonFrames) {
+        if (!completedFixtureIds.has(fr.fixture_id) || !fr.winner_side || fr.home_forfeit || fr.away_forfeit) continue;
+        const inHome = fr.home_player1_id === playerId || fr.home_player2_id === playerId;
+        const inAway = fr.away_player1_id === playerId || fr.away_player2_id === playerId;
+        if (!inHome && !inAway) continue;
+        const fixtureDate = fixtureDateById.get(fr.fixture_id) ?? "";
+        const isWin = (inHome && fr.winner_side === "home") || (inAway && fr.winner_side === "away");
+        results.push({ result: isWin ? "W" : "L", date: fixtureDate });
+      }
+      results.sort((a, b) => {
+        const da = a.date ? new Date(`${a.date}T12:00:00`).getTime() : 0;
+        const db = b.date ? new Date(`${b.date}T12:00:00`).getTime() : 0;
+        return db - da;
+      });
+      const recent = results.slice(0, 5);
+      const wins = recent.filter((row) => row.result === "W").length;
+      const losses = recent.filter((row) => row.result === "L").length;
+      const streak = (() => {
+        if (recent.length === 0) return null;
+        const first = recent[0].result;
+        let count = 0;
+        for (const row of recent) {
+          if (row.result !== first) break;
+          count += 1;
+        }
+        return { result: first, count };
+      })();
+      const lastPlayed = recent[0]?.date ?? null;
+      const summary =
+        recent.length === 0
+          ? "No recent league frames recorded yet."
+          : streak && streak.count >= 2
+            ? `${wins} win${wins === 1 ? "" : "s"} from last ${recent.length} frame${recent.length === 1 ? "" : "s"} · ${streak.count}-frame ${streak.result === "W" ? "winning" : "losing"} run`
+            : `${wins} win${wins === 1 ? "" : "s"} and ${losses} loss${losses === 1 ? "" : "es"} from last ${recent.length} frame${recent.length === 1 ? "" : "s"}`;
+      return {
+        wins,
+        losses,
+        recent,
+        lastPlayed,
+        summary,
+      };
     };
     const describeTopPlayer = (teamPlayers: LeaguePlayer[]) => {
       if (teamPlayers.length === 0) return "No registered player history yet for this team.";
@@ -655,6 +707,27 @@ export default function EventsPage() {
         return `${name}: rating ${Math.round(Number(p.rating_snooker ?? 1000))}, handicap ${Number(p.snooker_handicap ?? 0)}, frame record ${rec.won}-${rec.lost}.`;
       });
     };
+    const rosterSummary = (teamPlayers: LeaguePlayer[]) =>
+      [...teamPlayers]
+        .sort(
+          (a, b) =>
+            Number(b.rating_snooker ?? 1000) - Number(a.rating_snooker ?? 1000) ||
+            Number(a.snooker_handicap ?? 0) - Number(b.snooker_handicap ?? 0) ||
+            (a.full_name?.trim() || a.display_name).localeCompare(b.full_name?.trim() || b.display_name)
+        )
+        .map((player) => {
+          const rec = frameRecordFor(player.id);
+          const recent = recentFrameSummaryFor(player.id);
+          return {
+            id: player.id,
+            name: player.full_name?.trim() || player.display_name,
+            rating: Math.round(Number(player.rating_snooker ?? 1000)),
+            handicap: Number(player.snooker_handicap ?? 0),
+            frameRecord: `${rec.won}-${rec.lost}`,
+            recentSummary: recent.summary,
+            lastPlayed: recent.lastPlayed,
+          };
+        });
     return {
       fixture: f,
       homeTeam,
@@ -678,6 +751,8 @@ export default function EventsPage() {
       awayNarrative: describeTopPlayer(awayPlayers),
       homeBlurbs: playerBlurbs(homePlayers),
       awayBlurbs: playerBlurbs(awayPlayers),
+      homeRoster: rosterSummary(homePlayers),
+      awayRoster: rosterSummary(awayPlayers),
     };
   }, [predictionFixture, nextFixture, playersByTeam, teamStats, teamPosition, teamById, seasonFixtures, seasonFrames, predictionStyle]);
   const playerNameMap = useMemo(
@@ -1183,6 +1258,72 @@ export default function EventsPage() {
                       <div className="mt-2 space-y-1">
                         {prediction.awayBlurbs.map((line) => (
                           <p key={`a-${line}`} className="text-[11px] text-slate-700">{line}</p>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                    <div className="rounded-xl border border-slate-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">{prediction.homeTeam} roster</p>
+                          <p className="text-xs text-slate-600">Players currently registered for this team, with current handicaps and recent frame form.</p>
+                        </div>
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                          {prediction.homeRoster.length} player{prediction.homeRoster.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
+                        {prediction.homeRoster.map((player) => (
+                          <div key={`home-roster-${player.id}`} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">{player.name}</p>
+                                <p className="text-[11px] text-slate-600">
+                                  Elo {player.rating} · Handicap {formatSignedHandicap(player.handicap)} · Frame record {player.frameRecord}
+                                </p>
+                              </div>
+                              <div className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-800">
+                                Hcp {formatSignedHandicap(player.handicap)}
+                              </div>
+                            </div>
+                            <p className="mt-2 text-[11px] text-slate-700">{player.recentSummary}</p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              {player.lastPlayed ? `Last played ${fmtDate.format(new Date(`${player.lastPlayed}T12:00:00`))}` : "No completed league-frame history yet"}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">{prediction.awayTeam} roster</p>
+                          <p className="text-xs text-slate-600">Players currently registered for this team, with current handicaps and recent frame form.</p>
+                        </div>
+                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700">
+                          {prediction.awayRoster.length} player{prediction.awayRoster.length === 1 ? "" : "s"}
+                        </span>
+                      </div>
+                      <div className="mt-3 max-h-80 space-y-2 overflow-y-auto pr-1">
+                        {prediction.awayRoster.map((player) => (
+                          <div key={`away-roster-${player.id}`} className="rounded-lg border border-slate-200 bg-slate-50 p-3">
+                            <div className="flex flex-wrap items-start justify-between gap-2">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900">{player.name}</p>
+                                <p className="text-[11px] text-slate-600">
+                                  Elo {player.rating} · Handicap {formatSignedHandicap(player.handicap)} · Frame record {player.frameRecord}
+                                </p>
+                              </div>
+                              <div className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[11px] font-semibold text-indigo-800">
+                                Hcp {formatSignedHandicap(player.handicap)}
+                              </div>
+                            </div>
+                            <p className="mt-2 text-[11px] text-slate-700">{player.recentSummary}</p>
+                            <p className="mt-1 text-[11px] text-slate-500">
+                              {player.lastPlayed ? `Last played ${fmtDate.format(new Date(`${player.lastPlayed}T12:00:00`))}` : "No completed league-frame history yet"}
+                            </p>
+                          </div>
                         ))}
                       </div>
                     </div>
