@@ -7459,7 +7459,7 @@ export default function LeaguePage() {
                       </div>
                     </div>
                     <div className="mt-3 overflow-auto rounded-xl border border-slate-200 bg-white">
-                      <table className="min-w-[1380px] border-collapse text-xs">
+                      <table className={`${playerTableView === "all" ? "min-w-[1380px]" : "w-full table-fixed"} border-collapse text-xs`}>
                         <thead>
                           {playerTableView === "all" ? (
                             <>
@@ -7497,16 +7497,16 @@ export default function LeaguePage() {
                             </>
                           ) : (
                             <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-600">
-                              <th className="w-14 px-3 py-2 text-center">Rank</th>
-                              <th className="w-[180px] px-2 py-2">Player</th>
-                              <th className="w-[140px] whitespace-nowrap px-2 py-2">Team</th>
-                              <th className="w-16 px-3 py-2 text-center">App</th>
-                              <th className="w-16 px-3 py-2 text-center">Played</th>
-                              <th className="w-16 px-3 py-2 text-center">Won</th>
-                              <th className="w-16 px-3 py-2 text-center">Lost</th>
-                              <th className="w-16 px-3 py-2 text-center">PF</th>
-                              <th className="w-16 px-3 py-2 text-center">PA</th>
-                              <th className="w-20 px-3 py-2 text-center">Win %</th>
+                              <th className="w-12 px-2 py-2 text-center">Rank</th>
+                              <th className="w-[170px] px-2 py-2">Player</th>
+                              <th className="w-[240px] px-2 py-2">Team</th>
+                              <th className="w-12 px-2 py-2 text-center">App</th>
+                              <th className="w-14 px-2 py-2 text-center">Played</th>
+                              <th className="w-12 px-2 py-2 text-center">Won</th>
+                              <th className="w-12 px-2 py-2 text-center">Lost</th>
+                              <th className="w-12 px-2 py-2 text-center">PF</th>
+                              <th className="w-12 px-2 py-2 text-center">PA</th>
+                              <th className="w-14 px-2 py-2 text-center">Win %</th>
                             </tr>
                           )}
                         </thead>
@@ -7518,12 +7518,13 @@ export default function LeaguePage() {
                                 <button
                                   type="button"
                                   onClick={() => setSelectedPlayerTablePlayerId(r.player_id)}
-                                  className="text-left underline decoration-violet-200 underline-offset-2 hover:text-violet-800"
+                                  className="block truncate text-left underline decoration-violet-200 underline-offset-2 hover:text-violet-800"
+                                  title={r.player_name}
                                 >
                                   {r.player_name}
                                 </button>
                               </td>
-                              <td className="whitespace-nowrap px-2 py-2">{r.team_name}</td>
+                              <td className="truncate whitespace-nowrap px-2 py-2" title={r.team_name}>{r.team_name}</td>
                               {playerTableView === "all" ? (
                                 <>
                                   <td className="px-3 py-2 text-center">{r.singles?.appearances ?? 0}</td>
@@ -7550,25 +7551,25 @@ export default function LeaguePage() {
                                 </>
                               ) : (
                                 <>
-                                  <td className="px-3 py-2 text-center">
+                                  <td className="px-2 py-2 text-center">
                                     {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.appearances ?? 0}
                                   </td>
-                                  <td className="px-3 py-2 text-center">
+                                  <td className="px-2 py-2 text-center">
                                     {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.played ?? 0}
                                   </td>
-                                  <td className="px-3 py-2 text-center">
+                                  <td className="px-2 py-2 text-center">
                                     {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.won ?? 0}
                                   </td>
-                                  <td className="px-3 py-2 text-center">
+                                  <td className="px-2 py-2 text-center">
                                     {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.lost ?? 0}
                                   </td>
-                                  <td className="px-3 py-2 text-center">
+                                  <td className="px-2 py-2 text-center">
                                     {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.points_for ?? 0}
                                   </td>
-                                  <td className="px-3 py-2 text-center">
+                                  <td className="px-2 py-2 text-center">
                                     {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.points_against ?? 0}
                                   </td>
-                                  <td className="px-3 py-2 text-center">
+                                  <td className="px-2 py-2 text-center">
                                     {((playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.win_pct ?? 0).toFixed(1)}%
                                   </td>
                                 </>
