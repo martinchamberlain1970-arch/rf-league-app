@@ -895,10 +895,10 @@ export default function NotificationsPage() {
           <section className={`${sectionCardClass} ${sectionCardTintClass}`}>
             <p className="text-sm text-slate-700">
               {admin.isSuper
-                ? "Scope: System and operational notifications."
+                ? "System and operational notifications."
                 : admin.isAdmin
-                  ? "Scope: Operational notifications."
-                  : "Scope: Your account notifications."}
+                  ? "Operational notifications."
+                  : "Your notifications."}
             </p>
           </section>
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
