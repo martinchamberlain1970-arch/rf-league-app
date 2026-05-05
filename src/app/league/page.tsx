@@ -7465,8 +7465,8 @@ export default function LeaguePage() {
                             <>
                               <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-500">
                                 <th className="w-14 px-3 py-2 text-center" rowSpan={2}>Rank</th>
-                                <th className="min-w-[180px] px-3 py-2" rowSpan={2}>Player</th>
-                                <th className="min-w-[150px] px-3 py-2" rowSpan={2}>Team</th>
+                                <th className="min-w-[190px] px-3 py-2" rowSpan={2}>Player</th>
+                                <th className="w-[120px] px-2 py-2" rowSpan={2}>Team</th>
                                 <th className="px-3 py-2 text-center text-violet-800" colSpan={7}>Singles</th>
                                 <th className="px-3 py-2 text-center text-indigo-800" colSpan={7}>Doubles</th>
                                 <th className="px-3 py-2 text-center text-emerald-800" colSpan={7}>Total</th>
@@ -7498,8 +7498,8 @@ export default function LeaguePage() {
                           ) : (
                             <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-600">
                               <th className="w-14 px-3 py-2 text-center">Rank</th>
-                              <th className="min-w-[180px] px-3 py-2">Player</th>
-                              <th className="min-w-[150px] px-3 py-2">Team</th>
+                              <th className="min-w-[190px] px-3 py-2">Player</th>
+                              <th className="w-[120px] px-2 py-2">Team</th>
                               <th className="w-16 px-3 py-2 text-center">App</th>
                               <th className="w-16 px-3 py-2 text-center">Played</th>
                               <th className="w-16 px-3 py-2 text-center">Won</th>
@@ -7523,7 +7523,7 @@ export default function LeaguePage() {
                                   {r.player_name}
                                 </button>
                               </td>
-                              <td className="px-3 py-2">{r.team_name}</td>
+                              <td className="px-2 py-2">{r.team_name}</td>
                               {playerTableView === "all" ? (
                                 <>
                                   <td className="px-3 py-2 text-center">{r.singles?.appearances ?? 0}</td>
