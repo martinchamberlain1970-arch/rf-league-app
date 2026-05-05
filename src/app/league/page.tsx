@@ -7459,14 +7459,14 @@ export default function LeaguePage() {
                       </div>
                     </div>
                     <div className="mt-3 overflow-auto rounded-xl border border-slate-200 bg-white">
-                      <table className="min-w-[1480px] border-collapse text-xs">
+                      <table className="min-w-[1380px] border-collapse text-xs">
                         <thead>
                           {playerTableView === "all" ? (
                             <>
                               <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-500">
                                 <th className="w-14 px-3 py-2 text-center" rowSpan={2}>Rank</th>
-                                <th className="min-w-[180px] px-3 py-2" rowSpan={2}>Player</th>
-                                <th className="min-w-[170px] whitespace-nowrap px-2 py-2" rowSpan={2}>Team</th>
+                                <th className="w-[180px] px-2 py-2" rowSpan={2}>Player</th>
+                                <th className="w-[140px] whitespace-nowrap px-2 py-2" rowSpan={2}>Team</th>
                                 <th className="px-3 py-2 text-center text-violet-800" colSpan={7}>Singles</th>
                                 <th className="px-3 py-2 text-center text-indigo-800" colSpan={7}>Doubles</th>
                                 <th className="px-3 py-2 text-center text-emerald-800" colSpan={7}>Total</th>
@@ -7498,8 +7498,8 @@ export default function LeaguePage() {
                           ) : (
                             <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-600">
                               <th className="w-14 px-3 py-2 text-center">Rank</th>
-                              <th className="min-w-[180px] px-3 py-2">Player</th>
-                              <th className="min-w-[170px] whitespace-nowrap px-2 py-2">Team</th>
+                              <th className="w-[180px] px-2 py-2">Player</th>
+                              <th className="w-[140px] whitespace-nowrap px-2 py-2">Team</th>
                               <th className="w-16 px-3 py-2 text-center">App</th>
                               <th className="w-16 px-3 py-2 text-center">Played</th>
                               <th className="w-16 px-3 py-2 text-center">Won</th>
@@ -7514,7 +7514,7 @@ export default function LeaguePage() {
                           {playerSummaryRows.map((r) => (
                             <tr key={r.player_id} className="border-b border-slate-100 text-slate-800">
                               <td className="px-3 py-2 text-center font-semibold">{r.rank ?? "-"}</td>
-                              <td className="px-3 py-2">
+                              <td className="px-2 py-2">
                                 <button
                                   type="button"
                                   onClick={() => setSelectedPlayerTablePlayerId(r.player_id)}
