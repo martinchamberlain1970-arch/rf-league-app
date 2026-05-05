@@ -118,6 +118,8 @@ type PlayerTableRow = {
   played: number;
   won: number;
   lost: number;
+  points_for: number;
+  points_against: number;
   win_pct: number;
 };
 type PlayerTableView = "all" | "singles" | "doubles" | "total";
@@ -4331,8 +4333,8 @@ export default function LeaguePage() {
 
     const singlesAppearanceByPlayer = new Map<string, Set<string>>();
     const doublesAppearanceByPlayer = new Map<string, Set<string>>();
-    const singlesPlayed = new Map<string, { won: number; lost: number }>();
-    const doublesPlayed = new Map<string, { won: number; lost: number }>();
+    const singlesPlayed = new Map<string, { won: number; lost: number; pointsFor: number; pointsAgainst: number }>();
+    const doublesPlayed = new Map<string, { won: number; lost: number; pointsFor: number; pointsAgainst: number }>();
 
     const fixtureIds = new Set(seasonFixtures.map((f) => f.id));
     const seasonSlots = slots.filter((s) => fixtureIds.has(s.fixture_id));
@@ -4356,30 +4358,40 @@ export default function LeaguePage() {
 
       if (!slot.winner_side) continue;
       if (slot.home_forfeit || slot.away_forfeit) continue;
+      const homePoints = typeof slot.home_points_scored === "number" ? slot.home_points_scored : 0;
+      const awayPoints = typeof slot.away_points_scored === "number" ? slot.away_points_scored : 0;
       if (slot.slot_type === "singles") {
         if (slot.home_player1_id && !slot.home_forfeit) {
-          const prev = singlesPlayed.get(slot.home_player1_id) ?? { won: 0, lost: 0 };
+          const prev = singlesPlayed.get(slot.home_player1_id) ?? { won: 0, lost: 0, pointsFor: 0, pointsAgainst: 0 };
           if (slot.winner_side === "home") prev.won += 1;
           else prev.lost += 1;
+          prev.pointsFor += homePoints;
+          prev.pointsAgainst += awayPoints;
           singlesPlayed.set(slot.home_player1_id, prev);
         }
         if (slot.away_player1_id && !slot.away_forfeit) {
-          const prev = singlesPlayed.get(slot.away_player1_id) ?? { won: 0, lost: 0 };
+          const prev = singlesPlayed.get(slot.away_player1_id) ?? { won: 0, lost: 0, pointsFor: 0, pointsAgainst: 0 };
           if (slot.winner_side === "away") prev.won += 1;
           else prev.lost += 1;
+          prev.pointsFor += awayPoints;
+          prev.pointsAgainst += homePoints;
           singlesPlayed.set(slot.away_player1_id, prev);
         }
       } else {
         for (const id of homeIds) {
-          const prev = doublesPlayed.get(id) ?? { won: 0, lost: 0 };
+          const prev = doublesPlayed.get(id) ?? { won: 0, lost: 0, pointsFor: 0, pointsAgainst: 0 };
           if (slot.winner_side === "home") prev.won += 1;
           else prev.lost += 1;
+          prev.pointsFor += homePoints;
+          prev.pointsAgainst += awayPoints;
           doublesPlayed.set(id, prev);
         }
         for (const id of awayIds) {
-          const prev = doublesPlayed.get(id) ?? { won: 0, lost: 0 };
+          const prev = doublesPlayed.get(id) ?? { won: 0, lost: 0, pointsFor: 0, pointsAgainst: 0 };
           if (slot.winner_side === "away") prev.won += 1;
           else prev.lost += 1;
+          prev.pointsFor += awayPoints;
+          prev.pointsAgainst += homePoints;
           doublesPlayed.set(id, prev);
         }
       }
@@ -4387,7 +4399,7 @@ export default function LeaguePage() {
 
     const toRows = (
       appearancesMap: Map<string, Set<string>>,
-      resultMap: Map<string, { won: number; lost: number }>
+      resultMap: Map<string, { won: number; lost: number; pointsFor: number; pointsAgainst: number }>
     ): PlayerTableRow[] => {
       const ids = new Set<string>([...rosterPlayerIds, ...appearancesMap.keys(), ...resultMap.keys()]);
       return Array.from(ids)
@@ -4404,6 +4416,8 @@ export default function LeaguePage() {
             played,
             won,
             lost,
+            points_for: resultMap.get(id)?.pointsFor ?? 0,
+            points_against: resultMap.get(id)?.pointsAgainst ?? 0,
             win_pct: played > 0 ? Math.round((won / played) * 1000) / 10 : 0,
           };
         })
@@ -4423,12 +4437,16 @@ export default function LeaguePage() {
         played: 0,
         won: 0,
         lost: 0,
+        points_for: 0,
+        points_against: 0,
         win_pct: 0,
       };
       prev.appearances += row.appearances;
       prev.played += row.played;
       prev.won += row.won;
       prev.lost += row.lost;
+      prev.points_for += row.points_for;
+      prev.points_against += row.points_against;
       prev.win_pct = prev.played > 0 ? Math.round((prev.won / prev.played) * 1000) / 10 : 0;
       totalByPlayer.set(row.player_id, prev);
     };
@@ -7449,25 +7467,31 @@ export default function LeaguePage() {
                                 <th className="px-2 py-1.5 text-center" rowSpan={2}>Rank</th>
                                 <th className="px-2 py-1.5" rowSpan={2}>Player</th>
                                 <th className="px-2 py-1.5" rowSpan={2}>Team</th>
-                                <th className="px-2 py-1.5 text-center text-violet-800" colSpan={5}>Singles</th>
-                                <th className="px-2 py-1.5 text-center text-indigo-800" colSpan={5}>Doubles</th>
-                                <th className="px-2 py-1.5 text-center text-emerald-800" colSpan={5}>Total</th>
+                                <th className="px-2 py-1.5 text-center text-violet-800" colSpan={7}>Singles</th>
+                                <th className="px-2 py-1.5 text-center text-indigo-800" colSpan={7}>Doubles</th>
+                                <th className="px-2 py-1.5 text-center text-emerald-800" colSpan={7}>Total</th>
                               </tr>
                               <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-600">
                                 <th className="px-2 py-1 text-center">App</th>
                                 <th className="px-2 py-1 text-center">Played</th>
                                 <th className="px-2 py-1 text-center">Won</th>
                                 <th className="px-2 py-1 text-center">Lost</th>
+                                <th className="px-2 py-1 text-center">PF</th>
+                                <th className="px-2 py-1 text-center">PA</th>
                                 <th className="px-2 py-1 text-center">Win %</th>
                                 <th className="px-2 py-1 text-center">App</th>
                                 <th className="px-2 py-1 text-center">Played</th>
                                 <th className="px-2 py-1 text-center">Won</th>
                                 <th className="px-2 py-1 text-center">Lost</th>
+                                <th className="px-2 py-1 text-center">PF</th>
+                                <th className="px-2 py-1 text-center">PA</th>
                                 <th className="px-2 py-1 text-center">Win %</th>
                                 <th className="px-2 py-1 text-center">App</th>
                                 <th className="px-2 py-1 text-center">Played</th>
                                 <th className="px-2 py-1 text-center">Won</th>
                                 <th className="px-2 py-1 text-center">Lost</th>
+                                <th className="px-2 py-1 text-center">PF</th>
+                                <th className="px-2 py-1 text-center">PA</th>
                                 <th className="px-2 py-1 text-center">Win %</th>
                               </tr>
                             </>
@@ -7480,6 +7504,8 @@ export default function LeaguePage() {
                               <th className="px-2 py-1.5 text-center">Played</th>
                               <th className="px-2 py-1.5 text-center">Won</th>
                               <th className="px-2 py-1.5 text-center">Lost</th>
+                              <th className="px-2 py-1.5 text-center">PF</th>
+                              <th className="px-2 py-1.5 text-center">PA</th>
                               <th className="px-2 py-1.5 text-center">Win %</th>
                             </tr>
                           )}
@@ -7504,16 +7530,22 @@ export default function LeaguePage() {
                                   <td className="px-2 py-1 text-center">{r.singles?.played ?? 0}</td>
                                   <td className="px-2 py-1 text-center">{r.singles?.won ?? 0}</td>
                                   <td className="px-2 py-1 text-center">{r.singles?.lost ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{r.singles?.points_for ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{r.singles?.points_against ?? 0}</td>
                                   <td className="px-2 py-1 text-center">{(r.singles?.win_pct ?? 0).toFixed(1)}%</td>
                                   <td className="px-2 py-1 text-center">{r.doubles?.appearances ?? 0}</td>
                                   <td className="px-2 py-1 text-center">{r.doubles?.played ?? 0}</td>
                                   <td className="px-2 py-1 text-center">{r.doubles?.won ?? 0}</td>
                                   <td className="px-2 py-1 text-center">{r.doubles?.lost ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{r.doubles?.points_for ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{r.doubles?.points_against ?? 0}</td>
                                   <td className="px-2 py-1 text-center">{(r.doubles?.win_pct ?? 0).toFixed(1)}%</td>
                                   <td className="px-2 py-1 text-center">{r.total?.appearances ?? 0}</td>
                                   <td className="px-2 py-1 text-center">{r.total?.played ?? 0}</td>
                                   <td className="px-2 py-1 text-center">{r.total?.won ?? 0}</td>
                                   <td className="px-2 py-1 text-center">{r.total?.lost ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{r.total?.points_for ?? 0}</td>
+                                  <td className="px-2 py-1 text-center">{r.total?.points_against ?? 0}</td>
                                   <td className="px-2 py-1 text-center">{(r.total?.win_pct ?? 0).toFixed(1)}%</td>
                                 </>
                               ) : (
@@ -7531,6 +7563,12 @@ export default function LeaguePage() {
                                     {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.lost ?? 0}
                                   </td>
                                   <td className="px-2 py-1 text-center">
+                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.points_for ?? 0}
+                                  </td>
+                                  <td className="px-2 py-1 text-center">
+                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.points_against ?? 0}
+                                  </td>
+                                  <td className="px-2 py-1 text-center">
                                     {((playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.win_pct ?? 0).toFixed(1)}%
                                   </td>
                                 </>
@@ -7539,7 +7577,7 @@ export default function LeaguePage() {
                           ))}
                           {playerSummaryRows.length === 0 ? (
                             <tr>
-                              <td className="px-2 py-2 text-slate-500" colSpan={playerTableView === "all" ? 18 : 8}>
+                              <td className="px-2 py-2 text-slate-500" colSpan={playerTableView === "all" ? 24 : 10}>
                                 No player data yet.
                               </td>
                             </tr>
