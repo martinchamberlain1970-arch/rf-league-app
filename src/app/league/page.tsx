@@ -7459,62 +7459,62 @@ export default function LeaguePage() {
                       </div>
                     </div>
                     <div className="mt-3 overflow-auto rounded-xl border border-slate-200 bg-white">
-                      <table className="min-w-full border-collapse text-xs">
+                      <table className="min-w-[1480px] border-collapse text-xs">
                         <thead>
                           {playerTableView === "all" ? (
                             <>
                               <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-500">
-                                <th className="px-2 py-1.5 text-center" rowSpan={2}>Rank</th>
-                                <th className="px-2 py-1.5" rowSpan={2}>Player</th>
-                                <th className="px-2 py-1.5" rowSpan={2}>Team</th>
-                                <th className="px-2 py-1.5 text-center text-violet-800" colSpan={7}>Singles</th>
-                                <th className="px-2 py-1.5 text-center text-indigo-800" colSpan={7}>Doubles</th>
-                                <th className="px-2 py-1.5 text-center text-emerald-800" colSpan={7}>Total</th>
+                                <th className="w-14 px-3 py-2 text-center" rowSpan={2}>Rank</th>
+                                <th className="min-w-[180px] px-3 py-2" rowSpan={2}>Player</th>
+                                <th className="min-w-[150px] px-3 py-2" rowSpan={2}>Team</th>
+                                <th className="px-3 py-2 text-center text-violet-800" colSpan={7}>Singles</th>
+                                <th className="px-3 py-2 text-center text-indigo-800" colSpan={7}>Doubles</th>
+                                <th className="px-3 py-2 text-center text-emerald-800" colSpan={7}>Total</th>
                               </tr>
                               <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-600">
-                                <th className="px-2 py-1 text-center">App</th>
-                                <th className="px-2 py-1 text-center">Played</th>
-                                <th className="px-2 py-1 text-center">Won</th>
-                                <th className="px-2 py-1 text-center">Lost</th>
-                                <th className="px-2 py-1 text-center">PF</th>
-                                <th className="px-2 py-1 text-center">PA</th>
-                                <th className="px-2 py-1 text-center">Win %</th>
-                                <th className="px-2 py-1 text-center">App</th>
-                                <th className="px-2 py-1 text-center">Played</th>
-                                <th className="px-2 py-1 text-center">Won</th>
-                                <th className="px-2 py-1 text-center">Lost</th>
-                                <th className="px-2 py-1 text-center">PF</th>
-                                <th className="px-2 py-1 text-center">PA</th>
-                                <th className="px-2 py-1 text-center">Win %</th>
-                                <th className="px-2 py-1 text-center">App</th>
-                                <th className="px-2 py-1 text-center">Played</th>
-                                <th className="px-2 py-1 text-center">Won</th>
-                                <th className="px-2 py-1 text-center">Lost</th>
-                                <th className="px-2 py-1 text-center">PF</th>
-                                <th className="px-2 py-1 text-center">PA</th>
-                                <th className="px-2 py-1 text-center">Win %</th>
+                                <th className="w-16 px-3 py-1.5 text-center">App</th>
+                                <th className="w-16 px-3 py-1.5 text-center">Played</th>
+                                <th className="w-16 px-3 py-1.5 text-center">Won</th>
+                                <th className="w-16 px-3 py-1.5 text-center">Lost</th>
+                                <th className="w-16 px-3 py-1.5 text-center">PF</th>
+                                <th className="w-16 px-3 py-1.5 text-center">PA</th>
+                                <th className="w-20 px-3 py-1.5 text-center">Win %</th>
+                                <th className="w-16 px-3 py-1.5 text-center">App</th>
+                                <th className="w-16 px-3 py-1.5 text-center">Played</th>
+                                <th className="w-16 px-3 py-1.5 text-center">Won</th>
+                                <th className="w-16 px-3 py-1.5 text-center">Lost</th>
+                                <th className="w-16 px-3 py-1.5 text-center">PF</th>
+                                <th className="w-16 px-3 py-1.5 text-center">PA</th>
+                                <th className="w-20 px-3 py-1.5 text-center">Win %</th>
+                                <th className="w-16 px-3 py-1.5 text-center">App</th>
+                                <th className="w-16 px-3 py-1.5 text-center">Played</th>
+                                <th className="w-16 px-3 py-1.5 text-center">Won</th>
+                                <th className="w-16 px-3 py-1.5 text-center">Lost</th>
+                                <th className="w-16 px-3 py-1.5 text-center">PF</th>
+                                <th className="w-16 px-3 py-1.5 text-center">PA</th>
+                                <th className="w-20 px-3 py-1.5 text-center">Win %</th>
                               </tr>
                             </>
                           ) : (
                             <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-600">
-                              <th className="px-2 py-1.5 text-center">Rank</th>
-                              <th className="px-2 py-1.5">Player</th>
-                              <th className="px-2 py-1.5">Team</th>
-                              <th className="px-2 py-1.5 text-center">App</th>
-                              <th className="px-2 py-1.5 text-center">Played</th>
-                              <th className="px-2 py-1.5 text-center">Won</th>
-                              <th className="px-2 py-1.5 text-center">Lost</th>
-                              <th className="px-2 py-1.5 text-center">PF</th>
-                              <th className="px-2 py-1.5 text-center">PA</th>
-                              <th className="px-2 py-1.5 text-center">Win %</th>
+                              <th className="w-14 px-3 py-2 text-center">Rank</th>
+                              <th className="min-w-[180px] px-3 py-2">Player</th>
+                              <th className="min-w-[150px] px-3 py-2">Team</th>
+                              <th className="w-16 px-3 py-2 text-center">App</th>
+                              <th className="w-16 px-3 py-2 text-center">Played</th>
+                              <th className="w-16 px-3 py-2 text-center">Won</th>
+                              <th className="w-16 px-3 py-2 text-center">Lost</th>
+                              <th className="w-16 px-3 py-2 text-center">PF</th>
+                              <th className="w-16 px-3 py-2 text-center">PA</th>
+                              <th className="w-20 px-3 py-2 text-center">Win %</th>
                             </tr>
                           )}
                         </thead>
                         <tbody>
                           {playerSummaryRows.map((r) => (
                             <tr key={r.player_id} className="border-b border-slate-100 text-slate-800">
-                              <td className="px-2 py-1 text-center font-semibold">{r.rank ?? "-"}</td>
-                              <td className="px-2 py-1">
+                              <td className="px-3 py-2 text-center font-semibold">{r.rank ?? "-"}</td>
+                              <td className="px-3 py-2">
                                 <button
                                   type="button"
                                   onClick={() => setSelectedPlayerTablePlayerId(r.player_id)}
@@ -7523,52 +7523,52 @@ export default function LeaguePage() {
                                   {r.player_name}
                                 </button>
                               </td>
-                              <td className="px-2 py-1">{r.team_name}</td>
+                              <td className="px-3 py-2">{r.team_name}</td>
                               {playerTableView === "all" ? (
                                 <>
-                                  <td className="px-2 py-1 text-center">{r.singles?.appearances ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{r.singles?.played ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{r.singles?.won ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{r.singles?.lost ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{r.singles?.points_for ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{r.singles?.points_against ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{(r.singles?.win_pct ?? 0).toFixed(1)}%</td>
-                                  <td className="px-2 py-1 text-center">{r.doubles?.appearances ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{r.doubles?.played ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{r.doubles?.won ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{r.doubles?.lost ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{r.doubles?.points_for ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{r.doubles?.points_against ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{(r.doubles?.win_pct ?? 0).toFixed(1)}%</td>
-                                  <td className="px-2 py-1 text-center">{r.total?.appearances ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{r.total?.played ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{r.total?.won ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{r.total?.lost ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{r.total?.points_for ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{r.total?.points_against ?? 0}</td>
-                                  <td className="px-2 py-1 text-center">{(r.total?.win_pct ?? 0).toFixed(1)}%</td>
+                                  <td className="px-3 py-2 text-center">{r.singles?.appearances ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{r.singles?.played ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{r.singles?.won ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{r.singles?.lost ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{r.singles?.points_for ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{r.singles?.points_against ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{(r.singles?.win_pct ?? 0).toFixed(1)}%</td>
+                                  <td className="px-3 py-2 text-center">{r.doubles?.appearances ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{r.doubles?.played ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{r.doubles?.won ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{r.doubles?.lost ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{r.doubles?.points_for ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{r.doubles?.points_against ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{(r.doubles?.win_pct ?? 0).toFixed(1)}%</td>
+                                  <td className="px-3 py-2 text-center">{r.total?.appearances ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{r.total?.played ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{r.total?.won ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{r.total?.lost ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{r.total?.points_for ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{r.total?.points_against ?? 0}</td>
+                                  <td className="px-3 py-2 text-center">{(r.total?.win_pct ?? 0).toFixed(1)}%</td>
                                 </>
                               ) : (
                                 <>
-                                  <td className="px-2 py-1 text-center">
+                                  <td className="px-3 py-2 text-center">
                                     {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.appearances ?? 0}
                                   </td>
-                                  <td className="px-2 py-1 text-center">
+                                  <td className="px-3 py-2 text-center">
                                     {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.played ?? 0}
                                   </td>
-                                  <td className="px-2 py-1 text-center">
+                                  <td className="px-3 py-2 text-center">
                                     {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.won ?? 0}
                                   </td>
-                                  <td className="px-2 py-1 text-center">
+                                  <td className="px-3 py-2 text-center">
                                     {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.lost ?? 0}
                                   </td>
-                                  <td className="px-2 py-1 text-center">
+                                  <td className="px-3 py-2 text-center">
                                     {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.points_for ?? 0}
                                   </td>
-                                  <td className="px-2 py-1 text-center">
+                                  <td className="px-3 py-2 text-center">
                                     {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.points_against ?? 0}
                                   </td>
-                                  <td className="px-2 py-1 text-center">
+                                  <td className="px-3 py-2 text-center">
                                     {((playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.win_pct ?? 0).toFixed(1)}%
                                   </td>
                                 </>
