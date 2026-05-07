@@ -109,7 +109,7 @@ export default function PublicLeagueBoardPage() {
     void load();
     const timer = window.setInterval(() => {
       void load();
-    }, 60000);
+    }, 10000);
     return () => {
       active = false;
       window.clearInterval(timer);
@@ -129,7 +129,7 @@ export default function PublicLeagueBoardPage() {
         const currentIndex = panels.indexOf(current);
         return panels[(currentIndex + 1) % panels.length] ?? panels[0];
       });
-    }, 20000);
+    }, 30000);
     return () => {
       window.clearInterval(timer);
     };

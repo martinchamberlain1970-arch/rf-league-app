@@ -549,7 +549,7 @@ export default function CaptainResultsPage() {
     setActiveEntryTab("lineup");
   }, [selectedFixture, homeLineupSubmitted, awayLineupSubmitted]);
 
-  const saveProgress = () => {
+  const saveProgress = async () => {
     if (!selectedFixture || !draftStorageKey || typeof window === "undefined") return;
     const draft: CaptainResultDraft = {
       slots,
@@ -558,11 +558,75 @@ export default function CaptainResultsPage() {
       savedAt: new Date().toISOString(),
     };
     window.localStorage.setItem(draftStorageKey, JSON.stringify(draft));
-    setInfo({ title: "Progress saved", description: "Your draft has been saved on this device and can be restored when you return." });
+    if (!homeSideCanManageScorecard || (!lineupsLocked && !preMatchPaperRecord)) {
+      setInfo({ title: "Progress saved", description: "Your draft has been saved on this device and can be restored when you return." });
+      return;
+    }
+
+    const client = supabase;
+    if (!client) {
+      setInfo({ title: "Progress saved", description: "Your draft has been saved on this device and can be restored when you return." });
+      return;
+    }
+
+    const frameResults: SubmissionFrameResult[] = slots.map((s) => ({
+      slot_no: s.slot_no,
+      slot_type: s.slot_type,
+      winner_side: deriveWinnerFromFrame(s),
+      home_player1_id: s.home_player1_id ?? null,
+      home_player2_id: s.home_player2_id ?? null,
+      away_player1_id: s.away_player1_id ?? null,
+      away_player2_id: s.away_player2_id ?? null,
+      home_nominated: Boolean(s.home_nominated),
+      away_nominated: Boolean(s.away_nominated),
+      home_forfeit: Boolean(s.home_forfeit),
+      away_forfeit: Boolean(s.away_forfeit),
+      home_nominated_name: s.home_nominated_name ?? null,
+      away_nominated_name: s.away_nominated_name ?? null,
+      home_points_scored: typeof s.home_points_scored === "number" ? s.home_points_scored : null,
+      away_points_scored: typeof s.away_points_scored === "number" ? s.away_points_scored : null,
+    }));
+    const breakRows = getValidatedBreakRows();
+    if (breakRows.error) {
+      setMessage(breakRows.error);
+      return;
+    }
+    if (frameResults.length > 0) frameResults[0].break_entries = breakRows.rows;
+
+    const sessionRes = await client.auth.getSession();
+    const token = sessionRes.data.session?.access_token ?? null;
+    if (!token) {
+      setMessage("Session expired. Please sign in again.");
+      return;
+    }
+
+    try {
+      const resp = await fetch("/api/league/save-progress", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          fixtureId: selectedFixture.id,
+          frameResults,
+          scorecardPhotoUrl: scorecardPhotoUrl.trim() || null,
+        }),
+      });
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(payload?.error ?? "Failed to save live score progress.");
+      await loadAll();
+      setInfo({
+        title: "Progress saved",
+        description: "Your draft has been saved on this device and the live match board has been updated.",
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Failed to save live score progress.");
+    }
   };
 
   const saveLineupDraft = () => {
-    saveProgress();
+    void saveProgress();
     setInfo({
       title: "Lineup draft saved",
       description: "Your lineup draft has been saved on this device. Only submit it once the team is final.",
