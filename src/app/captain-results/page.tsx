@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
@@ -204,6 +204,11 @@ export default function CaptainResultsPage() {
     { player_id: null, entered_player_name: "", break_value: "" },
     { player_id: null, entered_player_name: "", break_value: "" },
   ]);
+
+  const [lastAutoSavedAt, setLastAutoSavedAt] = useState<string | null>(null);
+  const autoSaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const autoSaveMutedRef = useRef(true);
+  const autoSaveNoticeShownRef = useRef(false);
 
   const canSubmit = !admin.isSuper;
   const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
@@ -549,7 +554,7 @@ export default function CaptainResultsPage() {
     setActiveEntryTab("lineup");
   }, [selectedFixture, homeLineupSubmitted, awayLineupSubmitted]);
 
-  const saveProgress = async () => {
+  const saveProgress = async (mode: "manual" | "auto" = "manual") => {
     if (!selectedFixture || !draftStorageKey || typeof window === "undefined") return;
     const draft: CaptainResultDraft = {
       slots,
@@ -559,13 +564,17 @@ export default function CaptainResultsPage() {
     };
     window.localStorage.setItem(draftStorageKey, JSON.stringify(draft));
     if (!homeSideCanManageScorecard || (!lineupsLocked && !preMatchPaperRecord)) {
-      setInfo({ title: "Progress saved", description: "Your draft has been saved on this device and can be restored when you return." });
+      if (mode === "manual") {
+        setInfo({ title: "Progress saved", description: "Your draft has been saved on this device and can be restored when you return." });
+      }
       return;
     }
 
     const client = supabase;
     if (!client) {
-      setInfo({ title: "Progress saved", description: "Your draft has been saved on this device and can be restored when you return." });
+      if (mode === "manual") {
+        setInfo({ title: "Progress saved", description: "Your draft has been saved on this device and can be restored when you return." });
+      }
       return;
     }
 
@@ -615,15 +624,65 @@ export default function CaptainResultsPage() {
       });
       const payload = await resp.json().catch(() => ({}));
       if (!resp.ok) throw new Error(payload?.error ?? "Failed to save live score progress.");
+      autoSaveMutedRef.current = true;
       await loadAll();
-      setInfo({
-        title: "Progress saved",
-        description: "Your draft has been saved on this device and the live match board has been updated.",
-      });
+      window.setTimeout(() => {
+        autoSaveMutedRef.current = false;
+      }, 600);
+      setLastAutoSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
+      if (mode === "manual") {
+        setInfo({
+          title: "Progress saved",
+          description: "Your draft has been saved on this device and the live match board has been updated.",
+        });
+      }
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to save live score progress.");
     }
   };
+
+  useEffect(() => {
+    if (!selectedFixture || activeEntryTab !== "scorecard") return;
+    if (!homeSideCanManageScorecard || (!lineupsLocked && !preMatchPaperRecord)) return;
+    if (autoSaveMutedRef.current) return;
+    if (autoSaveTimerRef.current) window.clearTimeout(autoSaveTimerRef.current);
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      void saveProgress("auto");
+    }, 1200);
+    return () => {
+      if (autoSaveTimerRef.current) window.clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [
+    activeEntryTab,
+    fixtureBreaks,
+    homeSideCanManageScorecard,
+    lineupsLocked,
+    preMatchPaperRecord,
+    scorecardPhotoUrl,
+    selectedFixture,
+    slots,
+  ]);
+
+  useEffect(() => {
+    autoSaveMutedRef.current = true;
+    setLastAutoSavedAt(null);
+    autoSaveNoticeShownRef.current = false;
+    const timer = window.setTimeout(() => {
+      autoSaveMutedRef.current = false;
+    }, 300);
+    return () => window.clearTimeout(timer);
+  }, [selectedFixture?.id, activeEntryTab]);
+
+  useEffect(() => {
+    if (!selectedFixture || activeEntryTab !== "scorecard") return;
+    if (!homeSideCanManageScorecard || (!lineupsLocked && !preMatchPaperRecord)) return;
+    if (autoSaveNoticeShownRef.current) return;
+    autoSaveNoticeShownRef.current = true;
+    setInfo({
+      title: "Auto-save active",
+      description: "Live score updates now save automatically for the home team and will feed the public live board as you go.",
+    });
+  }, [activeEntryTab, homeSideCanManageScorecard, lineupsLocked, preMatchPaperRecord, selectedFixture]);
 
   const saveLineupDraft = () => {
     void saveProgress();
@@ -1892,6 +1951,11 @@ export default function CaptainResultsPage() {
                       </section>
 
                       <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
+                        {homeSideCanManageScorecard ? (
+                          <p className="mb-2 text-xs text-emerald-900">
+                            Auto-save is active for live score updates. {lastAutoSavedAt ? `Last auto-saved at ${lastAutoSavedAt}.` : "Waiting for your next change."}
+                          </p>
+                        ) : null}
                         <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">
                           <input
                             className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
@@ -1902,7 +1966,7 @@ export default function CaptainResultsPage() {
                           />
                           <button
                             type="button"
-                            onClick={saveProgress}
+                            onClick={() => void saveProgress("manual")}
                             disabled={!homeSideCanManageScorecard}
                             className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
                           >
