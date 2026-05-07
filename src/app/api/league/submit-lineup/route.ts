@@ -19,6 +19,11 @@ type FramePatch = {
   away_nominated_name?: string | null;
 };
 
+type FixtureFrameRow = {
+  id: string;
+  slot_type: "singles" | "doubles";
+};
+
 export async function POST(req: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
     return NextResponse.json({ error: "Server is not configured." }, { status: 500 });
@@ -131,10 +136,55 @@ export async function POST(req: NextRequest) {
     ? ["home_player1_id", "home_player2_id", "home_nominated", "home_forfeit", "home_nominated_name"] as const
     : ["away_player1_id", "away_player2_id", "away_nominated", "away_forfeit", "away_nominated_name"] as const;
 
+  const frameRes = await adminClient
+    .from("league_fixture_frames")
+    .select("id,slot_type")
+    .eq("fixture_id", fixture.id);
+
+  if (frameRes.error) {
+    return NextResponse.json({ error: frameRes.error.message }, { status: 400 });
+  }
+
+  const frameById = new Map(((frameRes.data ?? []) as FixtureFrameRow[]).map((frame) => [frame.id, frame]));
+
   for (const patch of sideFields) {
     if (!patch?.id) {
       return NextResponse.json({ error: "Every frame update must include an id." }, { status: 400 });
     }
+
+    const frame = frameById.get(patch.id);
+    if (!frame) {
+      return NextResponse.json({ error: `Frame ${patch.id} does not belong to this fixture.` }, { status: 400 });
+    }
+
+    if (side === "home") {
+      const hasSinglesSelection = Boolean(patch.home_player1_id) || Boolean(patch.home_nominated) || Boolean(patch.home_forfeit);
+      const hasDoublesSelection = Boolean(patch.home_player1_id) && Boolean(patch.home_player2_id);
+      const nominatedNameValid = !patch.home_nominated || Boolean(patch.home_nominated_name?.trim());
+
+      const lineupComplete = frame.slot_type === "doubles" ? hasDoublesSelection : hasSinglesSelection;
+      if (!lineupComplete || !nominatedNameValid) {
+        return NextResponse.json(
+          { error: "Complete every home frame selection before submitting the lineup." },
+          { status: 400 }
+        );
+      }
+    } else {
+      const hasSinglesSelection = Boolean(patch.away_player1_id) || Boolean(patch.away_nominated) || Boolean(patch.away_forfeit);
+      const hasDoublesSelection = Boolean(patch.away_player1_id) && Boolean(patch.away_player2_id);
+      const nominatedNameValid = !patch.away_nominated || Boolean(patch.away_nominated_name?.trim());
+
+      const lineupComplete = frame.slot_type === "doubles" ? hasDoublesSelection : hasSinglesSelection;
+      if (!lineupComplete || !nominatedNameValid) {
+        return NextResponse.json(
+          { error: "Complete every away frame selection before submitting the lineup." },
+          { status: 400 }
+        );
+      }
+    }
+  }
+
+  for (const patch of sideFields) {
     const updatePatch: Record<string, unknown> = {};
     for (const key of allowedKeys) {
       if (key in patch) updatePatch[key] = patch[key];
