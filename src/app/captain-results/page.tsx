@@ -148,6 +148,17 @@ function isBeforeFixtureStart(fixtureDate: string | null) {
   return new Date() < start;
 }
 
+function isLineupSubmissionOpen(fixtureDate: string | null) {
+  if (!fixtureDate) return false;
+  const start = new Date(`${fixtureDate}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return false;
+  const hardStop = new Date(start);
+  hardStop.setDate(hardStop.getDate() + 1);
+  hardStop.setHours(1, 0, 0, 0);
+  const now = new Date();
+  return now >= start && now <= hardStop;
+}
+
 function expectedWinProbability(ownRating: number, opponentRating: number) {
   return 1 / (1 + 10 ** ((opponentRating - ownRating) / 400));
 }
@@ -177,6 +188,7 @@ export default function CaptainResultsPage() {
   const [pendingSubmissionMap, setPendingSubmissionMap] = useState<Map<string, PendingSubmission>>(new Map());
 
   const [slots, setSlots] = useState<FrameSlot[]>([]);
+  const [activeEntryTab, setActiveEntryTab] = useState<"lineup" | "scorecard">("lineup");
   const [nominatedNames, setNominatedNames] = useState<Record<string, string>>({});
   const [breaksFeatureAvailable, setBreaksFeatureAvailable] = useState(true);
   const [fixtureBreaks, setFixtureBreaks] = useState<BreakRow[]>([
@@ -348,7 +360,7 @@ export default function CaptainResultsPage() {
   const homeLineupSubmitted = Boolean(selectedFixture?.home_lineup_submitted_at);
   const awayLineupSubmitted = Boolean(selectedFixture?.away_lineup_submitted_at);
   const lineupsLocked = Boolean(preMatchPaperRecord || (homeLineupSubmitted && awayLineupSubmitted));
-  const lineupWindowOpen = Boolean(selectedFixture && isFixtureDay(selectedFixture.fixture_date) && isBeforeFixtureStart(selectedFixture.fixture_date));
+  const lineupWindowOpen = Boolean(selectedFixture && isLineupSubmissionOpen(selectedFixture.fixture_date));
   const canSubmitHomeLineup = Boolean(
     selectedFixture &&
       selectedFixtureSide === "home" &&
@@ -481,6 +493,15 @@ export default function CaptainResultsPage() {
     }
     void loadBreaks(selectedFixture.id);
   }, [selectedFixture, allSlots, pendingSubmissionMap]);
+
+  useEffect(() => {
+    if (!selectedFixture) return;
+    if (homeLineupSubmitted && awayLineupSubmitted) {
+      setActiveEntryTab("scorecard");
+      return;
+    }
+    setActiveEntryTab("lineup");
+  }, [selectedFixture, homeLineupSubmitted, awayLineupSubmitted]);
 
   const saveProgress = () => {
     if (!selectedFixture || !draftStorageKey || typeof window === "undefined") return;
@@ -796,7 +817,7 @@ export default function CaptainResultsPage() {
     if (preMatchPaperRecord) return false;
     if (side === "home" && homeLineupSubmitted) return true;
     if (side === "away" && awayLineupSubmitted) return true;
-    if (!lineupWindowOpen) return false;
+    if (!lineupWindowOpen) return true;
     if (side === "home") return selectedFixtureSide !== "home";
     if (!homeLineupSubmitted) return true;
     return selectedFixtureSide !== "away";
@@ -871,7 +892,7 @@ export default function CaptainResultsPage() {
         title: side === "home" ? "Home lineup submitted" : "Away lineup submitted",
         description:
           side === "home"
-            ? "Home lineup saved. The away captain can now complete their lineup before 19:30."
+            ? "Home lineup saved. The away captain can now complete and confirm the lineup for tonight's fixture."
             : "Away lineup saved. Lineups are now locked and the fixture is ready for score entry.",
       });
     } catch (error) {
@@ -1023,7 +1044,7 @@ export default function CaptainResultsPage() {
             <section className={`${sectionCardClass} ${sectionCardTintClass} space-y-4`}>
               <div>
                 <h2 className={sectionTitleClass}>Fixture Entry</h2>
-                <p className="mt-1 text-sm text-slate-600">Choose a fixture, enter the pre-match lineup on fixture day before 19:30, then complete the frame scores and submit the result for review.</p>
+                <p className="mt-1 text-sm text-slate-600">Choose a fixture, send the home lineup first, let the away team confirm it, then move on to frame scores and the final scorecard submission.</p>
               </div>
               <select
                 className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
@@ -1046,6 +1067,33 @@ export default function CaptainResultsPage() {
               ) : null}
               {selectedFixture ? (
                 <div className="space-y-3">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setActiveEntryTab("lineup")}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                        activeEntryTab === "lineup"
+                          ? "border-sky-700 bg-sky-700 text-white"
+                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                      }`}
+                    >
+                      1. Team lineup
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (lineupsLocked || preMatchPaperRecord) setActiveEntryTab("scorecard");
+                      }}
+                      disabled={!lineupsLocked && !preMatchPaperRecord}
+                      className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                        activeEntryTab === "scorecard"
+                          ? "border-emerald-700 bg-emerald-700 text-white"
+                          : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                      } disabled:cursor-not-allowed disabled:opacity-60`}
+                    >
+                      2. Scorecard
+                    </button>
+                  </div>
                   {selectedFixtureSide === "home" ? (
                     <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
                       <strong>Home team action:</strong> your team is the default result submitter for this fixture. Please complete the card in the app and submit it by midnight on the following day.
@@ -1094,7 +1142,7 @@ export default function CaptainResultsPage() {
                       <p className="mt-1 text-sm text-slate-700">
                         {pendingByFixture.has(selectedFixture.id)
                           ? "Read-only until Super User review is completed."
-                          : "Save progress locally or submit once every frame is complete."}
+                          : "Save progress after each frame and only submit once all frame scores are complete."}
                       </p>
                     </div>
                     <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 shadow-sm">
@@ -1108,14 +1156,14 @@ export default function CaptainResultsPage() {
                               ? "Awaiting away team"
                               : "Awaiting home team"}
                       </p>
-                      <p className="mt-1 text-sm text-slate-700">Home submits on fixture day. Away can respond after home submits and before 19:30.</p>
+                      <p className="mt-1 text-sm text-slate-700">Home should submit by 19:15. Away should respond by 19:30 once the home team has sent its lineup.</p>
                     </div>
                   </div>
                   <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-3 text-sm text-slate-700">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <div className="space-y-1">
                         <p>
-                          Pre-match lineup window: <strong>fixture day only, before 19:30</strong>
+                          Pre-match lineup target: <strong>home by 19:15, away by 19:30</strong>
                         </p>
                         <p>
                           Lineup order: <strong>home team first, away team second</strong>
@@ -1153,7 +1201,7 @@ export default function CaptainResultsPage() {
                               disabled={submitting}
                               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
                             >
-                              {submitting ? "Saving..." : "Submit home lineup"}
+                              {submitting ? "Saving..." : "Submit team to opponent"}
                             </button>
                             <button
                               type="button"
@@ -1174,70 +1222,168 @@ export default function CaptainResultsPage() {
                             disabled={submitting}
                             className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
                           >
-                            {submitting ? "Saving..." : "Submit away lineup"}
+                            {submitting ? "Saving..." : "Submit and confirm lineup"}
                           </button>
                         ) : null}
                       </div>
                     </div>
                   </div>
-                  {pendingByFixture.has(selectedFixture.id) ? (
+                  {activeEntryTab === "lineup" ? (
+                    <section className="rounded-2xl border border-sky-200 bg-white p-4 shadow-sm">
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div>
+                          <h3 className="text-base font-semibold text-slate-900">Lineup entry</h3>
+                          <p className="mt-1 text-sm text-slate-600">
+                            Enter the players for frames 1-{slots.length}. Home team sends its lineup first. The away team then confirms against the home lineup already shown here.
+                          </p>
+                        </div>
+                        <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-800">
+                          {selectedFixtureSide === "home" ? "Home team view" : selectedFixtureSide === "away" ? "Away team view" : "Fixture view"}
+                        </span>
+                      </div>
+                      <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                        {slots.map((slot) => {
+                          const homeSinglesCount = new Map<string, number>();
+                          const awaySinglesCount = new Map<string, number>();
+                          const homeSelectionLocked = isSideSelectionLocked("home");
+                          const awaySelectionLocked = isSideSelectionLocked("away");
+                          for (const s of slots) {
+                            if (s.slot_type !== "singles" || s.id === slot.id) continue;
+                            if (s.home_player1_id) homeSinglesCount.set(s.home_player1_id, (homeSinglesCount.get(s.home_player1_id) ?? 0) + 1);
+                            if (s.away_player1_id) awaySinglesCount.set(s.away_player1_id, (awaySinglesCount.get(s.away_player1_id) ?? 0) + 1);
+                          }
+                          const homeSelection = getSinglesSelectionValue(slot, "home");
+                          const awaySelection = getSinglesSelectionValue(slot, "away");
+                          return (
+                            <div key={`lineup-${slot.id}`} className="rounded-xl border border-sky-200 bg-sky-50/60 p-3">
+                              <p className="text-sm font-semibold text-slate-900">
+                                {slot.slot_type === "doubles" ? `Frame ${slot.slot_no} · Doubles` : `Frame ${slot.slot_no} · Singles`}
+                              </p>
+                              <div className="mt-2 grid gap-2">
+                                <div>
+                                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{teamById.get(selectedFixture.home_team_id)?.name ?? "Home"}</p>
+                                  {slot.slot_type === "doubles" ? (
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                      <select className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={slot.home_player1_id ?? ""} onChange={(e) => updateSlotLocal(slot.id, { home_player1_id: e.target.value || null, home_forfeit: false })} disabled={homeSelectionLocked}>
+                                        <option value="">Home player 1</option>
+                                        {homeDoublesOptions.map((id) => <option key={id} value={id} disabled={slot.home_player2_id === id}>{named(playerById.get(id))}</option>)}
+                                      </select>
+                                      <select className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={slot.home_player2_id ?? ""} onChange={(e) => updateSlotLocal(slot.id, { home_player2_id: e.target.value || null })} disabled={homeSelectionLocked}>
+                                        <option value="">Home player 2</option>
+                                        {homeDoublesOptions.map((id) => <option key={id} value={id} disabled={slot.home_player1_id === id}>{named(playerById.get(id))}</option>)}
+                                      </select>
+                                    </div>
+                                  ) : (
+                                    <select className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={homeSelection} onChange={(e) => applySinglesSelection(slot, "home", e.target.value)} disabled={homeSelectionLocked}>
+                                      <option value="">Home player</option>
+                                      {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                      {isWinterFormat && slot.slot_no === 3 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                      {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                      {sortRosterIds(homeRosterIds).map((id) => (
+                                        <option key={id} value={id} disabled={(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id}>
+                                          {named(playerById.get(id))}
+                                          {(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id ? " (Already used in singles)" : ""}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
+                                </div>
+                                <div>
+                                  <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{teamById.get(selectedFixture.away_team_id)?.name ?? "Away"}</p>
+                                  {slot.slot_type === "doubles" ? (
+                                    <div className="grid gap-2 sm:grid-cols-2">
+                                      <select className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={slot.away_player1_id ?? ""} onChange={(e) => updateSlotLocal(slot.id, { away_player1_id: e.target.value || null, away_forfeit: false })} disabled={awaySelectionLocked}>
+                                        <option value="">Away player 1</option>
+                                        {awayDoublesOptions.map((id) => <option key={id} value={id} disabled={slot.away_player2_id === id}>{named(playerById.get(id))}</option>)}
+                                      </select>
+                                      <select className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={slot.away_player2_id ?? ""} onChange={(e) => updateSlotLocal(slot.id, { away_player2_id: e.target.value || null })} disabled={awaySelectionLocked}>
+                                        <option value="">Away player 2</option>
+                                        {awayDoublesOptions.map((id) => <option key={id} value={id} disabled={slot.away_player1_id === id}>{named(playerById.get(id))}</option>)}
+                                      </select>
+                                    </div>
+                                  ) : (
+                                    <select className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={awaySelection} onChange={(e) => applySinglesSelection(slot, "away", e.target.value)} disabled={awaySelectionLocked}>
+                                      <option value="">Away player</option>
+                                      {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                      {isWinterFormat && slot.slot_no === 3 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                      {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                      {sortRosterIds(awayRosterIds).map((id) => (
+                                        <option key={id} value={id} disabled={(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id}>
+                                          {named(playerById.get(id))}
+                                          {(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id ? " (Already used in singles)" : ""}
+                                        </option>
+                                      ))}
+                                    </select>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  ) : null}
+                  {activeEntryTab === "scorecard" && pendingByFixture.has(selectedFixture.id) ? (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                       This fixture has been submitted and is pending Super User review. Your submitted details are shown below in read-only mode.
                     </div>
                   ) : null}
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                    {isWinterFormat ? (
-                      <p>
-                        Winter format: 4 singles + 1 doubles. Singles 3 supports <span className="font-medium">Nominated Player</span>. Singles 4 supports <span className="font-medium">No Show</span>.
-                      </p>
-                    ) : (
-                      <p>
-                        Summer format: 6 singles. Each player can play a maximum of <span className="font-medium">2 singles frames</span>. Frames 5 and 6 support <span className="font-medium">No Show</span>.
-                      </p>
-                    )}
-                    {selectedSeason?.handicap_enabled ? (
-                      <div className="mt-1 space-y-1">
-                        <p>In doubles, team handicap = (player 1 handicap + player 2 handicap) ÷ 2, with the live start capped at {MAX_SNOOKER_START}.</p>
-                        <p>Reviewed handicaps still show the full assessed gap, but the frame start is capped to keep matches competitive.</p>
-                        <p>The {MAX_SNOOKER_START}-point cap is a balance: it gives weaker players a meaningful chance without making the opening score decide too much too early. A lower cap such as 30 can leave bigger strength gaps under-compensated.</p>
-                      </div>
-                    ) : null}
-                  </div>
-                  {lineupPreviewRows.length > 0 ? (
-                    <div className="rounded-xl border border-violet-200 bg-violet-50/70 p-3">
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div>
-                          <p className="text-sm font-semibold text-violet-900">Frame-by-frame lineup preview</p>
-                          <p className="mt-1 text-xs text-violet-900">
-                            Based on the current lineups, capped handicap starts, and current player Elo. This is a guide only, not a guarantee.
+                  {activeEntryTab === "scorecard" ? (
+                    <>
+                      <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
+                        {isWinterFormat ? (
+                          <p>
+                            Winter format: 4 singles + 1 doubles. Singles 3 supports <span className="font-medium">Nominated Player</span>. Singles 4 supports <span className="font-medium">No Show</span>.
                           </p>
-                        </div>
-                        <span className="rounded-full border border-violet-200 bg-white px-3 py-1 text-xs font-semibold text-violet-800">
-                          Max start {MAX_SNOOKER_START}
-                        </span>
-                      </div>
-                      <div className="mt-3 grid gap-3 lg:grid-cols-2">
-                        {lineupPreviewRows.map((row) => (
-                          <div key={row.slotId} className="rounded-xl border border-violet-200 bg-white p-3 shadow-sm">
-                            <p className="text-sm font-semibold text-slate-900">{row.title}</p>
-                            <p className="mt-1 text-sm text-slate-700">{row.matchup}</p>
-                            <p className="mt-1 text-xs text-slate-600">{row.startLabel}</p>
-                            <div className="mt-3 flex items-center justify-between gap-3 text-sm">
-                              <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-900">
-                                Home win chance: <strong>{row.homeProb}%</strong>
-                              </div>
-                              <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
-                                Away win chance: <strong>{row.awayProb}%</strong>
-                              </div>
-                            </div>
-                            <p className="mt-3 text-xs font-medium text-violet-900">{row.guide}</p>
+                        ) : (
+                          <p>
+                            Summer format: 6 singles. Each player can play a maximum of <span className="font-medium">2 singles frames</span>. Frames 5 and 6 support <span className="font-medium">No Show</span>.
+                          </p>
+                        )}
+                        {selectedSeason?.handicap_enabled ? (
+                          <div className="mt-1 space-y-1">
+                            <p>In doubles, team handicap = (player 1 handicap + player 2 handicap) ÷ 2, with the live start capped at {MAX_SNOOKER_START}.</p>
+                            <p>Reviewed handicaps still show the full assessed gap, but the frame start is capped to keep matches competitive.</p>
+                            <p>The {MAX_SNOOKER_START}-point cap is a balance: it gives weaker players a meaningful chance without making the opening score decide too much too early. A lower cap such as 30 can leave bigger strength gaps under-compensated.</p>
                           </div>
-                        ))}
+                        ) : null}
                       </div>
-                    </div>
-                  ) : null}
+                      {lineupPreviewRows.length > 0 ? (
+                        <div className="rounded-xl border border-violet-200 bg-violet-50/70 p-3">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold text-violet-900">Frame-by-frame lineup preview</p>
+                              <p className="mt-1 text-xs text-violet-900">
+                                Based on the current lineups, capped handicap starts, and current player Elo. This is a guide only, not a guarantee.
+                              </p>
+                            </div>
+                            <span className="rounded-full border border-violet-200 bg-white px-3 py-1 text-xs font-semibold text-violet-800">
+                              Max start {MAX_SNOOKER_START}
+                            </span>
+                          </div>
+                          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                            {lineupPreviewRows.map((row) => (
+                              <div key={row.slotId} className="rounded-xl border border-violet-200 bg-white p-3 shadow-sm">
+                                <p className="text-sm font-semibold text-slate-900">{row.title}</p>
+                                <p className="mt-1 text-sm text-slate-700">{row.matchup}</p>
+                                <p className="mt-1 text-xs text-slate-600">{row.startLabel}</p>
+                                <div className="mt-3 flex items-center justify-between gap-3 text-sm">
+                                  <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-emerald-900">
+                                    Home win chance: <strong>{row.homeProb}%</strong>
+                                  </div>
+                                  <div className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-900">
+                                    Away win chance: <strong>{row.awayProb}%</strong>
+                                  </div>
+                                </div>
+                                <p className="mt-3 text-xs font-medium text-violet-900">{row.guide}</p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
 
-                  <fieldset disabled={pendingByFixture.has(selectedFixture.id)} className={pendingByFixture.has(selectedFixture.id) ? "cursor-not-allowed opacity-80" : ""}>
+                      {lineupsLocked || preMatchPaperRecord ? (
+                        <fieldset disabled={pendingByFixture.has(selectedFixture.id)} className={pendingByFixture.has(selectedFixture.id) ? "cursor-not-allowed opacity-80" : ""}>
                   {slots.map((slot) => {
                     const homeSinglesCount = new Map<string, number>();
                     const awaySinglesCount = new Map<string, number>();
@@ -1441,87 +1587,94 @@ export default function CaptainResultsPage() {
                     );
                   })}
 
-                  </fieldset>
+                        </fieldset>
+                      ) : (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                          Complete the team lineup tab first. The scorecard opens once both teams have submitted their lineups, or if paper record has been selected.
+                        </div>
+                      )}
 
-                  <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4">
-                    <h3 className="text-base font-semibold text-slate-900">Breaks 30+</h3>
-                    {!breaksFeatureAvailable ? (
-                      <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                        Break tracking table is missing. Run the SQL migration first.
-                      </p>
-                    ) : null}
-                    <div className="mt-3 space-y-2">
-                      {fixtureBreaks.map((row, idx) => (
-                        <div key={`break-${idx}`} className="grid gap-2 sm:grid-cols-4">
-                          <select
-                            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
-                            value={row.player_id ?? ""}
-                            onChange={(e) => setBreakField(idx, { player_id: e.target.value || null })}
-                          >
-                            <option value="">Select player</option>
-                            {fixturePlayerOptions.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
-                          </select>
+                      <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4">
+                        <h3 className="text-base font-semibold text-slate-900">Breaks 30+</h3>
+                        {!breaksFeatureAvailable ? (
+                          <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                            Break tracking table is missing. Run the SQL migration first.
+                          </p>
+                        ) : null}
+                        <div className="mt-3 space-y-2">
+                          {fixtureBreaks.map((row, idx) => (
+                            <div key={`break-${idx}`} className="grid gap-2 sm:grid-cols-4">
+                              <select
+                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                value={row.player_id ?? ""}
+                                onChange={(e) => setBreakField(idx, { player_id: e.target.value || null })}
+                              >
+                                <option value="">Select player</option>
+                                {fixturePlayerOptions.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+                              </select>
+                              <input
+                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                placeholder="Or enter player name"
+                                value={row.entered_player_name}
+                                onChange={(e) => setBreakField(idx, { entered_player_name: e.target.value })}
+                              />
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                min={30}
+                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                placeholder="Break value (30+)"
+                                value={row.break_value}
+                                onChange={(e) => setBreakField(idx, { break_value: e.target.value })}
+                              />
+                              <button
+                                type="button"
+                                onClick={() => setFixtureBreaks((prev) => prev.filter((_, i) => i !== idx))}
+                                className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700"
+                                disabled={fixtureBreaks.length <= 4 && idx < 4}
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                        <div className="mt-3 flex gap-2">
+                          <button type="button" onClick={addBreakRow} className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700">
+                            More
+                          </button>
+                        </div>
+                      </section>
+
+                      <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
+                        <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">
                           <input
-                            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
-                            placeholder="Or enter player name"
-                            value={row.entered_player_name}
-                            onChange={(e) => setBreakField(idx, { entered_player_name: e.target.value })}
-                          />
-                          <input
-                            type="number"
-                            inputMode="numeric"
-                            pattern="[0-9]*"
-                            min={30}
-                            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
-                            placeholder="Break value (30+)"
-                            value={row.break_value}
-                            onChange={(e) => setBreakField(idx, { break_value: e.target.value })}
+                            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                            placeholder="Optional scorecard photo URL"
+                            value={scorecardPhotoUrl}
+                            onChange={(e) => setScorecardPhotoUrl(e.target.value)}
+                            disabled={pendingByFixture.has(selectedFixture.id)}
                           />
                           <button
                             type="button"
-                            onClick={() => setFixtureBreaks((prev) => prev.filter((_, i) => i !== idx))}
-                            className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700"
-                            disabled={fixtureBreaks.length <= 4 && idx < 4}
+                            onClick={saveProgress}
+                            disabled={pendingByFixture.has(selectedFixture.id)}
+                            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
                           >
-                            Remove
+                            Save progress
+                          </button>
+                          <button
+                            type="button"
+                            onClick={submit}
+                            disabled={submitting || pendingByFixture.has(selectedFixture.id)}
+                            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                          >
+                            {pendingByFixture.has(selectedFixture.id) ? "Submission pending review" : submitting ? "Submitting..." : "Complete and submit scorecard"}
                           </button>
                         </div>
-                      ))}
-                    </div>
-                    <div className="mt-3 flex gap-2">
-                      <button type="button" onClick={addBreakRow} className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700">
-                        More
-                      </button>
-                    </div>
-                  </section>
-
-                  <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
-                    <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">
-                      <input
-                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                        placeholder="Optional scorecard photo URL"
-                        value={scorecardPhotoUrl}
-                        onChange={(e) => setScorecardPhotoUrl(e.target.value)}
-                        disabled={pendingByFixture.has(selectedFixture.id)}
-                      />
-                      <button
-                        type="button"
-                        onClick={saveProgress}
-                        disabled={pendingByFixture.has(selectedFixture.id)}
-                        className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
-                      >
-                        Save progress
-                      </button>
-                      <button
-                        type="button"
-                        onClick={submit}
-                        disabled={submitting || pendingByFixture.has(selectedFixture.id)}
-                        className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-                      >
-                        {pendingByFixture.has(selectedFixture.id) ? "Submission pending review" : submitting ? "Submitting..." : "Submit for approval"}
-                      </button>
-                    </div>
-                  </div>
+                      </div>
+                    </>
+                  ) : null}
                 </div>
               ) : null}
             </section>
