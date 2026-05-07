@@ -231,10 +231,11 @@ export default function PlayersPage() {
       if (!q) return true;
       const linked = players.find((p) => p.id === u.linked_player_id);
       const linkedName = linked?.full_name?.trim() ? linked.full_name : linked?.display_name ?? "";
-      const haystack = `${linkedName} ${u.email ?? ""}`.toLowerCase();
+      const clubName = linked?.location_id ? locationNameById.get(linked.location_id) ?? "" : "";
+      const haystack = `${linkedName} ${clubName} ${u.email ?? ""}`.toLowerCase();
       return haystack.includes(q);
     });
-  }, [appUsers, roleSearch, roleFilter, superAdminEmail, players]);
+  }, [appUsers, roleSearch, roleFilter, superAdminEmail, players, locationNameById]);
   const filteredActivePlayers = useMemo(() => {
     if (profileLocationFilter === "all") return activePlayers;
     if (profileLocationFilter === "__none") return activePlayers.filter((p) => !p.location_id);
@@ -1546,7 +1547,7 @@ export default function PlayersPage() {
                 <input
                   value={roleSearch}
                   onChange={(e) => setRoleSearch(e.target.value)}
-                  placeholder="Search name or email"
+                  placeholder="Search name, club, or email"
                   className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
                 />
                 <select
@@ -1563,16 +1564,32 @@ export default function PlayersPage() {
               <div className="max-h-[34rem] space-y-2 overflow-y-auto pr-1">
                 {filteredRoleUsers.length === 0 ? <p className="text-sm text-slate-600">No matching users.</p> : null}
                 {filteredRoleUsers.map((u) => {
-                  const linked = players.find((p) => p.id === u.linked_player_id);
+                  const linked = playerById.get(u.linked_player_id ?? "");
                   const linkedName = linked?.full_name?.trim() ? linked.full_name : linked?.display_name;
-                  const displayLabel = linkedName ? `${linkedName} (${u.email ?? u.id})` : u.email ?? u.id;
+                  const clubName = linked?.location_id ? locationNameById.get(linked.location_id) ?? "No club registered" : "No club registered";
+                  const displayLabel = linkedName ?? u.email ?? u.id;
                   const isRowSuperUser = Boolean(u.email && u.email.toLowerCase() === superAdminEmail);
                   const roleLabel = isRowSuperUser ? "Super User" : u.role === "admin" ? "Admin" : "User";
                   return (
-                    <div key={u.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm shadow-sm">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-slate-900">{displayLabel}</span>
-                        <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700">{roleLabel}</span>
+                    <div key={u.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm shadow-sm">
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-2">
+                          {linked ? (
+                            <Link href={`/players/${linked.id}`} className="font-semibold text-slate-900 underline-offset-2 hover:text-indigo-700 hover:underline">
+                              {displayLabel}
+                            </Link>
+                          ) : (
+                            <span className="font-semibold text-slate-900">{displayLabel}</span>
+                          )}
+                          <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700">{roleLabel}</span>
+                        </div>
+                        <p className="mt-1 text-sm text-slate-600">{clubName}</p>
+                        {u.email ? <p className="mt-1 text-xs text-slate-500">{u.email}</p> : null}
+                        {linked ? (
+                          <p className="mt-1 text-xs text-slate-500">Open player profile for full registered details.</p>
+                        ) : (
+                          <p className="mt-1 text-xs text-slate-500">No linked player profile yet.</p>
+                        )}
                       </div>
                       <div className="flex gap-2">
                         <button
