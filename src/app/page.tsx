@@ -1038,7 +1038,7 @@ export default function HomePage() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-semibold text-slate-900">Welcome & User Guide</p>
                 {hasCaptainRole ? (
-                  <Link href="/captain-results" className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">
+                  <Link href={tonightLineupHref} className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">
                     {roleGuideLabel}
                   </Link>
                 ) : (
@@ -1077,7 +1077,7 @@ export default function HomePage() {
                     <Link href="/captain-guide" className="rounded-full border border-emerald-300 bg-white px-3 py-1 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">
                       Open guide
                     </Link>
-                    <Link href="/captain-results" className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                    <Link href={tonightLineupHref} className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                       Enter tonight&apos;s lineup
                     </Link>
                   </div>
@@ -1088,7 +1088,7 @@ export default function HomePage() {
                   <Link href="/captain-guide" className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">
                     Open captain guide
                   </Link>
-                  <Link href="/captain-results" className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
+                  <Link href={tonightLineupHref} className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
                     Open captain results
                   </Link>
                 </div>
