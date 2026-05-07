@@ -1139,7 +1139,7 @@ export default function CaptainResultsPage() {
         const p1 = side === "home" ? slot.home_player1_id : slot.away_player1_id;
         const p2 = side === "home" ? slot.home_player2_id : slot.away_player2_id;
         if (!p1 || !p2) {
-          return `Complete every ${side} doubles slot before submitting the lineup.`;
+          return `Frame ${slot.slot_no}: complete both ${side} doubles players before submitting the lineup.`;
         }
         continue;
       }
@@ -1148,10 +1148,10 @@ export default function CaptainResultsPage() {
       const nominatedName = side === "home" ? slot.home_nominated_name : slot.away_nominated_name;
       const forfeit = side === "home" ? slot.home_forfeit : slot.away_forfeit;
       if (!playerId && !nominated && !forfeit) {
-        return `Complete every ${side} singles slot before submitting the lineup.`;
+        return `Frame ${slot.slot_no}: choose the ${side} player, nominated player, or no-show before submitting the lineup.`;
       }
       if (nominated && !nominatedName?.trim()) {
-        return `Enter the nominated player name for ${side} before submitting the lineup.`;
+        return `Frame ${slot.slot_no}: enter the ${side} nominated player name before submitting the lineup.`;
       }
     }
     return null;

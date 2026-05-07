@@ -165,7 +165,14 @@ export async function POST(req: NextRequest) {
       const lineupComplete = frame.slot_type === "doubles" ? hasDoublesSelection : hasSinglesSelection;
       if (!lineupComplete || !nominatedNameValid) {
         return NextResponse.json(
-          { error: "Complete every home frame selection before submitting the lineup." },
+          {
+            error:
+              frame.slot_type === "doubles"
+                ? "A home doubles frame is incomplete. Select both home players before submitting the lineup."
+                : patch.home_nominated && !nominatedNameValid
+                  ? "A home nominated frame is incomplete. Enter the nominated player name before submitting the lineup."
+                  : "A home singles frame is incomplete. Choose the player, nominated player, or no-show before submitting the lineup.",
+          },
           { status: 400 }
         );
       }
@@ -177,7 +184,14 @@ export async function POST(req: NextRequest) {
       const lineupComplete = frame.slot_type === "doubles" ? hasDoublesSelection : hasSinglesSelection;
       if (!lineupComplete || !nominatedNameValid) {
         return NextResponse.json(
-          { error: "Complete every away frame selection before submitting the lineup." },
+          {
+            error:
+              frame.slot_type === "doubles"
+                ? "An away doubles frame is incomplete. Select both away players before submitting the lineup."
+                : patch.away_nominated && !nominatedNameValid
+                  ? "An away nominated frame is incomplete. Enter the nominated player name before submitting the lineup."
+                  : "An away singles frame is incomplete. Choose the player, nominated player, or no-show before submitting the lineup.",
+          },
           { status: 400 }
         );
       }
