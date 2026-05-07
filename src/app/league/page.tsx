@@ -24,6 +24,7 @@ type Player = {
   display_name: string;
   full_name: string | null;
   location_id?: string | null;
+  claimed_by?: string | null;
   rating_snooker?: number | null;
   snooker_handicap?: number | null;
   snooker_handicap_base?: number | null;
@@ -832,6 +833,40 @@ export default function LeaguePage() {
       .map((member) => ({ ...member, player: playerById.get(member.player_id) ?? null }))
       .sort((a, b) => named(a.player).localeCompare(named(b.player)));
   }, [members, playerById, seasonId, selectedSeasonRosterTeam]);
+  const seasonRoleRegistrationByTeam = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        hasCaptainAssigned: boolean;
+        hasViceAssigned: boolean;
+        captainRegistered: boolean;
+        viceRegistered: boolean;
+      }
+    >();
+    for (const team of seasonTeams) {
+      const teamMembers = members
+        .filter((member) => member.season_id === seasonId && member.team_id === team.id)
+        .map((member) => ({ ...member, player: playerById.get(member.player_id) ?? null }));
+      const captainMembers = teamMembers.filter((member) => member.is_captain);
+      const viceMembers = teamMembers.filter((member) => member.is_vice_captain);
+      map.set(team.id, {
+        hasCaptainAssigned: captainMembers.length > 0,
+        hasViceAssigned: viceMembers.length > 0,
+        captainRegistered: captainMembers.some((member) => Boolean(member.player?.claimed_by)),
+        viceRegistered: viceMembers.some((member) => Boolean(member.player?.claimed_by)),
+      });
+    }
+    return map;
+  }, [members, playerById, seasonId, seasonTeams]);
+  const teamsMissingCaptainRegistration = useMemo(
+    () =>
+      seasonTeams.filter((team) => {
+        const state = seasonRoleRegistrationByTeam.get(team.id);
+        if (!state) return false;
+        return (state.hasCaptainAssigned && !state.captainRegistered) || (state.hasViceAssigned && !state.viceRegistered);
+      }),
+    [seasonRoleRegistrationByTeam, seasonTeams]
+  );
   const availableSeasonRosterPlayers = useMemo(() => {
     if (!selectedSeasonRosterTeam || !selectedSeasonRosterVenueId) return [] as Player[];
     const currentTeamPlayerIds = new Set(selectedSeasonRosterMembers.map((member) => member.player_id));
@@ -1411,7 +1446,7 @@ export default function LeaguePage() {
       client.from("locations").select("id,name,address,contact_phone,contact_email,snooker_table_count").order("name"),
       client
         .from("players")
-        .select("id,display_name,full_name,location_id,rating_snooker,snooker_handicap,snooker_handicap_base")
+        .select("id,display_name,full_name,location_id,claimed_by,rating_snooker,snooker_handicap,snooker_handicap_base")
         .eq("is_archived", false),
       client
         .from("league_seasons")
@@ -1493,7 +1528,7 @@ export default function LeaguePage() {
     let playerRows = playersRes.data ?? [];
     let playerErrorMessage = playersRes.error?.message ?? null;
     if (playersRes.error && playersRes.error.message.toLowerCase().includes("is_archived")) {
-      const fallbackPlayers = await client.from("players").select("id,display_name,full_name,location_id");
+      const fallbackPlayers = await client.from("players").select("id,display_name,full_name,location_id,claimed_by");
       if (!fallbackPlayers.error) {
         playerRows = (fallbackPlayers.data ?? []).map((p) => ({
           ...p,
@@ -6123,6 +6158,28 @@ export default function LeaguePage() {
                     </div>
                   ) : (
                     <>
+                    {teamsMissingCaptainRegistration.length > 0 ? (
+                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
+                        <p className="text-sm font-semibold text-amber-900">Captain / vice-captain app registration check</p>
+                        <p className="mt-1 text-xs text-amber-800">
+                          These teams have a captain or vice-captain assigned in the roster, but at least one of those role holders has not yet registered and linked to the app.
+                        </p>
+                        <ul className="mt-2 space-y-1 text-sm text-amber-900">
+                          {teamsMissingCaptainRegistration.map((team) => {
+                            const state = seasonRoleRegistrationByTeam.get(team.id);
+                            const issues = [
+                              state?.hasCaptainAssigned && !state?.captainRegistered ? "captain not registered" : null,
+                              state?.hasViceAssigned && !state?.viceRegistered ? "vice-captain not registered" : null,
+                            ].filter(Boolean);
+                            return (
+                              <li key={`role-registration-${team.id}`} className="rounded-lg border border-amber-200 bg-white px-3 py-2">
+                                <strong>{team.name}</strong>: {issues.join(" and ")}
+                              </li>
+                            );
+                          })}
+                        </ul>
+                      </div>
+                    ) : null}
                     <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,240px)_minmax(0,1fr)_auto]">
                       <select
                         className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
@@ -6288,6 +6345,19 @@ export default function LeaguePage() {
                             {selectedSeasonRosterMembers.length} player(s)
                           </span>
                         </div>
+                        {(() => {
+                          const registrationState = seasonRoleRegistrationByTeam.get(selectedSeasonRosterTeam.id);
+                          const issues = [
+                            registrationState?.hasCaptainAssigned && !registrationState?.captainRegistered ? "captain not registered in app" : null,
+                            registrationState?.hasViceAssigned && !registrationState?.viceRegistered ? "vice-captain not registered in app" : null,
+                          ].filter(Boolean);
+                          if (issues.length === 0) return null;
+                          return (
+                            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                              <strong>Registration warning:</strong> {issues.join(" and ")}.
+                            </div>
+                          );
+                        })()}
                         <ul className="mt-3 space-y-2 text-sm text-slate-700">
                           {selectedSeasonRosterMembers.map((member) => (
                             <li key={member.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
@@ -6295,6 +6365,13 @@ export default function LeaguePage() {
                                 <span className="font-medium text-slate-900">{named(member.player)}</span>
                                 {member.is_captain ? <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">Captain</span> : null}
                                 {member.is_vice_captain ? <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800">Vice-captain</span> : null}
+                                {(member.is_captain || member.is_vice_captain) ? (
+                                  <span className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                                    member.player?.claimed_by ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                                  }`}>
+                                    {member.player?.claimed_by ? "App registered" : "Not yet registered"}
+                                  </span>
+                                ) : null}
                               </div>
                               <div className="flex flex-wrap items-center gap-2 text-xs">
                                 <label className="inline-flex items-center gap-1">
