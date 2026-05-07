@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 
 type BoardData = {
   season: { id: string; name: string } | null;
@@ -50,7 +49,7 @@ export default function PublicLeagueBoardPage() {
   const [data, setData] = useState<BoardData>(emptyData);
   const [loading, setLoading] = useState(true);
   const [activePanel, setActivePanel] = useState<"table" | "players" | "breaks">("table");
-  const searchParams = useSearchParams();
+  const [theme, setTheme] = useState<"dark" | "light">("dark");
 
   useEffect(() => {
     let active = true;
@@ -92,11 +91,16 @@ export default function PublicLeagueBoardPage() {
     };
   }, [loading, data.error, data.topHighBreaks.length]);
 
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const requestedTheme = new URLSearchParams(window.location.search).get("theme");
+    setTheme(requestedTheme === "light" ? "light" : "dark");
+  }, []);
+
   const generatedAt = useMemo(() => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), [data]);
   const panelOrder = data.topHighBreaks.length > 0 ? ["table", "players", "breaks"] : ["table", "players"];
   const panelTitle =
     activePanel === "table" ? "League Table" : activePanel === "players" ? "Top 10 Players" : "Top 10 High Breaks";
-  const theme = searchParams.get("theme") === "light" ? "light" : "dark";
   const isLightTheme = theme === "light";
   const shellClass = isLightTheme
     ? "min-h-screen bg-[radial-gradient(circle_at_top,_#f8fbff,_#e7eef8_58%,_#dbe6f3)] p-6 text-slate-950"
