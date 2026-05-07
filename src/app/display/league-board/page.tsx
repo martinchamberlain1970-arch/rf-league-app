@@ -116,14 +116,20 @@ export default function PublicLeagueBoardPage() {
     };
   }, []);
 
-  useEffect(() => {
-    if (loading || data.error || liveData.error) return;
-    const panels = [
+  const panelOrder = useMemo(
+    () => [
       "table",
       "players",
       ...(data.topHighBreaks.length > 0 ? ["breaks"] : []),
       ...liveData.liveMatches.map((match) => `live:${match.fixtureId}`),
-    ];
+    ],
+    [data.topHighBreaks.length, liveData.liveMatches]
+  );
+
+  useEffect(() => {
+    if (loading || data.error || liveData.error) return;
+    const panels = panelOrder;
+    if (panels.length === 0) return;
     const timer = window.setInterval(() => {
       setActivePanel((current) => {
         const currentIndex = panels.indexOf(current);
@@ -133,15 +139,15 @@ export default function PublicLeagueBoardPage() {
     return () => {
       window.clearInterval(timer);
     };
-  }, [loading, data.error, data.topHighBreaks.length, liveData.error, liveData.liveMatches]);
+  }, [loading, data.error, liveData.error, panelOrder.join("|")]);
+
+  useEffect(() => {
+    if (!panelOrder.includes(activePanel)) {
+      setActivePanel(panelOrder[0] ?? "table");
+    }
+  }, [activePanel, panelOrder]);
 
   const generatedAt = useMemo(() => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), [data]);
-  const panelOrder = [
-    "table",
-    "players",
-    ...(data.topHighBreaks.length > 0 ? ["breaks"] : []),
-    ...liveData.liveMatches.map((match) => `live:${match.fixtureId}`),
-  ];
   const activeLiveMatch = activePanel.startsWith("live:")
     ? liveData.liveMatches.find((match) => `live:${match.fixtureId}` === activePanel) ?? null
     : null;
@@ -185,13 +191,16 @@ export default function PublicLeagueBoardPage() {
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             {panelOrder.map((panel) => {
+              const liveIndex = panel.startsWith("live:")
+                ? panelOrder.filter((item) => item.startsWith("live:")).indexOf(panel) + 1
+                : -1;
               const label = panel === "table"
                 ? "League Table"
                 : panel === "players"
                   ? "Top 10 Players"
                   : panel === "breaks"
                     ? "Top 10 High Breaks"
-                    : `Live Match`;
+                    : `Live Match ${liveIndex}`;
               const active = activePanel === panel;
               return (
                 <span
