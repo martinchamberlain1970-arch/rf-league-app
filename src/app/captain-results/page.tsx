@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
@@ -119,6 +119,31 @@ const sortLabelByFirstName = (a: string, b: string) => {
   return a.localeCompare(b);
 };
 
+function buildScorecardSignature(slots: FrameSlot[], fixtureBreaks: BreakRow[]) {
+  return JSON.stringify({
+    slots: slots.map((slot) => ({
+      id: slot.id,
+      slot_no: slot.slot_no,
+      winner_side: slot.winner_side,
+      home_points_scored: slot.home_points_scored ?? null,
+      away_points_scored: slot.away_points_scored ?? null,
+      home_forfeit: slot.home_forfeit,
+      away_forfeit: slot.away_forfeit,
+      home_nominated_name: slot.home_nominated_name ?? null,
+      away_nominated_name: slot.away_nominated_name ?? null,
+      home_player1_id: slot.home_player1_id ?? null,
+      home_player2_id: slot.home_player2_id ?? null,
+      away_player1_id: slot.away_player1_id ?? null,
+      away_player2_id: slot.away_player2_id ?? null,
+    })),
+    fixtureBreaks: fixtureBreaks.map((row) => ({
+      player_id: row.player_id ?? null,
+      entered_player_name: row.entered_player_name ?? "",
+      break_value: row.break_value ?? "",
+    })),
+  });
+}
+
 function isFixtureOpenForSubmission(fixtureDate: string | null) {
   if (!fixtureDate) return false;
   const fixtureStart = new Date(`${fixtureDate}T00:00:00`);
@@ -210,6 +235,10 @@ export default function CaptainResultsPage() {
   const autoSaveMutedRef = useRef(true);
   const autoSaveNoticeShownRef = useRef(false);
 
+  const baselineScorecardSignatureRef = useRef("");
+  const [scorecardDirty, setScorecardDirty] = useState(false);
+  const [remoteScorecardChanged, setRemoteScorecardChanged] = useState(false);
+
   const canSubmit = !admin.isSuper;
   const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
   const playerById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
@@ -239,7 +268,7 @@ export default function CaptainResultsPage() {
     setFixtureBreaks(padded);
   };
 
-  const loadAll = async () => {
+  const loadAll = useCallback(async () => {
     const client = supabase;
     if (!client) {
       setMessage("Supabase is not configured.");
@@ -326,11 +355,11 @@ export default function CaptainResultsPage() {
     setPendingSubmissionMap(new Map(pendingRows.map((r) => [r.fixture_id, r])));
     setPlayers((playerRes.data ?? []) as Player[]);
     setLoading(false);
-  };
+  }, []);
 
   useEffect(() => {
     void loadAll();
-  }, []);
+  }, [loadAll]);
 
   const captainTeamIds = useMemo(() => {
     if (!linkedPlayerId) return new Set<string>();
@@ -483,22 +512,23 @@ export default function CaptainResultsPage() {
       setNominatedNames(nn);
       setScorecardPhotoUrl(pendingSubmission.scorecard_photo_url ?? "");
       const pendingBreaks = pendingSubmission.frame_results.flatMap((row) => row.break_entries ?? []);
-      if (pendingBreaks.length > 0) {
-        const rows = pendingBreaks.map((row) => ({
-          player_id: row.player_id ?? null,
-          entered_player_name: row.entered_player_name ?? "",
-          break_value: String(row.break_value ?? ""),
-        }));
-        while (rows.length < 4) rows.push({ player_id: null, entered_player_name: "", break_value: "" });
-        setFixtureBreaks(rows);
-      } else {
-        setFixtureBreaks([
-          { player_id: null, entered_player_name: "", break_value: "" },
-          { player_id: null, entered_player_name: "", break_value: "" },
-          { player_id: null, entered_player_name: "", break_value: "" },
-          { player_id: null, entered_player_name: "", break_value: "" },
-        ]);
-      }
+      const hydratedBreaks = pendingBreaks.length > 0
+        ? pendingBreaks.map((row) => ({
+            player_id: row.player_id ?? null,
+            entered_player_name: row.entered_player_name ?? "",
+            break_value: String(row.break_value ?? ""),
+          }))
+        : [
+            { player_id: null, entered_player_name: "", break_value: "" },
+            { player_id: null, entered_player_name: "", break_value: "" },
+            { player_id: null, entered_player_name: "", break_value: "" },
+            { player_id: null, entered_player_name: "", break_value: "" },
+          ];
+      while (hydratedBreaks.length < 4) hydratedBreaks.push({ player_id: null, entered_player_name: "", break_value: "" });
+      setFixtureBreaks(hydratedBreaks);
+      baselineScorecardSignatureRef.current = buildScorecardSignature(mergedSlots, hydratedBreaks);
+      setScorecardDirty(false);
+      setRemoteScorecardChanged(false);
       return;
     }
     const nextSlots = allSlots
@@ -512,9 +542,10 @@ export default function CaptainResultsPage() {
     }
     setNominatedNames(nn);
     setScorecardPhotoUrl("");
+    const shouldPreferLiveScorecard = Boolean(homeLineupSubmitted && awayLineupSubmitted && homeSideCanManageScorecard);
     if (typeof window !== "undefined") {
       const savedDraftRaw = window.localStorage.getItem(`rf_league_captain_draft_${selectedFixture.id}`);
-      if (savedDraftRaw) {
+      if (savedDraftRaw && !shouldPreferLiveScorecard) {
         try {
           const savedDraft = JSON.parse(savedDraftRaw) as CaptainResultDraft;
           if (Array.isArray(savedDraft.slots) && savedDraft.slots.length > 0) {
@@ -532,6 +563,8 @@ export default function CaptainResultsPage() {
             void loadBreaks(selectedFixture.id);
           }
           setScorecardPhotoUrl(savedDraft.scorecardPhotoUrl ?? "");
+          setScorecardDirty(true);
+          setRemoteScorecardChanged(false);
           setInfo({
             title: "Saved progress restored",
             description: `Draft restored from ${new Date(savedDraft.savedAt).toLocaleString()}.`,
@@ -541,9 +574,20 @@ export default function CaptainResultsPage() {
           window.localStorage.removeItem(`rf_league_captain_draft_${selectedFixture.id}`);
         }
       }
+      if (savedDraftRaw && shouldPreferLiveScorecard) {
+        window.localStorage.removeItem(`rf_league_captain_draft_${selectedFixture.id}`);
+      }
     }
+    setScorecardDirty(false);
+    setRemoteScorecardChanged(false);
     void loadBreaks(selectedFixture.id);
-  }, [selectedFixture, allSlots, pendingSubmissionMap]);
+  }, [allSlots, awayLineupSubmitted, homeLineupSubmitted, homeSideCanManageScorecard, pendingSubmissionMap, selectedFixture]);
+
+  useEffect(() => {
+    if (!selectedFixture || scorecardDirty) return;
+    baselineScorecardSignatureRef.current = buildScorecardSignature(slots, fixtureBreaks);
+    setRemoteScorecardChanged(false);
+  }, [selectedFixture, slots, fixtureBreaks, scorecardPhotoUrl, scorecardDirty]);
 
   useEffect(() => {
     if (!selectedFixture) return;
@@ -553,6 +597,45 @@ export default function CaptainResultsPage() {
     }
     setActiveEntryTab("lineup");
   }, [selectedFixture, homeLineupSubmitted, awayLineupSubmitted]);
+
+  const fetchRemoteScorecardSignature = async () => {
+    const client = supabase;
+    if (!client || !selectedFixture) return null;
+    const [slotRes, breakRes] = await Promise.all([
+      client
+        .from("league_fixture_frames")
+        .select("id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_forfeit,away_forfeit,winner_side,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored")
+        .eq("fixture_id", selectedFixture.id)
+        .order("slot_no", { ascending: true }),
+      client
+        .from("league_fixture_breaks")
+        .select("player_id,entered_player_name,break_value")
+        .eq("fixture_id", selectedFixture.id)
+        .order("break_value", { ascending: false }),
+    ]);
+    if (slotRes.error) throw new Error(slotRes.error.message);
+    if (breakRes.error && !breakRes.error.message.toLowerCase().includes("does not exist")) throw new Error(breakRes.error.message);
+    const remoteSlots = (slotRes.data ?? []) as FrameSlot[];
+    const remoteBreaks = ((breakRes.data ?? []) as Array<{ player_id: string | null; entered_player_name: string | null; break_value: number | null }>).map((row) => ({
+      player_id: row.player_id ?? null,
+      entered_player_name: row.entered_player_name ?? "",
+      break_value: String(row.break_value ?? ""),
+    }));
+    while (remoteBreaks.length < 4) remoteBreaks.push({ player_id: null, entered_player_name: "", break_value: "" });
+    return buildScorecardSignature(remoteSlots, remoteBreaks);
+  };
+
+  const guardAgainstRemoteOverwrite = async () => {
+    if (!selectedFixture || !scorecardDirty) return false;
+    const remoteSignature = await fetchRemoteScorecardSignature();
+    if (!remoteSignature) return false;
+    if (remoteSignature !== baselineScorecardSignatureRef.current) {
+      setRemoteScorecardChanged(true);
+      setMessage("This fixture was updated on another device. Refresh this page to load the latest scorecard before making more changes.");
+      return true;
+    }
+    return false;
+  };
 
   const saveProgress = async (mode: "manual" | "auto" = "manual") => {
     if (!selectedFixture || !draftStorageKey || typeof window === "undefined") return;
@@ -577,6 +660,8 @@ export default function CaptainResultsPage() {
       }
       return;
     }
+
+    if (await guardAgainstRemoteOverwrite()) return;
 
     const frameResults: SubmissionFrameResult[] = slots.map((s) => ({
       slot_no: s.slot_no,
@@ -629,6 +714,9 @@ export default function CaptainResultsPage() {
       window.setTimeout(() => {
         autoSaveMutedRef.current = false;
       }, 600);
+      baselineScorecardSignatureRef.current = buildScorecardSignature(slots, fixtureBreaks);
+      setScorecardDirty(false);
+      setRemoteScorecardChanged(false);
       setLastAutoSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
       if (mode === "manual") {
         setInfo({
@@ -683,6 +771,48 @@ export default function CaptainResultsPage() {
       description: "Live score updates now save automatically for the home team and will feed the public live board as you go.",
     });
   }, [activeEntryTab, homeSideCanManageScorecard, lineupsLocked, preMatchPaperRecord, selectedFixture]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !selectedFixture) return;
+    if (activeEntryTab !== "scorecard") return;
+    if (!homeSideCanManageScorecard && selectedFixtureSide !== "away") return;
+    if (!lineupsLocked && !preMatchPaperRecord) return;
+
+    const refreshIfSafe = async () => {
+      try {
+        const remoteSignature = await fetchRemoteScorecardSignature();
+        if (!remoteSignature) return;
+        if (remoteSignature !== baselineScorecardSignatureRef.current) {
+          if (scorecardDirty) {
+            setRemoteScorecardChanged(true);
+            return;
+          }
+          await loadAll();
+        }
+      } catch {
+        // ignore background refresh errors
+      }
+    };
+
+    const onFocus = () => {
+      void refreshIfSafe();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "visible") void refreshIfSafe();
+    };
+
+    const interval = window.setInterval(() => {
+      if (document.visibilityState === "visible") void refreshIfSafe();
+    }, 15000);
+
+    window.addEventListener("focus", onFocus);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(interval);
+      window.removeEventListener("focus", onFocus);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [activeEntryTab, homeSideCanManageScorecard, lineupsLocked, loadAll, preMatchPaperRecord, scorecardDirty, selectedFixture, selectedFixtureSide]);
 
   const saveLineupDraft = () => {
     void saveProgress();
@@ -901,6 +1031,7 @@ export default function CaptainResultsPage() {
   };
 
   const updateSlotLocal = (slotId: string, patch: Partial<FrameSlot>) => {
+    setScorecardDirty(true);
     setSlots((prev) =>
       prev.map((s) => {
         if (s.id !== slotId) return s;
@@ -952,10 +1083,12 @@ export default function CaptainResultsPage() {
   };
 
   const setBreakField = (idx: number, patch: Partial<BreakRow>) => {
+    setScorecardDirty(true);
     setFixtureBreaks((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
   };
 
   const addBreakRow = () => {
+    setScorecardDirty(true);
     setFixtureBreaks((prev) => [...prev, { player_id: null, entered_player_name: "", break_value: "" }]);
   };
 
@@ -1151,6 +1284,7 @@ export default function CaptainResultsPage() {
     }
     if (!isFixtureOpenForSubmission(selectedFixture.fixture_date)) return setMessage("Fixture is not open. Captains can submit from match night until midnight on the following day.");
     if (pendingByFixture.has(selectedFixture.id)) return setMessage("A submission is already pending for this fixture.");
+    if (await guardAgainstRemoteOverwrite()) return;
 
     const frameResults: SubmissionFrameResult[] = slots.map((s) => ({
       slot_no: s.slot_no,
@@ -1611,6 +1745,11 @@ export default function CaptainResultsPage() {
                       </div>
                     </section>
                   ) : null}
+                  {activeEntryTab === "scorecard" && remoteScorecardChanged ? (
+                    <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-900">
+                      This scorecard changed on another device. Refresh this page before continuing so you do not overwrite newer results.
+                    </div>
+                  ) : null}
                   {activeEntryTab === "scorecard" && pendingByFixture.has(selectedFixture.id) ? (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                       This fixture has been submitted and is pending Super User review. Your submitted details are shown below in read-only mode.
@@ -1961,7 +2100,7 @@ export default function CaptainResultsPage() {
                             className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                             placeholder="Optional scorecard photo URL"
                             value={scorecardPhotoUrl}
-                            onChange={(e) => setScorecardPhotoUrl(e.target.value)}
+                            onChange={(e) => { setScorecardDirty(true); setScorecardPhotoUrl(e.target.value); }}
                             disabled={!homeSideCanManageScorecard}
                           />
                           <button
