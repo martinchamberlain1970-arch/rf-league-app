@@ -40,6 +40,7 @@ type PriorityCard = {
   value: number;
   tone: PriorityTone;
   detail: string;
+  displayValue?: string | null;
 };
 
 function isLineupWindowLive(fixtureDate: string | null) {
@@ -76,6 +77,7 @@ export default function HomePage() {
   const [fixtureChangeActionCount, setFixtureChangeActionCount] = useState<number>(0);
   const [outstandingFixtureCount, setOutstandingFixtureCount] = useState<number>(0);
   const [tonightLineupCount, setTonightLineupCount] = useState<number>(0);
+  const [tonightLineupLabel, setTonightLineupLabel] = useState<string | null>(null);
   const [leagueRole, setLeagueRole] = useState<{ isCaptain: boolean; isViceCaptain: boolean; teamNames: string[] }>({
     isCaptain: false,
     isViceCaptain: false,
@@ -310,6 +312,7 @@ export default function HomePage() {
           title: "Tonight's Lineup",
           value: tonightLineupCount,
           tone: "emerald",
+          displayValue: tonightLineupCount > 0 ? tonightLineupLabel ?? String(tonightLineupCount) : null,
           detail:
             tonightLineupCount > 0
               ? "A live fixture is waiting for lineup action from your side."
@@ -320,6 +323,7 @@ export default function HomePage() {
           title: "Fixture Date Requests",
           value: outstandingFixtureCount,
           tone: "indigo",
+          displayValue: outstandingFixtureCount > 0 ? String(outstandingFixtureCount) : null,
           detail:
             outstandingFixtureCount > 0
               ? "A fixture is waiting for review or a new agreed date."
@@ -330,6 +334,7 @@ export default function HomePage() {
           title: "Match Centre",
           value: openEventsCount ?? 0,
           tone: "sky",
+          displayValue: (openEventsCount ?? 0) > 0 ? String(openEventsCount ?? 0) : null,
           detail: "Check next fixtures, reports, and competition activity.",
         },
       ];
@@ -567,6 +572,7 @@ export default function HomePage() {
       const client = supabase;
       if (!client || admin.loading || admin.isSuper || !userPlayerId) {
         setTonightLineupCount(0);
+        setTonightLineupLabel(null);
         return;
       }
       const membersRes = await client
@@ -575,6 +581,7 @@ export default function HomePage() {
         .eq("player_id", userPlayerId);
       if (membersRes.error || !membersRes.data) {
         setTonightLineupCount(0);
+        setTonightLineupLabel(null);
         return;
       }
       const captainTeamIds = new Set(
@@ -584,16 +591,22 @@ export default function HomePage() {
       );
       if (captainTeamIds.size === 0) {
         setTonightLineupCount(0);
+        setTonightLineupLabel(null);
         return;
       }
+      const teamsRes = await client.from("league_teams").select("id,name");
+      const teamNameById = new Map(
+        ((teamsRes.data ?? []) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name])
+      );
       const fixturesRes = await client
         .from("league_fixtures")
         .select("id,home_team_id,away_team_id,fixture_date,status,pre_match_paper_record,home_lineup_submitted_at,away_lineup_submitted_at");
       if (fixturesRes.error || !fixturesRes.data) {
         setTonightLineupCount(0);
+        setTonightLineupLabel(null);
         return;
       }
-      const count = (fixturesRes.data as Array<{
+      const actionableFixtures = (fixturesRes.data as Array<{
         id: string;
         home_team_id: string;
         away_team_id: string;
@@ -611,8 +624,18 @@ export default function HomePage() {
         if (isHomeCaptain && !fixture.home_lineup_submitted_at && !fixture.away_lineup_submitted_at) return true;
         if (isAwayCaptain && Boolean(fixture.home_lineup_submitted_at) && !fixture.away_lineup_submitted_at) return true;
         return false;
-      }).length;
-      setTonightLineupCount(count);
+      });
+      setTonightLineupCount(actionableFixtures.length);
+      if (actionableFixtures.length === 1) {
+        const fixture = actionableFixtures[0];
+        const myTeamId = captainTeamIds.has(fixture.home_team_id) ? fixture.home_team_id : fixture.away_team_id;
+        const opponentId = myTeamId === fixture.home_team_id ? fixture.away_team_id : fixture.home_team_id;
+        setTonightLineupLabel(teamNameById.get(opponentId) ?? "Opponent due");
+      } else if (actionableFixtures.length > 1) {
+        setTonightLineupLabel(`${actionableFixtures.length} due`);
+      } else {
+        setTonightLineupLabel(null);
+      }
     };
     void run();
   }, [admin.loading, admin.isSuper, userPlayerId]);
@@ -1105,7 +1128,9 @@ export default function HomePage() {
                 >
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{card.title}</p>
                   <div className="mt-2 flex items-end justify-between gap-3">
-                    <p className={`text-4xl font-black leading-none ${priorityValueClass(card.tone)}`}>{card.value}</p>
+                    <p className={`text-4xl font-black leading-none ${priorityValueClass(card.tone)}`}>
+                      {card.displayValue ?? (card.value > 0 ? String(card.value) : "")}
+                    </p>
                     <span className="rounded-full border border-white/70 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700">
                       Open
                     </span>
