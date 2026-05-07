@@ -1090,17 +1090,25 @@ export default function CaptainResultsPage() {
               ) : null}
               {selectedFixture ? (
                 <div className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
+                  <div className="grid gap-2 sm:grid-cols-2">
                     <button
                       type="button"
                       onClick={() => setActiveEntryTab("lineup")}
-                      className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                      className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${
                         activeEntryTab === "lineup"
-                          ? "border-sky-700 bg-sky-700 text-white"
+                          ? "border-sky-700 bg-sky-700 text-white shadow-sm"
                           : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                       }`}
                     >
-                      1. Team lineup
+                      <span>
+                        <span className="block text-[11px] font-semibold uppercase tracking-[0.2em] opacity-80">Step 1</span>
+                        <span className="mt-1 block text-sm font-semibold">Team lineup</span>
+                      </span>
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        activeEntryTab === "lineup" ? "bg-white/15 text-white" : "bg-sky-100 text-sky-800"
+                      }`}>
+                        {homeLineupSubmitted && awayLineupSubmitted ? "Done" : "Live"}
+                      </span>
                     </button>
                     <button
                       type="button"
@@ -1108,13 +1116,21 @@ export default function CaptainResultsPage() {
                         if (lineupsLocked || preMatchPaperRecord) setActiveEntryTab("scorecard");
                       }}
                       disabled={!lineupsLocked && !preMatchPaperRecord}
-                      className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
+                      className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left transition ${
                         activeEntryTab === "scorecard"
-                          ? "border-emerald-700 bg-emerald-700 text-white"
+                          ? "border-emerald-700 bg-emerald-700 text-white shadow-sm"
                           : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
                       } disabled:cursor-not-allowed disabled:opacity-60`}
                     >
-                      2. Scorecard
+                      <span>
+                        <span className="block text-[11px] font-semibold uppercase tracking-[0.2em] opacity-80">Step 2</span>
+                        <span className="mt-1 block text-sm font-semibold">Scorecard</span>
+                      </span>
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                        activeEntryTab === "scorecard" ? "bg-white/15 text-white" : lineupsLocked || preMatchPaperRecord ? "bg-emerald-100 text-emerald-800" : "bg-slate-100 text-slate-500"
+                      }`}>
+                        {lineupsLocked || preMatchPaperRecord ? "Ready" : "Locked"}
+                      </span>
                     </button>
                   </div>
                   {selectedFixtureSide === "home" ? (
