@@ -124,7 +124,6 @@ export default function PublicLeagueBoardPage() {
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.35em] text-cyan-200/80">League Display</p>
               <h1 className={`mt-2 text-4xl font-black tracking-tight ${headingTextClass}`}>{data.season?.name ?? "Published League Board"}</h1>
-              <p className={`mt-2 text-base ${mutedTextClass}`}>League table, top 10 player table, and current high breaks for public display screens.</p>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-3">
               <div className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100">
