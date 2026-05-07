@@ -3017,7 +3017,41 @@ export default function LeaguePage() {
   const recomputeFixtureScore = async (fixtureTargetId: string) => {
     const client = supabase;
     if (!client) return;
-    const previousFixture = fixtures.find((f) => f.id === fixtureTargetId) ?? null;
+    if (canManage) {
+      const sessionRes = await client.auth.getSession();
+      const token = sessionRes.data.session?.access_token ?? null;
+      if (!token) {
+        setMessage("Session expired. Please sign in again.");
+        return;
+      }
+      let res: Response;
+      try {
+        res = await fetch("/api/league/recompute-fixture", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ fixtureId: fixtureTargetId }),
+        });
+      } catch {
+        setMessage("Network error while saving fixture progress.");
+        return;
+      }
+      const payload = (await res.json().catch(() => ({}))) as {
+        error?: string;
+        fixture?: Fixture;
+        ratingResult?: { ok: boolean; skipped?: boolean; reason?: string } | null;
+      };
+      if (!res.ok) {
+        setMessage(payload.error ?? "Failed to save fixture progress.");
+        return;
+      }
+      if (payload.fixture) {
+        setFixtures((prev) => prev.map((f) => (f.id === fixtureTargetId ? ({ ...f, ...payload.fixture }) : f)));
+      }
+      return;
+    }
     const framesRes = await client
       .from("league_fixture_frames")
       .select("slot_no,winner_side,home_forfeit,away_forfeit,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_points_scored,away_points_scored")
@@ -3068,7 +3102,7 @@ export default function LeaguePage() {
       return;
     }
     setFixtures((prev) => prev.map((f) => (f.id === fixtureTargetId ? ({ ...f, ...(fixtureRow as Fixture) }) : f)));
-    };
+  };
 
   const computeFixtureProgress = (fixtureValue: Fixture) => {
     const frameRows = fixtureSlotsByFixtureId.get(fixtureValue.id) ?? [];
@@ -7395,11 +7429,13 @@ export default function LeaguePage() {
                       </div>
                       </fieldset>
                     </section>
-                    {canManage && currentFixture && !isCurrentFixtureLocked ? (
+                    {canManage && currentFixture ? (
                       <section className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <p className="text-xs text-slate-600">
-                            Super User changes save as you edit. Use this to keep partial progress, recompute the fixture status, and close the entry screen.
+                            {isCurrentFixtureLocked
+                              ? "This fixture is complete. Use this to recheck the saved result, backfill any missed rating update, and close the entry screen."
+                              : "Super User changes save as you edit. Use this to keep partial progress, recompute the fixture status, and close the entry screen."}
                           </p>
                           <button
                             type="button"
@@ -7409,7 +7445,11 @@ export default function LeaguePage() {
                             }}
                             className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
                           >
-                            {computeFixtureProgress(currentFixture).status === "complete" ? "Save and complete fixture" : "Save progress and close"}
+                            {isCurrentFixtureLocked
+                              ? "Recheck result and rating"
+                              : computeFixtureProgress(currentFixture).status === "complete"
+                                ? "Save and complete fixture"
+                                : "Save progress and close"}
                           </button>
                         </div>
                       </section>
