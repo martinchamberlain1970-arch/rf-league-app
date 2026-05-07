@@ -206,7 +206,7 @@ export default function CaptainResultsPage() {
   ]);
 
   const [lastAutoSavedAt, setLastAutoSavedAt] = useState<string | null>(null);
-  const autoSaveTimerRef = useRef<ReturnType<typeof window.setTimeout> | null>(null);
+  const autoSaveTimerRef = useRef<number | null>(null);
   const autoSaveMutedRef = useRef(true);
   const autoSaveNoticeShownRef = useRef(false);
 
