@@ -231,11 +231,11 @@ export default function PlayersPage() {
       if (!q) return true;
       const linked = players.find((p) => p.id === u.linked_player_id);
       const linkedName = linked?.full_name?.trim() ? linked.full_name : linked?.display_name ?? "";
-      const clubName = linked?.location_id ? locationNameById.get(linked.location_id) ?? "" : "";
+      const clubName = linked?.location_id ? locationById.get(linked.location_id) ?? "" : "";
       const haystack = `${linkedName} ${clubName} ${u.email ?? ""}`.toLowerCase();
       return haystack.includes(q);
     });
-  }, [appUsers, roleSearch, roleFilter, superAdminEmail, players, locationNameById]);
+  }, [appUsers, roleSearch, roleFilter, superAdminEmail, players, locationById]);
   const filteredActivePlayers = useMemo(() => {
     if (profileLocationFilter === "all") return activePlayers;
     if (profileLocationFilter === "__none") return activePlayers.filter((p) => !p.location_id);
@@ -1566,7 +1566,7 @@ export default function PlayersPage() {
                 {filteredRoleUsers.map((u) => {
                   const linked = playerById.get(u.linked_player_id ?? "");
                   const linkedName = linked?.full_name?.trim() ? linked.full_name : linked?.display_name;
-                  const clubName = linked?.location_id ? locationNameById.get(linked.location_id) ?? "No club registered" : "No club registered";
+                  const clubName = linked?.location_id ? locationById.get(linked.location_id) ?? "No club registered" : "No club registered";
                   const displayLabel = linkedName ?? u.email ?? u.id;
                   const isRowSuperUser = Boolean(u.email && u.email.toLowerCase() === superAdminEmail);
                   const roleLabel = isRowSuperUser ? "Super User" : u.role === "admin" ? "Admin" : "User";
