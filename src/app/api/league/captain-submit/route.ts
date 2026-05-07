@@ -106,6 +106,9 @@ export async function POST(req: NextRequest) {
   if (memberRes.error) return NextResponse.json({ error: memberRes.error.message }, { status: 400 });
   const allowedTeam = (memberRes.data ?? []).find((r: { team_id: string; is_captain: boolean; is_vice_captain: boolean }) => r.is_captain || r.is_vice_captain);
   if (!allowedTeam) return NextResponse.json({ error: "Only captain or vice-captain for this fixture can submit." }, { status: 403 });
+  if (allowedTeam.team_id !== fixture.home_team_id) {
+    return NextResponse.json({ error: "Only the home captain or vice-captain can submit the scorecard." }, { status: 403 });
+  }
 
   const existingRes = await adminClient
     .from("league_result_submissions")

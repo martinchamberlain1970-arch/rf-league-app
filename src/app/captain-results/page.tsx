@@ -391,6 +391,11 @@ export default function CaptainResultsPage() {
       !awayLineupSubmitted &&
       isBeforeHomeLineupCutoff(selectedFixture.fixture_date)
   );
+  const homeSideCanManageScorecard = Boolean(
+    selectedFixture &&
+      selectedFixtureSide === "home" &&
+      !pendingByFixture.has(selectedFixture.id)
+  );
   const homeLineupStepLabel = preMatchPaperRecord
     ? "Paper record selected"
     : canEditSubmittedHomeLineup
@@ -1543,7 +1548,10 @@ export default function CaptainResultsPage() {
                       ) : null}
 
                       {lineupsLocked || preMatchPaperRecord ? (
-                        <fieldset disabled={pendingByFixture.has(selectedFixture.id)} className={pendingByFixture.has(selectedFixture.id) ? "cursor-not-allowed opacity-80" : ""}>
+                        <fieldset
+                          disabled={!homeSideCanManageScorecard}
+                          className={!homeSideCanManageScorecard ? "cursor-not-allowed opacity-80" : ""}
+                        >
                   {slots.map((slot) => {
                     const homeSinglesCount = new Map<string, number>();
                     const awaySinglesCount = new Map<string, number>();
@@ -1754,7 +1762,17 @@ export default function CaptainResultsPage() {
                         </div>
                       )}
 
-                      <section className="rounded-2xl border border-violet-200 bg-violet-50/70 p-4">
+                      {!homeSideCanManageScorecard ? (
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+                          {pendingByFixture.has(selectedFixture.id)
+                            ? "This scorecard is read-only while the submitted result is pending Super User review."
+                            : selectedFixtureSide === "away"
+                              ? "Away captain view: the home team is responsible for entering and submitting the scorecard."
+                              : "This scorecard is read-only."}
+                        </div>
+                      ) : null}
+
+                      <section className={`rounded-2xl border border-violet-200 bg-violet-50/70 p-4 ${!homeSideCanManageScorecard ? "opacity-80" : ""}`}>
                         <h3 className="text-base font-semibold text-slate-900">Breaks 30+</h3>
                         {!breaksFeatureAvailable ? (
                           <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -1768,6 +1786,7 @@ export default function CaptainResultsPage() {
                                 className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
                                 value={row.player_id ?? ""}
                                 onChange={(e) => setBreakField(idx, { player_id: e.target.value || null })}
+                                disabled={!homeSideCanManageScorecard}
                               >
                                 <option value="">Select player</option>
                                 {fixturePlayerOptions.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
@@ -1777,6 +1796,7 @@ export default function CaptainResultsPage() {
                                 placeholder="Or enter player name"
                                 value={row.entered_player_name}
                                 onChange={(e) => setBreakField(idx, { entered_player_name: e.target.value })}
+                                disabled={!homeSideCanManageScorecard}
                               />
                               <input
                                 type="number"
@@ -1787,12 +1807,13 @@ export default function CaptainResultsPage() {
                                 placeholder="Break value (30+)"
                                 value={row.break_value}
                                 onChange={(e) => setBreakField(idx, { break_value: e.target.value })}
+                                disabled={!homeSideCanManageScorecard}
                               />
                               <button
                                 type="button"
                                 onClick={() => setFixtureBreaks((prev) => prev.filter((_, i) => i !== idx))}
                                 className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700"
-                                disabled={fixtureBreaks.length <= 4 && idx < 4}
+                                disabled={!homeSideCanManageScorecard || (fixtureBreaks.length <= 4 && idx < 4)}
                               >
                                 Remove
                               </button>
@@ -1800,7 +1821,7 @@ export default function CaptainResultsPage() {
                           ))}
                         </div>
                         <div className="mt-3 flex gap-2">
-                          <button type="button" onClick={addBreakRow} className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700">
+                          <button type="button" onClick={addBreakRow} disabled={!homeSideCanManageScorecard} className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 disabled:opacity-60">
                             More
                           </button>
                         </div>
@@ -1813,12 +1834,12 @@ export default function CaptainResultsPage() {
                             placeholder="Optional scorecard photo URL"
                             value={scorecardPhotoUrl}
                             onChange={(e) => setScorecardPhotoUrl(e.target.value)}
-                            disabled={pendingByFixture.has(selectedFixture.id)}
+                            disabled={!homeSideCanManageScorecard}
                           />
                           <button
                             type="button"
                             onClick={saveProgress}
-                            disabled={pendingByFixture.has(selectedFixture.id)}
+                            disabled={!homeSideCanManageScorecard}
                             className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
                           >
                             Save progress
@@ -1826,10 +1847,16 @@ export default function CaptainResultsPage() {
                           <button
                             type="button"
                             onClick={submit}
-                            disabled={submitting || pendingByFixture.has(selectedFixture.id)}
+                            disabled={submitting || !homeSideCanManageScorecard}
                             className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
                           >
-                            {pendingByFixture.has(selectedFixture.id) ? "Submission pending review" : submitting ? "Submitting..." : "Complete and submit scorecard"}
+                            {!homeSideCanManageScorecard
+                              ? pendingByFixture.has(selectedFixture.id)
+                                ? "Submission pending review"
+                                : "Home team submits scorecard"
+                              : submitting
+                                ? "Submitting..."
+                                : "Complete and submit scorecard"}
                           </button>
                         </div>
                       </div>
