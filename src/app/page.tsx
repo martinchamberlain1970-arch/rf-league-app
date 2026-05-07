@@ -79,6 +79,7 @@ export default function HomePage() {
   const [outstandingFixtureCount, setOutstandingFixtureCount] = useState<number>(0);
   const [tonightLineupCount, setTonightLineupCount] = useState<number>(0);
   const [tonightLineupLabel, setTonightLineupLabel] = useState<string | null>(null);
+  const [tonightLineupHref, setTonightLineupHref] = useState("/captain-results");
   const [leagueRole, setLeagueRole] = useState<{ isCaptain: boolean; isViceCaptain: boolean; teamNames: string[] }>({
     isCaptain: false,
     isViceCaptain: false,
@@ -309,7 +310,7 @@ export default function HomePage() {
     if (hasCaptainRole) {
       return [
         {
-          href: "/captain-results",
+          href: tonightLineupHref,
           title: "Tonight's Lineup",
           value: tonightLineupCount,
           tone: "emerald",
@@ -373,6 +374,8 @@ export default function HomePage() {
     pendingRequestsCount,
     resultsQueueCount,
     tonightLineupCount,
+    tonightLineupHref,
+    tonightLineupLabel,
   ]);
   const priorityCardClass = (tone: PriorityTone) => {
     if (tone === "rose") return "border-rose-200 bg-gradient-to-br from-rose-50 to-white";
@@ -575,6 +578,7 @@ export default function HomePage() {
       if (!client || admin.loading || admin.isSuper || !userPlayerId) {
         setTonightLineupCount(0);
         setTonightLineupLabel(null);
+        setTonightLineupHref("/captain-results");
         return;
       }
       const membersRes = await client
@@ -584,6 +588,7 @@ export default function HomePage() {
       if (membersRes.error || !membersRes.data) {
         setTonightLineupCount(0);
         setTonightLineupLabel(null);
+        setTonightLineupHref("/captain-results");
         return;
       }
       const captainTeamIds = new Set(
@@ -594,6 +599,7 @@ export default function HomePage() {
       if (captainTeamIds.size === 0) {
         setTonightLineupCount(0);
         setTonightLineupLabel(null);
+        setTonightLineupHref("/captain-results");
         return;
       }
       const teamsRes = await client.from("league_teams").select("id,name");
@@ -606,6 +612,7 @@ export default function HomePage() {
       if (fixturesRes.error || !fixturesRes.data) {
         setTonightLineupCount(0);
         setTonightLineupLabel(null);
+        setTonightLineupHref("/captain-results");
         return;
       }
       const actionableFixtures = (fixturesRes.data as Array<{
@@ -633,10 +640,13 @@ export default function HomePage() {
         const myTeamId = captainTeamIds.has(fixture.home_team_id) ? fixture.home_team_id : fixture.away_team_id;
         const opponentId = myTeamId === fixture.home_team_id ? fixture.away_team_id : fixture.home_team_id;
         setTonightLineupLabel(teamNameById.get(opponentId) ? `vs. ${teamNameById.get(opponentId)}` : "Opponent due");
+        setTonightLineupHref(`/captain-results?fixtureId=${fixture.id}`);
       } else if (actionableFixtures.length > 1) {
         setTonightLineupLabel(`${actionableFixtures.length} due`);
+        setTonightLineupHref("/captain-results");
       } else {
         setTonightLineupLabel(null);
+        setTonightLineupHref("/captain-results");
       }
     };
     void run();
@@ -1133,7 +1143,7 @@ export default function HomePage() {
                     <p
                       className={`leading-tight ${priorityValueClass(card.tone)} ${
                         card.compactDisplay
-                          ? "max-w-[14rem] text-2xl font-black sm:text-3xl"
+                          ? "max-w-[12rem] text-xl font-black sm:text-2xl"
                           : "text-4xl font-black leading-none"
                       }`}
                     >
