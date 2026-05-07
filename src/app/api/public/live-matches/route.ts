@@ -71,8 +71,14 @@ function playerHandicap(player?: PlayerRow | null) {
   return Number(player?.snooker_handicap ?? 0);
 }
 
-function playerLabel(player?: PlayerRow | null) {
-  return `${named(player)} (${formatHandicap(playerHandicap(player))})`;
+function playerLabel(player?: PlayerRow | null, fallbackName?: string) {
+  const label = player?.full_name?.trim() || player?.display_name || fallbackName || "Player";
+  if (!player) return label;
+  return `${label} (${formatHandicap(playerHandicap(player))})`;
+}
+
+function doublesPlayerLabel(player: PlayerRow | null | undefined, fallbackName: string) {
+  return playerLabel(player, fallbackName);
 }
 
 export async function GET(req: NextRequest) {
@@ -158,16 +164,16 @@ export async function GET(req: NextRequest) {
 
       const homeName =
         frame.slot_type === "doubles"
-          ? `${playerLabel(homePrimary)} / ${playerLabel(homeSecondary)}`
+          ? `${doublesPlayerLabel(homePrimary, "Home player 1")} / ${doublesPlayerLabel(homeSecondary, "Home player 2")}`
           : frame.home_nominated
             ? `${frame.home_nominated_name?.trim() || "Nominated Player"} (N)`
-            : playerLabel(homePrimary);
+            : playerLabel(homePrimary, frame.home_forfeit ? "No show" : "Home player");
       const awayName =
         frame.slot_type === "doubles"
-          ? `${playerLabel(awayPrimary)} / ${playerLabel(awaySecondary)}`
+          ? `${doublesPlayerLabel(awayPrimary, "Away player 1")} / ${doublesPlayerLabel(awaySecondary, "Away player 2")}`
           : frame.away_nominated
             ? `${frame.away_nominated_name?.trim() || "Nominated Player"} (N)`
-            : playerLabel(awayPrimary);
+            : playerLabel(awayPrimary, frame.away_forfeit ? "No show" : "Away player");
 
       const homeHandicap =
         frame.slot_type === "doubles"
