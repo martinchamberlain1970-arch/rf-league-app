@@ -630,7 +630,7 @@ export default function HomePage() {
         const fixture = actionableFixtures[0];
         const myTeamId = captainTeamIds.has(fixture.home_team_id) ? fixture.home_team_id : fixture.away_team_id;
         const opponentId = myTeamId === fixture.home_team_id ? fixture.away_team_id : fixture.home_team_id;
-        setTonightLineupLabel(teamNameById.get(opponentId) ?? "Opponent due");
+        setTonightLineupLabel(teamNameById.get(opponentId) ? `vs. ${teamNameById.get(opponentId)}` : "Opponent due");
       } else if (actionableFixtures.length > 1) {
         setTonightLineupLabel(`${actionableFixtures.length} due`);
       } else {
