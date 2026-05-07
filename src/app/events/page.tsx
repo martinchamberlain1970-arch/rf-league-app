@@ -287,8 +287,8 @@ export default function EventsPage() {
                 fixture.season_id === member.season_id &&
                 (fixture.home_team_id === member.team_id || fixture.away_team_id === member.team_id)
             );
-            const past = teamFixtures.filter((f) => keyOf(f) <= toDayKey).sort((a, b) => keyOf(b) - keyOf(a));
-            const future = teamFixtures.filter((f) => keyOf(f) > toDayKey).sort((a, b) => keyOf(a) - keyOf(b));
+            const past = teamFixtures.filter((f) => keyOf(f) < toDayKey).sort((a, b) => keyOf(b) - keyOf(a));
+            const future = teamFixtures.filter((f) => keyOf(f) >= toDayKey).sort((a, b) => keyOf(a) - keyOf(b));
             return {
               key: `${member.season_id}:${member.team_id}`,
               label: teamName,

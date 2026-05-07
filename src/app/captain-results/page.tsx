@@ -159,6 +159,13 @@ function isLineupSubmissionOpen(fixtureDate: string | null) {
   return now >= start && now <= hardStop;
 }
 
+function isBeforeHomeLineupCutoff(fixtureDate: string | null) {
+  if (!fixtureDate) return false;
+  const cutoff = new Date(`${fixtureDate}T19:15:00`);
+  if (Number.isNaN(cutoff.getTime())) return false;
+  return new Date() <= cutoff;
+}
+
 function expectedWinProbability(ownRating: number, opponentRating: number) {
   return 1 / (1 + 10 ** ((opponentRating - ownRating) / 400));
 }
@@ -377,9 +384,18 @@ export default function CaptainResultsPage() {
       homeLineupSubmitted &&
       !awayLineupSubmitted
   );
+  const canEditSubmittedHomeLineup = Boolean(
+    selectedFixture &&
+      selectedFixtureSide === "home" &&
+      homeLineupSubmitted &&
+      !awayLineupSubmitted &&
+      isBeforeHomeLineupCutoff(selectedFixture.fixture_date)
+  );
   const homeLineupStepLabel = preMatchPaperRecord
     ? "Paper record selected"
-    : homeLineupSubmitted
+    : canEditSubmittedHomeLineup
+      ? "Submitted (editable)"
+      : homeLineupSubmitted
       ? "Sent to opponent"
       : canSubmitHomeLineup
         ? "Ready for home captain"
@@ -397,6 +413,8 @@ export default function CaptainResultsPage() {
     ? "Paper lineup selected. You can move to the scorecard whenever you are ready."
     : awayLineupSubmitted
       ? "Both lineups are locked. You can now switch to the scorecard tab."
+      : canEditSubmittedHomeLineup
+        ? "Home lineup has been sent, but you can still reopen it before 19:15 if a late change is needed."
       : homeLineupSubmitted
         ? "Home lineup has been sent. Away captain should now complete and confirm the lineup."
         : "Home captain should enter slots 1-6 first and send them to the opponent.";
@@ -536,6 +554,14 @@ export default function CaptainResultsPage() {
     };
     window.localStorage.setItem(draftStorageKey, JSON.stringify(draft));
     setInfo({ title: "Progress saved", description: "Your draft has been saved on this device and can be restored when you return." });
+  };
+
+  const saveLineupDraft = () => {
+    saveProgress();
+    setInfo({
+      title: "Lineup draft saved",
+      description: "Your lineup draft has been saved on this device. Only submit it once the team is final.",
+    });
   };
 
   const teamMembersByTeam = useMemo(() => {
@@ -951,6 +977,30 @@ export default function CaptainResultsPage() {
     });
   };
 
+  const reopenSubmittedHomeLineup = async () => {
+    const client = supabase;
+    if (!client || !selectedFixture || !canEditSubmittedHomeLineup) return;
+    setSubmitting(true);
+    const res = await client
+      .from("league_fixtures")
+      .update({
+        home_lineup_submitted_at: null,
+        home_lineup_submitted_by_user_id: null,
+      })
+      .eq("id", selectedFixture.id);
+    if (res.error) {
+      setSubmitting(false);
+      setMessage(res.error.message);
+      return;
+    }
+    setSubmitting(false);
+    setInfo({
+      title: "Home lineup reopened",
+      description: "You can now adjust the home lineup again. Re-submit it once you are sure the team is final.",
+    });
+    await loadAll();
+  };
+
   const submit = async () => {
     const client = supabase;
     if (!client || !selectedFixture || !currentUserId) return;
@@ -1232,6 +1282,16 @@ export default function CaptainResultsPage() {
                         ) : null}
                       </div>
                       <div className="flex flex-wrap gap-2">
+                        {selectedFixtureSide === "home" && lineupWindowOpen && !awayLineupSubmitted ? (
+                          <button
+                            type="button"
+                            onClick={saveLineupDraft}
+                            disabled={submitting}
+                            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
+                          >
+                            Save lineup draft
+                          </button>
+                        ) : null}
                         {canSubmitHomeLineup ? (
                           <>
                             <button
@@ -1253,6 +1313,24 @@ export default function CaptainResultsPage() {
                               Use paper record instead
                             </button>
                           </>
+                        ) : null}
+                        {canEditSubmittedHomeLineup ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  "Reopen the submitted home lineup for editing? You can only do this before 19:15 and before the away team confirms its lineup."
+                                )
+                              ) {
+                                void reopenSubmittedHomeLineup();
+                              }
+                            }}
+                            disabled={submitting}
+                            className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900"
+                          >
+                            Edit submitted home lineup
+                          </button>
                         ) : null}
                         {canSubmitAwayLineup ? (
                           <button
@@ -1313,6 +1391,11 @@ export default function CaptainResultsPage() {
                       <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                         <strong>What happens next:</strong> {lineupNextAction}
                       </div>
+                      {selectedFixtureSide === "home" ? (
+                        <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
+                          Home captains can save a draft locally first. Only use <strong>Submit team to opponent</strong> once you know the lineup is final. After 19:15, or once the away team confirms, the home players can no longer be changed.
+                        </div>
+                      ) : null}
                       <div className="mt-3 grid gap-3 lg:grid-cols-2">
                         {slots.map((slot) => {
                           const homeSinglesCount = new Map<string, number>();
