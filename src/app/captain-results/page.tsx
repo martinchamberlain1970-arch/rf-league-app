@@ -377,6 +377,29 @@ export default function CaptainResultsPage() {
       homeLineupSubmitted &&
       !awayLineupSubmitted
   );
+  const homeLineupStepLabel = preMatchPaperRecord
+    ? "Paper record selected"
+    : homeLineupSubmitted
+      ? "Sent to opponent"
+      : canSubmitHomeLineup
+        ? "Ready for home captain"
+        : "Waiting for home captain";
+  const awayLineupStepLabel = preMatchPaperRecord
+    ? "Paper record selected"
+    : awayLineupSubmitted
+      ? "Confirmed"
+      : canSubmitAwayLineup
+        ? "Ready for away captain"
+        : homeLineupSubmitted
+          ? "Waiting for away captain"
+          : "Waiting for home lineup";
+  const lineupNextAction = preMatchPaperRecord
+    ? "Paper lineup selected. You can move to the scorecard whenever you are ready."
+    : awayLineupSubmitted
+      ? "Both lineups are locked. You can now switch to the scorecard tab."
+      : homeLineupSubmitted
+        ? "Home lineup has been sent. Away captain should now complete and confirm the lineup."
+        : "Home captain should enter slots 1-6 first and send them to the opponent.";
   const draftStorageKey = selectedFixture ? `rf_league_captain_draft_${selectedFixture.id}` : null;
   useEffect(() => {
     if (!selectedFixtureId) return;
@@ -1240,6 +1263,39 @@ export default function CaptainResultsPage() {
                         <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-800">
                           {selectedFixtureSide === "home" ? "Home team view" : selectedFixtureSide === "away" ? "Away team view" : "Fixture view"}
                         </span>
+                      </div>
+                      <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Step 1</p>
+                              <p className="mt-1 text-sm font-semibold text-slate-900">Home team sends lineup</p>
+                            </div>
+                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                              homeLineupSubmitted ? "bg-emerald-700 text-white" : canSubmitHomeLineup ? "bg-white text-emerald-900" : "bg-slate-200 text-slate-700"
+                            }`}>
+                              {homeLineupStepLabel}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm text-slate-700">Slots 1-6 should be submitted to the opponent by 19:15.</p>
+                        </div>
+                        <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Step 2</p>
+                              <p className="mt-1 text-sm font-semibold text-slate-900">Away team confirms lineup</p>
+                            </div>
+                            <span className={`rounded-full px-3 py-1 text-xs font-semibold ${
+                              awayLineupSubmitted ? "bg-amber-600 text-white" : canSubmitAwayLineup ? "bg-white text-amber-900" : "bg-slate-200 text-slate-700"
+                            }`}>
+                              {awayLineupStepLabel}
+                            </span>
+                          </div>
+                          <p className="mt-2 text-sm text-slate-700">Once the home team has sent its players, the away team should confirm by 19:30.</p>
+                        </div>
+                      </div>
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
+                        <strong>What happens next:</strong> {lineupNextAction}
                       </div>
                       <div className="mt-3 grid gap-3 lg:grid-cols-2">
                         {slots.map((slot) => {
