@@ -41,6 +41,7 @@ type PriorityCard = {
   tone: PriorityTone;
   detail: string;
   displayValue?: string | null;
+  compactDisplay?: boolean;
 };
 
 function isLineupWindowLive(fixtureDate: string | null) {
@@ -313,6 +314,7 @@ export default function HomePage() {
           value: tonightLineupCount,
           tone: "emerald",
           displayValue: tonightLineupCount > 0 ? tonightLineupLabel ?? String(tonightLineupCount) : null,
+          compactDisplay: true,
           detail:
             tonightLineupCount > 0
               ? "A live fixture is waiting for lineup action from your side."
@@ -1128,7 +1130,13 @@ export default function HomePage() {
                 >
                   <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{card.title}</p>
                   <div className="mt-2 flex items-end justify-between gap-3">
-                    <p className={`text-4xl font-black leading-none ${priorityValueClass(card.tone)}`}>
+                    <p
+                      className={`leading-tight ${priorityValueClass(card.tone)} ${
+                        card.compactDisplay
+                          ? "max-w-[14rem] text-2xl font-black sm:text-3xl"
+                          : "text-4xl font-black leading-none"
+                      }`}
+                    >
                       {card.displayValue ?? (card.value > 0 ? String(card.value) : "")}
                     </p>
                     <span className="rounded-full border border-white/70 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700">
