@@ -42,6 +42,17 @@ type PriorityCard = {
   detail: string;
 };
 
+function isLineupWindowLive(fixtureDate: string | null) {
+  if (!fixtureDate) return false;
+  const start = new Date(`${fixtureDate}T00:00:00`);
+  if (Number.isNaN(start.getTime())) return false;
+  const hardStop = new Date(start);
+  hardStop.setDate(hardStop.getDate() + 1);
+  hardStop.setHours(1, 0, 0, 0);
+  const now = new Date();
+  return now >= start && now <= hardStop;
+}
+
 export default function HomePage() {
   const router = useRouter();
   const admin = useAdminStatus();
@@ -64,6 +75,7 @@ export default function HomePage() {
   const [pendingResultSubmissionsCount, setPendingResultSubmissionsCount] = useState<number>(0);
   const [fixtureChangeActionCount, setFixtureChangeActionCount] = useState<number>(0);
   const [outstandingFixtureCount, setOutstandingFixtureCount] = useState<number>(0);
+  const [tonightLineupCount, setTonightLineupCount] = useState<number>(0);
   const [leagueRole, setLeagueRole] = useState<{ isCaptain: boolean; isViceCaptain: boolean; teamNames: string[] }>({
     isCaptain: false,
     isViceCaptain: false,
@@ -296,11 +308,11 @@ export default function HomePage() {
         {
           href: "/captain-results",
           title: "Tonight's Lineup",
-          value: pendingResultSubmissionsCount,
+          value: tonightLineupCount,
           tone: "emerald",
           detail:
-            pendingResultSubmissionsCount > 0
-              ? "Your latest submission is pending league review."
+            tonightLineupCount > 0
+              ? "A live fixture is waiting for lineup action from your side."
               : "Open your fixture to enter the pre-match lineup first, then submit the result later.",
         },
         {
@@ -352,8 +364,8 @@ export default function HomePage() {
     openEventsCount,
     outstandingFixtureCount,
     pendingRequestsCount,
-    pendingResultSubmissionsCount,
     resultsQueueCount,
+    tonightLineupCount,
   ]);
   const priorityCardClass = (tone: PriorityTone) => {
     if (tone === "rose") return "border-rose-200 bg-gradient-to-br from-rose-50 to-white";
@@ -548,6 +560,61 @@ export default function HomePage() {
       });
     };
     run();
+  }, [admin.loading, admin.isSuper, userPlayerId]);
+
+  useEffect(() => {
+    const run = async () => {
+      const client = supabase;
+      if (!client || admin.loading || admin.isSuper || !userPlayerId) {
+        setTonightLineupCount(0);
+        return;
+      }
+      const membersRes = await client
+        .from("league_team_members")
+        .select("team_id,is_captain,is_vice_captain")
+        .eq("player_id", userPlayerId);
+      if (membersRes.error || !membersRes.data) {
+        setTonightLineupCount(0);
+        return;
+      }
+      const captainTeamIds = new Set(
+        (membersRes.data as Array<{ team_id: string; is_captain: boolean; is_vice_captain?: boolean | null }>)
+          .filter((row) => row.is_captain || Boolean(row.is_vice_captain))
+          .map((row) => row.team_id)
+      );
+      if (captainTeamIds.size === 0) {
+        setTonightLineupCount(0);
+        return;
+      }
+      const fixturesRes = await client
+        .from("league_fixtures")
+        .select("id,home_team_id,away_team_id,fixture_date,status,pre_match_paper_record,home_lineup_submitted_at,away_lineup_submitted_at");
+      if (fixturesRes.error || !fixturesRes.data) {
+        setTonightLineupCount(0);
+        return;
+      }
+      const count = (fixturesRes.data as Array<{
+        id: string;
+        home_team_id: string;
+        away_team_id: string;
+        fixture_date: string | null;
+        status?: string | null;
+        pre_match_paper_record?: boolean | null;
+        home_lineup_submitted_at?: string | null;
+        away_lineup_submitted_at?: string | null;
+      }>).filter((fixture) => {
+        if (fixture.pre_match_paper_record) return false;
+        if (!isLineupWindowLive(fixture.fixture_date)) return false;
+        if (fixture.status === "complete") return false;
+        const isHomeCaptain = captainTeamIds.has(fixture.home_team_id);
+        const isAwayCaptain = captainTeamIds.has(fixture.away_team_id);
+        if (isHomeCaptain && !fixture.home_lineup_submitted_at && !fixture.away_lineup_submitted_at) return true;
+        if (isAwayCaptain && Boolean(fixture.home_lineup_submitted_at) && !fixture.away_lineup_submitted_at) return true;
+        return false;
+      }).length;
+      setTonightLineupCount(count);
+    };
+    void run();
   }, [admin.loading, admin.isSuper, userPlayerId]);
 
   useEffect(() => {
