@@ -162,7 +162,7 @@ export default function PublicLeagueBoardPage() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-200">League Table</p>
-                  <h2 className={`mt-2 text-3xl font-black xl:text-4xl ${headingTextClass}`}>{data.season?.name ?? "Published league"} standings</h2>
+                  <h2 className={`mt-2 text-3xl font-black xl:text-4xl ${headingTextClass}`}>Standings</h2>
                 </div>
                 <span className="rounded-full border border-emerald-200/20 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-100">
                   Top {Math.min(10, data.leagueTable.length)}
@@ -209,7 +209,7 @@ export default function PublicLeagueBoardPage() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.3em] text-violet-200">Top 10 Players</p>
-                  <h2 className={`mt-2 text-3xl font-black xl:text-4xl ${headingTextClass}`}>{data.season?.name ?? "Published league"} singles ladder</h2>
+                  <h2 className={`mt-2 text-3xl font-black xl:text-4xl ${headingTextClass}`}>Top 10 Players</h2>
                 </div>
               </div>
               <div className={`mt-4 ${tableShellClass}`}>
@@ -250,7 +250,7 @@ export default function PublicLeagueBoardPage() {
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-200">Top 10 High Breaks</p>
-                    <h2 className={`mt-2 text-3xl font-black xl:text-4xl ${headingTextClass}`}>{data.season?.name ?? "Published league"} breaks 30+</h2>
+                    <h2 className={`mt-2 text-3xl font-black xl:text-4xl ${headingTextClass}`}>Top 10 High Breaks</h2>
                   </div>
                 </div>
                 <div className={`mt-4 ${tableShellClass}`}>
