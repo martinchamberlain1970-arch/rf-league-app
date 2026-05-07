@@ -49,7 +49,6 @@ export default function PublicLeagueBoardPage() {
   const [data, setData] = useState<BoardData>(emptyData);
   const [loading, setLoading] = useState(true);
   const [activePanel, setActivePanel] = useState<"table" | "players" | "breaks">("table");
-  const [theme, setTheme] = useState<"dark" | "light">("dark");
 
   useEffect(() => {
     let active = true;
@@ -91,66 +90,35 @@ export default function PublicLeagueBoardPage() {
     };
   }, [loading, data.error, data.topHighBreaks.length]);
 
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const requestedTheme = new URLSearchParams(window.location.search).get("theme");
-    setTheme(requestedTheme === "light" ? "light" : "dark");
-  }, []);
-
   const generatedAt = useMemo(() => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), [data]);
   const panelOrder = data.topHighBreaks.length > 0 ? ["table", "players", "breaks"] : ["table", "players"];
   const panelTitle =
     activePanel === "table" ? "League Table" : activePanel === "players" ? "Top 10 Players" : "Top 10 High Breaks";
-  const isLightTheme = theme === "light";
-  const shellClass = isLightTheme
-    ? "min-h-screen bg-[radial-gradient(circle_at_top,_#f8fbff,_#e7eef8_58%,_#dbe6f3)] p-6 text-slate-950"
-    : "min-h-screen bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_55%)] p-6 text-white";
-  const cardClass = isLightTheme
-    ? "rounded-[2rem] border border-slate-200 bg-white/90 p-6 shadow-[0_24px_80px_rgba(15,23,42,0.12)] backdrop-blur"
-    : "rounded-[2rem] border border-white/10 bg-white/5 p-6 shadow-2xl backdrop-blur";
-  const tableCardClass = isLightTheme
-    ? "rounded-[2rem] border bg-white/95 p-5 shadow-[0_20px_70px_rgba(15,23,42,0.12)] backdrop-blur"
-    : "rounded-[2rem] border bg-white/6 p-5 shadow-2xl backdrop-blur";
-  const tableShellClass = isLightTheme ? "overflow-hidden rounded-2xl border border-slate-200" : "overflow-hidden rounded-2xl border border-white/10";
-  const theadClass = isLightTheme
-    ? "bg-slate-100 text-left text-xs uppercase tracking-[0.22em] text-slate-600"
-    : "bg-white/10 text-left text-xs uppercase tracking-[0.22em] text-slate-200";
-  const rowClass = (index: number) => isLightTheme ? `border-t border-slate-200 ${index % 2 === 0 ? "bg-slate-50/80" : "bg-white"}` : `border-t border-white/10 ${index % 2 === 0 ? "bg-white/5" : "bg-transparent"}`;
-  const bodyTextClass = isLightTheme ? "text-slate-700" : "text-slate-200";
-  const headingTextClass = isLightTheme ? "text-slate-950" : "text-white";
-  const mutedTextClass = isLightTheme ? "text-slate-600" : "text-slate-200";
+  const shellClass = "h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_55%)] p-4 text-white xl:p-5";
+  const cardClass = "rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur";
+  const tableCardClass = "rounded-[2rem] border border-white/10 bg-white/6 p-4 shadow-2xl backdrop-blur";
+  const tableShellClass = "overflow-hidden rounded-2xl border border-white/10";
+  const theadClass = "bg-white/10 text-left text-[11px] uppercase tracking-[0.22em] text-slate-200";
+  const rowClass = (index: number) => `border-t border-white/10 ${index % 2 === 0 ? "bg-white/5" : "bg-transparent"}`;
+  const bodyTextClass = "text-slate-200";
+  const headingTextClass = "text-white";
+  const mutedTextClass = "text-slate-200";
 
   return (
     <main className={shellClass}>
-      <div className="mx-auto max-w-7xl space-y-6">
+      <div className="mx-auto flex h-full max-w-7xl flex-col gap-4">
         <section className={cardClass}>
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p className="text-sm font-semibold uppercase tracking-[0.35em] text-cyan-200/80">League Display</p>
-              <h1 className={`mt-2 text-4xl font-black tracking-tight ${headingTextClass}`}>{data.season?.name ?? "Published League Board"}</h1>
+              <h1 className={`mt-2 text-3xl font-black tracking-tight xl:text-4xl ${headingTextClass}`}>{data.season?.name ?? "Published League Board"}</h1>
             </div>
             <div className="flex flex-wrap items-center justify-end gap-3">
               <div className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100">
                 Showing: {panelTitle}
               </div>
-              <div className={`rounded-full border px-4 py-2 text-sm font-semibold ${isLightTheme ? "border-slate-200 bg-slate-100 text-slate-700" : "border-white/15 bg-white/10 text-slate-100"}`}>
+              <div className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-slate-100">
                 Updated {generatedAt}
-              </div>
-              <div className={`rounded-full border px-2 py-2 ${isLightTheme ? "border-slate-200 bg-white" : "border-white/15 bg-white/10"}`}>
-                <div className="flex items-center gap-1">
-                  <a
-                    href="/display/league-board?theme=dark"
-                    className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${!isLightTheme ? "bg-slate-950 text-white" : "text-slate-600 hover:bg-slate-100"}`}
-                  >
-                    Dark
-                  </a>
-                  <a
-                    href="/display/league-board?theme=light"
-                    className={`rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] ${isLightTheme ? "bg-slate-950 text-white" : "text-slate-200 hover:bg-white/10"}`}
-                  >
-                    Light
-                  </a>
-                </div>
               </div>
             </div>
           </div>
@@ -164,8 +132,8 @@ export default function PublicLeagueBoardPage() {
                   key={key}
                   className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${
                     active
-                      ? (isLightTheme ? "border-slate-300 bg-slate-950 text-white" : "border-white/30 bg-white text-slate-950")
-                      : (isLightTheme ? "border-slate-200 bg-white text-slate-500" : "border-white/10 bg-white/5 text-slate-300")
+                      ? "border-white/30 bg-white text-slate-950"
+                      : "border-white/10 bg-white/5 text-slate-300"
                   }`}
                 >
                   {label}
@@ -188,20 +156,20 @@ export default function PublicLeagueBoardPage() {
         ) : null}
 
         {!loading && !data.error ? (
-          <div className="space-y-6">
+          <div className="min-h-0 flex-1">
             {activePanel === "table" ? (
-            <section className={`${tableCardClass} ${isLightTheme ? "border-emerald-200" : "border-emerald-300/20"}`}>
+            <section className={`${tableCardClass} h-full border-emerald-300/20`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-200">League Table</p>
-                  <h2 className={`mt-2 text-4xl font-black ${headingTextClass}`}>{data.season?.name ?? "Published league"} standings</h2>
+                  <h2 className={`mt-2 text-3xl font-black xl:text-4xl ${headingTextClass}`}>{data.season?.name ?? "Published league"} standings</h2>
                 </div>
                 <span className="rounded-full border border-emerald-200/20 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-100">
                   Top {Math.min(10, data.leagueTable.length)}
                 </span>
               </div>
               <div className={`mt-4 ${tableShellClass}`}>
-                <table className="min-w-full text-base">
+                <table className="min-w-full text-sm xl:text-base">
                   <thead className={theadClass}>
                     <tr>
                       <th className="px-4 py-4">#</th>
@@ -217,14 +185,14 @@ export default function PublicLeagueBoardPage() {
                   <tbody>
                     {data.leagueTable.slice(0, 10).map((row, index) => (
                       <tr key={row.team_id} className={rowClass(index)}>
-                        <td className="px-4 py-4 text-lg font-black text-emerald-100">{row.rank}</td>
-                        <td className={`px-4 py-4 text-lg font-semibold ${headingTextClass}`}>{row.team_name}</td>
-                        <td className={`px-4 py-4 text-center ${bodyTextClass}`}>{row.played}</td>
-                        <td className={`px-4 py-4 text-center ${bodyTextClass}`}>{row.won}</td>
-                        <td className={`px-4 py-4 text-center ${bodyTextClass}`}>{row.lost}</td>
-                        <td className={`px-4 py-4 text-center ${bodyTextClass}`}>{row.frames_for}</td>
-                        <td className={`px-4 py-4 text-center ${bodyTextClass}`}>{row.frames_against}</td>
-                        <td className="px-4 py-4 text-center text-lg font-black text-emerald-100">{row.points}</td>
+                        <td className="px-4 py-3 text-base font-black text-emerald-100 xl:text-lg">{row.rank}</td>
+                        <td className={`px-4 py-3 text-base font-semibold ${headingTextClass} xl:text-lg`}>{row.team_name}</td>
+                        <td className={`px-4 py-3 text-center ${bodyTextClass}`}>{row.played}</td>
+                        <td className={`px-4 py-3 text-center ${bodyTextClass}`}>{row.won}</td>
+                        <td className={`px-4 py-3 text-center ${bodyTextClass}`}>{row.lost}</td>
+                        <td className={`px-4 py-3 text-center ${bodyTextClass}`}>{row.frames_for}</td>
+                        <td className={`px-4 py-3 text-center ${bodyTextClass}`}>{row.frames_against}</td>
+                        <td className="px-4 py-3 text-center text-base font-black text-emerald-100 xl:text-lg">{row.points}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -237,15 +205,15 @@ export default function PublicLeagueBoardPage() {
             ) : null}
 
             {activePanel === "players" ? (
-            <section className={`${tableCardClass} ${isLightTheme ? "border-violet-200" : "border-violet-300/20"}`}>
+            <section className={`${tableCardClass} h-full border-violet-300/20`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.3em] text-violet-200">Top 10 Players</p>
-                  <h2 className={`mt-2 text-4xl font-black ${headingTextClass}`}>{data.season?.name ?? "Published league"} singles ladder</h2>
+                  <h2 className={`mt-2 text-3xl font-black xl:text-4xl ${headingTextClass}`}>{data.season?.name ?? "Published league"} singles ladder</h2>
                 </div>
               </div>
               <div className={`mt-4 ${tableShellClass}`}>
-                <table className="min-w-full text-base">
+                <table className="min-w-full text-sm xl:text-base">
                   <thead className={theadClass}>
                     <tr>
                       <th className="px-4 py-4">#</th>
@@ -258,13 +226,13 @@ export default function PublicLeagueBoardPage() {
                   <tbody>
                     {data.topPlayers.map((row, index) => (
                       <tr key={row.player_id} className={rowClass(index)}>
-                        <td className="px-4 py-4 text-lg font-black text-violet-100">{row.rank}</td>
-                        <td className={`px-4 py-4 text-lg font-semibold ${headingTextClass}`}>{row.player_name}</td>
-                        <td className={`px-4 py-4 ${bodyTextClass}`}>{row.team_name}</td>
-                        <td className={`px-4 py-4 text-center ${bodyTextClass}`}>
+                        <td className="px-4 py-3 text-base font-black text-violet-100 xl:text-lg">{row.rank}</td>
+                        <td className={`px-4 py-3 text-base font-semibold ${headingTextClass} xl:text-lg`}>{row.player_name}</td>
+                        <td className={`px-4 py-3 ${bodyTextClass}`}>{row.team_name}</td>
+                        <td className={`px-4 py-3 text-center ${bodyTextClass}`}>
                           {row.won}-{row.lost}
                         </td>
-                        <td className="px-4 py-4 text-center text-lg font-black text-violet-100">{row.win_pct.toFixed(1)}%</td>
+                        <td className="px-4 py-3 text-center text-base font-black text-violet-100 xl:text-lg">{row.win_pct.toFixed(1)}%</td>
                       </tr>
                     ))}
                   </tbody>
@@ -278,15 +246,15 @@ export default function PublicLeagueBoardPage() {
 
             {activePanel === "breaks" ? (
               data.topHighBreaks.length > 0 ? (
-              <section className={`${tableCardClass} ${isLightTheme ? "border-amber-200" : "border-amber-300/20"}`}>
+              <section className={`${tableCardClass} h-full border-amber-300/20`}>
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-200">Top 10 High Breaks</p>
-                    <h2 className={`mt-2 text-4xl font-black ${headingTextClass}`}>{data.season?.name ?? "Published league"} breaks 30+</h2>
+                    <h2 className={`mt-2 text-3xl font-black xl:text-4xl ${headingTextClass}`}>{data.season?.name ?? "Published league"} breaks 30+</h2>
                   </div>
                 </div>
                 <div className={`mt-4 ${tableShellClass}`}>
-                  <table className="min-w-full text-base">
+                  <table className="min-w-full text-sm xl:text-base">
                     <thead className={theadClass}>
                       <tr>
                         <th className="px-4 py-4">#</th>
@@ -297,9 +265,9 @@ export default function PublicLeagueBoardPage() {
                     <tbody>
                       {data.topHighBreaks.map((row, index) => (
                         <tr key={row.key} className={rowClass(index)}>
-                          <td className="px-4 py-4 text-lg font-black text-amber-100">{row.rank}</td>
-                          <td className={`px-4 py-4 text-lg font-semibold ${headingTextClass}`}>{row.player_name}</td>
-                          <td className="px-4 py-4 text-center text-lg font-black text-amber-100">{row.high_break}</td>
+                          <td className="px-4 py-3 text-base font-black text-amber-100 xl:text-lg">{row.rank}</td>
+                          <td className={`px-4 py-3 text-base font-semibold ${headingTextClass} xl:text-lg`}>{row.player_name}</td>
+                          <td className="px-4 py-3 text-center text-base font-black text-amber-100 xl:text-lg">{row.high_break}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -307,7 +275,7 @@ export default function PublicLeagueBoardPage() {
                 </div>
               </section>
               ) : (
-              <section className={tableCardClass}>
+              <section className={`${tableCardClass} h-full`}>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-300">High Breaks</p>
                   <h2 className={`mt-2 text-3xl font-black ${headingTextClass}`}>No 30+ breaks yet</h2>
