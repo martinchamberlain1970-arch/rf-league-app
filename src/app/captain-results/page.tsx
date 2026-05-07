@@ -924,18 +924,23 @@ export default function CaptainResultsPage() {
           }),
     }));
     try {
-      const nowIso = new Date().toISOString();
-      for (const patch of sideFields) {
-        const { id, ...updatePatch } = patch;
-        const res = await client.from("league_fixture_frames").update(updatePatch).eq("id", id);
-        if (res.error) throw new Error(res.error.message);
-      }
-      const fixturePatch =
-        side === "home"
-          ? { home_lineup_submitted_at: nowIso, home_lineup_submitted_by_user_id: currentUserId }
-          : { away_lineup_submitted_at: nowIso, away_lineup_submitted_by_user_id: currentUserId };
-      const fixtureUpdate = await client.from("league_fixtures").update(fixturePatch).eq("id", selectedFixture.id);
-      if (fixtureUpdate.error) throw new Error(fixtureUpdate.error.message);
+      const sessionRes = await client.auth.getSession();
+      const token = sessionRes.data.session?.access_token;
+      if (!token) throw new Error("You must be signed in to submit a lineup.");
+      const resp = await fetch("/api/league/submit-lineup", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          fixtureId: selectedFixture.id,
+          side,
+          sideFields,
+        }),
+      });
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(payload?.error ?? "Failed to submit lineup.");
       await loadAll();
       setInfo({
         title: side === "home" ? "Home lineup submitted" : "Away lineup submitted",
