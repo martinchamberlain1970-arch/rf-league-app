@@ -135,7 +135,7 @@ export default function PublicLeagueBoardPage() {
         const currentIndex = panels.indexOf(current);
         return panels[(currentIndex + 1) % panels.length] ?? panels[0];
       });
-    }, 30000);
+    }, 45000);
     return () => {
       window.clearInterval(timer);
     };
