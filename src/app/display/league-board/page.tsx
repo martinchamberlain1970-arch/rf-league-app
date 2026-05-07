@@ -48,6 +48,7 @@ const emptyData: BoardData = {
 export default function PublicLeagueBoardPage() {
   const [data, setData] = useState<BoardData>(emptyData);
   const [loading, setLoading] = useState(true);
+  const [activePanel, setActivePanel] = useState<"table" | "players" | "breaks">("table");
 
   useEffect(() => {
     let active = true;
@@ -74,7 +75,25 @@ export default function PublicLeagueBoardPage() {
     };
   }, []);
 
+  useEffect(() => {
+    if (loading || data.error) return;
+    const panels: Array<"table" | "players" | "breaks"> =
+      data.topHighBreaks.length > 0 ? ["table", "players", "breaks"] : ["table", "players"];
+    const timer = window.setInterval(() => {
+      setActivePanel((current) => {
+        const currentIndex = panels.indexOf(current);
+        return panels[(currentIndex + 1) % panels.length] ?? panels[0];
+      });
+    }, 10000);
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [loading, data.error, data.topHighBreaks.length]);
+
   const generatedAt = useMemo(() => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), [data]);
+  const panelOrder = data.topHighBreaks.length > 0 ? ["table", "players", "breaks"] : ["table", "players"];
+  const panelTitle =
+    activePanel === "table" ? "League Table" : activePanel === "players" ? "Top 10 Players" : "Top 10 High Breaks";
 
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_55%)] p-6 text-white">
@@ -86,9 +105,33 @@ export default function PublicLeagueBoardPage() {
               <h1 className="mt-2 text-4xl font-black tracking-tight">{data.season?.name ?? "Published League Board"}</h1>
               <p className="mt-2 text-base text-slate-200">League table, top 10 player table, and current high breaks for public display screens.</p>
             </div>
-            <div className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-slate-100">
-              Auto refresh every 60s · Updated {generatedAt}
+            <div className="flex flex-wrap items-center justify-end gap-3">
+              <div className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100">
+                Showing: {panelTitle}
+              </div>
+              <div className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-slate-100">
+                Auto rotate every 10s · Updated {generatedAt}
+              </div>
             </div>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            {panelOrder.map((panel) => {
+              const key = panel as "table" | "players" | "breaks";
+              const label = key === "table" ? "League Table" : key === "players" ? "Top 10 Players" : "Top 10 High Breaks";
+              const active = activePanel === key;
+              return (
+                <span
+                  key={key}
+                  className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${
+                    active
+                      ? "border-white/30 bg-white text-slate-950"
+                      : "border-white/10 bg-white/5 text-slate-300"
+                  }`}
+                >
+                  {label}
+                </span>
+              );
+            })}
           </div>
         </section>
 
@@ -105,12 +148,13 @@ export default function PublicLeagueBoardPage() {
         ) : null}
 
         {!loading && !data.error ? (
-          <div className="grid gap-6 xl:grid-cols-[1.15fr_1fr_0.85fr]">
+          <div className="space-y-6">
+            {activePanel === "table" ? (
             <section className="rounded-[2rem] border border-emerald-300/20 bg-white/6 p-5 shadow-2xl backdrop-blur">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.3em] text-emerald-200">League Table</p>
-                  <h2 className="mt-2 text-2xl font-black text-white">Standings</h2>
+                  <h2 className="mt-2 text-3xl font-black text-white">{data.season?.name ?? "Published league"} standings</h2>
                 </div>
                 <span className="rounded-full border border-emerald-200/20 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-100">
                   Top {Math.min(10, data.leagueTable.length)}
@@ -150,12 +194,14 @@ export default function PublicLeagueBoardPage() {
                 ) : null}
               </div>
             </section>
+            ) : null}
 
+            {activePanel === "players" ? (
             <section className="rounded-[2rem] border border-violet-300/20 bg-white/6 p-5 shadow-2xl backdrop-blur">
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.3em] text-violet-200">Top 10 Players</p>
-                  <h2 className="mt-2 text-2xl font-black text-white">Singles Ladder</h2>
+                  <h2 className="mt-2 text-3xl font-black text-white">{data.season?.name ?? "Published league"} singles ladder</h2>
                 </div>
               </div>
               <div className="mt-4 overflow-hidden rounded-2xl border border-white/10">
@@ -188,13 +234,15 @@ export default function PublicLeagueBoardPage() {
                 ) : null}
               </div>
             </section>
+            ) : null}
 
-            {data.topHighBreaks.length > 0 ? (
+            {activePanel === "breaks" ? (
+              data.topHighBreaks.length > 0 ? (
               <section className="rounded-[2rem] border border-amber-300/20 bg-white/6 p-5 shadow-2xl backdrop-blur">
                 <div className="flex items-center justify-between gap-3">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-[0.3em] text-amber-200">Top 10 High Breaks</p>
-                    <h2 className="mt-2 text-2xl font-black text-white">Breaks 30+</h2>
+                    <h2 className="mt-2 text-3xl font-black text-white">{data.season?.name ?? "Published league"} breaks 30+</h2>
                   </div>
                 </div>
                 <div className="mt-4 overflow-hidden rounded-2xl border border-white/10">
@@ -218,7 +266,7 @@ export default function PublicLeagueBoardPage() {
                   </table>
                 </div>
               </section>
-            ) : (
+              ) : (
               <section className="rounded-[2rem] border border-white/10 bg-white/6 p-5 shadow-2xl backdrop-blur">
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.3em] text-slate-300">High Breaks</p>
@@ -226,7 +274,8 @@ export default function PublicLeagueBoardPage() {
                   <p className="mt-3 text-sm text-slate-300">This panel will populate automatically once approved fixture results include recorded breaks.</p>
                 </div>
               </section>
-            )}
+              )
+            ) : null}
           </div>
         ) : null}
       </div>
