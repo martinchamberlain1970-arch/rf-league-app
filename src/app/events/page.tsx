@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
 import ScreenHeader from "@/components/ScreenHeader";
 import { logAudit } from "@/lib/audit";
+import { calculateAdjustedScoresWithCap } from "@/lib/snooker-handicap";
 import ConfirmModal from "@/components/ConfirmModal";
 import InfoModal from "@/components/InfoModal";
 import MessageModal from "@/components/MessageModal";
@@ -873,7 +874,9 @@ export default function EventsPage() {
           : `${actualTeam} beat the pre-match expectation`;
     const eloLabel =
       homeDelta === null || awayDelta === null
-        ? "Elo movement is not yet available for this fixture."
+        ? reportFixture.status === "complete"
+          ? "This fixture is locked, but no rating receipt is attached to it yet. Use Recheck result and rating in League Manager to backfill the Elo explanation for this match."
+          : "This fixture is still live or awaiting its final rating step, so the Elo explanation will appear once it is fully completed."
         : `${home} players ${homeDelta >= 0 ? "gained" : "lost"} ${Math.abs(homeDelta)} Elo each and ${away} players ${awayDelta >= 0 ? "gained" : "lost"} ${Math.abs(awayDelta)} each. That movement comes from three things: the pre-match expectation, the actual result, and the rating sensitivity. For this fixture, the model had ${home} at about ${expectedPct}% before the match, so ${expectationGap}. ${kFactor !== null ? `The rating sensitivity for this result was ${kFactor}, which sets how sharply the numbers move.` : ""} In plain English, a result that goes more against expectation creates a bigger swing, while a result that broadly follows expectation creates a smaller one.`;
     const scoredMargins = seasonFrames
       .filter((fr) => fr.fixture_id === reportFixture.id)
@@ -902,15 +905,69 @@ export default function EventsPage() {
     const home = teamById.get(reportFixture.home_team_id) ?? "Home";
     const away = teamById.get(reportFixture.away_team_id) ?? "Away";
     const joined = (a: string | null, b: string | null) => [a, b].filter(Boolean).join(" / ");
+    const playerHandicap = (playerId: string | null | undefined) =>
+      Number(seasonPlayers.find((player) => player.id === playerId)?.snooker_handicap ?? 0);
     const frameRows = frames.map((fr, idx) => {
       const homeName = joined(playerNameMap.get(fr.home_player1_id ?? "") ?? null, playerNameMap.get(fr.home_player2_id ?? "") ?? null) || "TBC";
       const awayName = joined(playerNameMap.get(fr.away_player1_id ?? "") ?? null, playerNameMap.get(fr.away_player2_id ?? "") ?? null) || "TBC";
       const winner = fr.winner_side === "home" ? homeName : fr.winner_side === "away" ? awayName : "No winner";
+      const homePoints = typeof fr.home_points_scored === "number" ? fr.home_points_scored : null;
+      const awayPoints = typeof fr.away_points_scored === "number" ? fr.away_points_scored : null;
+      const homeHandicap =
+        fr.slot_type === "doubles"
+          ? (playerHandicap(fr.home_player1_id) + playerHandicap(fr.home_player2_id)) / 2
+          : playerHandicap(fr.home_player1_id);
+      const awayHandicap =
+        fr.slot_type === "doubles"
+          ? (playerHandicap(fr.away_player1_id) + playerHandicap(fr.away_player2_id)) / 2
+          : playerHandicap(fr.away_player1_id);
+      const adjusted =
+        homePoints !== null && awayPoints !== null
+          ? calculateAdjustedScoresWithCap(homePoints, awayPoints, homeHandicap, awayHandicap)
+          : null;
+      const scoreLabel = homePoints !== null && awayPoints !== null ? `${homePoints}-${awayPoints}` : "Awaiting score";
+      let handicapNote = "Level start, so handicap had no bearing on this frame.";
+      if (adjusted) {
+        const receivingSide = adjusted.homeStart > 0 ? "home" : adjusted.awayStart > 0 ? "away" : null;
+        const receivingName = receivingSide === "home" ? homeName : receivingSide === "away" ? awayName : "";
+        const startValue = receivingSide === "home" ? adjusted.homeStart : receivingSide === "away" ? adjusted.awayStart : 0;
+        const rawWinner = homePoints > awayPoints ? "home" : awayPoints > homePoints ? "away" : null;
+        if (!receivingSide || startValue === 0) {
+          handicapNote = "Level start, so handicap had no bearing on this frame.";
+        } else if (rawWinner === receivingSide) {
+          handicapNote = `${receivingName} won on the table as well, so they did not need the ${startValue}-point start.`;
+        } else if (rawWinner && rawWinner !== receivingSide) {
+          const givingName = rawWinner === "home" ? homeName : awayName;
+          const rawMargin = Math.abs(homePoints - awayPoints);
+          if (fr.slot_type === "doubles" && fr.winner_side === receivingSide) {
+            handicapNote = `The ${startValue}-point start proved decisive here: ${receivingName} lost the raw points but won after handicap was applied.`;
+          } else if (rawMargin > startValue) {
+            handicapNote = `${givingName} overcame the ${startValue}-point start and would still have won without it.`;
+          } else {
+            handicapNote = `${givingName} won on raw points despite giving ${startValue} away at the start.`;
+          }
+        }
+      }
       return {
         label: `${(fr.slot_type ?? "Frame").replace(/^./, (m) => m.toUpperCase())} ${fr.slot_no ?? idx + 1}`,
         homeName,
         awayName,
         winner,
+        winnerSide: fr.winner_side,
+        scoreLabel,
+        handicapNote,
+        homeRating:
+          fr.slot_type === "doubles"
+            ? (Number(seasonPlayers.find((player) => player.id === fr.home_player1_id)?.rating_snooker ?? 1000) +
+                Number(seasonPlayers.find((player) => player.id === fr.home_player2_id)?.rating_snooker ?? 1000)) /
+              2
+            : Number(seasonPlayers.find((player) => player.id === fr.home_player1_id)?.rating_snooker ?? 1000),
+        awayRating:
+          fr.slot_type === "doubles"
+            ? (Number(seasonPlayers.find((player) => player.id === fr.away_player1_id)?.rating_snooker ?? 1000) +
+                Number(seasonPlayers.find((player) => player.id === fr.away_player2_id)?.rating_snooker ?? 1000)) /
+              2
+            : Number(seasonPlayers.find((player) => player.id === fr.away_player1_id)?.rating_snooker ?? 1000),
       };
     });
     const wins = new Map<string, number>();
@@ -929,6 +986,64 @@ export default function EventsPage() {
       .sort((a, b) => b[1] - a[1])
       .slice(0, 2)
       .map(([id, n]) => `${playerNameMap.get(id) ?? "Player"} (${n} frame${n === 1 ? "" : "s"})`);
+    const handicapHighlights = frameRows
+      .map((row) => row.handicapNote)
+      .filter((note, index, arr) => Boolean(note) && arr.indexOf(note) === index)
+      .slice(0, 3);
+    const eventualWinnerSide: "home" | "away" | "draw" =
+      (reportFixture.home_points ?? 0) > (reportFixture.away_points ?? 0)
+        ? "home"
+        : (reportFixture.away_points ?? 0) > (reportFixture.home_points ?? 0)
+          ? "away"
+          : "draw";
+    const finalTurningPoint = (() => {
+      if (eventualWinnerSide === "draw") return null;
+      let homeScore = 0;
+      let awayScore = 0;
+      for (let index = 0; index < frameRows.length; index += 1) {
+        const row = frameRows[index];
+        if (row.winnerSide === "home") homeScore += 1;
+        if (row.winnerSide === "away") awayScore += 1;
+        const currentLeader = homeScore > awayScore ? "home" : awayScore > homeScore ? "away" : null;
+        if (currentLeader !== eventualWinnerSide) continue;
+        const remaining = frameRows.slice(index + 1);
+        let futureHome = homeScore;
+        let futureAway = awayScore;
+        const leadNeverLost = remaining.every((later) => {
+          if (later.winnerSide === "home") futureHome += 1;
+          if (later.winnerSide === "away") futureAway += 1;
+          if (eventualWinnerSide === "home") return futureHome >= futureAway;
+          return futureAway >= futureHome;
+        });
+        if (leadNeverLost) {
+          return `${row.label} was the key swing frame. From there, ${eventualWinnerSide === "home" ? home : away} stayed in front.`;
+        }
+      }
+      return null;
+    })();
+    const handicapNoteOfNight =
+      frameRows.find((row) => row.handicapNote.includes("did not need") || row.handicapNote.includes("proved decisive") || row.handicapNote.includes("overcame"))?.handicapNote ??
+      handicapHighlights[0] ??
+      null;
+    const overperformance = frameRows
+      .filter((row) => row.winnerSide === "home" || row.winnerSide === "away")
+      .map((row) => {
+        const winnerSide = row.winnerSide as "home" | "away";
+        const winnerName = winnerSide === "home" ? row.homeName : row.awayName;
+        const winnerRating = winnerSide === "home" ? row.homeRating : row.awayRating;
+        const loserRating = winnerSide === "home" ? row.awayRating : row.homeRating;
+        return {
+          winnerName,
+          winnerSide,
+          ratingGap: loserRating - winnerRating,
+          label: row.label,
+        };
+      })
+      .sort((a, b) => b.ratingGap - a.ratingGap)[0] ?? null;
+    const overperformanceLabel =
+      overperformance && overperformance.ratingGap > 0
+        ? `${overperformance.winnerName} produced the biggest over-performance against rating in ${overperformance.label}, beating an opponent rated ${Math.round(overperformance.ratingGap)} Elo points higher.`
+        : "No frame winner finished with a clear rating deficit, so the match broadly followed the rating order on a frame-by-frame basis.";
     return {
       home,
       away,
@@ -941,8 +1056,12 @@ export default function EventsPage() {
             ? `${away} beat ${home} ${reportFixture.away_points ?? 0}-${reportFixture.home_points ?? 0}.`
             : `${home} and ${away} drew ${reportFixture.home_points ?? 0}-${reportFixture.away_points ?? 0}.`,
       top,
+      handicapHighlights,
+      turningPoint: finalTurningPoint,
+      handicapNoteOfNight,
+      overperformanceLabel,
     };
-  }, [reportFixture, seasonFrames, teamById, playerNameMap]);
+  }, [reportFixture, seasonFrames, teamById, playerNameMap, seasonPlayers]);
   const weeklyRoundup = useMemo(() => {
     if (!roundupWeek) return null;
     const weekFixtures = seasonFixtures
@@ -991,12 +1110,16 @@ export default function EventsPage() {
       `- ${reportInsights.awayFormLine}`,
       reportInsights.biggestMargin !== null ? `- Biggest frame winning margin: ${reportInsights.biggestMargin} points.` : "",
       matchupReport.top.length ? `- Key performers: ${matchupReport.top.join(" · ")}` : "",
+      matchupReport.turningPoint ? `- Turning point: ${matchupReport.turningPoint}` : "",
+      matchupReport.handicapNoteOfNight ? `- Handicap note of the night: ${matchupReport.handicapNoteOfNight}` : "",
+      matchupReport.overperformanceLabel ? `- Rating over-performance: ${matchupReport.overperformanceLabel}` : "",
+      ...matchupReport.handicapHighlights.map((line) => `- Handicap note: ${line}`),
       "",
       "Elo impact:",
       `- ${reportInsights.eloLabel}`,
       "",
       "Frame facts:",
-      ...matchupReport.frameRows.map((r) => `- ${r.label}: ${r.homeName} vs ${r.awayName} | Winner: ${r.winner}`),
+      ...matchupReport.frameRows.map((r) => `- ${r.label}: ${r.homeName} vs ${r.awayName} | Score: ${r.scoreLabel} | Winner: ${r.winner} | ${r.handicapNote}`),
     ].filter(Boolean);
     return lines.join("\n");
   }, [matchupReport, reportFixture, reportInsights]);
@@ -1501,6 +1624,24 @@ export default function EventsPage() {
                       <p className="mt-2 text-xs text-slate-700">{reportInsights.eloLabel}</p>
                     </div>
                   </div>
+                  <div className="mt-3 grid gap-3 lg:grid-cols-3">
+                    <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Match Turned In</p>
+                      <p className="mt-2 text-xs text-indigo-950">
+                        {matchupReport.turningPoint ?? "No single frame clearly changed the direction of the match, so the contest stayed balanced throughout."}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Handicap Note Of The Night</p>
+                      <p className="mt-2 text-xs text-amber-950">
+                        {matchupReport.handicapNoteOfNight ?? "No standout handicap moment emerged beyond the normal frame starts."}
+                      </p>
+                    </div>
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Biggest Over-Performance</p>
+                      <p className="mt-2 text-xs text-emerald-950">{matchupReport.overperformanceLabel}</p>
+                    </div>
+                  </div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -1525,12 +1666,24 @@ export default function EventsPage() {
                   {reportInsights.biggestMargin !== null ? (
                     <p className="mt-1 text-xs text-slate-700">Biggest frame winning margin: {reportInsights.biggestMargin} points.</p>
                   ) : null}
+                  {matchupReport.handicapHighlights.length > 0 ? (
+                    <div className="mt-2 rounded-lg border border-amber-200 bg-amber-50 p-2">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-amber-800">Handicap notes</p>
+                      <div className="mt-1 space-y-1">
+                        {matchupReport.handicapHighlights.map((line) => (
+                          <p key={line} className="text-xs text-amber-900">{line}</p>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                   <div className="mt-3 space-y-1">
                     {matchupReport.frameRows.map((row) => (
                       <div key={`${row.label}-${row.homeName}-${row.awayName}`} className="rounded-lg border border-slate-200 bg-slate-50 px-2 py-1.5 text-xs">
                         <span className="font-semibold text-slate-900">{row.label}:</span>{" "}
                         <span className="text-slate-700">{row.homeName} vs {row.awayName}</span>{" "}
+                        <span className="text-slate-900">· Score: {row.scoreLabel}</span>{" "}
                         <span className="text-slate-900">· Winner: {row.winner}</span>
+                        <p className="mt-1 text-[11px] text-slate-700">{row.handicapNote}</p>
                       </div>
                     ))}
                   </div>
