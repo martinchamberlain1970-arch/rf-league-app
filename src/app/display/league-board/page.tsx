@@ -38,6 +38,31 @@ type BoardData = {
   error?: string;
 };
 
+type LiveMatchData = {
+  season: { id: string; name: string } | null;
+  liveMatches: Array<{
+    fixtureId: string;
+    fixtureDate: string | null;
+    weekNo: number | null;
+    status: string;
+    homeTeam: string;
+    awayTeam: string;
+    overallScore: string;
+    frameRows: Array<{
+      id: string;
+      slotNo: number;
+      slotType: "singles" | "doubles";
+      title: string;
+      homeName: string;
+      awayName: string;
+      scoreLabel: string;
+      frameStatus: string;
+      startLabel: string;
+    }>;
+  }>;
+  error?: string;
+};
+
 const emptyData: BoardData = {
   season: null,
   leagueTable: [],
@@ -45,22 +70,38 @@ const emptyData: BoardData = {
   topHighBreaks: [],
 };
 
+const emptyLiveData: LiveMatchData = {
+  season: null,
+  liveMatches: [],
+};
+
 export default function PublicLeagueBoardPage() {
   const [data, setData] = useState<BoardData>(emptyData);
+  const [liveData, setLiveData] = useState<LiveMatchData>(emptyLiveData);
   const [loading, setLoading] = useState(true);
-  const [activePanel, setActivePanel] = useState<"table" | "players" | "breaks">("table");
+  const [activePanel, setActivePanel] = useState<string>("table");
 
   useEffect(() => {
     let active = true;
     const load = async () => {
       try {
-        const res = await fetch("/api/public/league-board", { cache: "no-store" });
-        const payload = (await res.json().catch(() => emptyData)) as BoardData;
+        const [boardRes, liveRes] = await Promise.all([
+          fetch("/api/public/league-board", { cache: "no-store" }),
+          fetch("/api/public/live-matches", { cache: "no-store" }),
+        ]);
+        const boardPayload = (await boardRes.json().catch(() => emptyData)) as BoardData;
+        const livePayload = (await liveRes.json().catch(() => emptyLiveData)) as LiveMatchData;
         if (!active) return;
-        setData(res.ok ? payload : { ...emptyData, error: payload.error ?? "Failed to load public league board." });
+        setData(
+          boardRes.ok ? boardPayload : { ...emptyData, error: boardPayload.error ?? "Failed to load public league board." }
+        );
+        setLiveData(
+          liveRes.ok ? livePayload : { ...emptyLiveData, error: livePayload.error ?? "Failed to load live matches." }
+        );
       } catch {
         if (!active) return;
         setData({ ...emptyData, error: "Failed to load public league board." });
+        setLiveData({ ...emptyLiveData, error: "Failed to load live matches." });
       } finally {
         if (active) setLoading(false);
       }
@@ -76,24 +117,44 @@ export default function PublicLeagueBoardPage() {
   }, []);
 
   useEffect(() => {
-    if (loading || data.error) return;
-    const panels: Array<"table" | "players" | "breaks"> =
-      data.topHighBreaks.length > 0 ? ["table", "players", "breaks"] : ["table", "players"];
+    if (loading || data.error || liveData.error) return;
+    const panels = [
+      "table",
+      "players",
+      ...(data.topHighBreaks.length > 0 ? ["breaks"] : []),
+      ...liveData.liveMatches.map((match) => `live:${match.fixtureId}`),
+    ];
     const timer = window.setInterval(() => {
       setActivePanel((current) => {
         const currentIndex = panels.indexOf(current);
         return panels[(currentIndex + 1) % panels.length] ?? panels[0];
       });
-    }, 10000);
+    }, 20000);
     return () => {
       window.clearInterval(timer);
     };
-  }, [loading, data.error, data.topHighBreaks.length]);
+  }, [loading, data.error, data.topHighBreaks.length, liveData.error, liveData.liveMatches]);
 
   const generatedAt = useMemo(() => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), [data]);
-  const panelOrder = data.topHighBreaks.length > 0 ? ["table", "players", "breaks"] : ["table", "players"];
+  const panelOrder = [
+    "table",
+    "players",
+    ...(data.topHighBreaks.length > 0 ? ["breaks"] : []),
+    ...liveData.liveMatches.map((match) => `live:${match.fixtureId}`),
+  ];
+  const activeLiveMatch = activePanel.startsWith("live:")
+    ? liveData.liveMatches.find((match) => `live:${match.fixtureId}` === activePanel) ?? null
+    : null;
   const panelTitle =
-    activePanel === "table" ? "League Table" : activePanel === "players" ? "Top 10 Players" : "Top 10 High Breaks";
+    activePanel === "table"
+      ? "League Table"
+      : activePanel === "players"
+        ? "Top 10 Players"
+        : activePanel === "breaks"
+          ? "Top 10 High Breaks"
+          : activeLiveMatch
+            ? `${activeLiveMatch.homeTeam} vs. ${activeLiveMatch.awayTeam}`
+            : "League Board";
   const shellClass = "h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_55%)] p-4 text-white xl:p-5";
   const cardClass = "rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur";
   const tableCardClass = "rounded-[2rem] border border-white/10 bg-white/6 p-4 shadow-2xl backdrop-blur";
@@ -124,12 +185,17 @@ export default function PublicLeagueBoardPage() {
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             {panelOrder.map((panel) => {
-              const key = panel as "table" | "players" | "breaks";
-              const label = key === "table" ? "League Table" : key === "players" ? "Top 10 Players" : "Top 10 High Breaks";
-              const active = activePanel === key;
+              const label = panel === "table"
+                ? "League Table"
+                : panel === "players"
+                  ? "Top 10 Players"
+                  : panel === "breaks"
+                    ? "Top 10 High Breaks"
+                    : `Live Match`;
+              const active = activePanel === panel;
               return (
                 <span
-                  key={key}
+                  key={panel}
                   className={`rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] ${
                     active
                       ? "border-white/30 bg-white text-slate-950"
@@ -149,13 +215,13 @@ export default function PublicLeagueBoardPage() {
           </section>
         ) : null}
 
-        {!loading && data.error ? (
+        {!loading && (data.error || liveData.error) ? (
           <section className="rounded-[2rem] border border-rose-300/30 bg-rose-500/10 p-8 text-lg text-rose-100 shadow-2xl backdrop-blur">
-            {data.error}
+            {data.error ?? liveData.error}
           </section>
         ) : null}
 
-        {!loading && !data.error ? (
+        {!loading && !data.error && !liveData.error ? (
           <div className="min-h-0 flex-1">
             {activePanel === "table" ? (
             <section className={`${tableCardClass} h-full border-emerald-300/20`}>
@@ -283,6 +349,46 @@ export default function PublicLeagueBoardPage() {
                 </div>
               </section>
               )
+            ) : null}
+
+            {activeLiveMatch ? (
+              <section className={`${tableCardClass} h-full border-cyan-300/20`}>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.3em] text-cyan-200">Live Match</p>
+                    <h2 className={`mt-2 text-3xl font-black xl:text-4xl ${headingTextClass}`}>
+                      {activeLiveMatch.homeTeam} <span className="text-cyan-200">vs.</span> {activeLiveMatch.awayTeam}
+                    </h2>
+                  </div>
+                  <div className="rounded-2xl border border-emerald-200/20 bg-emerald-400/10 px-4 py-3 text-center">
+                    <p className="text-xs font-semibold uppercase tracking-[0.22em] text-emerald-100">Frames</p>
+                    <p className="mt-1 text-2xl font-black text-white">{activeLiveMatch.overallScore}</p>
+                  </div>
+                </div>
+                <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                  {activeLiveMatch.frameRows.map((frame) => (
+                    <div key={frame.id} className="rounded-2xl border border-white/10 bg-slate-950/35 p-3">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">{frame.title}</p>
+                        <div className="flex items-center gap-2">
+                          <span className="rounded-full border border-white/10 bg-white/5 px-3 py-1 text-xs font-semibold text-slate-200">
+                            {frame.frameStatus}
+                          </span>
+                          <span className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-3 py-1 text-sm font-black text-cyan-100">
+                            {frame.scoreLabel}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="mt-3 grid gap-2 text-sm xl:grid-cols-[1fr_auto_1fr] xl:items-center">
+                        <p className="font-semibold text-white">{frame.homeName}</p>
+                        <p className="text-center text-cyan-200">vs.</p>
+                        <p className="font-semibold text-white xl:text-right">{frame.awayName}</p>
+                      </div>
+                      <p className="mt-3 text-xs text-slate-300">{frame.startLabel}</p>
+                    </div>
+                  ))}
+                </div>
+              </section>
             ) : null}
           </div>
         ) : null}
