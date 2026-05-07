@@ -45,6 +45,8 @@ type LeagueFramePerf = {
   home_player2_id: string | null;
   away_player1_id: string | null;
   away_player2_id: string | null;
+  home_points_scored?: number | null;
+  away_points_scored?: number | null;
   home_forfeit?: boolean | null;
   away_forfeit?: boolean | null;
 };
@@ -54,6 +56,18 @@ type LeaguePlayer = {
   full_name: string | null;
   rating_snooker: number | null;
   snooker_handicap: number | null;
+};
+type RatingReceipt = {
+  source_result_id: string;
+  status: string | null;
+  metadata?: {
+    score_a?: number;
+    score_b?: number;
+    delta_a?: number;
+    delta_b?: number;
+    expected_a?: number;
+    k_factor?: number;
+  } | null;
 };
 
 type LeagueFixture = {
@@ -148,6 +162,7 @@ export default function EventsPage() {
   const [seasonMembers, setSeasonMembers] = useState<LeagueTeamMember[]>([]);
   const [seasonFrames, setSeasonFrames] = useState<LeagueFramePerf[]>([]);
   const [seasonPlayers, setSeasonPlayers] = useState<LeaguePlayer[]>([]);
+  const [ratingReceipts, setRatingReceipts] = useState<RatingReceipt[]>([]);
   const [teamById, setTeamById] = useState<Map<string, string>>(new Map());
   const [userCompetitionMatches, setUserCompetitionMatches] = useState<UserCompetitionMatch[]>([]);
   const [predictionFixture, setPredictionFixture] = useState<LeagueFixture | null>(null);
@@ -310,7 +325,8 @@ export default function EventsPage() {
         setFollowingFixture(summaryRows[0]?.followingFixture ?? null);
         setSeasonFixtures(allSeasonFixtures);
         const fixtureIds = allSeasonFixtures.map((f) => f.id);
-        const [membersResAll, framesResAll, playersResAll] = await Promise.all([
+        const ratingSourceIds = fixtureIds.map((id) => `league_fixture:${id}`);
+        const [membersResAll, framesResAll, playersResAll, receiptResAll] = await Promise.all([
           client
             .from("league_team_members")
             .select("season_id,team_id,player_id")
@@ -318,17 +334,25 @@ export default function EventsPage() {
           fixtureIds.length
             ? client
                 .from("league_fixture_frames")
-                .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_forfeit,away_forfeit")
+                .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_points_scored,away_points_scored,home_forfeit,away_forfeit")
                 .in("fixture_id", fixtureIds)
             : Promise.resolve({ data: [] as LeagueFramePerf[] }),
           client
             .from("players")
             .select("id,display_name,full_name,rating_snooker,snooker_handicap")
             .eq("is_archived", false),
+          ratingSourceIds.length
+            ? client
+                .from("rating_result_receipts")
+                .select("source_result_id,status,metadata")
+                .eq("source_app", "league")
+                .in("source_result_id", ratingSourceIds)
+            : Promise.resolve({ data: [] as RatingReceipt[] }),
         ]);
         setSeasonMembers((membersResAll.data ?? []) as LeagueTeamMember[]);
         setSeasonFrames((framesResAll.data ?? []) as LeagueFramePerf[]);
         setSeasonPlayers((playersResAll.data ?? []) as LeaguePlayer[]);
+        setRatingReceipts((receiptResAll.data ?? []) as RatingReceipt[]);
 
         const compMatchRes = await client
           .from("matches")
@@ -584,6 +608,75 @@ export default function EventsPage() {
     rows.forEach((r, idx) => pos.set(r.teamId, idx + 1));
     return pos;
   }, [teamStats]);
+  const completedFixtureIds = useMemo(
+    () => new Set(seasonFixtures.filter((x) => x.status === "complete").map((x) => x.id)),
+    [seasonFixtures]
+  );
+  const fixtureDateById = useMemo(
+    () => new Map(seasonFixtures.map((fixture) => [fixture.id, fixture.fixture_date ?? ""])),
+    [seasonFixtures]
+  );
+  const avg = (nums: number[], fallback: number) => (nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : fallback);
+  const formScore = (recent: ("W" | "L" | "D")[]) =>
+    recent.slice(-5).reduce((acc, r) => acc + (r === "W" ? 1 : r === "D" ? 0.5 : 0), 0);
+  const frameRecordFor = (playerId: string) => {
+    let won = 0;
+    let lost = 0;
+    for (const fr of seasonFrames) {
+      if (!completedFixtureIds.has(fr.fixture_id) || !fr.winner_side || fr.home_forfeit || fr.away_forfeit) continue;
+      const inHome = fr.home_player1_id === playerId || fr.home_player2_id === playerId;
+      const inAway = fr.away_player1_id === playerId || fr.away_player2_id === playerId;
+      if (!inHome && !inAway) continue;
+      const isWin = (inHome && fr.winner_side === "home") || (inAway && fr.winner_side === "away");
+      if (isWin) won += 1;
+      else lost += 1;
+    }
+    return { won, lost };
+  };
+  const recentFrameSummaryFor = (playerId: string) => {
+    const results: Array<{ result: "W" | "L"; date: string }> = [];
+    for (const fr of seasonFrames) {
+      if (!completedFixtureIds.has(fr.fixture_id) || !fr.winner_side || fr.home_forfeit || fr.away_forfeit) continue;
+      const inHome = fr.home_player1_id === playerId || fr.home_player2_id === playerId;
+      const inAway = fr.away_player1_id === playerId || fr.away_player2_id === playerId;
+      if (!inHome && !inAway) continue;
+      const fixtureDate = fixtureDateById.get(fr.fixture_id) ?? "";
+      const isWin = (inHome && fr.winner_side === "home") || (inAway && fr.winner_side === "away");
+      results.push({ result: isWin ? "W" : "L", date: fixtureDate });
+    }
+    results.sort((a, b) => {
+      const da = a.date ? new Date(`${a.date}T12:00:00`).getTime() : 0;
+      const db = b.date ? new Date(`${b.date}T12:00:00`).getTime() : 0;
+      return db - da;
+    });
+    const recent = results.slice(0, 5);
+    const wins = recent.filter((row) => row.result === "W").length;
+    const losses = recent.filter((row) => row.result === "L").length;
+    const streak = (() => {
+      if (recent.length === 0) return null;
+      const first = recent[0].result;
+      let count = 0;
+      for (const row of recent) {
+        if (row.result !== first) break;
+        count += 1;
+      }
+      return { result: first, count };
+    })();
+    const lastPlayed = recent[0]?.date ?? null;
+    const summary =
+      recent.length === 0
+        ? "No recent league frames recorded yet."
+        : streak && streak.count >= 2
+          ? `${wins} win${wins === 1 ? "" : "s"} from last ${recent.length} frame${recent.length === 1 ? "" : "s"} · ${streak.count}-frame ${streak.result === "W" ? "winning" : "losing"} run`
+          : `${wins} win${wins === 1 ? "" : "s"} and ${losses} loss${losses === 1 ? "" : "es"} from last ${recent.length} frame${recent.length === 1 ? "" : "s"}`;
+    return {
+      wins,
+      losses,
+      recent,
+      lastPlayed,
+      summary,
+    };
+  };
   const prediction = useMemo(() => {
     const f = predictionFixture ?? nextFixture;
     if (!f) return null;
@@ -591,13 +684,10 @@ export default function EventsPage() {
     const awayPlayers = playersByTeam.get(f.away_team_id) ?? [];
     const homeStats = teamStats.get(f.home_team_id) ?? { played: 0, won: 0, lost: 0, draw: 0, points: 0, framesFor: 0, framesAgainst: 0, recent: [] };
     const awayStats = teamStats.get(f.away_team_id) ?? { played: 0, won: 0, lost: 0, draw: 0, points: 0, framesFor: 0, framesAgainst: 0, recent: [] };
-    const avg = (nums: number[], fallback: number) => (nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : fallback);
     const homeRating = avg(homePlayers.map((p) => Number(p.rating_snooker ?? 1000)), 1000);
     const awayRating = avg(awayPlayers.map((p) => Number(p.rating_snooker ?? 1000)), 1000);
     const homeHcp = avg(homePlayers.map((p) => Number(p.snooker_handicap ?? 0)), 0);
     const awayHcp = avg(awayPlayers.map((p) => Number(p.snooker_handicap ?? 0)), 0);
-    const formScore = (recent: ("W" | "L" | "D")[]) =>
-      recent.slice(-5).reduce((acc, r) => acc + (r === "W" ? 1 : r === "D" ? 0.5 : 0), 0);
     const homeForm = formScore(homeStats.recent);
     const awayForm = formScore(awayStats.recent);
     const maxTeams = Math.max(2, teamPosition.size);
@@ -622,68 +712,6 @@ export default function EventsPage() {
     const winnerSide: "home" | "away" = homeProb >= awayProb ? "home" : "away";
     const homeTeam = teamById.get(f.home_team_id) ?? "Home";
     const awayTeam = teamById.get(f.away_team_id) ?? "Away";
-    const completedFixtureIds = new Set(seasonFixtures.filter((x) => x.status === "complete").map((x) => x.id));
-    const fixtureDateById = new Map(
-      seasonFixtures.map((fixture) => [fixture.id, fixture.fixture_date ?? ""])
-    );
-    const frameRecordFor = (playerId: string) => {
-      let won = 0;
-      let lost = 0;
-      for (const fr of seasonFrames) {
-        if (!completedFixtureIds.has(fr.fixture_id) || !fr.winner_side || fr.home_forfeit || fr.away_forfeit) continue;
-        const inHome = fr.home_player1_id === playerId || fr.home_player2_id === playerId;
-        const inAway = fr.away_player1_id === playerId || fr.away_player2_id === playerId;
-        if (!inHome && !inAway) continue;
-        const isWin = (inHome && fr.winner_side === "home") || (inAway && fr.winner_side === "away");
-        if (isWin) won += 1;
-        else lost += 1;
-      }
-      return { won, lost };
-    };
-    const recentFrameSummaryFor = (playerId: string) => {
-      const results: Array<{ result: "W" | "L"; date: string }> = [];
-      for (const fr of seasonFrames) {
-        if (!completedFixtureIds.has(fr.fixture_id) || !fr.winner_side || fr.home_forfeit || fr.away_forfeit) continue;
-        const inHome = fr.home_player1_id === playerId || fr.home_player2_id === playerId;
-        const inAway = fr.away_player1_id === playerId || fr.away_player2_id === playerId;
-        if (!inHome && !inAway) continue;
-        const fixtureDate = fixtureDateById.get(fr.fixture_id) ?? "";
-        const isWin = (inHome && fr.winner_side === "home") || (inAway && fr.winner_side === "away");
-        results.push({ result: isWin ? "W" : "L", date: fixtureDate });
-      }
-      results.sort((a, b) => {
-        const da = a.date ? new Date(`${a.date}T12:00:00`).getTime() : 0;
-        const db = b.date ? new Date(`${b.date}T12:00:00`).getTime() : 0;
-        return db - da;
-      });
-      const recent = results.slice(0, 5);
-      const wins = recent.filter((row) => row.result === "W").length;
-      const losses = recent.filter((row) => row.result === "L").length;
-      const streak = (() => {
-        if (recent.length === 0) return null;
-        const first = recent[0].result;
-        let count = 0;
-        for (const row of recent) {
-          if (row.result !== first) break;
-          count += 1;
-        }
-        return { result: first, count };
-      })();
-      const lastPlayed = recent[0]?.date ?? null;
-      const summary =
-        recent.length === 0
-          ? "No recent league frames recorded yet."
-          : streak && streak.count >= 2
-            ? `${wins} win${wins === 1 ? "" : "s"} from last ${recent.length} frame${recent.length === 1 ? "" : "s"} · ${streak.count}-frame ${streak.result === "W" ? "winning" : "losing"} run`
-            : `${wins} win${wins === 1 ? "" : "s"} and ${losses} loss${losses === 1 ? "" : "es"} from last ${recent.length} frame${recent.length === 1 ? "" : "s"}`;
-      return {
-        wins,
-        losses,
-        recent,
-        lastPlayed,
-        summary,
-      };
-    };
     const describeTopPlayer = (teamPlayers: LeaguePlayer[]) => {
       if (teamPlayers.length === 0) return "No registered player history yet for this team.";
       const sorted = [...teamPlayers].sort(
@@ -759,6 +787,15 @@ export default function EventsPage() {
     () => new Map(seasonPlayers.map((p) => [p.id, p.full_name?.trim() || p.display_name])),
     [seasonPlayers]
   );
+  const ratingReceiptByFixtureId = useMemo(() => {
+    const map = new Map<string, RatingReceipt>();
+    for (const receipt of ratingReceipts) {
+      const source = receipt.source_result_id ?? "";
+      if (!source.startsWith("league_fixture:")) continue;
+      map.set(source.replace("league_fixture:", ""), receipt);
+    }
+    return map;
+  }, [ratingReceipts]);
   const weekOptions = useMemo(() => {
     const completeByWeek = new Map<number, { total: number; complete: number }>();
     for (const f of seasonFixtures) {
@@ -780,6 +817,82 @@ export default function EventsPage() {
     }
     if (!roundupWeek || !weekOptions.includes(roundupWeek)) setRoundupWeek(weekOptions[0]);
   }, [weekOptions, roundupWeek]);
+  const reportInsights = useMemo(() => {
+    if (!reportFixture) return null;
+    const home = teamById.get(reportFixture.home_team_id) ?? "Home";
+    const away = teamById.get(reportFixture.away_team_id) ?? "Away";
+    const homePlayers = playersByTeam.get(reportFixture.home_team_id) ?? [];
+    const awayPlayers = playersByTeam.get(reportFixture.away_team_id) ?? [];
+    const homeStats = teamStats.get(reportFixture.home_team_id) ?? { played: 0, won: 0, lost: 0, draw: 0, points: 0, framesFor: 0, framesAgainst: 0, recent: [] };
+    const awayStats = teamStats.get(reportFixture.away_team_id) ?? { played: 0, won: 0, lost: 0, draw: 0, points: 0, framesFor: 0, framesAgainst: 0, recent: [] };
+    const homeRating = avg(homePlayers.map((p) => Number(p.rating_snooker ?? 1000)), 1000);
+    const awayRating = avg(awayPlayers.map((p) => Number(p.rating_snooker ?? 1000)), 1000);
+    const homeHcp = avg(homePlayers.map((p) => Number(p.snooker_handicap ?? 0)), 0);
+    const awayHcp = avg(awayPlayers.map((p) => Number(p.snooker_handicap ?? 0)), 0);
+    const homeForm = formScore(homeStats.recent);
+    const awayForm = formScore(awayStats.recent);
+    const maxTeams = Math.max(2, teamPosition.size);
+    const homePos = teamPosition.get(reportFixture.home_team_id) ?? maxTeams;
+    const awayPos = teamPosition.get(reportFixture.away_team_id) ?? maxTeams;
+    const weights = { rating: 0.18, handicap: 1.6, form: 12, table: 3.5, home: 2, scale: 12 };
+    const ratingComponent = (homeRating - awayRating) * weights.rating;
+    const handicapComponent = (awayHcp - homeHcp) * weights.handicap;
+    const formComponent = (homeForm - awayForm) * weights.form;
+    const positionComponent = (awayPos - homePos) * weights.table;
+    const diff = ratingComponent + handicapComponent + formComponent + positionComponent + weights.home;
+    const expectedHomeProb = 1 / (1 + Math.exp(-diff / weights.scale));
+    const actualHomeScore = Number(reportFixture.home_points ?? 0);
+    const actualAwayScore = Number(reportFixture.away_points ?? 0);
+    const actualWinner: "home" | "away" | "draw" = actualHomeScore > actualAwayScore ? "home" : actualAwayScore > actualHomeScore ? "away" : "draw";
+    const expectedWinner: "home" | "away" = expectedHomeProb >= 0.5 ? "home" : "away";
+    const expectedTeam = expectedWinner === "home" ? home : away;
+    const expectationLabel =
+      actualWinner === "draw"
+        ? "The match finished level, so neither side clearly beat or missed the pre-match expectation."
+        : actualWinner === expectedWinner
+          ? `${expectedTeam} were the model favourite and the result broadly followed expectation.`
+          : `${actualWinner === "home" ? home : away} outperformed the pre-match model, so this result landed as an upset on the numbers.`;
+    const formLabel =
+      homeForm === awayForm
+        ? "Both teams came in with very similar recent form."
+        : homeForm > awayForm
+          ? `${home} had the stronger recent form coming in.`
+          : `${away} had the stronger recent form coming in.`;
+    const receipt = ratingReceiptByFixtureId.get(reportFixture.id) ?? null;
+    const meta = receipt?.metadata ?? null;
+    const homeDelta = typeof meta?.delta_a === "number" ? meta.delta_a : null;
+    const awayDelta = typeof meta?.delta_b === "number" ? meta.delta_b : null;
+    const kFactor = typeof meta?.k_factor === "number" ? meta.k_factor : null;
+    const expectedPct = typeof meta?.expected_a === "number" ? Math.round(meta.expected_a * 100) : Math.round(expectedHomeProb * 100);
+    const actualTeam = actualWinner === "home" ? home : actualWinner === "away" ? away : "Neither side";
+    const expectationGap =
+      actualWinner === "draw"
+        ? "the fixture landed in the middle of the pre-match expectation"
+        : actualWinner === expectedWinner
+          ? `${expectedTeam} delivered the result the model mostly expected`
+          : `${actualTeam} beat the pre-match expectation`;
+    const eloLabel =
+      homeDelta === null || awayDelta === null
+        ? "Elo movement is not yet available for this fixture."
+        : `${home} players ${homeDelta >= 0 ? "gained" : "lost"} ${Math.abs(homeDelta)} Elo each and ${away} players ${awayDelta >= 0 ? "gained" : "lost"} ${Math.abs(awayDelta)} each. That movement comes from three things: the pre-match expectation, the actual result, and the rating sensitivity. For this fixture, the model had ${home} at about ${expectedPct}% before the match, so ${expectationGap}. ${kFactor !== null ? `The rating sensitivity for this result was ${kFactor}, which sets how sharply the numbers move.` : ""} In plain English, a result that goes more against expectation creates a bigger swing, while a result that broadly follows expectation creates a smaller one.`;
+    const scoredMargins = seasonFrames
+      .filter((fr) => fr.fixture_id === reportFixture.id)
+      .map((fr) => {
+        if (typeof fr.home_points_scored !== "number" || typeof fr.away_points_scored !== "number") return null;
+        return Math.abs(fr.home_points_scored - fr.away_points_scored);
+      })
+      .filter((value): value is number => value !== null);
+    return {
+      expectedWinner: expectedTeam,
+      expectedPct,
+      expectationLabel,
+      formLabel,
+      eloLabel,
+      homeFormLine: `${home} recent form: ${homeStats.recent.slice(-5).join("") || "-"}`,
+      awayFormLine: `${away} recent form: ${awayStats.recent.slice(-5).join("") || "-"}`,
+      biggestMargin: scoredMargins.length ? Math.max(...scoredMargins) : null,
+    };
+  }, [playersByTeam, ratingReceiptByFixtureId, reportFixture, seasonFrames, teamById, teamPosition, teamStats]);
   const matchupReport = useMemo(() => {
     if (!reportFixture) return null;
     const frames = seasonFrames
@@ -864,18 +977,29 @@ export default function EventsPage() {
     };
   }, [roundupWeek, seasonFixtures, teamById, seasonFrames, playerNameMap]);
   const matchReportText = useMemo(() => {
-    if (!matchupReport || !reportFixture) return "";
+    if (!matchupReport || !reportFixture || !reportInsights) return "";
     const lines = [
       `${matchupReport.home} vs ${matchupReport.away} (${leagueFixtureDate(reportFixture)})`,
       `Result: ${matchupReport.score}`,
-      matchupReport.headline,
-      matchupReport.top.length ? `Key performers: ${matchupReport.top.join(" · ")}` : "",
       "",
-      "Frame summary:",
+      "Result summary:",
+      `- ${matchupReport.headline}`,
+      `- Expected result: ${reportInsights.expectedWinner} came in as the model favourite at about ${reportInsights.expectedPct}%.`,
+      `- Outcome vs expectation: ${reportInsights.expectationLabel}`,
+      `- Form guide: ${reportInsights.formLabel}`,
+      `- ${reportInsights.homeFormLine}`,
+      `- ${reportInsights.awayFormLine}`,
+      reportInsights.biggestMargin !== null ? `- Biggest frame winning margin: ${reportInsights.biggestMargin} points.` : "",
+      matchupReport.top.length ? `- Key performers: ${matchupReport.top.join(" · ")}` : "",
+      "",
+      "Elo impact:",
+      `- ${reportInsights.eloLabel}`,
+      "",
+      "Frame facts:",
       ...matchupReport.frameRows.map((r) => `- ${r.label}: ${r.homeName} vs ${r.awayName} | Winner: ${r.winner}`),
     ].filter(Boolean);
     return lines.join("\n");
-  }, [matchupReport, reportFixture]);
+  }, [matchupReport, reportFixture, reportInsights]);
   const weeklyRoundupText = useMemo(() => {
     if (!weeklyRoundup || !roundupWeek) return "";
     const lines = [
@@ -1345,7 +1469,7 @@ export default function EventsPage() {
                   </div>
                 </article>
               ) : null}
-              {reportFixture && matchupReport ? (
+              {reportFixture && matchupReport && reportInsights ? (
                 <article className={cardBaseClass}>
                   <div className="flex items-start justify-between gap-2">
                     <div>
@@ -1361,6 +1485,22 @@ export default function EventsPage() {
                     </button>
                   </div>
                   <p className="mt-2 rounded-lg border border-sky-200 bg-sky-50 p-2 text-sm font-medium text-sky-900">{matchupReport.headline}</p>
+                  <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Expectation</p>
+                      <p className="mt-2 text-sm text-slate-900">
+                        {reportInsights.expectedWinner} were the model favourite at about <span className="font-semibold">{reportInsights.expectedPct}%</span>.
+                      </p>
+                      <p className="mt-2 text-xs text-slate-700">{reportInsights.expectationLabel}</p>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Form And Elo</p>
+                      <p className="mt-2 text-xs text-slate-700">{reportInsights.formLabel}</p>
+                      <p className="mt-2 text-xs text-slate-700">{reportInsights.homeFormLine}</p>
+                      <p className="mt-1 text-xs text-slate-700">{reportInsights.awayFormLine}</p>
+                      <p className="mt-2 text-xs text-slate-700">{reportInsights.eloLabel}</p>
+                    </div>
+                  </div>
                   <div className="mt-2 flex flex-wrap gap-2">
                     <button
                       type="button"
@@ -1381,6 +1521,9 @@ export default function EventsPage() {
                   </div>
                   {matchupReport.top.length > 0 ? (
                     <p className="mt-2 text-xs text-slate-700">Key performers: {matchupReport.top.join(" · ")}</p>
+                  ) : null}
+                  {reportInsights.biggestMargin !== null ? (
+                    <p className="mt-1 text-xs text-slate-700">Biggest frame winning margin: {reportInsights.biggestMargin} points.</p>
                   ) : null}
                   <div className="mt-3 space-y-1">
                     {matchupReport.frameRows.map((row) => (
