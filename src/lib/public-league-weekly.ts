@@ -590,10 +590,10 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
         ratedFrames,
         reason:
           delta > 0
-            ? `${name} gained ${delta} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo band.`
+            ? `${name} moved from ${startingRating} to ${currentRating}, gaining ${delta} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo target handicap band.`
             : delta < 0
-              ? `${name} lost ${Math.abs(delta)} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo band.`
-              : `${name} had no Elo movement recorded this week. The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo band.`,
+              ? `${name} moved from ${startingRating} to ${currentRating}, losing ${Math.abs(delta)} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo target handicap band.`
+              : `${name} stayed at ${currentRating} Elo this week with no Elo movement recorded. The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo target handicap band.`,
       };
     })
     .sort((a, b) => b.rating - a.rating || a.name.localeCompare(b.name));

@@ -127,24 +127,16 @@ export default function PublicWeeklyHandicapReviewPage() {
               <div className="mt-5 grid gap-3 sm:grid-cols-4">
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    Starting Elo
+                    Elo (Previous Week)
                   </p>
                   <p className="mt-2 text-2xl font-bold text-white">{row.previous}</p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    New Elo
+                    Elo (Following Review)
                   </p>
                   <p className="mt-2 text-2xl font-bold text-white">
                     {row.next}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    Rated Frames
-                  </p>
-                  <p className="mt-2 text-2xl font-bold text-white">
-                    {row.ratedFrames}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
@@ -155,7 +147,18 @@ export default function PublicWeeklyHandicapReviewPage() {
                     {formatHandicap(row.current)}
                   </p>
                 </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                    Elo Target Handicap
+                  </p>
+                  <p className="mt-2 text-2xl font-bold text-white">
+                    {formatHandicap(row.target)}
+                  </p>
+                </div>
               </div>
+              <p className="mt-4 text-xs text-slate-400">
+                Rated frames counted this week: {row.ratedFrames}
+              </p>
             </article>
           ))}
         </section>
