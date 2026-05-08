@@ -357,6 +357,40 @@ export async function revertSnookerRatingSources({
   return { ok: true as const, reverted: receipts.length };
 }
 
+async function rebuildSnookerRatedMatchCounts(adminClient: SupabaseClient, playerIds: string[]) {
+  const uniquePlayerIds = uniqueIds(playerIds);
+  if (uniquePlayerIds.length === 0) return;
+
+  const [eventsRes, playersRes] = await Promise.all([
+    adminClient
+      .from("rating_events")
+      .select("player_id")
+      .in("player_id", uniquePlayerIds),
+    adminClient
+      .from("players")
+      .select("id")
+      .in("id", uniquePlayerIds),
+  ]);
+  if (eventsRes.error) throw new Error(eventsRes.error.message);
+  if (playersRes.error) throw new Error(playersRes.error.message);
+
+  const counts = new Map<string, number>();
+  for (const row of (eventsRes.data ?? []) as Array<{ player_id: string | null }>) {
+    const playerId = row.player_id ?? "";
+    if (!playerId) continue;
+    counts.set(playerId, (counts.get(playerId) ?? 0) + 1);
+  }
+
+  for (const player of (playersRes.data ?? []) as Array<{ id: string }>) {
+    const nextCount = counts.get(player.id) ?? 0;
+    const updateRes = await adminClient
+      .from("players")
+      .update({ rated_matches_snooker: nextCount })
+      .eq("id", player.id);
+    if (updateRes.error) throw new Error(updateRes.error.message);
+  }
+}
+
 export async function rebuildLeagueFixtureSnookerRatings({
   adminClient,
   fixtureId,
@@ -366,6 +400,14 @@ export async function rebuildLeagueFixtureSnookerRatings({
   metadata,
 }: LeagueFixtureRatingArgs) {
   const summarySourceId = `league_fixture:${fixtureId}`;
+  const touchedPlayerIds = uniqueIds(
+    frames.flatMap((frame) => [
+      frame.home_player1_id ?? "",
+      frame.home_player2_id ?? "",
+      frame.away_player1_id ?? "",
+      frame.away_player2_id ?? "",
+    ])
+  );
   const frameSourceIds = frames
     .filter((frame) => Number.isInteger(frame.slot_no))
     .map((frame) => `league_fixture:${fixtureId}:frame:${frame.slot_no}`);
@@ -467,6 +509,8 @@ export async function rebuildLeagueFixtureSnookerRatings({
     },
   });
   if (summaryInsert.error) throw new Error(summaryInsert.error.message);
+
+  await rebuildSnookerRatedMatchCounts(adminClient, touchedPlayerIds);
 
   return {
     ok: true as const,

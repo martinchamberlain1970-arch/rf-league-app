@@ -61,6 +61,7 @@ export async function POST(req: NextRequest) {
 
   const fixtures = (fixturesRes.data ?? []) as FixtureRow[];
   const results: Array<{ fixtureId: string; ratedFrameCount: number }> = [];
+  const failures: Array<{ fixtureId: string; error: string }> = [];
   for (const fixture of fixtures) {
     const framesRes = await adminClient
       .from("league_fixture_frames")
@@ -68,30 +69,46 @@ export async function POST(req: NextRequest) {
       .eq("fixture_id", fixture.id)
       .order("slot_no", { ascending: true });
     if (framesRes.error) {
-      return NextResponse.json({ error: framesRes.error.message, fixtureId: fixture.id }, { status: 400 });
+      failures.push({ fixtureId: fixture.id, error: framesRes.error.message });
+      continue;
     }
 
     const frames = (framesRes.data ?? []) as FrameRow[];
-    const rerated = await rebuildLeagueFixtureSnookerRatings({
-      adminClient,
-      fixtureId: fixture.id,
-      seasonId: fixture.season_id,
-      frames: frames.map((row) => ({
-        slot_no: row.slot_no,
-        slot_type: row.home_player2_id || row.away_player2_id ? "doubles" : "singles",
-        winner_side: row.winner_side,
-        home_forfeit: row.home_forfeit,
-        away_forfeit: row.away_forfeit,
-        home_player1_id: row.home_player1_id,
-        home_player2_id: row.home_player2_id,
-        away_player1_id: row.away_player1_id,
-        away_player2_id: row.away_player2_id,
-      })),
-      notes: `League fixture ${fixture.id}`,
-      metadata: { fixture_id: fixture.id, season_id: fixture.season_id, source: "bulk_rebuild" },
-    });
-    results.push({ fixtureId: fixture.id, ratedFrameCount: rerated.ratedFrameCount });
+    try {
+      const rerated = await rebuildLeagueFixtureSnookerRatings({
+        adminClient,
+        fixtureId: fixture.id,
+        seasonId: fixture.season_id,
+        frames: frames.map((row) => ({
+          slot_no: row.slot_no,
+          slot_type: row.home_player2_id || row.away_player2_id ? "doubles" : "singles",
+          winner_side: row.winner_side,
+          home_forfeit: row.home_forfeit,
+          away_forfeit: row.away_forfeit,
+          home_player1_id: row.home_player1_id,
+          home_player2_id: row.home_player2_id,
+          away_player1_id: row.away_player1_id,
+          away_player2_id: row.away_player2_id,
+        })),
+        notes: `League fixture ${fixture.id}`,
+        metadata: { fixture_id: fixture.id, season_id: fixture.season_id, source: "bulk_rebuild" },
+      });
+      results.push({ fixtureId: fixture.id, ratedFrameCount: rerated.ratedFrameCount });
+    } catch (error) {
+      failures.push({
+        fixtureId: fixture.id,
+        error: error instanceof Error ? error.message : "Unknown rebuild error",
+      });
+    }
   }
 
-  return NextResponse.json({ ok: true, fixtureDate, fixtureCount: fixtures.length, results });
+  return NextResponse.json({
+    ok: failures.length === 0,
+    fixtureDate,
+    fixtureCount: fixtures.length,
+    rebuiltCount: results.length,
+    failedCount: failures.length,
+    results,
+    failures,
+  });
 }
