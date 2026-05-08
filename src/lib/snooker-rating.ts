@@ -19,6 +19,37 @@ type ApplyGroupRatingArgs = {
   metadata?: Record<string, unknown>;
 };
 
+type LeagueFixtureRatingFrame = {
+  slot_no: number;
+  slot_type?: "singles" | "doubles" | null;
+  winner_side: "home" | "away" | null;
+  home_forfeit?: boolean | null;
+  away_forfeit?: boolean | null;
+  home_player1_id: string | null;
+  home_player2_id?: string | null;
+  away_player1_id: string | null;
+  away_player2_id?: string | null;
+};
+
+type LeagueFixtureRatingArgs = {
+  adminClient: SupabaseClient;
+  fixtureId: string;
+  seasonId?: string | null;
+  frames: LeagueFixtureRatingFrame[];
+  notes?: string | null;
+  metadata?: Record<string, unknown>;
+};
+
+type RatingEventRow = {
+  player_id: string;
+  rating_delta: number | null;
+};
+
+type RatingReceiptRow = {
+  id: string;
+  source_result_id: string;
+};
+
 function expectedScore(teamA: number, teamB: number) {
   return 1 / (1 + Math.pow(10, (teamB - teamA) / 400));
 }
@@ -238,4 +269,212 @@ export async function applyGroupSnookerRating({
       .eq("source_result_id", sourceResultId);
     throw error;
   }
+}
+
+export async function revertSnookerRatingSources({
+  adminClient,
+  sourceApp,
+  sourceResultIds,
+}: {
+  adminClient: SupabaseClient;
+  sourceApp: "league" | "club";
+  sourceResultIds: string[];
+}) {
+  const uniqueSourceIds = uniqueIds(sourceResultIds);
+  if (uniqueSourceIds.length === 0) return { ok: true as const, reverted: 0 };
+
+  const [eventsRes, receiptsRes] = await Promise.all([
+    adminClient
+      .from("rating_events")
+      .select("player_id,rating_delta")
+      .eq("source_app", sourceApp)
+      .in("source_result_id", uniqueSourceIds),
+    adminClient
+      .from("rating_result_receipts")
+      .select("id,source_result_id")
+      .eq("source_app", sourceApp)
+      .in("source_result_id", uniqueSourceIds),
+  ]);
+  if (eventsRes.error) throw new Error(eventsRes.error.message);
+  if (receiptsRes.error) throw new Error(receiptsRes.error.message);
+
+  const events = (eventsRes.data ?? []) as RatingEventRow[];
+  const receipts = (receiptsRes.data ?? []) as RatingReceiptRow[];
+  if (events.length === 0 && receipts.length === 0) {
+    return { ok: true as const, reverted: 0 };
+  }
+
+  const deltaByPlayer = new Map<string, { delta: number; matches: number }>();
+  for (const event of events) {
+    if (!event.player_id) continue;
+    const prev = deltaByPlayer.get(event.player_id) ?? { delta: 0, matches: 0 };
+    prev.delta += Number(event.rating_delta ?? 0);
+    prev.matches += 1;
+    deltaByPlayer.set(event.player_id, prev);
+  }
+
+  if (deltaByPlayer.size > 0) {
+    const playerIds = Array.from(deltaByPlayer.keys());
+    const playersRes = await adminClient
+      .from("players")
+      .select("id,rating_snooker,rated_matches_snooker")
+      .in("id", playerIds);
+    if (playersRes.error) throw new Error(playersRes.error.message);
+    const players = (playersRes.data ?? []) as Array<{ id: string; rating_snooker: number | null; rated_matches_snooker: number | null }>;
+    for (const player of players) {
+      const delta = deltaByPlayer.get(player.id);
+      if (!delta) continue;
+      const nextRating = Math.max(100, Number(player.rating_snooker ?? 1000) - delta.delta);
+      const nextMatches = Math.max(0, Number(player.rated_matches_snooker ?? 0) - delta.matches);
+      const updateRes = await adminClient
+        .from("players")
+        .update({
+          rating_snooker: nextRating,
+          rated_matches_snooker: nextMatches,
+        })
+        .eq("id", player.id);
+      if (updateRes.error) throw new Error(updateRes.error.message);
+    }
+  }
+
+  if (events.length > 0) {
+    const deleteEvents = await adminClient
+      .from("rating_events")
+      .delete()
+      .eq("source_app", sourceApp)
+      .in("source_result_id", uniqueSourceIds);
+    if (deleteEvents.error) throw new Error(deleteEvents.error.message);
+  }
+  if (receipts.length > 0) {
+    const deleteReceipts = await adminClient
+      .from("rating_result_receipts")
+      .delete()
+      .eq("source_app", sourceApp)
+      .in("source_result_id", uniqueSourceIds);
+    if (deleteReceipts.error) throw new Error(deleteReceipts.error.message);
+  }
+
+  return { ok: true as const, reverted: receipts.length };
+}
+
+export async function rebuildLeagueFixtureSnookerRatings({
+  adminClient,
+  fixtureId,
+  seasonId,
+  frames,
+  notes,
+  metadata,
+}: LeagueFixtureRatingArgs) {
+  const summarySourceId = `league_fixture:${fixtureId}`;
+  const frameSourceIds = frames
+    .filter((frame) => Number.isInteger(frame.slot_no))
+    .map((frame) => `league_fixture:${fixtureId}:frame:${frame.slot_no}`);
+
+  await revertSnookerRatingSources({
+    adminClient,
+    sourceApp: "league",
+    sourceResultIds: [summarySourceId, ...frameSourceIds],
+  });
+
+  const playerDeltaMap = new Map<string, { delta: number; side: "home" | "away" }>();
+  const ratedFrames: Array<{
+    slot_no: number;
+    slot_type: "singles" | "doubles";
+    winner_side: "home" | "away";
+    delta_home: number;
+    delta_away: number;
+    expected_home: number;
+    k_factor: number;
+  }> = [];
+
+  for (const frame of frames) {
+    if (!frame.winner_side) continue;
+    if (frame.home_forfeit || frame.away_forfeit) continue;
+
+    const homeIds = uniqueIds([
+      frame.home_player1_id ?? "",
+      frame.slot_type === "doubles" ? frame.home_player2_id ?? "" : "",
+    ]);
+    const awayIds = uniqueIds([
+      frame.away_player1_id ?? "",
+      frame.slot_type === "doubles" ? frame.away_player2_id ?? "" : "",
+    ]);
+    const isDoubles = frame.slot_type === "doubles";
+    if (homeIds.length !== (isDoubles ? 2 : 1) || awayIds.length !== (isDoubles ? 2 : 1)) continue;
+
+    const scoreA = frame.winner_side === "home" ? 1 : 0;
+    const scoreB = frame.winner_side === "away" ? 1 : 0;
+    const result = await applyGroupSnookerRating({
+      adminClient,
+      sourceApp: "league",
+      sourceResultId: `league_fixture:${fixtureId}:frame:${frame.slot_no}`,
+      groupAIds: homeIds,
+      groupBIds: awayIds,
+      scoreA,
+      scoreB,
+      notes: notes ?? `League fixture ${fixtureId} frame ${frame.slot_no}`,
+      metadata: {
+        fixture_id: fixtureId,
+        season_id: seasonId ?? null,
+        rating_mode: "per_frame",
+        slot_no: frame.slot_no,
+        slot_type: frame.slot_type ?? "singles",
+        ...metadata,
+      },
+    });
+    if (result.skipped) continue;
+
+    for (const id of homeIds) {
+      const prev = playerDeltaMap.get(id) ?? { delta: 0, side: "home" as const };
+      prev.delta += result.deltaA;
+      playerDeltaMap.set(id, prev);
+    }
+    for (const id of awayIds) {
+      const prev = playerDeltaMap.get(id) ?? { delta: 0, side: "away" as const };
+      prev.delta += result.deltaB;
+      playerDeltaMap.set(id, prev);
+    }
+    ratedFrames.push({
+      slot_no: frame.slot_no,
+      slot_type: isDoubles ? "doubles" : "singles",
+      winner_side: frame.winner_side,
+      delta_home: result.deltaA,
+      delta_away: result.deltaB,
+      expected_home: result.expectedA,
+      k_factor: result.k,
+    });
+  }
+
+  const summaryInsert = await adminClient.from("rating_result_receipts").insert({
+    source_app: "league",
+    source_result_id: summarySourceId,
+    winner_player_id: null,
+    loser_player_id: null,
+    status: "processed",
+    processed_at: new Date().toISOString(),
+    metadata: {
+      fixture_id: fixtureId,
+      season_id: seasonId ?? null,
+      rating_mode: "per_frame",
+      rated_frame_count: ratedFrames.length,
+      player_deltas: Array.from(playerDeltaMap.entries()).map(([player_id, value]) => ({
+        player_id,
+        delta: value.delta,
+        side: value.side,
+      })),
+      rated_frames: ratedFrames,
+      ...metadata,
+    },
+  });
+  if (summaryInsert.error) throw new Error(summaryInsert.error.message);
+
+  return {
+    ok: true as const,
+    ratedFrameCount: ratedFrames.length,
+    playerDeltas: Array.from(playerDeltaMap.entries()).map(([player_id, value]) => ({
+      player_id,
+      delta: value.delta,
+      side: value.side,
+    })),
+  };
 }

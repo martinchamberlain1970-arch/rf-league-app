@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { applyGroupSnookerRating } from "@/lib/snooker-rating";
+import { rebuildLeagueFixtureSnookerRatings } from "@/lib/snooker-rating";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -225,41 +225,32 @@ export async function POST(req: NextRequest) {
       .eq("id", submission.fixture_id);
     if (fixtureUpdate.error) return NextResponse.json({ error: fixtureUpdate.error.message }, { status: 400 });
 
-    // Apply shared Elo-style snooker rating only when fixture is complete.
+    // Apply per-frame snooker rating only when fixture is complete.
     if (status === "complete") {
-      const team1Ids = Array.from(
-        new Set(
-          rows
-            .flatMap((r) => [r.home_player1_id, r.home_player2_id])
-            .filter((v): v is string => Boolean(v))
-        )
-      );
-      const team2Ids = Array.from(
-        new Set(
-          rows
-            .flatMap((r) => [r.away_player1_id, r.away_player2_id])
-            .filter((v): v is string => Boolean(v))
-        )
-      );
-      if (team1Ids.length > 0 && team2Ids.length > 0) {
-        try {
-          await applyGroupSnookerRating({
-            adminClient,
-            sourceApp: "league",
-            sourceResultId: `league_fixture:${submission.fixture_id}`,
-            groupAIds: team1Ids,
-            groupBIds: team2Ids,
-            scoreA: homePoints,
-            scoreB: awayPoints,
-            notes: `League fixture ${submission.fixture_id}`,
-            metadata: { fixture_id: submission.fixture_id, season_id: fixtureRes.data.season_id },
-          });
-        } catch (error) {
-          return NextResponse.json(
-            { error: error instanceof Error ? error.message : "Failed to apply snooker rating." },
-            { status: 400 }
-          );
-        }
+      try {
+        await rebuildLeagueFixtureSnookerRatings({
+          adminClient,
+          fixtureId: submission.fixture_id,
+          seasonId: fixtureRes.data.season_id,
+          frames: rows.map((row) => ({
+            slot_no: row.slot_no,
+            slot_type: row.home_player2_id || row.away_player2_id ? "doubles" : "singles",
+            winner_side: row.winner_side,
+            home_forfeit: row.home_forfeit,
+            away_forfeit: row.away_forfeit,
+            home_player1_id: row.home_player1_id,
+            home_player2_id: row.home_player2_id,
+            away_player1_id: row.away_player1_id,
+            away_player2_id: row.away_player2_id,
+          })),
+          notes: `League fixture ${submission.fixture_id}`,
+          metadata: { fixture_id: submission.fixture_id, season_id: fixtureRes.data.season_id, source: "submission_review" },
+        });
+      } catch (error) {
+        return NextResponse.json(
+          { error: error instanceof Error ? error.message : "Failed to apply snooker rating." },
+          { status: 400 }
+        );
       }
     }
   }

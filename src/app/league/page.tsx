@@ -3104,6 +3104,44 @@ export default function LeaguePage() {
     setFixtures((prev) => prev.map((f) => (f.id === fixtureTargetId ? ({ ...f, ...(fixtureRow as Fixture) }) : f)));
   };
 
+  const rebuildFixtureDateRatings = async (fixtureDate: string | null | undefined) => {
+    const client = supabase;
+    if (!client || !canManage || !fixtureDate) return;
+    const sessionRes = await client.auth.getSession();
+    const token = sessionRes.data.session?.access_token ?? null;
+    if (!token) {
+      setMessage("Session expired. Please sign in again.");
+      return;
+    }
+    let res: Response;
+    try {
+      res = await fetch("/api/league/rebuild-ratings", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ fixtureDate }),
+      });
+    } catch {
+      setMessage("Network error while rebuilding frame ratings.");
+      return;
+    }
+    const payload = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      fixtureCount?: number;
+    };
+    if (!res.ok) {
+      setMessage(payload.error ?? "Failed to rebuild frame ratings.");
+      return;
+    }
+    setInfoModal({
+      title: "Frame Ratings Rebuilt",
+      description: `${payload.fixtureCount ?? 0} complete fixture(s) on ${fixtureDate} were rebuilt using frame-by-frame Elo.`,
+    });
+    await loadAll();
+  };
+
   const computeFixtureProgress = (fixtureValue: Fixture) => {
     const frameRows = fixtureSlotsByFixtureId.get(fixtureValue.id) ?? [];
     const season = seasonById.get(fixtureValue.season_id);
@@ -7434,23 +7472,34 @@ export default function LeaguePage() {
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <p className="text-xs text-slate-600">
                             {isCurrentFixtureLocked
-                              ? "This fixture is complete. Use this to recheck the saved result, backfill any missed rating update, and close the entry screen."
+                              ? "This fixture is complete. Use this to recheck the saved result, replace any old team-based Elo with frame-based Elo, and close the entry screen."
                               : "Super User changes save as you edit. Use this to keep partial progress, recompute the fixture status, and close the entry screen."}
                           </p>
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              await recomputeFixtureScore(currentFixture.id);
-                              setResultEntryOpen(false);
-                            }}
-                            className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
-                          >
-                            {isCurrentFixtureLocked
-                              ? "Recheck result and rating"
-                              : computeFixtureProgress(currentFixture).status === "complete"
-                                ? "Save and complete fixture"
-                                : "Save progress and close"}
-                          </button>
+                          <div className="flex flex-wrap gap-2">
+                            {isCurrentFixtureLocked && currentFixture.fixture_date ? (
+                              <button
+                                type="button"
+                                onClick={() => void rebuildFixtureDateRatings(currentFixture.fixture_date)}
+                                className="rounded-xl border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-700"
+                              >
+                                Rebuild ratings for this fixture date
+                              </button>
+                            ) : null}
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                await recomputeFixtureScore(currentFixture.id);
+                                setResultEntryOpen(false);
+                              }}
+                              className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
+                            >
+                              {isCurrentFixtureLocked
+                                ? "Recheck result and rating"
+                                : computeFixtureProgress(currentFixture).status === "complete"
+                                  ? "Save and complete fixture"
+                                  : "Save progress and close"}
+                            </button>
+                          </div>
                         </div>
                       </section>
                     ) : null}

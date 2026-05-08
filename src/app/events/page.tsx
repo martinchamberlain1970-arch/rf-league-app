@@ -68,6 +68,22 @@ type RatingReceipt = {
     delta_b?: number;
     expected_a?: number;
     k_factor?: number;
+    rating_mode?: string;
+    rated_frame_count?: number;
+    player_deltas?: Array<{
+      player_id: string;
+      delta: number;
+      side: "home" | "away";
+    }>;
+    rated_frames?: Array<{
+      slot_no: number;
+      slot_type: "singles" | "doubles";
+      winner_side: "home" | "away";
+      delta_home: number;
+      delta_away: number;
+      expected_home: number;
+      k_factor: number;
+    }>;
   } | null;
 };
 
@@ -865,6 +881,16 @@ export default function EventsPage() {
     const awayDelta = typeof meta?.delta_b === "number" ? meta.delta_b : null;
     const kFactor = typeof meta?.k_factor === "number" ? meta.k_factor : null;
     const expectedPct = typeof meta?.expected_a === "number" ? Math.round(meta.expected_a * 100) : Math.round(expectedHomeProb * 100);
+    const playerDeltas = Array.isArray(meta?.player_deltas) ? meta.player_deltas : [];
+    const ratedFrameCount = typeof meta?.rated_frame_count === "number" ? meta.rated_frame_count : 0;
+    const biggestGain = playerDeltas
+      .filter((row) => typeof row.delta === "number" && row.delta > 0)
+      .sort((a, b) => b.delta - a.delta)[0];
+    const biggestLoss = playerDeltas
+      .filter((row) => typeof row.delta === "number" && row.delta < 0)
+      .sort((a, b) => a.delta - b.delta)[0];
+    const biggestGainName = biggestGain ? playerNameMap.get(biggestGain.player_id) ?? "Player" : null;
+    const biggestLossName = biggestLoss ? playerNameMap.get(biggestLoss.player_id) ?? "Player" : null;
     const actualTeam = actualWinner === "home" ? home : actualWinner === "away" ? away : "Neither side";
     const expectationGap =
       actualWinner === "draw"
@@ -873,7 +899,11 @@ export default function EventsPage() {
           ? `${expectedTeam} delivered the result the model mostly expected`
           : `${actualTeam} beat the pre-match expectation`;
     const eloLabel =
-      homeDelta === null || awayDelta === null
+      meta?.rating_mode === "per_frame"
+        ? playerDeltas.length === 0
+          ? "This fixture used frame-based rating, but no player movement was recorded in the summary receipt."
+          : `${ratedFrameCount} rated frame${ratedFrameCount === 1 ? "" : "s"} fed into the Elo update. ${biggestGainName && biggestGain ? `${biggestGainName} was the biggest gainer at ${biggestGain.delta >= 0 ? "+" : ""}${biggestGain.delta}. ` : ""}${biggestLossName && biggestLoss ? `${biggestLossName} was the biggest drop at ${biggestLoss.delta}. ` : ""}Each frame now rates the players involved in that frame only, so winning your own frame helps your Elo even if your team loses the overall match. Bigger upsets still create bigger swings, while expected wins move the numbers less.`
+        : homeDelta === null || awayDelta === null
         ? reportFixture.status === "complete"
           ? "This fixture is locked, but no rating receipt is attached to it yet. Use Recheck result and rating in League Manager to backfill the Elo explanation for this match."
           : "This fixture is still live or awaiting its final rating step, so the Elo explanation will appear once it is fully completed."
@@ -895,7 +925,7 @@ export default function EventsPage() {
       awayFormLine: `${away} recent form: ${awayStats.recent.slice(-5).join("") || "-"}`,
       biggestMargin: scoredMargins.length ? Math.max(...scoredMargins) : null,
     };
-  }, [playersByTeam, ratingReceiptByFixtureId, reportFixture, seasonFrames, teamById, teamPosition, teamStats]);
+  }, [playersByTeam, ratingReceiptByFixtureId, reportFixture, seasonFrames, teamById, teamPosition, teamStats, playerNameMap]);
   const matchupReport = useMemo(() => {
     if (!reportFixture) return null;
     const frames = seasonFrames
