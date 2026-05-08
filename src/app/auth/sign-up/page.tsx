@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { logAudit } from "@/lib/audit";
 import ConfirmModal from "@/components/ConfirmModal";
+import DobSelect from "@/components/DobSelect";
 import InfoModal from "@/components/InfoModal";
 import MessageModal from "@/components/MessageModal";
 
@@ -458,12 +459,10 @@ export default function SignUpPage() {
               </div>
               <div>
                 <label className="mb-1 block text-sm font-medium text-slate-700">Date of birth</label>
-                <input
-                  type="date"
-                  required
+                <DobSelect
                   value={dateOfBirth}
-                  onChange={(e) => setDateOfBirth(e.target.value)}
-                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
+                  onChange={setDateOfBirth}
+                  required
                 />
                 <p className="mt-2 text-xs text-slate-600">
                   Date of birth is required for all players, whether you are claiming an existing profile or asking us to create a new one.

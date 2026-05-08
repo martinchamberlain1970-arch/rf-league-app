@@ -4,6 +4,7 @@ import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
+import DobSelect from "@/components/DobSelect";
 import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
 import { supabase } from "@/lib/supabase";
@@ -138,11 +139,10 @@ function WelcomePageInner() {
                       <p className="mb-2 text-sm font-semibold">Date of birth required</p>
                       <p className="mb-2 text-xs">Please add your date of birth so age-restricted competitions can be validated.</p>
                       <div className="flex flex-wrap items-center gap-2">
-                        <input
-                          type="date"
+                        <DobSelect
                           value={dobInput}
-                          onChange={(e) => setDobInput(e.target.value)}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                          onChange={setDobInput}
+                          className="w-full sm:w-auto sm:min-w-[360px]"
                         />
                         <button
                           type="button"
