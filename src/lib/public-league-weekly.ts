@@ -79,6 +79,11 @@ type RatingEventRow = {
   source_result_id: string | null;
 };
 
+type ReviewFrameRow = {
+  fixture_id: string;
+  slot_no: number | null;
+};
+
 type TeamStats = {
   recent: string[];
   played: number;
@@ -507,7 +512,7 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
   if (firstError) throw new Error(firstError);
 
   const fixtures = (fixturesRes.data ?? []) as FixtureRow[];
-  const frames = (framesRes.data ?? []) as Array<{ fixture_id: string; slot_no: number | null }>;
+  const frames = (framesRes.data ?? []) as ReviewFrameRow[];
   const completeWeeks = Array.from(
     new Set(
       fixtures
@@ -573,7 +578,7 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
     eventsByPlayer.set(event.player_id, bucket);
   }
 
-  const frameBySourceId = new Map<string, FrameRow>(
+  const frameBySourceId = new Map<string, ReviewFrameRow>(
     weekFrames
       .filter((frame) => Number.isInteger(frame.slot_no))
       .map((frame) => [`league_fixture:${frame.fixture_id}:frame:${frame.slot_no}`, frame] as const)
@@ -593,54 +598,24 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
       const perFrameNotes = frameEvents
         .map((event) => {
           const frame = frameBySourceId.get(event.source_result_id ?? "");
-          if (!frame) return null;
-          const isHome = [frame.home_player1_id, frame.home_player2_id].includes(player.id);
-          const ownIds = isHome
-            ? [frame.home_player1_id, frame.home_player2_id].filter(Boolean) as string[]
-            : [frame.away_player1_id, frame.away_player2_id].filter(Boolean) as string[];
-          const oppIds = isHome
-            ? [frame.away_player1_id, frame.away_player2_id].filter(Boolean) as string[]
-            : [frame.home_player1_id, frame.home_player2_id].filter(Boolean) as string[];
-          const ownStartRating = avg(
-            ownIds.map((id) => {
-              const p = players.find((item) => item.id === id);
-              const playerDelta = Math.round(deltaByPlayer.get(id) ?? 0);
-              return Math.round(Number(p?.rating_snooker ?? 1000)) - playerDelta;
-            }),
-            startingRating
-          );
-          const oppStartRating = avg(
-            oppIds.map((id) => {
-              const p = players.find((item) => item.id === id);
-              const playerDelta = Math.round(deltaByPlayer.get(id) ?? 0);
-              return Math.round(Number(p?.rating_snooker ?? 1000)) - playerDelta;
-            }),
-            1000
-          );
           const deltaValue = Math.round(Number(event.rating_delta ?? 0));
-          const opponentNames = oppIds
-            .map((id) => named(players.find((item) => item.id === id)))
-            .filter(Boolean)
-            .join(" / ");
-          const strongerOpponent = oppStartRating > ownStartRating;
-          const weakerOpponent = oppStartRating < ownStartRating;
           let explanation = "This frame was close to rating expectation, so the Elo swing stayed modest.";
-          if (deltaValue > 0 && strongerOpponent) {
-            explanation = "This was a win against higher-rated opposition, so it produced a stronger positive Elo swing.";
-          } else if (deltaValue > 0 && weakerOpponent) {
-            explanation = "This was a win against lower-rated opposition, so the Elo gain stayed smaller.";
-          } else if (deltaValue < 0 && weakerOpponent) {
-            explanation = "This loss came against lower-rated opposition, so it caused a sharper Elo drop.";
-          } else if (deltaValue < 0 && strongerOpponent) {
-            explanation = "This loss came against higher-rated opposition, so the Elo drop was smaller than it would be against lower-rated opposition.";
+          if (deltaValue >= 8) {
+            explanation = "This week included a stronger-than-usual positive Elo swing, which usually means a result that beat the rating expectation.";
+          } else if (deltaValue > 0) {
+            explanation = "This week included a positive Elo swing, consistent with winning rated frames.";
+          } else if (deltaValue <= -8) {
+            explanation = "This week included a sharper Elo drop, which usually means a result that went against the rating expectation.";
+          } else if (deltaValue < 0) {
+            explanation = "This week included a negative Elo swing, consistent with losing rated frames.";
           }
           return {
             deltaValue,
-            opponentNames: opponentNames || "their opponent",
+            frameLabel: frame ? `Frame ${frame.slot_no}` : "A rated frame",
             explanation,
           };
         })
-        .filter((item): item is { deltaValue: number; opponentNames: string; explanation: string } => Boolean(item));
+        .filter((item): item is { deltaValue: number; frameLabel: string; explanation: string } => Boolean(item));
       const standoutFrame =
         perFrameNotes
           .slice()
