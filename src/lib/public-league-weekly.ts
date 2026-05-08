@@ -73,12 +73,10 @@ type ReceiptRow = {
   } | null;
 };
 
-type HandicapHistoryRow = {
-  created_at: string;
+type RatingEventRow = {
   player_id: string;
-  previous_handicap: number | null;
-  new_handicap: number | null;
-  reason: string | null;
+  rating_delta: number | null;
+  source_result_id: string | null;
 };
 
 type TeamStats = {
@@ -485,31 +483,31 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
     };
   }
 
-  const [fixturesRes, playersRes, teamMembersRes, receiptsRes] = await Promise.all([
+  const [fixturesRes, framesRes, playersRes, teamMembersRes] = await Promise.all([
     adminClient
       .from("league_fixtures")
       .select("id,season_id,fixture_date,week_no,status")
       .eq("season_id", season.id)
       .order("fixture_date", { ascending: true }),
     adminClient
+      .from("league_fixture_frames")
+      .select("fixture_id,slot_no"),
+    adminClient
       .from("players")
       .select("id,display_name,full_name,rating_snooker,snooker_handicap,snooker_handicap_base")
       .eq("is_archived", false),
     adminClient.from("league_registered_team_members").select("player_id"),
-    adminClient
-      .from("rating_result_receipts")
-      .select("source_result_id,source_app,status,metadata")
-      .eq("source_app", "league"),
   ]);
 
   const firstError =
     fixturesRes.error?.message ||
+    framesRes.error?.message ||
     playersRes.error?.message ||
-    teamMembersRes.error?.message ||
-    receiptsRes.error?.message;
+    teamMembersRes.error?.message;
   if (firstError) throw new Error(firstError);
 
   const fixtures = (fixturesRes.data ?? []) as FixtureRow[];
+  const frames = (framesRes.data ?? []) as Array<{ fixture_id: string; slot_no: number | null }>;
   const completeWeeks = Array.from(
     new Set(
       fixtures
@@ -527,7 +525,6 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
     (teamMembersRes.data ?? []).map((row) => row.player_id).filter(Boolean)
   );
   const players = (playersRes.data ?? []) as Array<PlayerRow & { snooker_handicap_base: number | null }>;
-  const receipts = (receiptsRes.data ?? []) as ReceiptRow[];
 
   if (!selectedWeek) {
     return {
@@ -540,30 +537,35 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
 
   const weekFixtures = fixtures.filter((fixture) => fixture.week_no === selectedWeek);
   const fixtureIds = new Set(weekFixtures.map((fixture) => fixture.id));
+  const weekFrameSourceIds = frames
+    .filter((frame) => fixtureIds.has(frame.fixture_id) && Number.isInteger(frame.slot_no))
+    .map((frame) => `league_fixture:${frame.fixture_id}:frame:${frame.slot_no}`);
   const latestBatchTime = weekFixtures
     .map((fixture) => fixture.fixture_date)
     .filter(Boolean)
     .sort()
     .slice(-1)[0] ?? null;
+
+  const eventsRes =
+    weekFrameSourceIds.length > 0
+      ? await adminClient
+          .from("rating_events")
+          .select("player_id,rating_delta,source_result_id")
+          .eq("source_app", "league")
+          .in("source_result_id", weekFrameSourceIds)
+      : { data: [], error: null };
+  if (eventsRes.error) throw new Error(eventsRes.error.message);
+
   const deltaByPlayer = new Map<string, number>();
   const ratedFramesByPlayer = new Map<string, number>();
-
-  for (const receipt of receipts) {
-    const source = receipt.source_result_id ?? "";
-    if (!source.startsWith("league_fixture:") || source.includes(":frame:")) continue;
-    const fixtureId = source.replace("league_fixture:", "");
-    if (!fixtureIds.has(fixtureId)) continue;
-    const meta = receipt.metadata ?? null;
-    const playerDeltas = Array.isArray(meta?.player_deltas) ? meta.player_deltas : [];
-    const ratedFrameCount = typeof meta?.rated_frame_count === "number" ? meta.rated_frame_count : 0;
-    for (const row of playerDeltas) {
-      const currentDelta = deltaByPlayer.get(row.player_id) ?? 0;
-      deltaByPlayer.set(row.player_id, currentDelta + Number(row.delta ?? 0));
-      ratedFramesByPlayer.set(
-        row.player_id,
-        (ratedFramesByPlayer.get(row.player_id) ?? 0) + ratedFrameCount
-      );
-    }
+  for (const event of (eventsRes.data ?? []) as RatingEventRow[]) {
+    if (!event.player_id) continue;
+    const currentDelta = deltaByPlayer.get(event.player_id) ?? 0;
+    deltaByPlayer.set(event.player_id, currentDelta + Number(event.rating_delta ?? 0));
+    ratedFramesByPlayer.set(
+      event.player_id,
+      (ratedFramesByPlayer.get(event.player_id) ?? 0) + 1
+    );
   }
 
   const changes = players
