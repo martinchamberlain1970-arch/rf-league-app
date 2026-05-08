@@ -3137,7 +3137,7 @@ export default function LeaguePage() {
     }
     setInfoModal({
       title: "Frame Ratings Rebuilt",
-      description: `${payload.fixtureCount ?? 0} complete fixture(s) on ${fixtureDate} were rebuilt using frame-by-frame Elo.`,
+      description: `${payload.fixtureCount ?? 0} complete fixture(s) on ${fixtureDate} were rebuilt using frame-by-frame Elo. This action applies to every complete fixture on that date, not just the one currently open.`,
     });
     await loadAll();
   };
@@ -7482,7 +7482,7 @@ export default function LeaguePage() {
                                 onClick={() => void rebuildFixtureDateRatings(currentFixture.fixture_date)}
                                 className="rounded-xl border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-700"
                               >
-                                Rebuild ratings for this fixture date
+                                Rebuild ratings for all complete fixtures on this date
                               </button>
                             ) : null}
                             <button
