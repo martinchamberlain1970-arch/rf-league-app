@@ -5,7 +5,10 @@ import { targetHandicapFromElo } from "@/lib/snooker-rating";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
+const superAdminEmail =
+  process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() ??
+  process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL?.trim().toLowerCase() ??
+  "";
 
 export async function POST(req: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
@@ -34,26 +37,64 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: playersRes.error.message }, { status: 400 });
   }
 
-  const teamMembersRes = await adminClient.from("league_registered_team_members").select("player_id");
+  const teamMembersRes = await adminClient
+    .from("league_registered_team_members")
+    .select("player_id");
   if (teamMembersRes.error) {
     return NextResponse.json({ error: teamMembersRes.error.message }, { status: 400 });
   }
-  const leaguePlayerIds = new Set((teamMembersRes.data ?? []).map((row) => row.player_id).filter(Boolean));
+
+  const leaguePlayerIds = new Set(
+    (teamMembersRes.data ?? []).map((row) => row.player_id).filter(Boolean)
+  );
   const players = (playersRes.data ?? []).filter((row) => leaguePlayerIds.has(row.id));
 
-  const changed: Array<{ id: string; previous: number; next: number; rating: number }> = [];
+  const changed: Array<{
+    id: string;
+    name: string;
+    previous: number;
+    next: number;
+    rating: number;
+    target: number;
+    reason: string;
+  }> = [];
+
   for (const player of players) {
     const rating = Number(player.rating_snooker ?? 1000);
     const current = Number(player.snooker_handicap ?? 0);
     const target = targetHandicapFromElo(rating);
     const next =
-      target > current ? Math.min(current + 4, target) : target < current ? Math.max(current - 4, target) : current;
+      target > current
+        ? Math.min(current + 4, target)
+        : target < current
+          ? Math.max(current - 4, target)
+          : current;
+
     if (next === current) continue;
-    changed.push({ id: player.id, previous: current, next, rating });
+
+    const name = player.full_name?.trim() || player.display_name?.trim() || "Unknown player";
+    const targetLabel = target > 0 ? `+${target}` : `${target}`;
+    const reason =
+      next === target
+        ? `Moved directly to Elo-based target handicap ${targetLabel}.`
+        : `Moved one 4-point step toward Elo-based target handicap ${targetLabel}.`;
+
+    changed.push({
+      id: player.id,
+      name,
+      previous: current,
+      next,
+      rating,
+      target,
+      reason,
+    });
   }
 
   for (const row of changed) {
-    const updateRes = await adminClient.from("players").update({ snooker_handicap: row.next }).eq("id", row.id);
+    const updateRes = await adminClient
+      .from("players")
+      .update({ snooker_handicap: row.next })
+      .eq("id", row.id);
     if (updateRes.error) {
       return NextResponse.json({ error: updateRes.error.message }, { status: 400 });
     }
@@ -63,11 +104,11 @@ export async function POST(req: NextRequest) {
     const histRes = await adminClient.from("league_handicap_history").insert(
       changed.map((row) => ({
         player_id: row.id,
-        change_type: "weekly_elo_review",
+        change_type: "auto_result",
         delta: row.next - row.previous,
         previous_handicap: row.previous,
         new_handicap: row.next,
-        reason: `Weekly Elo review (rating ${Math.round(row.rating)})`,
+        reason: `Weekly Elo review (rating ${Math.round(row.rating)}). ${row.reason}`,
         changed_by_user_id: user.id,
       }))
     );
@@ -76,5 +117,18 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, reviewed: players.length, changed: changed.length });
+  return NextResponse.json({
+    ok: true,
+    reviewed: players.length,
+    changed: changed.length,
+    changedRows: changed.map((row) => ({
+      id: row.id,
+      name: row.name,
+      previous: row.previous,
+      next: row.next,
+      rating: Math.round(row.rating),
+      target: row.target,
+      reason: row.reason,
+    })),
+  });
 }
