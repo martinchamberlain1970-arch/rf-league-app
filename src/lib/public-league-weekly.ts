@@ -476,64 +476,124 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
 
 export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClient) {
   const season = await getLatestPublishedSeason(adminClient);
-  const [historyRes, playersRes, teamMembersRes] = await Promise.all([
+  if (!season) {
+    return {
+      season: null,
+      batchTime: null,
+      week: null,
+      changes: [],
+    };
+  }
+
+  const [fixturesRes, playersRes, teamMembersRes, receiptsRes] = await Promise.all([
     adminClient
-      .from("league_handicap_history")
-      .select("created_at,player_id,previous_handicap,new_handicap,reason")
-      .ilike("reason", "Weekly Elo review%")
-      .order("created_at", { ascending: false }),
+      .from("league_fixtures")
+      .select("id,season_id,fixture_date,week_no,status")
+      .eq("season_id", season.id)
+      .order("fixture_date", { ascending: true }),
     adminClient
       .from("players")
       .select("id,display_name,full_name,rating_snooker,snooker_handicap,snooker_handicap_base")
       .eq("is_archived", false),
     adminClient.from("league_registered_team_members").select("player_id"),
+    adminClient
+      .from("rating_result_receipts")
+      .select("source_result_id,source_app,status,metadata")
+      .eq("source_app", "league"),
   ]);
 
   const firstError =
-    historyRes.error?.message ||
+    fixturesRes.error?.message ||
     playersRes.error?.message ||
-    teamMembersRes.error?.message;
+    teamMembersRes.error?.message ||
+    receiptsRes.error?.message;
   if (firstError) throw new Error(firstError);
 
-  const history = (historyRes.data ?? []) as HandicapHistoryRow[];
+  const fixtures = (fixturesRes.data ?? []) as FixtureRow[];
+  const completeWeeks = Array.from(
+    new Set(
+      fixtures
+        .filter((fixture) => fixture.week_no !== null)
+        .map((fixture) => fixture.week_no as number)
+        .filter((week) =>
+          fixtures
+            .filter((fixture) => fixture.week_no === week)
+            .every((fixture) => fixture.status === "complete")
+        )
+    )
+  ).sort((a, b) => b - a);
+  const selectedWeek = completeWeeks[0] ?? null;
   const leaguePlayerIds = new Set(
     (teamMembersRes.data ?? []).map((row) => row.player_id).filter(Boolean)
   );
   const players = (playersRes.data ?? []) as Array<PlayerRow & { snooker_handicap_base: number | null }>;
-  const latestBatchTime = history[0]?.created_at ?? null;
-  const latestBatch = new Map(
-    history
-      .filter((row) => row.created_at === latestBatchTime)
-      .map((row) => [row.player_id, row] as const)
-  );
+  const receipts = (receiptsRes.data ?? []) as ReceiptRow[];
+
+  if (!selectedWeek) {
+    return {
+      season,
+      batchTime: null,
+      week: null,
+      changes: [],
+    };
+  }
+
+  const weekFixtures = fixtures.filter((fixture) => fixture.week_no === selectedWeek);
+  const fixtureIds = new Set(weekFixtures.map((fixture) => fixture.id));
+  const latestBatchTime = weekFixtures
+    .map((fixture) => fixture.fixture_date)
+    .filter(Boolean)
+    .sort()
+    .slice(-1)[0] ?? null;
+  const deltaByPlayer = new Map<string, number>();
+  const ratedFramesByPlayer = new Map<string, number>();
+
+  for (const receipt of receipts) {
+    const source = receipt.source_result_id ?? "";
+    if (!source.startsWith("league_fixture:") || source.includes(":frame:")) continue;
+    const fixtureId = source.replace("league_fixture:", "");
+    if (!fixtureIds.has(fixtureId)) continue;
+    const meta = receipt.metadata ?? null;
+    const playerDeltas = Array.isArray(meta?.player_deltas) ? meta.player_deltas : [];
+    const ratedFrameCount = typeof meta?.rated_frame_count === "number" ? meta.rated_frame_count : 0;
+    for (const row of playerDeltas) {
+      const currentDelta = deltaByPlayer.get(row.player_id) ?? 0;
+      deltaByPlayer.set(row.player_id, currentDelta + Number(row.delta ?? 0));
+      ratedFramesByPlayer.set(
+        row.player_id,
+        (ratedFramesByPlayer.get(row.player_id) ?? 0) + ratedFrameCount
+      );
+    }
+  }
+
   const changes = players
     .filter((player) => leaguePlayerIds.has(player.id))
     .map((player) => {
-      const batch = latestBatch.get(player.id) ?? null;
-      const current = Number(player.snooker_handicap ?? 0);
-      const baseline = Number(player.snooker_handicap_base ?? current);
-      const rating = Math.round(Number(player.rating_snooker ?? 1000));
-      const target = targetHandicapFromElo(rating);
-      const playedOff = Number(batch?.previous_handicap ?? current);
-      const revisedTo = Number(batch?.new_handicap ?? current);
-      const changedThisWeek = batch ? playedOff !== revisedTo : false;
+      const currentHandicap = Number(player.snooker_handicap ?? 0);
+      const currentRating = Math.round(Number(player.rating_snooker ?? 1000));
+      const delta = Math.round(deltaByPlayer.get(player.id) ?? 0);
+      const startingRating = currentRating - delta;
+      const target = targetHandicapFromElo(currentRating);
+      const ratedFrames = ratedFramesByPlayer.get(player.id) ?? 0;
       const name = named(player);
       return {
         playerId: player.id,
         name,
-        playedOff,
-        previous: playedOff,
-        next: revisedTo,
-        current,
-        baseline,
-        rating,
+        playedOff: currentHandicap,
+        previous: startingRating,
+        next: currentRating,
+        current: currentHandicap,
+        baseline: Number(player.snooker_handicap_base ?? currentHandicap),
+        rating: currentRating,
         target,
-        changedThisWeek,
-        reason: changedThisWeek
-          ? revisedTo === target
-            ? `${name}'s Elo now sits in the ${formatSigned(target)} target band, so the weekly review moved the handicap from ${formatSigned(playedOff)} straight to ${formatSigned(revisedTo)}.`
-            : `${name}'s Elo now sits in the ${formatSigned(target)} target band, so the weekly review moved the handicap one 4-point step from ${formatSigned(playedOff)} to ${formatSigned(revisedTo)}.`
-          : `${name}'s Elo now sits in the ${formatSigned(target)} target band, so the revised handicap stays at ${formatSigned(revisedTo)}.`,
+        changedThisWeek: delta !== 0,
+        ratedFrames,
+        reason:
+          delta > 0
+            ? `${name} gained ${delta} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo band.`
+            : delta < 0
+              ? `${name} lost ${Math.abs(delta)} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo band.`
+              : `${name} had no Elo movement recorded this week. The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo band.`,
       };
     })
     .sort((a, b) => b.rating - a.rating || a.name.localeCompare(b.name));
@@ -541,6 +601,7 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
   return {
     season,
     batchTime: latestBatchTime,
+    week: selectedWeek,
     changes,
   };
 }

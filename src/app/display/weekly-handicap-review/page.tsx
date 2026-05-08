@@ -13,12 +13,14 @@ type ChangeRow = {
   rating: number;
   target: number;
   changedThisWeek: boolean;
+  ratedFrames: number;
   reason: string;
 };
 
 type Payload = {
   season: { id: string; name: string } | null;
   batchTime: string | null;
+  week: number | null;
   changes: ChangeRow[];
   error?: string;
 };
@@ -69,16 +71,17 @@ export default function PublicWeeklyHandicapReviewPage() {
       <div className="mx-auto max-w-6xl space-y-4">
         <header className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/20 backdrop-blur">
           <p className="text-xs font-semibold uppercase tracking-[0.32em] text-amber-300">
-            Public Handicap Review
+            Public Elo Review
           </p>
           <h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">
-            {data?.season?.name ?? "Weekly Handicap Review"}
+            {data?.season?.name ?? "Weekly Elo Review"}
           </h1>
           <p className="mt-2 text-sm text-slate-300">
-            Latest weekly Elo review: {batchLabel} · Updated {updatedAt || "--:--"}
+            {data?.week ? `Week ${data.week}` : "Latest completed week"} · Reviewed{" "}
+            {batchLabel} · Updated {updatedAt || "--:--"}
           </p>
           <p className="mt-2 text-sm text-slate-300">
-            Full current player list, showing each player&apos;s live Elo and revised handicap after the latest weekly review.
+            Full current player list, showing each player&apos;s starting Elo for the completed week, new Elo after review, and current playing handicap.
           </p>
         </header>
 
@@ -90,7 +93,7 @@ export default function PublicWeeklyHandicapReviewPage() {
 
         {data && data.changes.length === 0 ? (
           <section className="rounded-3xl border border-white/10 bg-slate-900/80 p-5 text-slate-300 shadow-2xl shadow-black/20">
-            No weekly handicap review changes have been published yet.
+            No weekly Elo review data has been published yet.
           </section>
         ) : null}
 
@@ -107,16 +110,16 @@ export default function PublicWeeklyHandicapReviewPage() {
                   </p>
                   <h2 className="mt-2 text-2xl font-bold text-white">{row.name}</h2>
                   <p className="mt-2 text-sm font-medium text-amber-200">
-                    {row.changedThisWeek ? "Changed in latest review" : "No handicap change this review"}
+                    {row.changedThisWeek ? "Elo moved this week" : "No Elo movement this week"}
                   </p>
                   <p className="mt-2 text-sm text-slate-300">{row.reason}</p>
                 </div>
                 <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-right">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-300">
-                    Weekly Review
+                    Elo Review
                   </p>
                   <p className="mt-1 text-xl font-semibold text-white">
-                    {formatHandicap(row.playedOff)} → {formatHandicap(row.next)}
+                    {row.previous} → {row.next}
                   </p>
                 </div>
               </div>
@@ -124,32 +127,32 @@ export default function PublicWeeklyHandicapReviewPage() {
               <div className="mt-5 grid gap-3 sm:grid-cols-4">
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    Elo
+                    Starting Elo
                   </p>
-                  <p className="mt-2 text-2xl font-bold text-white">{row.rating}</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{row.previous}</p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    Played This Week Off
+                    New Elo
                   </p>
                   <p className="mt-2 text-2xl font-bold text-white">
-                    {formatHandicap(row.playedOff)}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    Reviewed To
-                  </p>
-                  <p className="mt-2 text-2xl font-bold text-white">
-                    {formatHandicap(row.next)}
+                    {row.next}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    Elo Target Band
+                    Rated Frames
                   </p>
                   <p className="mt-2 text-2xl font-bold text-white">
-                    {formatHandicap(row.target)}
+                    {row.ratedFrames}
+                  </p>
+                </div>
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
+                    Playing Handicap
+                  </p>
+                  <p className="mt-2 text-2xl font-bold text-white">
+                    {formatHandicap(row.current)}
                   </p>
                 </div>
               </div>
