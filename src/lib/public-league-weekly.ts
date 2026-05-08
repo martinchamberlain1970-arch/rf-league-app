@@ -598,6 +598,7 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
               : `${name} stayed at ${currentRating} Elo this week with no Elo movement recorded. The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo target handicap band.`,
       };
     })
+    .filter((row) => row.ratedFrames > 0 || row.changedThisWeek)
     .sort((a, b) => b.rating - a.rating || a.name.localeCompare(b.name));
 
   return {
