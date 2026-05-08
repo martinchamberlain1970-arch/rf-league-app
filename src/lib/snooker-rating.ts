@@ -365,6 +365,7 @@ async function rebuildSnookerRatedMatchCounts(adminClient: SupabaseClient, playe
     adminClient
       .from("rating_events")
       .select("player_id")
+      .eq("source_app", "league")
       .in("player_id", uniquePlayerIds),
     adminClient
       .from("players")
