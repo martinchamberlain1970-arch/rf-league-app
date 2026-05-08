@@ -11,6 +11,8 @@ type FixtureReport = {
   headline: string;
   expectedWinner: string;
   expectedPct: number;
+  expectedHomePct: number;
+  expectedAwayPct: number;
   expectationLabel: string;
   eloSummary: string;
   frameFacts: Array<{
@@ -153,6 +155,10 @@ export default function PublicWeeklyReportPage() {
                   </p>
                   <p className="mt-1 text-lg font-semibold text-white">
                     {fixture.expectedWinner} ({fixture.expectedPct}%)
+                  </p>
+                  <p className="mt-1 text-xs text-emerald-200">
+                    {fixture.home} {fixture.expectedHomePct}% · {fixture.away}{" "}
+                    {fixture.expectedAwayPct}%
                   </p>
                 </div>
               </div>

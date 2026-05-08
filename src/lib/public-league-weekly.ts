@@ -324,6 +324,10 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
       weights.home;
     const expectedHomeProb = 1 / (1 + Math.exp(-diff / weights.scale));
     const expectedWinner = expectedHomeProb >= 0.5 ? home : away;
+    const expectedWinnerPct = Math.round(
+      (expectedWinner === home ? expectedHomeProb : 1 - expectedHomeProb) * 100
+    );
+    const expectedAwayPct = Math.round((1 - expectedHomeProb) * 100);
     const actualHome = Number(fixture.home_points ?? 0);
     const actualAway = Number(fixture.away_points ?? 0);
     const actualWinner = actualHome > actualAway ? home : actualAway > actualHome ? away : "Draw";
@@ -385,7 +389,9 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
             ? `${away} beat ${home} ${actualAway}-${actualHome}.`
             : `${home} and ${away} drew ${actualHome}-${actualAway}.`,
       expectedWinner,
-      expectedPct: Math.round(expectedHomeProb * 100),
+      expectedPct: expectedWinnerPct,
+      expectedHomePct: Math.round(expectedHomeProb * 100),
+      expectedAwayPct,
       expectationLabel,
       eloSummary,
       frameFacts,
@@ -470,7 +476,7 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
 
 export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClient) {
   const season = await getLatestPublishedSeason(adminClient);
-  const [historyRes, playersRes] = await Promise.all([
+  const [historyRes, playersRes, teamMembersRes] = await Promise.all([
     adminClient
       .from("league_handicap_history")
       .select("created_at,player_id,previous_handicap,new_handicap,reason")
@@ -480,51 +486,57 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
       .from("players")
       .select("id,display_name,full_name,rating_snooker,snooker_handicap,snooker_handicap_base")
       .eq("is_archived", false),
+    adminClient.from("league_registered_team_members").select("player_id"),
   ]);
 
-  const firstError = historyRes.error?.message || playersRes.error?.message;
+  const firstError =
+    historyRes.error?.message ||
+    playersRes.error?.message ||
+    teamMembersRes.error?.message;
   if (firstError) throw new Error(firstError);
 
   const history = (historyRes.data ?? []) as HandicapHistoryRow[];
+  const leaguePlayerIds = new Set(
+    (teamMembersRes.data ?? []).map((row) => row.player_id).filter(Boolean)
+  );
   const players = (playersRes.data ?? []) as Array<PlayerRow & { snooker_handicap_base: number | null }>;
-  if (!history.length) {
-    return {
-      season,
-      batchTime: null,
-      changes: [],
-    };
-  }
-
-  const latestBatchTime = history[0].created_at;
-  const changes = history
-    .filter((row) => row.created_at === latestBatchTime)
-    .map((row) => {
-      const player = players.find((item) => item.id === row.player_id);
-      const current = Number(player?.snooker_handicap ?? row.new_handicap ?? 0);
-      const baseline = Number(player?.snooker_handicap_base ?? current);
-      const rating = Math.round(Number(player?.rating_snooker ?? 1000));
-      const previous = Number(row.previous_handicap ?? 0);
-      const next = Number(row.new_handicap ?? current);
+  const latestBatchTime = history[0]?.created_at ?? null;
+  const latestBatch = new Map(
+    history
+      .filter((row) => row.created_at === latestBatchTime)
+      .map((row) => [row.player_id, row] as const)
+  );
+  const changes = players
+    .filter((player) => leaguePlayerIds.has(player.id))
+    .map((player) => {
+      const batch = latestBatch.get(player.id) ?? null;
+      const current = Number(player.snooker_handicap ?? 0);
+      const baseline = Number(player.snooker_handicap_base ?? current);
+      const rating = Math.round(Number(player.rating_snooker ?? 1000));
       const target = targetHandicapFromElo(rating);
-      const playedOff = previous;
+      const playedOff = Number(batch?.previous_handicap ?? current);
+      const revisedTo = Number(batch?.new_handicap ?? current);
+      const changedThisWeek = batch ? playedOff !== revisedTo : false;
       const name = named(player);
       return {
-        playerId: row.player_id,
+        playerId: player.id,
         name,
         playedOff,
-        previous,
-        next,
+        previous: playedOff,
+        next: revisedTo,
         current,
         baseline,
         rating,
         target,
-        reason:
-          next === target
-            ? `${name}'s current Elo of ${rating} sits in the ${formatSigned(target)} target band, so the weekly review moved the handicap from ${formatSigned(playedOff)} straight to ${formatSigned(next)}.`
-            : `${name}'s current Elo of ${rating} sits in the ${formatSigned(target)} target band, so the weekly review moved the handicap one 4-point step from ${formatSigned(playedOff)} to ${formatSigned(next)}.`,
+        changedThisWeek,
+        reason: changedThisWeek
+          ? revisedTo === target
+            ? `${name}'s Elo now sits in the ${formatSigned(target)} target band, so the weekly review moved the handicap from ${formatSigned(playedOff)} straight to ${formatSigned(revisedTo)}.`
+            : `${name}'s Elo now sits in the ${formatSigned(target)} target band, so the weekly review moved the handicap one 4-point step from ${formatSigned(playedOff)} to ${formatSigned(revisedTo)}.`
+          : `${name}'s Elo now sits in the ${formatSigned(target)} target band, so the revised handicap stays at ${formatSigned(revisedTo)}.`,
       };
     })
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => b.rating - a.rating || a.name.localeCompare(b.name));
 
   return {
     season,

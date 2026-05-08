@@ -12,6 +12,7 @@ type ChangeRow = {
   baseline: number;
   rating: number;
   target: number;
+  changedThisWeek: boolean;
   reason: string;
 };
 
@@ -76,6 +77,9 @@ export default function PublicWeeklyHandicapReviewPage() {
           <p className="mt-2 text-sm text-slate-300">
             Latest weekly Elo review: {batchLabel} · Updated {updatedAt || "--:--"}
           </p>
+          <p className="mt-2 text-sm text-slate-300">
+            Full current player list, showing each player&apos;s live Elo and revised handicap after the latest weekly review.
+          </p>
         </header>
 
         {data?.error ? (
@@ -102,6 +106,9 @@ export default function PublicWeeklyHandicapReviewPage() {
                     Player
                   </p>
                   <h2 className="mt-2 text-2xl font-bold text-white">{row.name}</h2>
+                  <p className="mt-2 text-sm font-medium text-amber-200">
+                    {row.changedThisWeek ? "Changed in latest review" : "No handicap change this review"}
+                  </p>
                   <p className="mt-2 text-sm text-slate-300">{row.reason}</p>
                 </div>
                 <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-right">
