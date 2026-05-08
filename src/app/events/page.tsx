@@ -901,8 +901,8 @@ export default function EventsPage() {
     const eloLabel =
       meta?.rating_mode === "per_frame"
         ? playerDeltas.length === 0
-          ? "This fixture used frame-based rating, but no player movement was recorded in the summary receipt."
-          : `${ratedFrameCount} rated frame${ratedFrameCount === 1 ? "" : "s"} fed into the Elo update. ${biggestGainName && biggestGain ? `${biggestGainName} was the biggest gainer at ${biggestGain.delta >= 0 ? "+" : ""}${biggestGain.delta}. ` : ""}${biggestLossName && biggestLoss ? `${biggestLossName} was the biggest drop at ${biggestLoss.delta}. ` : ""}Each frame now rates the players involved in that frame only, so winning your own frame helps your Elo even if your team loses the overall match. Bigger upsets still create bigger swings, while expected wins move the numbers less.`
+          ? "This fixture used the corrected frame-by-frame Elo model, but no player movement was recorded in the summary receipt."
+          : `This fixture used the corrected frame-by-frame Elo model. ${ratedFrameCount} rated frame${ratedFrameCount === 1 ? "" : "s"} counted towards the update, and only the players involved in those frames were affected. ${biggestGainName && biggestGain ? `${biggestGainName} made the biggest gain at ${biggestGain.delta >= 0 ? "+" : ""}${biggestGain.delta}. ` : ""}${biggestLossName && biggestLoss ? `${biggestLossName} had the biggest drop at ${biggestLoss.delta}. ` : ""}In simple terms, winning your own frame helps your Elo even if your team loses the overall match, and surprise wins still create the biggest swings.`
         : homeDelta === null || awayDelta === null
         ? reportFixture.status === "complete"
           ? "This fixture is locked, but no rating receipt is attached to it yet. Use Recheck result and rating in League Manager to backfill the Elo explanation for this match."
@@ -1248,10 +1248,10 @@ export default function EventsPage() {
       star: star ? `${playerNameMap.get(star[0]) ?? "Player"} was standout with ${star[1]} frame win${star[1] === 1 ? "" : "s"}.` : "No standout player recorded this week yet.",
       upset:
         fixtureUpset && fixtureUpset.actualWinner !== "draw"
-          ? `${fixtureUpset.winner} produced the biggest upset of the week in ${fixtureUpset.label}. Their win chance on the model was only about ${fixtureUpset.expectedPct}% before the match.`
+          ? `${fixtureUpset.winner} produced the biggest upset of the week in ${fixtureUpset.label}. Before the match, their chance on the model was only about ${fixtureUpset.expectedPct}%.`
           : "No result this week stood out as a major upset against the model.",
       handicapMoment: topHandicapMoment?.text ?? "No handicap moment stood out strongly enough to define the week.",
-      overperformance: topOverperformance?.text ?? "No individual frame winner produced a major Elo upset this week.",
+      overperformance: topOverperformance?.text ?? "No individual frame winner produced a major frame-by-frame Elo upset this week.",
     };
   }, [roundupWeek, seasonFixtures, teamById, seasonFrames, playerNameMap, seasonPlayers, playersByTeam, teamStats, teamPosition]);
   const matchReportText = useMemo(() => {
@@ -1262,6 +1262,7 @@ export default function EventsPage() {
       "",
       "Result summary:",
       `- ${matchupReport.headline}`,
+      `- Elo model used: corrected frame-by-frame Elo, so only the players involved in each rated frame were affected.`,
       `- Expected result: ${reportInsights.expectedWinner} came in as the model favourite at about ${reportInsights.expectedPct}%.`,
       `- Outcome vs expectation: ${reportInsights.expectationLabel}`,
       `- Form guide: ${reportInsights.formLabel}`,
@@ -1286,6 +1287,7 @@ export default function EventsPage() {
     if (!weeklyRoundup || !roundupWeek) return "";
     const lines = [
       `Week ${roundupWeek} Round-up`,
+      `- Elo model used this week: corrected frame-by-frame Elo, so players were rated from their own frames rather than the overall team result.`,
       ...weeklyRoundup.lines.map((l) => `- ${l.text}`),
       "",
       `- Biggest upset: ${weeklyRoundup.upset}`,
@@ -1771,6 +1773,9 @@ export default function EventsPage() {
                     </button>
                   </div>
                   <p className="mt-2 rounded-lg border border-sky-200 bg-sky-50 p-2 text-sm font-medium text-sky-900">{matchupReport.headline}</p>
+                  <p className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-900">
+                    Elo note: this report now uses the corrected frame-by-frame Elo model, so only the players involved in each rated frame were affected.
+                  </p>
                   <div className="mt-3 grid gap-3 lg:grid-cols-2">
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Expectation</p>
@@ -1874,6 +1879,9 @@ export default function EventsPage() {
                   </p>
                 ) : (
                   <>
+                    <p className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-900">
+                      Weekly Elo note: this round-up now uses the corrected frame-by-frame Elo model, so players were rated from their own frames rather than the overall team match result.
+                    </p>
                     <div className="mt-3 grid gap-3 lg:grid-cols-3">
                       <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3">
                         <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Biggest Upset</p>
