@@ -558,6 +558,7 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
 
   const deltaByPlayer = new Map<string, number>();
   const ratedFramesByPlayer = new Map<string, number>();
+  const eventsByPlayer = new Map<string, RatingEventRow[]>();
   for (const event of (eventsRes.data ?? []) as RatingEventRow[]) {
     if (!event.player_id) continue;
     const currentDelta = deltaByPlayer.get(event.player_id) ?? 0;
@@ -566,7 +567,16 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
       event.player_id,
       (ratedFramesByPlayer.get(event.player_id) ?? 0) + 1
     );
+    const bucket = eventsByPlayer.get(event.player_id) ?? [];
+    bucket.push(event);
+    eventsByPlayer.set(event.player_id, bucket);
   }
+
+  const frameBySourceId = new Map(
+    weekFrames
+      .filter((frame) => Number.isInteger(frame.slot_no))
+      .map((frame) => [`league_fixture:${frame.fixture_id}:frame:${frame.slot_no}`, frame] as const)
+  );
 
   const changes = players
     .filter((player) => leaguePlayerIds.has(player.id))
@@ -578,6 +588,62 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
       const target = targetHandicapFromElo(currentRating);
       const ratedFrames = ratedFramesByPlayer.get(player.id) ?? 0;
       const name = named(player);
+      const frameEvents = eventsByPlayer.get(player.id) ?? [];
+      const perFrameNotes = frameEvents
+        .map((event) => {
+          const frame = frameBySourceId.get(event.source_result_id ?? "");
+          if (!frame) return null;
+          const isHome = [frame.home_player1_id, frame.home_player2_id].includes(player.id);
+          const ownIds = isHome
+            ? [frame.home_player1_id, frame.home_player2_id].filter(Boolean) as string[]
+            : [frame.away_player1_id, frame.away_player2_id].filter(Boolean) as string[];
+          const oppIds = isHome
+            ? [frame.away_player1_id, frame.away_player2_id].filter(Boolean) as string[]
+            : [frame.home_player1_id, frame.home_player2_id].filter(Boolean) as string[];
+          const ownStartRating = avg(
+            ownIds.map((id) => {
+              const p = players.find((item) => item.id === id);
+              const playerDelta = Math.round(deltaByPlayer.get(id) ?? 0);
+              return Math.round(Number(p?.rating_snooker ?? 1000)) - playerDelta;
+            }),
+            startingRating
+          );
+          const oppStartRating = avg(
+            oppIds.map((id) => {
+              const p = players.find((item) => item.id === id);
+              const playerDelta = Math.round(deltaByPlayer.get(id) ?? 0);
+              return Math.round(Number(p?.rating_snooker ?? 1000)) - playerDelta;
+            }),
+            1000
+          );
+          const deltaValue = Math.round(Number(event.rating_delta ?? 0));
+          const opponentNames = oppIds
+            .map((id) => named(players.find((item) => item.id === id)))
+            .filter(Boolean)
+            .join(" / ");
+          const strongerOpponent = oppStartRating > ownStartRating;
+          const weakerOpponent = oppStartRating < ownStartRating;
+          let explanation = "This frame was close to rating expectation, so the Elo swing stayed modest.";
+          if (deltaValue > 0 && strongerOpponent) {
+            explanation = "This was a win against higher-rated opposition, so it produced a stronger positive Elo swing.";
+          } else if (deltaValue > 0 && weakerOpponent) {
+            explanation = "This was a win against lower-rated opposition, so the Elo gain stayed smaller.";
+          } else if (deltaValue < 0 && weakerOpponent) {
+            explanation = "This loss came against lower-rated opposition, so it caused a sharper Elo drop.";
+          } else if (deltaValue < 0 && strongerOpponent) {
+            explanation = "This loss came against higher-rated opposition, so the Elo drop was smaller than it would be against lower-rated opposition.";
+          }
+          return {
+            deltaValue,
+            opponentNames: opponentNames || "their opponent",
+            explanation,
+          };
+        })
+        .filter((item): item is { deltaValue: number; opponentNames: string; explanation: string } => Boolean(item));
+      const standoutFrame =
+        perFrameNotes
+          .slice()
+          .sort((a, b) => Math.abs(b.deltaValue) - Math.abs(a.deltaValue))[0] ?? null;
       return {
         playerId: player.id,
         name,
@@ -592,9 +658,9 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
         ratedFrames,
         reason:
           delta > 0
-            ? `${name} moved from ${startingRating} to ${currentRating}, gaining ${delta} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo target handicap band.`
+            ? `${name} moved from ${startingRating} to ${currentRating}, gaining ${delta} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${standoutFrame ? `${standoutFrame.explanation} ` : ""}The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo target handicap band.`
             : delta < 0
-              ? `${name} moved from ${startingRating} to ${currentRating}, losing ${Math.abs(delta)} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo target handicap band.`
+              ? `${name} moved from ${startingRating} to ${currentRating}, losing ${Math.abs(delta)} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${standoutFrame ? `${standoutFrame.explanation} ` : ""}The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo target handicap band.`
               : `${name} stayed at ${currentRating} Elo this week with no Elo movement recorded. The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo target handicap band.`,
       };
     })
