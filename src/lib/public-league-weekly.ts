@@ -537,6 +537,7 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
 
   const weekFixtures = fixtures.filter((fixture) => fixture.week_no === selectedWeek);
   const fixtureIds = new Set(weekFixtures.map((fixture) => fixture.id));
+  const weekFrames = frames.filter((frame) => fixtureIds.has(frame.fixture_id));
   const weekFrameSourceIds = frames
     .filter((frame) => fixtureIds.has(frame.fixture_id) && Number.isInteger(frame.slot_no))
     .map((frame) => `league_fixture:${frame.fixture_id}:frame:${frame.slot_no}`);
