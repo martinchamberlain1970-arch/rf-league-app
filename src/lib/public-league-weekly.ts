@@ -657,15 +657,17 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
           }
           return {
             deltaValue,
+            slotNo: frame.slot_no ?? 0,
             frameLabel: `Frame ${frame.slot_no}`,
             explanation,
           };
         })
-        .filter((item): item is { deltaValue: number; frameLabel: string; explanation: string } => Boolean(item));
-      const standoutFrame =
-        perFrameNotes
-          .slice()
-          .sort((a, b) => Math.abs(b.deltaValue) - Math.abs(a.deltaValue))[0] ?? null;
+        .filter((item): item is { deltaValue: number; slotNo: number; frameLabel: string; explanation: string } => Boolean(item))
+        .sort((a, b) => a.slotNo - b.slotNo);
+      const frameSummary =
+        perFrameNotes.length > 0
+          ? perFrameNotes.map((note) => note.explanation).join(" ")
+          : "";
       return {
         playerId: player.id,
         name,
@@ -680,9 +682,9 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
         ratedFrames,
         reason:
           delta > 0
-            ? `${name} moved from ${startingRating} to ${currentRating}, gaining ${delta} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${standoutFrame ? `${standoutFrame.explanation} ` : ""}The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo target handicap band.`
+            ? `${name} moved from ${startingRating} to ${currentRating}, gaining ${delta} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${frameSummary ? `${frameSummary} ` : ""}The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo target handicap band.`
             : delta < 0
-              ? `${name} moved from ${startingRating} to ${currentRating}, losing ${Math.abs(delta)} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${standoutFrame ? `${standoutFrame.explanation} ` : ""}The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo target handicap band.`
+              ? `${name} moved from ${startingRating} to ${currentRating}, losing ${Math.abs(delta)} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${frameSummary ? `${frameSummary} ` : ""}The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo target handicap band.`
               : `${name} stayed at ${currentRating} Elo this week with no Elo movement recorded. The current playing handicap is ${formatSigned(currentHandicap)}, linked to the ${formatSigned(target)} Elo target handicap band.`,
       };
     })
