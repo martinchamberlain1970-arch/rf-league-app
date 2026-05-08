@@ -93,7 +93,6 @@ export default function PublicWeeklyReportPage() {
                 Round-up
               </p>
               <h2 className="mt-2 text-2xl font-bold text-white">{data.summary.title}</h2>
-              <p className="mt-3 text-sm text-slate-300">{data.summary.eloNote}</p>
               <div className="mt-4 space-y-3 text-sm text-slate-100">
                 <p>
                   <span className="font-semibold text-white">Biggest upset:</span>{" "}
