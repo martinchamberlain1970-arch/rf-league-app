@@ -573,7 +573,7 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
     eventsByPlayer.set(event.player_id, bucket);
   }
 
-  const frameBySourceId = new Map(
+  const frameBySourceId = new Map<string, FrameRow>(
     weekFrames
       .filter((frame) => Number.isInteger(frame.slot_no))
       .map((frame) => [`league_fixture:${frame.fixture_id}:frame:${frame.slot_no}`, frame] as const)
