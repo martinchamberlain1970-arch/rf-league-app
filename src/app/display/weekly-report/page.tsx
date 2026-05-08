@@ -29,7 +29,6 @@ type Payload = {
     title: string;
     eloNote: string;
     upset: string;
-    handicapMoment: string;
     overperformance: string;
     star: string;
     lines: string[];
@@ -97,12 +96,6 @@ export default function PublicWeeklyReportPage() {
                 <p>
                   <span className="font-semibold text-white">Biggest upset:</span>{" "}
                   {data.summary.upset}
-                </p>
-                <p>
-                  <span className="font-semibold text-white">
-                    Strongest handicap performance:
-                  </span>{" "}
-                  {data.summary.handicapMoment}
                 </p>
                 <p>
                   <span className="font-semibold text-white">
@@ -179,7 +172,6 @@ export default function PublicWeeklyReportPage() {
                     <p className="mt-1 text-sm text-slate-300">
                       Score: {frame.score} · Winner: {frame.winner}
                     </p>
-                    <p className="mt-2 text-sm text-slate-300">{frame.handicapNote}</p>
                   </div>
                 ))}
               </div>

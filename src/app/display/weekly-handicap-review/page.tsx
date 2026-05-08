@@ -5,11 +5,13 @@ import { useEffect, useState } from "react";
 type ChangeRow = {
   playerId: string;
   name: string;
+  playedOff: number;
   previous: number;
   next: number;
   current: number;
   baseline: number;
   rating: number;
+  target: number;
   reason: string;
 };
 
@@ -104,10 +106,10 @@ export default function PublicWeeklyHandicapReviewPage() {
                 </div>
                 <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-right">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-300">
-                    Handicap Change
+                    Weekly Review
                   </p>
                   <p className="mt-1 text-xl font-semibold text-white">
-                    {formatHandicap(row.previous)} → {formatHandicap(row.next)}
+                    {formatHandicap(row.playedOff)} → {formatHandicap(row.next)}
                   </p>
                 </div>
               </div>
@@ -121,26 +123,26 @@ export default function PublicWeeklyHandicapReviewPage() {
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    Previous
+                    Played This Week Off
                   </p>
                   <p className="mt-2 text-2xl font-bold text-white">
-                    {formatHandicap(row.previous)}
+                    {formatHandicap(row.playedOff)}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    Current
+                    Reviewed To
                   </p>
                   <p className="mt-2 text-2xl font-bold text-white">
-                    {formatHandicap(row.current)}
+                    {formatHandicap(row.next)}
                   </p>
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    Baseline
+                    Elo Target Band
                   </p>
                   <p className="mt-2 text-2xl font-bold text-white">
-                    {formatHandicap(row.baseline)}
+                    {formatHandicap(row.target)}
                   </p>
                 </div>
               </div>

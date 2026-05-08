@@ -1,5 +1,5 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
-import { calculateAdjustedScoresWithCap } from "@/lib/snooker-handicap";
+import { targetHandicapFromElo } from "@/lib/snooker-rating";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -362,43 +362,12 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
             .join(" / ") || "TBC";
         const homePoints = typeof frame.home_points_scored === "number" ? frame.home_points_scored : null;
         const awayPoints = typeof frame.away_points_scored === "number" ? frame.away_points_scored : null;
-        const homeHandicap =
-          frame.slot_type === "doubles"
-            ? (Number(playerById.get(frame.home_player1_id ?? "")?.snooker_handicap ?? 0) + Number(playerById.get(frame.home_player2_id ?? "")?.snooker_handicap ?? 0)) / 2
-            : Number(playerById.get(frame.home_player1_id ?? "")?.snooker_handicap ?? 0);
-        const awayHandicap =
-          frame.slot_type === "doubles"
-            ? (Number(playerById.get(frame.away_player1_id ?? "")?.snooker_handicap ?? 0) + Number(playerById.get(frame.away_player2_id ?? "")?.snooker_handicap ?? 0)) / 2
-            : Number(playerById.get(frame.away_player1_id ?? "")?.snooker_handicap ?? 0);
-        let handicapNote = "Level start, so handicap had no bearing on this frame.";
-        if (homePoints !== null && awayPoints !== null) {
-          const adjusted = calculateAdjustedScoresWithCap(homePoints, awayPoints, homeHandicap, awayHandicap);
-          const receivingSide = adjusted.homeStart > 0 ? "home" : adjusted.awayStart > 0 ? "away" : null;
-          const receivingName = receivingSide === "home" ? homeName : receivingSide === "away" ? awayName : "";
-          const startValue = receivingSide === "home" ? adjusted.homeStart : receivingSide === "away" ? adjusted.awayStart : 0;
-          const rawWinner = homePoints > awayPoints ? "home" : awayPoints > homePoints ? "away" : null;
-          if (receivingSide && startValue > 0) {
-            if (rawWinner === receivingSide) {
-              handicapNote = `${receivingName} won on the table and did not need the ${startValue}-point start.`;
-            } else if (frame.slot_type === "doubles" && frame.winner_side === receivingSide) {
-              handicapNote = `The ${startValue}-point start proved decisive after handicap was applied.`;
-            } else if (rawWinner && rawWinner !== receivingSide) {
-              const givingName = rawWinner === "home" ? homeName : awayName;
-              const rawMargin = Math.abs(homePoints - awayPoints);
-              handicapNote =
-                rawMargin > startValue
-                  ? `${givingName} overcame the ${startValue}-point start and would still have won without it.`
-                  : `${givingName} won on raw points despite giving ${startValue} away at the start.`;
-            }
-          }
-        }
 
         return {
           label: `${(frame.slot_type ?? "frame").replace(/^./, (match) => match.toUpperCase())} ${frame.slot_no ?? index + 1}`,
           matchup: `${homeName} vs ${awayName}`,
           score: homePoints !== null && awayPoints !== null ? `${homePoints}-${awayPoints}` : "Awaiting score",
           winner: frame.winner_side === "home" ? homeName : frame.winner_side === "away" ? awayName : "No winner recorded",
-          handicapNote,
         };
       });
 
@@ -437,7 +406,6 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
     .sort((a, b) => b.surprise - a.surprise)[0] ?? null;
 
   const wins = new Map<string, number>();
-  const handicapMoments: Array<{ text: string; strength: number }> = [];
   const overperformances: Array<{ text: string; gap: number }> = [];
   for (const frame of weekFrames) {
     if (!frame.winner_side || frame.home_forfeit || frame.away_forfeit) continue;
@@ -466,44 +434,6 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
       frame.slot_type === "doubles"
         ? (Number(playerById.get(frame.away_player1_id ?? "")?.rating_snooker ?? 1000) + Number(playerById.get(frame.away_player2_id ?? "")?.rating_snooker ?? 1000)) / 2
         : Number(playerById.get(frame.away_player1_id ?? "")?.rating_snooker ?? 1000);
-    const homeHandicap =
-      frame.slot_type === "doubles"
-        ? (Number(playerById.get(frame.home_player1_id ?? "")?.snooker_handicap ?? 0) + Number(playerById.get(frame.home_player2_id ?? "")?.snooker_handicap ?? 0)) / 2
-        : Number(playerById.get(frame.home_player1_id ?? "")?.snooker_handicap ?? 0);
-    const awayHandicap =
-      frame.slot_type === "doubles"
-        ? (Number(playerById.get(frame.away_player1_id ?? "")?.snooker_handicap ?? 0) + Number(playerById.get(frame.away_player2_id ?? "")?.snooker_handicap ?? 0)) / 2
-        : Number(playerById.get(frame.away_player1_id ?? "")?.snooker_handicap ?? 0);
-    const homePoints = typeof frame.home_points_scored === "number" ? frame.home_points_scored : null;
-    const awayPoints = typeof frame.away_points_scored === "number" ? frame.away_points_scored : null;
-
-    if (homePoints !== null && awayPoints !== null) {
-      const adjusted = calculateAdjustedScoresWithCap(homePoints, awayPoints, homeHandicap, awayHandicap);
-      const receivingSide = adjusted.homeStart > 0 ? "home" : adjusted.awayStart > 0 ? "away" : null;
-      const receivingName = receivingSide === "home" ? homeName : receivingSide === "away" ? awayName : "";
-      const startValue = receivingSide === "home" ? adjusted.homeStart : receivingSide === "away" ? adjusted.awayStart : 0;
-      const rawWinner = homePoints > awayPoints ? "home" : awayPoints > homePoints ? "away" : null;
-      if (receivingSide && startValue > 0) {
-        if (rawWinner === receivingSide) {
-          handicapMoments.push({
-            text: `${receivingName} won on the table and did not need the ${startValue}-point start.`,
-            strength: startValue,
-          });
-        } else if (frame.slot_type === "doubles" && frame.winner_side === receivingSide) {
-          handicapMoments.push({
-            text: `${receivingName} made the ${startValue}-point start count and won after handicap was applied.`,
-            strength: startValue,
-          });
-        } else if (rawWinner && rawWinner !== receivingSide) {
-          const givingName = rawWinner === "home" ? homeName : awayName;
-          handicapMoments.push({
-            text: `${givingName} overcame a ${startValue}-point start and still won on the table.`,
-            strength: startValue,
-          });
-        }
-      }
-    }
-
     const winnerName = frame.winner_side === "home" ? homeName : awayName;
     const ratingGap = frame.winner_side === "home" ? awayRating - homeRating : homeRating - awayRating;
     if (ratingGap > 0) {
@@ -515,7 +445,6 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
   }
 
   const star = Array.from(wins.entries()).sort((a, b) => b[1] - a[1])[0];
-  const topHandicapMoment = handicapMoments.sort((a, b) => b.strength - a.strength)[0] ?? null;
   const topOverperformance = overperformances.sort((a, b) => b.gap - a.gap)[0] ?? null;
 
   return {
@@ -529,7 +458,6 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
         fixtureUpset && fixtureUpset.actualWinner !== "draw"
           ? `${fixtureUpset.fixture.headline.split(".")[0]} Before the match, the winner's chance on the model was about ${fixtureUpset.fixture.expectedPct}%.`
           : "No result this week stood out as a major upset against the model.",
-      handicapMoment: topHandicapMoment?.text ?? "No handicap moment stood out strongly enough to define the week.",
       overperformance: topOverperformance?.text ?? "No individual frame winner produced a major frame-by-frame Elo upset this week.",
       star: star
         ? `${playerNameMap.get(star[0]) ?? "Player"} was standout with ${star[1]} frame win${star[1] === 1 ? "" : "s"}.`
@@ -577,20 +505,23 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
       const rating = Math.round(Number(player?.rating_snooker ?? 1000));
       const previous = Number(row.previous_handicap ?? 0);
       const next = Number(row.new_handicap ?? current);
-      const target = targetFromReason(row.reason ?? "");
+      const target = targetHandicapFromElo(rating);
+      const playedOff = previous;
+      const name = named(player);
       return {
         playerId: row.player_id,
-        name: named(player),
+        name,
+        playedOff,
         previous,
         next,
         current,
         baseline,
         rating,
-        reason: target
-          ? next === target
-            ? `Moved directly to Elo-based target handicap ${formatSigned(target)}.`
-            : `Moved one 4-point step toward Elo-based target handicap ${formatSigned(target)}.`
-          : row.reason ?? "Weekly Elo review.",
+        target,
+        reason:
+          next === target
+            ? `${name}'s current Elo of ${rating} sits in the ${formatSigned(target)} target band, so the weekly review moved the handicap from ${formatSigned(playedOff)} straight to ${formatSigned(next)}.`
+            : `${name}'s current Elo of ${rating} sits in the ${formatSigned(target)} target band, so the weekly review moved the handicap one 4-point step from ${formatSigned(playedOff)} to ${formatSigned(next)}.`,
       };
     })
     .sort((a, b) => a.name.localeCompare(b.name));
@@ -600,12 +531,6 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
     batchTime: latestBatchTime,
     changes,
   };
-}
-
-function targetFromReason(reason: string) {
-  const match = reason.match(/target handicap ([+-]?\d+)/i);
-  if (!match) return null;
-  return Number(match[1]);
 }
 
 function formatSigned(value: number) {
