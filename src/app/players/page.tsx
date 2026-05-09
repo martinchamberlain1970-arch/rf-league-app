@@ -171,6 +171,7 @@ export default function PlayersPage() {
   const [roleSearch, setRoleSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "super" | "admin" | "user">("all");
   const [profileLocationFilter, setProfileLocationFilter] = useState("all");
+  const [profileLinkFilter, setProfileLinkFilter] = useState("all");
   const superAdminEmail = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
   const isSuperAdmin = admin.isSuper;
   const isStandardUser = !admin.isAdmin && !isSuperAdmin;
@@ -237,10 +238,20 @@ export default function PlayersPage() {
     });
   }, [appUsers, roleSearch, roleFilter, superAdminEmail, players, locationById]);
   const filteredActivePlayers = useMemo(() => {
-    if (profileLocationFilter === "all") return activePlayers;
-    if (profileLocationFilter === "__none") return activePlayers.filter((p) => !p.location_id);
-    return activePlayers.filter((p) => p.location_id === profileLocationFilter);
-  }, [activePlayers, profileLocationFilter]);
+    const byLocation =
+      profileLocationFilter === "all"
+        ? activePlayers
+        : profileLocationFilter === "__none"
+          ? activePlayers.filter((p) => !p.location_id)
+          : activePlayers.filter((p) => p.location_id === profileLocationFilter);
+    if (profileLinkFilter === "linked") {
+      return byLocation.filter((p) => Boolean(p.claimed_by) || ((p.age_band ?? "18_plus") !== "18_plus" && Boolean(p.guardian_user_id)));
+    }
+    if (profileLinkFilter === "unlinked") {
+      return byLocation.filter((p) => !p.claimed_by && !((p.age_band ?? "18_plus") !== "18_plus" && p.guardian_user_id));
+    }
+    return byLocation;
+  }, [activePlayers, profileLocationFilter, profileLinkFilter]);
   const loadPlayers = async () => {
     const client = supabase;
     if (!client) {
@@ -2096,6 +2107,16 @@ export default function PlayersPage() {
                       {loc.name}
                     </option>
                   ))}
+                </select>
+                <label className="ml-2 text-sm text-slate-700">Filter by link status</label>
+                <select
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                  value={profileLinkFilter}
+                  onChange={(e) => setProfileLinkFilter(e.target.value)}
+                >
+                  <option value="all">All players</option>
+                  <option value="linked">Linked only</option>
+                  <option value="unlinked">Unlinked only</option>
                 </select>
                 <span className="text-xs text-slate-500">{filteredActivePlayers.length} player(s)</span>
               </div>
