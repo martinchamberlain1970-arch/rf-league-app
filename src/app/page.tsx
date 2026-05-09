@@ -64,6 +64,7 @@ export default function HomePage() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userPlayerId, setUserPlayerId] = useState<string | null>(null);
   const [userMissingAvatar, setUserMissingAvatar] = useState(false);
+  const [userMissingDob, setUserMissingDob] = useState(false);
   const [profileMessage, setProfileMessage] = useState<string | null>(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [firstName, setFirstName] = useState("");
@@ -502,18 +503,19 @@ export default function HomePage() {
       const { data: player } = linkedPlayerId
         ? await client
             .from("players")
-            .select("id,display_name,full_name,location_id,avatar_url")
+            .select("id,display_name,full_name,location_id,avatar_url,date_of_birth")
             .eq("id", linkedPlayerId)
             .maybeSingle()
         : await client
             .from("players")
-            .select("id,display_name,full_name,location_id,avatar_url")
+            .select("id,display_name,full_name,location_id,avatar_url,date_of_birth")
             .eq("claimed_by", userId)
             .maybeSingle();
       const name = player?.full_name?.trim() ? player.full_name : player?.display_name ?? null;
       setUserName(name);
       setUserPlayerId(player?.id ?? null);
       setUserMissingAvatar(Boolean(player?.id) && !player?.avatar_url);
+      setUserMissingDob(Boolean(player?.id) && !player?.date_of_birth);
       const { data: pending } = await client
         .from("player_claim_requests")
         .select("id,requested_full_name,player_id,status")
@@ -809,7 +811,7 @@ export default function HomePage() {
     if (admin.loading || admin.isSuper) return;
     if (!admin.userId || !userPlayerId) return;
     const sessionKey = `profile_photo_prompt_seen_${admin.userId}_${userPlayerId}`;
-    if (userMissingAvatar) {
+    if (userMissingAvatar || userMissingDob) {
       const seenThisSession = window.sessionStorage.getItem(sessionKey);
       if (!seenThisSession) {
         setShowProfilePrompt(true);
@@ -818,7 +820,7 @@ export default function HomePage() {
       return;
     }
     setShowProfilePrompt(false);
-  }, [admin.loading, admin.isSuper, admin.userId, userPlayerId, userMissingAvatar]);
+  }, [admin.loading, admin.isSuper, admin.userId, userPlayerId, userMissingAvatar, userMissingDob]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1317,8 +1319,14 @@ export default function HomePage() {
       />
       <ConfirmModal
         open={showProfilePrompt}
-        title="Add a profile photo"
-        description="Your player profile does not have a photo yet. Open your profile now to upload one."
+        title={userMissingAvatar && userMissingDob ? "Complete your player profile" : userMissingDob ? "Add your date of birth" : "Add a profile photo"}
+        description={
+          userMissingAvatar && userMissingDob
+            ? "Your player profile is missing both a photo and date of birth. Open your profile now to upload a photo and add your DOB."
+            : userMissingDob
+              ? "Your player profile is missing a date of birth. Open your profile now to add it."
+              : "Your player profile does not have a photo yet. Open your profile now to upload one."
+        }
         confirmLabel="Review now"
         cancelLabel="Later"
         onConfirm={() => {
