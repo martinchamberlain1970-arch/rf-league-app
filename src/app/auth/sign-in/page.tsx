@@ -123,23 +123,34 @@ export default function SignInPage() {
             status: "pending",
           });
         };
+        const requestedLocationId = parsed.locationId?.trim() ?? "";
+        const { data: requestedLocation } = requestedLocationId
+          ? await client.from("locations").select("id").eq("id", requestedLocationId).maybeSingle()
+          : { data: null };
+        const validLocationId = requestedLocation?.id ?? null;
+        if (!validLocationId) {
+          setMessage(
+            "Your account was created, but no club was saved with the signup request. Please contact the League Secretary or Super User so your club can be assigned before your profile is linked."
+          );
+          window.localStorage.removeItem("pending_claim");
+          router.replace(nextPath);
+          return;
+        }
         if (parsed.type === "existing" && parsed.playerId && parsed.fullName) {
           await submitClaim(parsed.playerId, parsed.fullName, parsed.dateOfBirth ?? null);
           setMessage("Your profile-link request has been submitted for administrator approval.");
-          if (parsed.locationId) {
-            await client.from("player_update_requests").insert({
-              player_id: parsed.playerId,
-              requester_user_id: userId,
-              requested_full_name: null,
-              requested_location_id: parsed.locationId,
-              requested_age_band: parsed.ageBand ?? null,
-              requested_guardian_consent: parsed.guardianConsent ?? null,
-              requested_guardian_name: parsed.guardianName ?? null,
-              requested_guardian_email: parsed.guardianEmail ?? null,
-              requested_guardian_user_id: parsed.guardianUserId ?? null,
-              status: "pending",
-            });
-          }
+          await client.from("player_update_requests").insert({
+            player_id: parsed.playerId,
+            requester_user_id: userId,
+            requested_full_name: null,
+            requested_location_id: validLocationId,
+            requested_age_band: parsed.ageBand ?? null,
+            requested_guardian_consent: parsed.guardianConsent ?? null,
+            requested_guardian_name: parsed.guardianName ?? null,
+            requested_guardian_email: parsed.guardianEmail ?? null,
+            requested_guardian_user_id: parsed.guardianUserId ?? null,
+            status: "pending",
+          });
         }
         if (parsed.type === "create" && parsed.firstName) {
           const effectiveAgeBand = parsed.ageBand ?? "18_plus";
@@ -153,7 +164,7 @@ export default function SignInPage() {
               full_name: fullName,
               is_archived: false,
               claimed_by: null,
-              location_id: effectiveAgeBand === "18_plus" ? parsed.locationId ?? null : null,
+              location_id: effectiveAgeBand === "18_plus" ? validLocationId : null,
               date_of_birth: parsed.dateOfBirth ?? null,
               age_band: effectiveAgeBand,
               guardian_consent: effectiveAgeBand === "18_plus" ? false : Boolean(parsed.guardianConsent),
