@@ -2,6 +2,10 @@ alter table public.players
   add column if not exists nationality_name text,
   add column if not exists country_code text;
 
+alter table public.player_update_requests
+  add column if not exists requested_nationality_name text,
+  add column if not exists requested_country_code text;
+
 create table if not exists public.site_announcements (
   id uuid primary key default gen_random_uuid(),
   title text not null default '',

@@ -15,6 +15,8 @@ type UpdateRow = {
   requester_user_id: string;
   requested_full_name: string | null;
   requested_location_id: string | null;
+  requested_nationality_name?: string | null;
+  requested_country_code?: string | null;
   requested_avatar_url?: string | null;
   requested_age_band?: string | null;
   requested_guardian_consent?: boolean | null;
@@ -56,7 +58,7 @@ async function loadActor(serviceClient: any, requesterId: string, requesterEmail
 async function loadRequestForAction(serviceClient: any, requestId: string) {
   const fullRes = await serviceClient
     .from("player_update_requests")
-    .select("id,player_id,requester_user_id,requested_full_name,requested_location_id,requested_avatar_url,requested_age_band,requested_guardian_consent,requested_guardian_name,requested_guardian_email,requested_guardian_user_id,status,created_at")
+    .select("id,player_id,requester_user_id,requested_full_name,requested_location_id,requested_nationality_name,requested_country_code,requested_avatar_url,requested_age_band,requested_guardian_consent,requested_guardian_name,requested_guardian_email,requested_guardian_user_id,status,created_at")
     .eq("id", requestId)
     .maybeSingle();
   if (!fullRes.error && fullRes.data) {
@@ -75,7 +77,9 @@ async function loadRequestForAction(serviceClient: any, requestId: string) {
   }
   return {
     row: {
-      ...(fallbackRes.data as unknown as Omit<UpdateRow, "requested_age_band" | "requested_guardian_consent" | "requested_guardian_name" | "requested_guardian_email" | "requested_guardian_user_id">),
+      ...(fallbackRes.data as unknown as Omit<UpdateRow, "requested_age_band" | "requested_guardian_consent" | "requested_guardian_name" | "requested_guardian_email" | "requested_guardian_user_id" | "requested_nationality_name" | "requested_country_code">),
+      requested_nationality_name: null,
+      requested_country_code: null,
       requested_age_band: null,
       requested_guardian_consent: null,
       requested_guardian_name: null,
@@ -129,7 +133,7 @@ export async function GET(req: NextRequest) {
   };
 
   const fullRes = await buildQuery(
-    "id,player_id,requester_user_id,requested_full_name,requested_location_id,requested_avatar_url,requested_age_band,requested_guardian_consent,requested_guardian_name,requested_guardian_email,requested_guardian_user_id,status,created_at"
+    "id,player_id,requester_user_id,requested_full_name,requested_location_id,requested_nationality_name,requested_country_code,requested_avatar_url,requested_age_band,requested_guardian_consent,requested_guardian_name,requested_guardian_email,requested_guardian_user_id,status,created_at"
   );
 
   let rows: UpdateRow[] = [];
@@ -142,8 +146,10 @@ export async function GET(req: NextRequest) {
     if (fallbackRes.error || !fallbackRes.data) {
       return NextResponse.json({ error: fallbackRes.error?.message ?? "Failed to load update requests." }, { status: 400 });
     }
-    rows = ((fallbackRes.data as unknown) as Array<Omit<UpdateRow, "requested_age_band" | "requested_guardian_consent" | "requested_guardian_name" | "requested_guardian_email" | "requested_guardian_user_id">>).map((row) => ({
+    rows = ((fallbackRes.data as unknown) as Array<Omit<UpdateRow, "requested_age_band" | "requested_guardian_consent" | "requested_guardian_name" | "requested_guardian_email" | "requested_guardian_user_id" | "requested_nationality_name" | "requested_country_code">>).map((row) => ({
       ...row,
+      requested_nationality_name: null,
+      requested_country_code: null,
       requested_age_band: null,
       requested_guardian_consent: null,
       requested_guardian_name: null,
@@ -198,8 +204,45 @@ export async function POST(req: NextRequest) {
   }
 
   const body = await req.json().catch(() => null);
+  const playerId = String(body?.playerId ?? "").trim();
   const requestId = String(body?.requestId ?? "").trim();
   const action = String(body?.action ?? "").trim().toLowerCase();
+  const requestedNationalityName = typeof body?.requestedNationalityName === "string" ? body.requestedNationalityName.trim() : "";
+  const requestedCountryCode = typeof body?.requestedCountryCode === "string" ? body.requestedCountryCode.trim().toUpperCase() : "";
+  if (!action) {
+    if (!playerId) return NextResponse.json({ error: "Player is required." }, { status: 400 });
+    if (!requestedNationalityName && !requestedCountryCode) {
+      return NextResponse.json({ error: "Add nationality or country code before submitting." }, { status: 400 });
+    }
+    const serviceClient = createClient(supabaseUrl, serviceRoleKey);
+    const playerRes = await serviceClient
+      .from("players")
+      .select("id,claimed_by,guardian_user_id")
+      .eq("id", playerId)
+      .maybeSingle();
+    if (playerRes.error || !playerRes.data) {
+      return NextResponse.json({ error: playerRes.error?.message ?? "Player not found." }, { status: 404 });
+    }
+    const allowed =
+      playerRes.data.claimed_by === authData.user.id ||
+      playerRes.data.guardian_user_id === authData.user.id;
+    if (!allowed) {
+      return NextResponse.json({ error: "You can only request updates for your own linked profile." }, { status: 403 });
+    }
+    const insertRes = await serviceClient.from("player_update_requests").insert({
+      player_id: playerId,
+      requester_user_id: authData.user.id,
+      requested_full_name: null,
+      requested_location_id: null,
+      requested_nationality_name: requestedNationalityName || null,
+      requested_country_code: requestedCountryCode || null,
+      status: "pending",
+    });
+    if (insertRes.error) {
+      return NextResponse.json({ error: insertRes.error.message }, { status: 400 });
+    }
+    return NextResponse.json({ ok: true });
+  }
   if (!requestId || !["approve", "reject", "delete"].includes(action)) {
     return NextResponse.json({ error: "Valid requestId and action are required." }, { status: 400 });
   }
@@ -249,6 +292,12 @@ export async function POST(req: NextRequest) {
     }
     if (row.requested_location_id !== undefined) {
       updatePayload.location_id = row.requested_location_id;
+    }
+    if (row.requested_nationality_name !== undefined) {
+      updatePayload.nationality_name = row.requested_nationality_name;
+    }
+    if (row.requested_country_code !== undefined) {
+      updatePayload.country_code = row.requested_country_code;
     }
     if (row.requested_avatar_url && (row.requested_age_band ?? "18_plus") === "18_plus") {
       updatePayload.avatar_url = row.requested_avatar_url;

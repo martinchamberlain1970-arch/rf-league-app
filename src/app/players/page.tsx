@@ -39,6 +39,8 @@ type PlayerUpdateRequest = {
   requester_user_id: string;
   requested_full_name: string | null;
   requested_location_id: string | null;
+  requested_nationality_name?: string | null;
+  requested_country_code?: string | null;
   requested_avatar_url?: string | null;
   requested_age_band?: string | null;
   requested_guardian_consent?: boolean | null;
@@ -308,7 +310,7 @@ export default function PlayersPage() {
     }
     const full = await client
       .from("player_update_requests")
-      .select("id,player_id,requester_user_id,requested_full_name,requested_location_id,requested_avatar_url,requested_age_band,requested_guardian_consent,requested_guardian_name,requested_guardian_email,requested_guardian_user_id,status,created_at")
+      .select("id,player_id,requester_user_id,requested_full_name,requested_location_id,requested_nationality_name,requested_country_code,requested_avatar_url,requested_age_band,requested_guardian_consent,requested_guardian_name,requested_guardian_email,requested_guardian_user_id,status,created_at")
       .order("created_at", { ascending: false });
     if (!full.error && full.data) {
       setUpdateRequests(full.data as PlayerUpdateRequest[]);
@@ -323,8 +325,10 @@ export default function PlayersPage() {
       .order("created_at", { ascending: false });
     if (fallback.error || !fallback.data) return;
     setUpdateRequests(
-      (fallback.data as Array<Omit<PlayerUpdateRequest, "requested_age_band" | "requested_guardian_consent" | "requested_guardian_name" | "requested_guardian_email" | "requested_guardian_user_id">>).map((row) => ({
+      (fallback.data as Array<Omit<PlayerUpdateRequest, "requested_nationality_name" | "requested_country_code" | "requested_age_band" | "requested_guardian_consent" | "requested_guardian_name" | "requested_guardian_email" | "requested_guardian_user_id">>).map((row) => ({
         ...row,
+        requested_nationality_name: null,
+        requested_country_code: null,
         requested_age_band: null,
         requested_guardian_consent: null,
         requested_guardian_name: null,
@@ -2323,6 +2327,12 @@ export default function PlayersPage() {
                           </p>
                         ) : null}
                         {r.requested_location_id ? <p className="text-sm text-slate-700">Requested location: {locationName ?? "Selected location"}</p> : null}
+                        {r.requested_nationality_name || r.requested_country_code ? (
+                          <p className="text-sm text-slate-700">
+                            Requested nationality: {r.requested_nationality_name ?? "Not supplied"}
+                            {r.requested_country_code ? ` · ${r.requested_country_code}` : ""}
+                          </p>
+                        ) : null}
                         {r.requested_avatar_url ? (
                           <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">Profile photo request</p>

@@ -204,6 +204,7 @@ export default function PlayerProfilePage() {
   const [showOpponents, setShowOpponents] = useState(true);
   const [showHistory, setShowHistory] = useState(true);
   const [savingContact, setSavingContact] = useState(false);
+  const [savingNationalityRequest, setSavingNationalityRequest] = useState(false);
   const [countryFieldsAvailable, setCountryFieldsAvailable] = useState(false);
   const profileRef = useRef<HTMLDivElement | null>(null);
   const admin = useAdminStatus();
@@ -738,6 +739,44 @@ export default function PlayerProfilePage() {
     setInfoModal({
       title: "Contact preferences updated",
       description: "Your phone sharing preference has been saved.",
+    });
+  };
+
+  const onRequestNationalityUpdate = async () => {
+    const client = supabase;
+    if (!client || !player || !canEditOwnContact) return;
+    if (!editNationalityName.trim() && !editCountryCode.trim()) {
+      setMessage("Add nationality or country code before submitting.");
+      return;
+    }
+    const { data: sessionRes } = await client.auth.getSession();
+    const token = sessionRes.session?.access_token;
+    if (!token) {
+      setMessage("Session expired. Please sign in again.");
+      return;
+    }
+    setSavingNationalityRequest(true);
+    const resp = await fetch("/api/player-update-requests", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        playerId: player.id,
+        requestedNationalityName: editNationalityName.trim() || null,
+        requestedCountryCode: editCountryCode.trim().toUpperCase() || null,
+      }),
+    });
+    setSavingNationalityRequest(false);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      setMessage(data?.error ?? "Failed to submit nationality update request.");
+      return;
+    }
+    setInfoModal({
+      title: "Nationality update sent",
+      description: "Your nationality / country update has been sent for Super User approval.",
     });
   };
 
@@ -2064,6 +2103,43 @@ export default function PlayerProfilePage() {
                         className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
                       >
                         {savingContact ? "Saving..." : "Save contact settings"}
+                      </button>
+                    </div>
+                  </div>
+                ) : null}
+                {canEditOwnContact && !admin.isSuper ? (
+                  <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="text-sm font-semibold text-slate-900">Nationality / Flag</p>
+                    <p className="mt-1 text-xs text-slate-600">
+                      Submit a nationality update for Super User approval. This can then appear on your player profile and live match screens.
+                    </p>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <input
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                        value={editNationalityName}
+                        onChange={(e) => setEditNationalityName(e.target.value)}
+                        placeholder="Nationality"
+                        disabled={!countryFieldsAvailable}
+                      />
+                      <input
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm uppercase"
+                        value={editCountryCode}
+                        onChange={(e) => setEditCountryCode(e.target.value.slice(0, 2).toUpperCase())}
+                        placeholder="Country code, e.g. GB"
+                        disabled={!countryFieldsAvailable}
+                      />
+                    </div>
+                    {!countryFieldsAvailable ? (
+                      <p className="mt-2 text-xs text-amber-700">Nationality requests will unlock once the latest database migration has been run.</p>
+                    ) : null}
+                    <div className="mt-3">
+                      <button
+                        type="button"
+                        onClick={onRequestNationalityUpdate}
+                        disabled={savingNationalityRequest || !countryFieldsAvailable}
+                        className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
+                      >
+                        {savingNationalityRequest ? "Submitting..." : "Request nationality update"}
                       </button>
                     </div>
                   </div>
