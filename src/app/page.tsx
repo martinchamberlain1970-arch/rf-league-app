@@ -30,6 +30,7 @@ const links = [
   { href: "/notifications", title: "Notifications", desc: "Read and manage your inbox notifications." },
   { href: "/live", title: "Live Overview", desc: "In-progress overview of active events." },
   { href: "/stats", title: "Stats", desc: "Player and matchup stats." },
+  { href: "/announcements", title: "Announcements", desc: "Super User control for banner notices." },
   { href: "/help", title: "User Guide", desc: "How to use the app." },
   { href: "/legal", title: "Legal & Credits", desc: "Legal and support information." },
 ];
@@ -92,10 +93,6 @@ export default function HomePage() {
   const [showProfilePrompt, setShowProfilePrompt] = useState(false);
   const [showCaptainGuidePrompt, setShowCaptainGuidePrompt] = useState(false);
   const [announcement, setAnnouncement] = useState<SiteAnnouncement | null>(null);
-  const [announcementDraftTitle, setAnnouncementDraftTitle] = useState("");
-  const [announcementDraftBody, setAnnouncementDraftBody] = useState("");
-  const [announcementDraftActive, setAnnouncementDraftActive] = useState(false);
-  const [savingAnnouncement, setSavingAnnouncement] = useState(false);
   const [confirmState, setConfirmState] = useState<{
     open: boolean;
     title: string;
@@ -121,11 +118,12 @@ export default function HomePage() {
         "/audit",
         "/usage",
         "/backup",
+        "/announcements",
         "/help",
         "/legal",
       ].includes(href);
     }
-    if (!admin.isSuper && (href === "/audit" || href === "/usage" || href === "/signup-requests")) return false;
+    if (!admin.isSuper && (href === "/audit" || href === "/usage" || href === "/signup-requests" || href === "/announcements")) return false;
     if (admin.isAdmin) {
       // Admins still see these cards, but they can be disabled per-account.
       return true;
@@ -145,7 +143,7 @@ export default function HomePage() {
     (href === "/events/new" && pendingFeatureRequests.has("competition_create"));
 
   const primaryHrefs = admin.isSuper
-    ? ["/signup-requests", "/players", "/notifications", "/league", "/results", "/reschedule-fixture", "/backup", "/signups", "/legal"]
+    ? ["/signup-requests", "/players", "/notifications", "/league", "/results", "/reschedule-fixture", "/backup", "/signups", "/announcements", "/legal"]
     : admin.isAdmin
       ? ["/league", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/quick-match", "/events/new", "/signups", "/help", "/legal"]
       : ["/league", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/notifications", "/signups", "/help", "/legal"];
@@ -856,72 +854,6 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (!admin.isSuper) return;
-    let active = true;
-    const loadAnnouncementEditor = async () => {
-      const client = supabase;
-      if (!client) return;
-      const sessionRes = await client.auth.getSession();
-      const token = sessionRes.data.session?.access_token;
-      if (!token) return;
-      try {
-        const res = await fetch("/api/admin/announcements", { headers: { Authorization: `Bearer ${token}` } });
-        const payload = (await res.json().catch(() => ({}))) as { announcement?: SiteAnnouncement | null };
-        if (!active) return;
-        const row = payload.announcement ?? null;
-        setAnnouncementDraftTitle(row?.title ?? "");
-        setAnnouncementDraftBody(row?.body ?? "");
-        setAnnouncementDraftActive(Boolean(row?.is_active));
-      } catch {
-        if (!active) return;
-      }
-    };
-    void loadAnnouncementEditor();
-    return () => {
-      active = false;
-    };
-  }, [admin.isSuper]);
-
-  const saveAnnouncement = async () => {
-    const client = supabase;
-    if (!client || !admin.isSuper) return;
-    const sessionRes = await client.auth.getSession();
-    const token = sessionRes.data.session?.access_token;
-    if (!token) {
-      setCompletionMessage("Session expired. Please sign in again.");
-      return;
-    }
-    setSavingAnnouncement(true);
-    try {
-      const res = await fetch("/api/admin/announcements", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          title: announcementDraftTitle,
-          body: announcementDraftBody,
-          isActive: announcementDraftActive,
-        }),
-      });
-      const payload = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) {
-        setCompletionMessage(payload.error ?? "Failed to save announcement.");
-        return;
-      }
-      setAnnouncement(
-        announcementDraftActive
-          ? { title: announcementDraftTitle, body: announcementDraftBody, is_active: true, updated_at: new Date().toISOString() }
-          : null
-      );
-      setCompletionMessage("Announcement saved.");
-    } finally {
-      setSavingAnnouncement(false);
-    }
-  };
-
-  useEffect(() => {
     if (typeof window === "undefined") return;
     if (admin.loading || admin.isAdmin) return;
     const params = new URLSearchParams(window.location.search);
@@ -1127,41 +1059,6 @@ export default function HomePage() {
             ) : null}
             {profileMessage ? <p className="mt-2 text-sm text-slate-700">{profileMessage}</p> : null}
           </section>
-          {admin.isSuper ? (
-            <section className={subtleCardClass}>
-              <p className="text-sm font-semibold text-slate-900">Important announcement banner</p>
-              <p className="mt-1 text-sm text-slate-600">Use this for urgent notices that should appear on the live/public screens and user home page.</p>
-              <div className="mt-3 grid gap-3">
-                <input
-                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                  value={announcementDraftTitle}
-                  onChange={(e) => setAnnouncementDraftTitle(e.target.value)}
-                  placeholder="Banner title"
-                />
-                <textarea
-                  className="min-h-[110px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                  value={announcementDraftBody}
-                  onChange={(e) => setAnnouncementDraftBody(e.target.value)}
-                  placeholder="Banner message"
-                />
-                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
-                  <input type="checkbox" checked={announcementDraftActive} onChange={(e) => setAnnouncementDraftActive(e.target.checked)} />
-                  Show this banner to users
-                </label>
-                <div>
-                  <button
-                    type="button"
-                    onClick={() => void saveAnnouncement()}
-                    disabled={savingAnnouncement}
-                    className="rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 disabled:opacity-60"
-                  >
-                    {savingAnnouncement ? "Saving..." : "Save announcement"}
-                  </button>
-                </div>
-              </div>
-            </section>
-          ) : null}
-
           {!admin.isSuper ? (
             <section className={subtleCardClass}>
               <div className="flex flex-wrap items-center justify-between gap-2">
