@@ -61,6 +61,16 @@ type PlayerRow = {
   country_code?: string | null;
 };
 
+type PlayerSelectRow = {
+  id: string;
+  display_name: string;
+  full_name: string | null;
+  avatar_url?: string | null;
+  snooker_handicap?: number | null;
+  nationality_name?: string | null;
+  country_code?: string | null;
+};
+
 function named(player?: PlayerRow | null) {
   return player?.full_name?.trim() || player?.display_name || "Unknown";
 }
@@ -135,12 +145,28 @@ export async function GET(req: NextRequest) {
       .eq("is_archived", false),
   ]);
 
-  let playersRes = playersQueryRes;
-  if (playersRes.error && isMissingColumnError(playersRes.error.message)) {
-    playersRes = await adminClient.from("players").select("id,display_name,full_name,avatar_url,snooker_handicap").eq("is_archived", false);
+  let playersData = (playersQueryRes.data ?? []) as PlayerSelectRow[];
+  let playersError = playersQueryRes.error?.message ?? null;
+  if (playersQueryRes.error && isMissingColumnError(playersQueryRes.error.message)) {
+    const fallbackPlayersRes = await adminClient
+      .from("players")
+      .select("id,display_name,full_name,avatar_url,snooker_handicap")
+      .eq("is_archived", false);
+    playersData = ((fallbackPlayersRes.data ?? []) as Array<{
+      id: string;
+      display_name: string;
+      full_name: string | null;
+      avatar_url?: string | null;
+      snooker_handicap?: number | null;
+    }>).map((row) => ({
+      ...row,
+      nationality_name: null,
+      country_code: null,
+    }));
+    playersError = fallbackPlayersRes.error?.message ?? null;
   }
 
-  const firstError = teamsRes.error?.message || fixturesRes.error?.message || framesRes.error?.message || playersRes.error?.message;
+  const firstError = teamsRes.error?.message || fixturesRes.error?.message || framesRes.error?.message || playersError;
   if (firstError) {
     return NextResponse.json({ error: firstError }, { status: 500 });
   }
@@ -148,7 +174,7 @@ export async function GET(req: NextRequest) {
   const teams = (teamsRes.data ?? []) as TeamRow[];
   const fixtures = ((fixturesRes.data ?? []) as FixtureRow[]).filter((fixture) => fixture.season_id === selectedSeason.id);
   const frames = (framesRes.data ?? []) as FrameRow[];
-  const players = (playersRes.data ?? []) as PlayerRow[];
+  const players = playersData as PlayerRow[];
 
   const teamById = new Map(teams.map((team) => [team.id, team]));
   const playerById = new Map(players.map((player) => [player.id, player]));
