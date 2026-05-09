@@ -511,8 +511,28 @@ export default function PlayerProfilePage() {
     const computedAgeBand = deriveAgeBandFromDob(editDateOfBirth || null);
     const isMinorBand = computedAgeBand !== "18_plus";
     if (!editDateOfBirth) {
-      setInfoModal({ title: "Date of Birth Required", description: "Date of birth is required." });
-      setMessage("Date of birth is required.");
+      if (!editLocationId) {
+        setInfoModal({ title: "Location Required", description: "Select a club before saving." });
+        setMessage("Select a club before saving.");
+        return;
+      }
+      if (editLocationId === (player.location_id ?? "")) {
+        setInfoModal({
+          title: "Date of Birth Required",
+          description: "Date of birth is still required before editing the full player profile.",
+        });
+        setMessage("Date of birth is required before editing the full player profile.");
+        return;
+      }
+      setSavingPlayer(true);
+      const { error } = await client.from("players").update({ location_id: editLocationId }).eq("id", player.id);
+      setSavingPlayer(false);
+      if (error) {
+        setMessage(`Failed to save player club: ${error.message}`);
+        return;
+      }
+      setPlayer((prev) => (prev ? { ...prev, location_id: editLocationId } : prev));
+      setMessage("Player club updated. Add date of birth later to unlock full profile editing.");
       return;
     }
     if (isMinorBand) {
