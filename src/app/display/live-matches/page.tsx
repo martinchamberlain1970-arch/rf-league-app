@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { countryCodeToFlagEmoji } from "@/lib/country-flags";
+import ImportantAnnouncementBanner from "@/components/ImportantAnnouncementBanner";
 
 type LiveMatchData = {
   season: { id: string; name: string } | null;
@@ -19,6 +21,8 @@ type LiveMatchData = {
       title: string;
       homeName: string;
       awayName: string;
+      homePlayers: Array<{ name: string; avatarUrl?: string | null; nationality?: string | null; countryCode?: string | null }>;
+      awayPlayers: Array<{ name: string; avatarUrl?: string | null; nationality?: string | null; countryCode?: string | null }>;
       scoreLabel: string;
       frameStatus: string;
       startLabel: string;
@@ -32,9 +36,27 @@ const emptyData: LiveMatchData = {
   liveMatches: [],
 };
 
+function PlayerBadge({ player, align = "left" }: { player: { name: string; avatarUrl?: string | null; nationality?: string | null; countryCode?: string | null }; align?: "left" | "right" }) {
+  const flag = countryCodeToFlagEmoji(player.countryCode);
+  return (
+    <div className={`flex items-center gap-2 ${align === "right" ? "justify-end" : ""}`}>
+      {align === "right" && (flag || player.nationality) ? (
+        <span className="text-xs text-slate-300">{flag ? `${flag} ` : ""}{player.nationality ?? ""}</span>
+      ) : null}
+      <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-slate-900/60 text-xs font-black text-white">
+        {player.avatarUrl ? <img src={player.avatarUrl} alt={player.name} className="h-full w-full object-cover" /> : <span>{player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>}
+      </div>
+      {align === "left" && (flag || player.nationality) ? (
+        <span className="text-xs text-slate-300">{flag ? `${flag} ` : ""}{player.nationality ?? ""}</span>
+      ) : null}
+    </div>
+  );
+}
+
 export default function PublicLiveMatchesPage() {
   const [data, setData] = useState<LiveMatchData>(emptyData);
   const [loading, setLoading] = useState(true);
+  const [announcement, setAnnouncement] = useState<{ title?: string | null; body?: string | null } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -61,6 +83,25 @@ export default function PublicLiveMatchesPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let active = true;
+    const loadAnnouncement = async () => {
+      try {
+        const res = await fetch("/api/public/announcements", { cache: "no-store" });
+        const payload = (await res.json().catch(() => ({}))) as { announcement?: { title?: string | null; body?: string | null } | null };
+        if (!active) return;
+        setAnnouncement(payload.announcement ?? null);
+      } catch {
+        if (!active) return;
+        setAnnouncement(null);
+      }
+    };
+    void loadAnnouncement();
+    return () => {
+      active = false;
+    };
+  }, []);
+
   const generatedAt = useMemo(() => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), [data]);
 
   return (
@@ -82,6 +123,7 @@ export default function PublicLiveMatchesPage() {
             </div>
           </div>
         </section>
+        <ImportantAnnouncementBanner announcement={announcement} />
 
         {loading ? (
           <section className="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-lg text-slate-200 shadow-2xl backdrop-blur">
@@ -137,9 +179,23 @@ export default function PublicLiveMatchesPage() {
                         </div>
                       </div>
                       <div className="mt-3 grid gap-2 text-sm xl:grid-cols-[1fr_auto_1fr] xl:items-center">
-                        <p className="font-semibold text-white">{frame.homeName}</p>
+                        <div>
+                          <p className="font-semibold text-white">{frame.homeName}</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {frame.homePlayers.map((player, index) => (
+                              <PlayerBadge key={`${frame.id}-home-${index}`} player={player} />
+                            ))}
+                          </div>
+                        </div>
                         <p className="text-center text-cyan-200">vs.</p>
-                        <p className="font-semibold text-white xl:text-right">{frame.awayName}</p>
+                        <div>
+                          <p className="font-semibold text-white xl:text-right">{frame.awayName}</p>
+                          <div className="mt-2 flex flex-wrap justify-start gap-2 xl:justify-end">
+                            {frame.awayPlayers.map((player, index) => (
+                              <PlayerBadge key={`${frame.id}-away-${index}`} player={player} align="right" />
+                            ))}
+                          </div>
+                        </div>
                       </div>
                       <p className="mt-3 text-xs text-slate-300">{frame.startLabel}</p>
                     </div>

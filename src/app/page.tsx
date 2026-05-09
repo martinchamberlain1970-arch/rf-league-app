@@ -9,6 +9,7 @@ import useAdminStatus from "@/components/useAdminStatus";
 import { supabase } from "@/lib/supabase";
 import ConfirmModal from "@/components/ConfirmModal";
 import useFeatureAccess from "@/components/useFeatureAccess";
+import ImportantAnnouncementBanner from "@/components/ImportantAnnouncementBanner";
 
 const links = [
   { href: "/players", title: "Players", desc: "View and manage player records." },
@@ -43,6 +44,7 @@ type PriorityCard = {
   displayValue?: string | null;
   compactDisplay?: boolean;
 };
+type SiteAnnouncement = { id?: string; title?: string | null; body?: string | null; is_active?: boolean | null; updated_at?: string | null };
 
 function isLineupWindowLive(fixtureDate: string | null) {
   if (!fixtureDate) return false;
@@ -89,6 +91,11 @@ export default function HomePage() {
   const [pendingFeatureRequests, setPendingFeatureRequests] = useState<Set<string>>(new Set());
   const [showProfilePrompt, setShowProfilePrompt] = useState(false);
   const [showCaptainGuidePrompt, setShowCaptainGuidePrompt] = useState(false);
+  const [announcement, setAnnouncement] = useState<SiteAnnouncement | null>(null);
+  const [announcementDraftTitle, setAnnouncementDraftTitle] = useState("");
+  const [announcementDraftBody, setAnnouncementDraftBody] = useState("");
+  const [announcementDraftActive, setAnnouncementDraftActive] = useState(false);
+  const [savingAnnouncement, setSavingAnnouncement] = useState(false);
   const [confirmState, setConfirmState] = useState<{
     open: boolean;
     title: string;
@@ -830,6 +837,91 @@ export default function HomePage() {
   }, [admin.loading, admin.isSuper, admin.userId, hasCaptainRole]);
 
   useEffect(() => {
+    let active = true;
+    const loadAnnouncement = async () => {
+      try {
+        const res = await fetch("/api/public/announcements", { cache: "no-store" });
+        const payload = (await res.json().catch(() => ({}))) as { announcement?: SiteAnnouncement | null };
+        if (!active) return;
+        setAnnouncement(payload.announcement ?? null);
+      } catch {
+        if (!active) return;
+        setAnnouncement(null);
+      }
+    };
+    void loadAnnouncement();
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!admin.isSuper) return;
+    let active = true;
+    const loadAnnouncementEditor = async () => {
+      const client = supabase;
+      if (!client) return;
+      const sessionRes = await client.auth.getSession();
+      const token = sessionRes.data.session?.access_token;
+      if (!token) return;
+      try {
+        const res = await fetch("/api/admin/announcements", { headers: { Authorization: `Bearer ${token}` } });
+        const payload = (await res.json().catch(() => ({}))) as { announcement?: SiteAnnouncement | null };
+        if (!active) return;
+        const row = payload.announcement ?? null;
+        setAnnouncementDraftTitle(row?.title ?? "");
+        setAnnouncementDraftBody(row?.body ?? "");
+        setAnnouncementDraftActive(Boolean(row?.is_active));
+      } catch {
+        if (!active) return;
+      }
+    };
+    void loadAnnouncementEditor();
+    return () => {
+      active = false;
+    };
+  }, [admin.isSuper]);
+
+  const saveAnnouncement = async () => {
+    const client = supabase;
+    if (!client || !admin.isSuper) return;
+    const sessionRes = await client.auth.getSession();
+    const token = sessionRes.data.session?.access_token;
+    if (!token) {
+      setCompletionMessage("Session expired. Please sign in again.");
+      return;
+    }
+    setSavingAnnouncement(true);
+    try {
+      const res = await fetch("/api/admin/announcements", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          title: announcementDraftTitle,
+          body: announcementDraftBody,
+          isActive: announcementDraftActive,
+        }),
+      });
+      const payload = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setCompletionMessage(payload.error ?? "Failed to save announcement.");
+        return;
+      }
+      setAnnouncement(
+        announcementDraftActive
+          ? { title: announcementDraftTitle, body: announcementDraftBody, is_active: true, updated_at: new Date().toISOString() }
+          : null
+      );
+      setCompletionMessage("Announcement saved.");
+    } finally {
+      setSavingAnnouncement(false);
+    }
+  };
+
+  useEffect(() => {
     if (typeof window === "undefined") return;
     if (admin.loading || admin.isAdmin) return;
     const params = new URLSearchParams(window.location.search);
@@ -968,6 +1060,7 @@ export default function HomePage() {
               {completionMessage}
             </section>
           ) : null}
+          <ImportantAnnouncementBanner announcement={announcement} />
           <section className={subtleCardClass}>
             <p className="text-sm text-slate-600">{admin.isSuper ? "Account" : "User Profile"}</p>
             <div className="flex flex-wrap items-center gap-2">
@@ -1034,6 +1127,40 @@ export default function HomePage() {
             ) : null}
             {profileMessage ? <p className="mt-2 text-sm text-slate-700">{profileMessage}</p> : null}
           </section>
+          {admin.isSuper ? (
+            <section className={subtleCardClass}>
+              <p className="text-sm font-semibold text-slate-900">Important announcement banner</p>
+              <p className="mt-1 text-sm text-slate-600">Use this for urgent notices that should appear on the live/public screens and user home page.</p>
+              <div className="mt-3 grid gap-3">
+                <input
+                  className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                  value={announcementDraftTitle}
+                  onChange={(e) => setAnnouncementDraftTitle(e.target.value)}
+                  placeholder="Banner title"
+                />
+                <textarea
+                  className="min-h-[110px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                  value={announcementDraftBody}
+                  onChange={(e) => setAnnouncementDraftBody(e.target.value)}
+                  placeholder="Banner message"
+                />
+                <label className="inline-flex items-center gap-2 text-sm text-slate-700">
+                  <input type="checkbox" checked={announcementDraftActive} onChange={(e) => setAnnouncementDraftActive(e.target.checked)} />
+                  Show this banner to users
+                </label>
+                <div>
+                  <button
+                    type="button"
+                    onClick={() => void saveAnnouncement()}
+                    disabled={savingAnnouncement}
+                    className="rounded-full border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 disabled:opacity-60"
+                  >
+                    {savingAnnouncement ? "Saving..." : "Save announcement"}
+                  </button>
+                </div>
+              </div>
+            </section>
+          ) : null}
 
           {!admin.isSuper ? (
             <section className={subtleCardClass}>

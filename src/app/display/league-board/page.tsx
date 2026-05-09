@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { countryCodeToFlagEmoji } from "@/lib/country-flags";
+import ImportantAnnouncementBanner from "@/components/ImportantAnnouncementBanner";
 
 type BoardData = {
   season: { id: string; name: string } | null;
@@ -55,6 +57,8 @@ type LiveMatchData = {
       title: string;
       homeName: string;
       awayName: string;
+      homePlayers: Array<{ name: string; avatarUrl?: string | null; nationality?: string | null; countryCode?: string | null }>;
+      awayPlayers: Array<{ name: string; avatarUrl?: string | null; nationality?: string | null; countryCode?: string | null }>;
       scoreLabel: string;
       frameStatus: string;
       startLabel: string;
@@ -75,11 +79,24 @@ const emptyLiveData: LiveMatchData = {
   liveMatches: [],
 };
 
+function BoardPlayerBadge({ player, align = "left" }: { player: { name: string; avatarUrl?: string | null; nationality?: string | null; countryCode?: string | null }; align?: "left" | "right" }) {
+  const flag = countryCodeToFlagEmoji(player.countryCode);
+  return (
+    <div className={`flex items-center gap-2 ${align === "right" ? "justify-end" : ""}`}>
+      <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-slate-900/60 text-[10px] font-black text-white">
+        {player.avatarUrl ? <img src={player.avatarUrl} alt={player.name} className="h-full w-full object-cover" /> : <span>{player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>}
+      </div>
+      {(flag || player.nationality) ? <span className="text-[11px] text-slate-300">{flag ? `${flag} ` : ""}{player.nationality ?? ""}</span> : null}
+    </div>
+  );
+}
+
 export default function PublicLeagueBoardPage() {
   const [data, setData] = useState<BoardData>(emptyData);
   const [liveData, setLiveData] = useState<LiveMatchData>(emptyLiveData);
   const [loading, setLoading] = useState(true);
   const [activePanel, setActivePanel] = useState<string>("table");
+  const [announcement, setAnnouncement] = useState<{ title?: string | null; body?: string | null } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -113,6 +130,25 @@ export default function PublicLeagueBoardPage() {
     return () => {
       active = false;
       window.clearInterval(timer);
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+    const loadAnnouncement = async () => {
+      try {
+        const res = await fetch("/api/public/announcements", { cache: "no-store" });
+        const payload = (await res.json().catch(() => ({}))) as { announcement?: { title?: string | null; body?: string | null } | null };
+        if (!active) return;
+        setAnnouncement(payload.announcement ?? null);
+      } catch {
+        if (!active) return;
+        setAnnouncement(null);
+      }
+    };
+    void loadAnnouncement();
+    return () => {
+      active = false;
     };
   }, []);
 
@@ -217,6 +253,7 @@ export default function PublicLeagueBoardPage() {
             })}
           </div>
         </section>
+        <ImportantAnnouncementBanner announcement={announcement} />
 
         {loading ? (
           <section className={cardClass + " text-lg " + mutedTextClass}>
@@ -389,9 +426,23 @@ export default function PublicLeagueBoardPage() {
                         </div>
                       </div>
                       <div className="mt-3 grid gap-2 text-sm xl:grid-cols-[1fr_auto_1fr] xl:items-center">
-                        <p className="font-semibold text-white">{frame.homeName}</p>
+                        <div>
+                          <p className="font-semibold text-white">{frame.homeName}</p>
+                          <div className="mt-2 flex flex-wrap gap-2">
+                            {frame.homePlayers.map((player, index) => (
+                              <BoardPlayerBadge key={`${frame.id}-home-${index}`} player={player} />
+                            ))}
+                          </div>
+                        </div>
                         <p className="text-center text-cyan-200">vs.</p>
-                        <p className="font-semibold text-white xl:text-right">{frame.awayName}</p>
+                        <div>
+                          <p className="font-semibold text-white xl:text-right">{frame.awayName}</p>
+                          <div className="mt-2 flex flex-wrap justify-start gap-2 xl:justify-end">
+                            {frame.awayPlayers.map((player, index) => (
+                              <BoardPlayerBadge key={`${frame.id}-away-${index}`} player={player} align="right" />
+                            ))}
+                          </div>
+                        </div>
                       </div>
                       <p className="mt-3 text-xs text-slate-300">{frame.startLabel}</p>
                     </div>

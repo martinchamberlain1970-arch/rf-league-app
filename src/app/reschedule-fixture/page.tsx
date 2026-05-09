@@ -35,6 +35,16 @@ const tintedCardClass = "rounded-2xl border border-slate-200 bg-gradient-to-br f
 const sectionTitleClass = "text-lg font-semibold text-slate-900";
 const exceptionalReasons = ["Illness", "Severe weather conditions", "Death of a player / close relative", "Other"] as const;
 
+function isCaptainRequestWindowOpen(fixtureDate: string | null) {
+  if (!fixtureDate) return false;
+  const fixture = new Date(`${fixtureDate}T12:00:00`);
+  if (Number.isNaN(fixture.getTime())) return false;
+  const openFrom = new Date(fixture);
+  openFrom.setDate(openFrom.getDate() - 6);
+  openFrom.setHours(0, 0, 0, 0);
+  return new Date() >= openFrom;
+}
+
 export default function RescheduleFixturePage() {
   const admin = useAdminStatus();
   const [message, setMessage] = useState<string | null>(null);
@@ -54,6 +64,7 @@ export default function RescheduleFixturePage() {
   const [submitting, setSubmitting] = useState(false);
   const [confirmLateRequestOpen, setConfirmLateRequestOpen] = useState(false);
   const [showLaterFixtures, setShowLaterFixtures] = useState(false);
+  const [selectedFixtureId, setSelectedFixtureId] = useState("");
 
   const loadAll = async () => {
     const client = supabase;
@@ -133,12 +144,18 @@ export default function RescheduleFixturePage() {
       myFixtures.filter((f) => captainTeamIds.has(f.home_team_id) || captainTeamIds.has(f.away_team_id)),
     [myFixtures, captainTeamIds]
   );
+  const requestEligibleFixtures = useMemo(
+    () => captainsFixtures.filter((fixture) => isCaptainRequestWindowOpen(fixture.fixture_date)),
+    [captainsFixtures]
+  );
 
   const activeRequestFixtureIds = useMemo(() => new Set(requests.filter((r) => r.status === "pending" || r.status === "approved_outstanding").map((r) => r.fixture_id)), [requests]);
-  const earliestCaptainFixture = useMemo(() => captainsFixtures[0] ?? null, [captainsFixtures]);
-  const nextFixture = earliestCaptainFixture;
+  const nextFixture = useMemo(
+    () => requestEligibleFixtures.find((fixture) => fixture.id === selectedFixtureId) ?? requestEligibleFixtures[0] ?? null,
+    [requestEligibleFixtures, selectedFixtureId]
+  );
   const nextFixtureRequests = useMemo(() => nextFixture ? requests.filter((r) => r.fixture_id === nextFixture.id) : [], [requests, nextFixture]);
-  const laterCaptainFixtures = useMemo(() => (nextFixture ? captainsFixtures.filter((f) => f.id !== nextFixture.id) : captainsFixtures), [captainsFixtures, nextFixture]);
+  const laterCaptainFixtures = useMemo(() => (nextFixture ? requestEligibleFixtures.filter((f) => f.id !== nextFixture.id) : requestEligibleFixtures), [requestEligibleFixtures, nextFixture]);
   const outstandingRequests = useMemo(
     () => requests.filter((r) => r.status === "pending" || r.status === "approved_outstanding"),
     [requests]
@@ -158,6 +175,16 @@ export default function RescheduleFixturePage() {
     min.setDate(fixtureDate.getDate() - 3);
     return { min: toDateOnly(min), max: toDateOnly(max) };
   }, [nextFixture]);
+
+  useEffect(() => {
+    if (!requestEligibleFixtures.length) {
+      setSelectedFixtureId("");
+      return;
+    }
+    if (!requestEligibleFixtures.some((fixture) => fixture.id === selectedFixtureId)) {
+      setSelectedFixtureId(requestEligibleFixtures[0].id);
+    }
+  }, [requestEligibleFixtures, selectedFixtureId]);
 
   const buildReason = () => {
     if (requestType === "play_early") return `Play before league date requested for ${proposedEarlyDate}. Opposing team agreement: ${opposingTeamAgreed ? "confirmed" : "not confirmed"}.`;
@@ -206,7 +233,7 @@ export default function RescheduleFixturePage() {
     <main className="min-h-screen bg-slate-100 p-6">
       <div className="mx-auto max-w-5xl space-y-4">
         <RequireAuth>
-          <ScreenHeader title="Fixture Date Requests" eyebrow="League" subtitle="Track active requests and, if you're captain or vice-captain, submit a date-change request for the current fixture only." />
+          <ScreenHeader title="Fixture Date Requests" eyebrow="League" subtitle="Track active requests and, if you're captain or vice-captain, submit a date-change request once the fixture window opens from the previous Friday." />
           <MessageModal message={message} onClose={() => setMessage(null)} />
           <InfoModal open={Boolean(info)} title={info?.title ?? ""} description={info?.description ?? ""} onClose={() => setInfo(null)} />
 
@@ -228,9 +255,27 @@ export default function RescheduleFixturePage() {
             </section>
 
             {hasCaptainPrivileges ? <section className={sectionCardClass}>
-              <h2 className={sectionTitleClass}>Current fixture eligible for request</h2>
-              {!nextFixture ? <p className="mt-3 text-sm text-slate-600">No fixture-date requests are available for your next team fixture right now.</p> : (
+              <h2 className={sectionTitleClass}>Fixtures eligible for request</h2>
+              {!nextFixture ? <p className="mt-3 text-sm text-slate-600">No fixture-date requests are available yet. Captains and vice-captains can request from the Friday before the league fixture.</p> : (
                 <div className="mt-3 space-y-4">
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <label className="mb-2 block text-sm font-medium text-slate-700">Choose fixture</label>
+                    <select
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                      value={nextFixture.id}
+                      onChange={(e) => setSelectedFixtureId(e.target.value)}
+                    >
+                      {requestEligibleFixtures.map((fixture) => (
+                        <option key={fixture.id} value={fixture.id}>
+                          {(teamById.get(fixture.home_team_id) ?? "Home")} vs {(teamById.get(fixture.away_team_id) ?? "Away")} ·{" "}
+                          {fixture.fixture_date ? new Date(`${fixture.fixture_date}T12:00:00`).toLocaleDateString() : `Week ${fixture.week_no ?? "-"}`}
+                        </option>
+                      ))}
+                    </select>
+                    <p className="mt-2 text-xs text-slate-600">
+                      This list opens from the previous Friday so early-week fixtures can still be requested before Thursday.
+                    </p>
+                  </div>
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                     <p className="font-medium text-slate-900">{teamById.get(nextFixture.home_team_id) ?? "Home"} vs {teamById.get(nextFixture.away_team_id) ?? "Away"}</p>
                     <p className="mt-1 text-xs text-slate-600">League date: {nextFixture.fixture_date ? new Date(`${nextFixture.fixture_date}T12:00:00`).toLocaleDateString() : `Week ${nextFixture.week_no ?? "-"}`}</p>

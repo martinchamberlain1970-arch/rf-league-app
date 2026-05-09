@@ -12,6 +12,7 @@ import ConfirmModal from "@/components/ConfirmModal";
 import InfoModal from "@/components/InfoModal";
 import MessageModal from "@/components/MessageModal";
 import { MAX_SNOOKER_START } from "@/lib/snooker-handicap";
+import { countryCodeToFlagEmoji } from "@/lib/country-flags";
 
 type Player = {
   id: string;
@@ -34,6 +35,8 @@ type Player = {
   rated_matches_snooker?: number | null;
   snooker_handicap?: number | null;
   snooker_handicap_base?: number | null;
+  nationality_name?: string | null;
+  country_code?: string | null;
 };
 type AppUser = { id: string; email: string | null; linked_player_id?: string | null };
 type Location = { id: string; name: string };
@@ -180,6 +183,8 @@ export default function PlayerProfilePage() {
   const [editGuardianName, setEditGuardianName] = useState("");
   const [editGuardianEmail, setEditGuardianEmail] = useState("");
   const [editGuardianUserId, setEditGuardianUserId] = useState("");
+  const [editNationalityName, setEditNationalityName] = useState("");
+  const [editCountryCode, setEditCountryCode] = useState("");
   const [opponentDetail, setOpponentDetail] = useState<{ opponentId: string; opponentName: string } | null>(null);
   const [historyDetail, setHistoryDetail] = useState<{ kind: "league_fixture" | "competition_match"; itemId: string; title: string } | null>(null);
   const [infoModal, setInfoModal] = useState<{ title: string; description: string } | null>(null);
@@ -199,6 +204,7 @@ export default function PlayerProfilePage() {
   const [showOpponents, setShowOpponents] = useState(true);
   const [showHistory, setShowHistory] = useState(true);
   const [savingContact, setSavingContact] = useState(false);
+  const [countryFieldsAvailable, setCountryFieldsAvailable] = useState(false);
   const profileRef = useRef<HTMLDivElement | null>(null);
   const admin = useAdminStatus();
   const hasAdminPower = admin.isAdmin || admin.isSuper;
@@ -267,6 +273,19 @@ export default function PlayerProfilePage() {
       const loadedPlayer = (pRes.data as Player & { claimed_by?: string | null }) ?? null;
       let loadedPhone: string | null = null;
       let loadedPhoneConsent = false;
+      const countryRes = await client.from("players").select("id,nationality_name,country_code").in("id", [id, ...((allPlayersRes.data ?? []) as Array<{ id: string }>).map((row) => row.id)]);
+      const countryById = new Map<string, { nationality_name?: string | null; country_code?: string | null }>();
+      if (!countryRes.error) {
+        setCountryFieldsAvailable(true);
+        ((countryRes.data ?? []) as Array<{ id: string; nationality_name?: string | null; country_code?: string | null }>).forEach((row) => {
+          countryById.set(row.id, {
+            nationality_name: row.nationality_name ?? null,
+            country_code: row.country_code ?? null,
+          });
+        });
+      } else {
+        setCountryFieldsAvailable(false);
+      }
       if (loadedPlayer?.id) {
         const phoneRes = await client
           .from("players")
@@ -286,6 +305,8 @@ export default function PlayerProfilePage() {
               ...loadedPlayer,
               phone_number: loadedPhone,
               phone_share_consent: loadedPhoneConsent,
+              nationality_name: countryById.get(loadedPlayer.id)?.nationality_name ?? null,
+              country_code: countryById.get(loadedPlayer.id)?.country_code ?? null,
             }
           : null
       );
@@ -298,6 +319,8 @@ export default function PlayerProfilePage() {
       setEditGuardianName(loadedPlayer?.guardian_name ?? "");
       setEditGuardianEmail(loadedPlayer?.guardian_email ?? "");
       setEditGuardianUserId(loadedPlayer?.guardian_user_id ?? "");
+      setEditNationalityName(countryById.get(loadedPlayer?.id ?? "")?.nationality_name ?? "");
+      setEditCountryCode(countryById.get(loadedPlayer?.id ?? "")?.country_code ?? "");
       if (loadedPlayer?.claimed_by) {
         const { data: linked } = await client
           .from("app_users")
@@ -308,7 +331,13 @@ export default function PlayerProfilePage() {
       } else {
         setLinkedEmail(null);
       }
-      setPlayers((allPlayersRes.data ?? []) as Player[]);
+      setPlayers(
+        ((allPlayersRes.data ?? []) as Player[]).map((row) => ({
+          ...row,
+          nationality_name: countryById.get(row.id)?.nationality_name ?? null,
+          country_code: countryById.get(row.id)?.country_code ?? null,
+        }))
+      );
       if (!usersRes.error && usersRes.data) setAppUsers(usersRes.data as AppUser[]);
       setMatches((mRes.error ? [] : (mRes.data ?? [])) as MatchRow[]);
       setCompetitions((cRes.error ? [] : (cRes.data ?? [])) as Competition[]);
@@ -587,6 +616,10 @@ export default function PlayerProfilePage() {
       guardian_email: isMinorBand ? (editGuardianEmail.trim() || null) : null,
       guardian_user_id: isMinorBand ? editGuardianUserId || null : null,
     };
+    if (countryFieldsAvailable) {
+      payload.nationality_name = editNationalityName.trim() || null;
+      payload.country_code = editCountryCode.trim().toUpperCase() || null;
+    }
     const { error } = await client.from("players").update(payload).eq("id", player.id);
     setSavingPlayer(false);
     if (error) {
@@ -610,6 +643,8 @@ export default function PlayerProfilePage() {
             date_of_birth: (payload.date_of_birth as string | null) ?? null,
             age_band: payload.age_band as string,
             location_id: (payload.location_id as string | null) ?? null,
+            nationality_name: (payload.nationality_name as string | null) ?? null,
+            country_code: (payload.country_code as string | null) ?? null,
             phone_number: (payload.phone_number as string | null) ?? null,
             phone_share_consent: Boolean(payload.phone_share_consent),
             guardian_consent: Boolean(payload.guardian_consent),
@@ -976,6 +1011,7 @@ export default function PlayerProfilePage() {
     () => (player?.location_id ? locations.find((l) => l.id === player.location_id)?.name ?? "Assigned club" : "No club assigned"),
     [locations, player?.location_id]
   );
+  const nationalityFlag = useMemo(() => countryCodeToFlagEmoji(player?.country_code), [player?.country_code]);
   const eloLeaderboard = useMemo(
     () =>
       [...visibleSnookerRankingPlayers]
@@ -1455,6 +1491,11 @@ export default function PlayerProfilePage() {
                         <span className="rounded-full border border-slate-300 bg-white px-3 py-1 text-slate-700">
                           Club: <span className="font-semibold text-slate-900">{locationName}</span>
                         </span>
+                        {(player?.nationality_name || nationalityFlag) ? (
+                          <span className="rounded-full border border-slate-300 bg-white px-3 py-1 text-slate-700">
+                            Nationality: <span className="font-semibold text-slate-900">{nationalityFlag ? `${nationalityFlag} ` : ""}{player?.nationality_name ?? "Not set"}</span>
+                          </span>
+                        ) : null}
                         {isMinor ? (
                           <span className={`rounded-full border px-3 py-1 ${player.guardian_consent ? "border-emerald-300 bg-emerald-50 text-emerald-800" : "border-amber-300 bg-amber-50 text-amber-800"}`}>
                             {player.guardian_consent ? "Guardian consent on file" : "Guardian consent pending"}
@@ -1879,6 +1920,25 @@ export default function PlayerProfilePage() {
                         placeholder="Full name (or nickname for minors)"
                       />
                     </div>
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <input
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                        value={editNationalityName}
+                        onChange={(e) => setEditNationalityName(e.target.value)}
+                        placeholder="Nationality (optional)"
+                        disabled={!countryFieldsAvailable}
+                      />
+                      <input
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm uppercase"
+                        value={editCountryCode}
+                        onChange={(e) => setEditCountryCode(e.target.value.slice(0, 2).toUpperCase())}
+                        placeholder="Country code, e.g. GB"
+                        disabled={!countryFieldsAvailable}
+                      />
+                    </div>
+                    {!countryFieldsAvailable ? (
+                      <p className="mt-2 text-xs text-amber-700">Nationality and flag fields will unlock once the latest database migration has been run.</p>
+                    ) : null}
                     <div className="mt-2 grid gap-2 sm:grid-cols-2">
                       <input
                         className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"

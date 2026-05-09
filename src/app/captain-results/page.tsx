@@ -191,6 +191,14 @@ function isBeforeHomeLineupCutoff(fixtureDate: string | null) {
   return new Date() <= cutoff;
 }
 
+function normaliseCaptainApiError(error: unknown, fallback: string) {
+  const message = error instanceof Error ? error.message.trim() : fallback;
+  if (message === "Unauthorized." || message === "Missing auth token." || message === "You must be signed in to submit a lineup.") {
+    return "Your session needs refreshing. Please close and reopen this fixture, then try again.";
+  }
+  return message || fallback;
+}
+
 function expectedWinProbability(ownRating: number, opponentRating: number) {
   return 1 / (1 + 10 ** ((opponentRating - ownRating) / 400));
 }
@@ -234,6 +242,8 @@ export default function CaptainResultsPage() {
   const autoSaveTimerRef = useRef<number | null>(null);
   const autoSaveMutedRef = useRef(true);
   const autoSaveNoticeShownRef = useRef(false);
+  const [scorecardCurrentIndex, setScorecardCurrentIndex] = useState(0);
+  const [scorecardReviewMode, setScorecardReviewMode] = useState(false);
 
   const baselineScorecardSignatureRef = useRef("");
   const [scorecardDirty, setScorecardDirty] = useState(false);
@@ -598,6 +608,13 @@ export default function CaptainResultsPage() {
     setActiveEntryTab("lineup");
   }, [selectedFixture, homeLineupSubmitted, awayLineupSubmitted]);
 
+  useEffect(() => {
+    if (!selectedFixture || activeEntryTab !== "scorecard") return;
+    const fallbackIndex = firstIncompleteScorecardIndex >= 0 ? firstIncompleteScorecardIndex : 0;
+    setScorecardCurrentIndex(fallbackIndex);
+    setScorecardReviewMode(false);
+  }, [selectedFixture?.id, activeEntryTab]);
+
   const fetchRemoteScorecardSignature = async () => {
     const client = supabase;
     if (!client || !selectedFixture) return null;
@@ -650,6 +667,10 @@ export default function CaptainResultsPage() {
       if (mode === "manual") {
         setInfo({ title: "Progress saved", description: "Your draft has been saved on this device and can be restored when you return." });
       }
+      return;
+    }
+
+    if (mode === "auto" && slots.some((slot) => isFrameStarted(slot) && !isFrameComplete(slot))) {
       return;
     }
 
@@ -725,7 +746,9 @@ export default function CaptainResultsPage() {
         });
       }
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to save live score progress.");
+      if (mode === "manual") {
+        setMessage(normaliseCaptainApiError(error, "Failed to save live score progress."));
+      }
     }
   };
 
@@ -1041,6 +1064,58 @@ export default function CaptainResultsPage() {
     );
   };
 
+  const orderedScoreSlots = useMemo(() => [...slots].sort((a, b) => a.slot_no - b.slot_no), [slots]);
+
+  const isFrameLineupReady = useCallback((row: FrameSlot) => {
+    if (row.home_forfeit || row.away_forfeit) return true;
+    if (row.slot_type === "doubles") {
+      return Boolean(row.home_player1_id && row.home_player2_id && row.away_player1_id && row.away_player2_id);
+    }
+    const homeReady = row.home_nominated ? Boolean(row.home_nominated_name?.trim()) : Boolean(row.home_player1_id);
+    const awayReady = row.away_nominated ? Boolean(row.away_nominated_name?.trim()) : Boolean(row.away_player1_id);
+    return homeReady && awayReady;
+  }, []);
+
+  const isFrameStarted = useCallback(
+    (row: FrameSlot) =>
+      row.home_forfeit ||
+      row.away_forfeit ||
+      typeof row.home_points_scored === "number" ||
+      typeof row.away_points_scored === "number",
+    []
+  );
+
+  const isFrameComplete = useCallback(
+    (row: FrameSlot) => {
+      if (!isFrameLineupReady(row)) return false;
+      return deriveWinnerFromFrame(row) !== null;
+    },
+    [isFrameLineupReady, selectedSeason, players]
+  );
+
+  const firstIncompleteScorecardIndex = useMemo(
+    () => orderedScoreSlots.findIndex((slot) => !isFrameComplete(slot)),
+    [orderedScoreSlots, isFrameComplete]
+  );
+
+  const currentScorecardFrame = orderedScoreSlots[Math.min(scorecardCurrentIndex, Math.max(orderedScoreSlots.length - 1, 0))] ?? null;
+  const scorecardFramesToDisplay = scorecardReviewMode ? orderedScoreSlots : currentScorecardFrame ? [currentScorecardFrame] : [];
+
+  const validateFrameCompletion = (row: FrameSlot) => {
+    if (!isFrameLineupReady(row)) {
+      return `Frame ${row.slot_no} is not ready yet. Confirm both players before saving and continuing.`;
+    }
+    const homePts = typeof row.home_points_scored === "number" ? row.home_points_scored : null;
+    const awayPts = typeof row.away_points_scored === "number" ? row.away_points_scored : null;
+    if (homePts === null || awayPts === null) {
+      return `Frame ${row.slot_no} needs both scores before you continue.`;
+    }
+    if (!deriveWinnerFromFrame(row)) {
+      return `Frame ${row.slot_no} needs a clear result before you continue.`;
+    }
+    return null;
+  };
+
   const getSinglesSelectionValue = (slot: FrameSlot, side: "home" | "away") => {
     const playerId = side === "home" ? slot.home_player1_id : slot.away_player1_id;
     const nominated = side === "home" ? slot.home_nominated : slot.away_nominated;
@@ -1211,7 +1286,7 @@ export default function CaptainResultsPage() {
             : "Away lineup saved. Lineups are now locked and the fixture is ready for score entry.",
       });
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Failed to submit lineup.");
+      setMessage(normaliseCaptainApiError(error, "Failed to submit lineup."));
     } finally {
       setSubmitting(false);
     }
@@ -1349,7 +1424,7 @@ export default function CaptainResultsPage() {
     setSubmitting(false);
     const payload = (await res.json().catch(() => ({}))) as { error?: string };
     if (!res.ok) {
-      setMessage(payload.error ?? "Failed to submit result.");
+      setMessage(normaliseCaptainApiError(new Error(payload.error ?? "Failed to submit result."), "Failed to submit result."));
       return;
     }
 
@@ -1359,6 +1434,21 @@ export default function CaptainResultsPage() {
     }
     setScorecardPhotoUrl("");
     await loadAll();
+  };
+
+  const saveAndContinueCurrentFrame = async () => {
+    if (!currentScorecardFrame) return;
+    const validationError = validateFrameCompletion(currentScorecardFrame);
+    if (validationError) {
+      setMessage(validationError);
+      return;
+    }
+    await saveProgress("manual");
+    if (scorecardCurrentIndex >= orderedScoreSlots.length - 1) {
+      setScorecardReviewMode(true);
+      return;
+    }
+    setScorecardCurrentIndex((prev) => Math.min(prev + 1, Math.max(orderedScoreSlots.length - 1, 0)));
   };
 
   return (
@@ -1809,12 +1899,67 @@ export default function CaptainResultsPage() {
                         </div>
                       ) : null}
 
+                      {orderedScoreSlots.length > 0 ? (
+                        <div className="rounded-xl border border-cyan-200 bg-cyan-50/70 p-3">
+                          <div className="flex flex-wrap items-start justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold text-cyan-900">Match-day frame journey</p>
+                              <p className="mt-1 text-xs text-cyan-900">
+                                Work through one frame at a time, save it, then continue. You can review and amend everything at the end before the final submission.
+                              </p>
+                            </div>
+                            {!scorecardReviewMode && currentScorecardFrame ? (
+                              <span className="rounded-full border border-cyan-200 bg-white px-3 py-1 text-xs font-semibold text-cyan-800">
+                                Frame {currentScorecardFrame.slot_no} of {orderedScoreSlots.length}
+                              </span>
+                            ) : (
+                              <span className="rounded-full border border-cyan-200 bg-white px-3 py-1 text-xs font-semibold text-cyan-800">
+                                Final review
+                              </span>
+                            )}
+                          </div>
+                          <div className="mt-3 grid gap-2 lg:grid-cols-3">
+                            {orderedScoreSlots.map((slot, index) => (
+                              <div
+                                key={`journey-${slot.id}`}
+                                className={`rounded-xl border px-3 py-2 text-sm ${
+                                  scorecardReviewMode
+                                    ? "border-white bg-white"
+                                    : index === scorecardCurrentIndex
+                                      ? "border-cyan-300 bg-white shadow-sm"
+                                      : isFrameComplete(slot)
+                                        ? "border-emerald-200 bg-emerald-50"
+                                        : "border-slate-200 bg-white/80"
+                                }`}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <p className="font-semibold text-slate-900">Frame {slot.slot_no}</p>
+                                  <span className="text-xs font-semibold text-slate-600">
+                                    {isFrameComplete(slot)
+                                      ? "Saved"
+                                      : index === scorecardCurrentIndex && !scorecardReviewMode
+                                        ? "Current"
+                                        : isFrameStarted(slot)
+                                          ? "In progress"
+                                          : "Waiting"}
+                                  </span>
+                                </div>
+                                <p className="mt-1 text-xs text-slate-600">
+                                  {(slot.home_nominated_name?.trim() || named(playerById.get(slot.home_player1_id ?? "")) || "Home")} vs{" "}
+                                  {(slot.away_nominated_name?.trim() || named(playerById.get(slot.away_player1_id ?? "")) || "Away")}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ) : null}
+
                       {lineupsLocked || preMatchPaperRecord ? (
                         <fieldset
                           disabled={!homeSideCanManageScorecard}
                           className={!homeSideCanManageScorecard ? "cursor-not-allowed opacity-80" : ""}
                         >
-                  {slots.map((slot) => {
+                  {scorecardFramesToDisplay.map((slot) => {
                     const homeSinglesCount = new Map<string, number>();
                     const awaySinglesCount = new Map<string, number>();
                     const homeSelectionLocked = isSideSelectionLocked("home");
@@ -2023,6 +2168,51 @@ export default function CaptainResultsPage() {
                           Complete the team lineup tab first. The scorecard opens once both teams have submitted their lineups, or if paper record has been selected.
                         </div>
                       )}
+
+                      {homeSideCanManageScorecard && currentScorecardFrame && !scorecardReviewMode ? (
+                        <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-3">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <p className="text-sm font-semibold text-slate-900">
+                              Current step: enter Frame {currentScorecardFrame.slot_no}, then save and continue.
+                            </p>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setScorecardCurrentIndex((prev) => Math.max(prev - 1, 0))}
+                                disabled={scorecardCurrentIndex === 0}
+                                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
+                              >
+                                Previous frame
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void saveAndContinueCurrentFrame()}
+                                className="rounded-xl bg-sky-700 px-4 py-2 text-sm font-medium text-white"
+                              >
+                                {scorecardCurrentIndex >= orderedScoreSlots.length - 1 ? "Save and review final card" : "Save and continue"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {homeSideCanManageScorecard && scorecardReviewMode ? (
+                        <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-3 text-sm text-slate-700">
+                          Final review is open. You can amend any frame score below before you submit the match result.
+                          <div className="mt-3">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setScorecardReviewMode(false);
+                                setScorecardCurrentIndex(firstIncompleteScorecardIndex >= 0 ? firstIncompleteScorecardIndex : 0);
+                              }}
+                              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
+                            >
+                              Return to frame-by-frame journey
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
 
                       {!homeSideCanManageScorecard ? (
                         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">

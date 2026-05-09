@@ -55,7 +55,10 @@ type PlayerRow = {
   id: string;
   display_name: string;
   full_name: string | null;
+  avatar_url?: string | null;
   snooker_handicap?: number | null;
+  nationality_name?: string | null;
+  country_code?: string | null;
 };
 
 function named(player?: PlayerRow | null) {
@@ -79,6 +82,11 @@ function playerLabel(player?: PlayerRow | null, fallbackName?: string) {
 
 function doublesPlayerLabel(player: PlayerRow | null | undefined, fallbackName: string) {
   return playerLabel(player, fallbackName);
+}
+
+function isMissingColumnError(message?: string | null) {
+  const lower = (message ?? "").toLowerCase();
+  return lower.includes("column") && lower.includes("does not exist");
 }
 
 export async function GET(req: NextRequest) {
@@ -107,7 +115,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ season: null, liveMatches: [] });
   }
 
-  const [teamsRes, fixturesRes, framesRes, playersRes] = await Promise.all([
+  const [teamsRes, fixturesRes, framesRes, playersQueryRes] = await Promise.all([
     adminClient.from("league_teams").select("id,season_id,name").eq("season_id", selectedSeason.id),
     adminClient
       .from("league_fixtures")
@@ -121,8 +129,16 @@ export async function GET(req: NextRequest) {
       .select(
         "id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_nominated_name,away_nominated_name,home_forfeit,away_forfeit,winner_side,home_points_scored,away_points_scored"
       ),
-    adminClient.from("players").select("id,display_name,full_name,snooker_handicap").eq("is_archived", false),
+    adminClient
+      .from("players")
+      .select("id,display_name,full_name,avatar_url,snooker_handicap,nationality_name,country_code")
+      .eq("is_archived", false),
   ]);
+
+  let playersRes = playersQueryRes;
+  if (playersRes.error && isMissingColumnError(playersRes.error.message)) {
+    playersRes = await adminClient.from("players").select("id,display_name,full_name,avatar_url,snooker_handicap").eq("is_archived", false);
+  }
 
   const firstError = teamsRes.error?.message || fixturesRes.error?.message || framesRes.error?.message || playersRes.error?.message;
   if (firstError) {
@@ -210,6 +226,54 @@ export async function GET(req: NextRequest) {
         title: `Frame ${frame.slot_no}`,
         homeName,
         awayName,
+        homePlayers:
+          frame.slot_type === "doubles"
+            ? [
+                {
+                  name: named(homePrimary),
+                  avatarUrl: homePrimary?.avatar_url ?? null,
+                  nationality: homePrimary?.nationality_name ?? null,
+                  countryCode: homePrimary?.country_code ?? null,
+                },
+                {
+                  name: named(homeSecondary),
+                  avatarUrl: homeSecondary?.avatar_url ?? null,
+                  nationality: homeSecondary?.nationality_name ?? null,
+                  countryCode: homeSecondary?.country_code ?? null,
+                },
+              ]
+            : [
+                {
+                  name: frame.home_nominated ? frame.home_nominated_name?.trim() || "Nominated Player" : named(homePrimary),
+                  avatarUrl: homePrimary?.avatar_url ?? null,
+                  nationality: homePrimary?.nationality_name ?? null,
+                  countryCode: homePrimary?.country_code ?? null,
+                },
+              ],
+        awayPlayers:
+          frame.slot_type === "doubles"
+            ? [
+                {
+                  name: named(awayPrimary),
+                  avatarUrl: awayPrimary?.avatar_url ?? null,
+                  nationality: awayPrimary?.nationality_name ?? null,
+                  countryCode: awayPrimary?.country_code ?? null,
+                },
+                {
+                  name: named(awaySecondary),
+                  avatarUrl: awaySecondary?.avatar_url ?? null,
+                  nationality: awaySecondary?.nationality_name ?? null,
+                  countryCode: awaySecondary?.country_code ?? null,
+                },
+              ]
+            : [
+                {
+                  name: frame.away_nominated ? frame.away_nominated_name?.trim() || "Nominated Player" : named(awayPrimary),
+                  avatarUrl: awayPrimary?.avatar_url ?? null,
+                  nationality: awayPrimary?.nationality_name ?? null,
+                  countryCode: awayPrimary?.country_code ?? null,
+                },
+              ],
         scoreLabel,
         frameStatus,
         startLabel: `Max start ${MAX_SNOOKER_START} · ${startLabel}`,
