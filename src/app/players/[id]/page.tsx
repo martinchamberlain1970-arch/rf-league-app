@@ -1876,6 +1876,18 @@ export default function PlayerProfilePage() {
                       </label>
                     </div>
                     <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      <select
+                        className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                        value={editLocationId}
+                        onChange={(e) => setEditLocationId(e.target.value)}
+                      >
+                        <option value="">Select club</option>
+                        {locations.map((location) => (
+                          <option key={location.id} value={location.id}>
+                            {location.name}
+                          </option>
+                        ))}
+                      </select>
                       {editIsMinor ? (
                         <select
                           className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
@@ -1977,7 +1989,7 @@ export default function PlayerProfilePage() {
                   </div>
                 ) : null}
                 <p className="text-xs text-slate-500">
-                  Location changes are managed in Team Management → Transfer player.
+                  Super User can now assign or change the club here in Edit Player.
                 </p>
                 {!admin.isSuper && player?.claimed_by === userId ? (
                   <div className="mt-3">
