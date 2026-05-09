@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { countryCodeToFlagEmoji } from "@/lib/country-flags";
-import ImportantAnnouncementBanner from "@/components/ImportantAnnouncementBanner";
 
 type LiveMatchData = {
   season: { id: string; name: string } | null;
@@ -56,7 +55,6 @@ function PlayerBadge({ player, align = "left" }: { player: { name: string; avata
 export default function PublicLiveMatchesPage() {
   const [data, setData] = useState<LiveMatchData>(emptyData);
   const [loading, setLoading] = useState(true);
-  const [announcement, setAnnouncement] = useState<{ title?: string | null; body?: string | null } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -83,25 +81,6 @@ export default function PublicLiveMatchesPage() {
     };
   }, []);
 
-  useEffect(() => {
-    let active = true;
-    const loadAnnouncement = async () => {
-      try {
-        const res = await fetch("/api/public/announcements", { cache: "no-store" });
-        const payload = (await res.json().catch(() => ({}))) as { announcement?: { title?: string | null; body?: string | null } | null };
-        if (!active) return;
-        setAnnouncement(payload.announcement ?? null);
-      } catch {
-        if (!active) return;
-        setAnnouncement(null);
-      }
-    };
-    void loadAnnouncement();
-    return () => {
-      active = false;
-    };
-  }, []);
-
   const generatedAt = useMemo(() => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), [data]);
 
   return (
@@ -123,8 +102,6 @@ export default function PublicLiveMatchesPage() {
             </div>
           </div>
         </section>
-        <ImportantAnnouncementBanner announcement={announcement} />
-
         {loading ? (
           <section className="rounded-[2rem] border border-white/10 bg-white/5 p-8 text-lg text-slate-200 shadow-2xl backdrop-blur">
             Loading live matches...

@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { countryCodeToFlagEmoji } from "@/lib/country-flags";
-import ImportantAnnouncementBanner from "@/components/ImportantAnnouncementBanner";
 
 type BoardData = {
   season: { id: string; name: string } | null;
@@ -96,7 +95,6 @@ export default function PublicLeagueBoardPage() {
   const [liveData, setLiveData] = useState<LiveMatchData>(emptyLiveData);
   const [loading, setLoading] = useState(true);
   const [activePanel, setActivePanel] = useState<string>("table");
-  const [announcement, setAnnouncement] = useState<{ title?: string | null; body?: string | null } | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -130,25 +128,6 @@ export default function PublicLeagueBoardPage() {
     return () => {
       active = false;
       window.clearInterval(timer);
-    };
-  }, []);
-
-  useEffect(() => {
-    let active = true;
-    const loadAnnouncement = async () => {
-      try {
-        const res = await fetch("/api/public/announcements", { cache: "no-store" });
-        const payload = (await res.json().catch(() => ({}))) as { announcement?: { title?: string | null; body?: string | null } | null };
-        if (!active) return;
-        setAnnouncement(payload.announcement ?? null);
-      } catch {
-        if (!active) return;
-        setAnnouncement(null);
-      }
-    };
-    void loadAnnouncement();
-    return () => {
-      active = false;
     };
   }, []);
 
@@ -253,8 +232,6 @@ export default function PublicLeagueBoardPage() {
             })}
           </div>
         </section>
-        <ImportantAnnouncementBanner announcement={announcement} />
-
         {loading ? (
           <section className={cardClass + " text-lg " + mutedTextClass}>
             Loading public league board...
