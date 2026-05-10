@@ -204,7 +204,7 @@ export async function GET(req: NextRequest) {
           fixtureDate: fixture.fixture_date,
           opponent: allTeamNames.get(isHome ? fixture.away_team_id : fixture.home_team_id) ?? "Opponent",
           venue: isHome ? "home" : "away",
-          status: fixture.status,
+          status: fixture.status === "in_progress" ? "in_progress" : "pending",
         };
       }),
     };
