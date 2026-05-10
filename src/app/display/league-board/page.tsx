@@ -170,7 +170,7 @@ export default function PublicLeagueBoardPage() {
     activePanel === "table"
       ? "League Table"
       : activePanel === "players"
-        ? "Top 10 Players"
+        ? "Top 10 Greenhithe Legion Players"
         : activePanel === "breaks"
           ? "Top 10 High Breaks"
           : activeLiveMatch
@@ -212,7 +212,7 @@ export default function PublicLeagueBoardPage() {
               const label = panel === "table"
                 ? "League Table"
                 : panel === "players"
-                  ? "Top 10 Players"
+                  ? "Top 10 Greenhithe Legion Players"
                   : panel === "breaks"
                     ? "Top 10 High Breaks"
                     : `Live Match ${liveIndex}`;
@@ -297,8 +297,8 @@ export default function PublicLeagueBoardPage() {
             <section className={`${tableCardClass} h-full border-violet-300/20`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-violet-200">Top 10 Players</p>
-                  <h2 className={`mt-2 text-3xl font-black xl:text-4xl ${headingTextClass}`}>Top 10 Players</h2>
+                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-violet-200">Top 10 Greenhithe Legion Players</p>
+                  <h2 className={`mt-2 text-3xl font-black xl:text-4xl ${headingTextClass}`}>Top 10 Greenhithe Legion Players</h2>
                 </div>
               </div>
               <div className={`mt-4 ${tableShellClass}`}>

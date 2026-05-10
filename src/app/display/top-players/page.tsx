@@ -49,7 +49,7 @@ export default function PublicTopPlayersPage() {
       <div className="mx-auto max-w-5xl space-y-4">
         <header className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/20 backdrop-blur">
           <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-300">Public Top Players</p>
-          <h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">{data?.season?.name ?? "Top Players"}</h1>
+          <h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">{data?.season?.name ?? "Top 10 Greenhithe Legion Players"}</h1>
           <p className="mt-2 text-sm text-slate-300">Updated {updatedAt || "--:--"}</p>
         </header>
 
