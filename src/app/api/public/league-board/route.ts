@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { GREENHITHE_LEGION_LOCATION_NAME } from "@/lib/public-team-display";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -14,6 +15,11 @@ type SeasonRow = {
 type TeamRow = {
   id: string;
   season_id: string;
+  name: string;
+};
+
+type LocationRow = {
+  id: string;
   name: string;
 };
 
@@ -53,6 +59,7 @@ type PlayerRow = {
   id: string;
   display_name: string;
   full_name: string | null;
+  location_id?: string | null;
 };
 
 type BreakRow = {
@@ -99,7 +106,7 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const [teamsRes, membersRes, fixturesRes, framesRes, playersRes, breaksRes] = await Promise.all([
+  const [teamsRes, membersRes, fixturesRes, framesRes, playersRes, breaksRes, locationQueryRes] = await Promise.all([
     adminClient.from("league_teams").select("id,season_id,name").eq("season_id", selectedSeason.id),
     adminClient.from("league_team_members").select("season_id,team_id,player_id").eq("season_id", selectedSeason.id),
     adminClient
@@ -110,8 +117,9 @@ export async function GET(req: NextRequest) {
     adminClient
       .from("league_fixture_frames")
       .select("fixture_id,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_forfeit,away_forfeit,winner_side,home_points_scored,away_points_scored"),
-    adminClient.from("players").select("id,display_name,full_name").eq("is_archived", false),
+    adminClient.from("players").select("id,display_name,full_name,location_id").eq("is_archived", false),
     adminClient.from("league_fixture_breaks").select("fixture_id,player_id,entered_player_name,break_value").gte("break_value", 30),
+    adminClient.from("locations").select("id,name").ilike("name", `%${GREENHITHE_LEGION_LOCATION_NAME}%`).order("name", { ascending: true }),
   ]);
 
   const firstError =
@@ -120,7 +128,8 @@ export async function GET(req: NextRequest) {
     fixturesRes.error?.message ||
     framesRes.error?.message ||
     playersRes.error?.message ||
-    breaksRes.error?.message;
+    breaksRes.error?.message ||
+    locationQueryRes.error?.message;
 
   if (firstError) {
     return NextResponse.json({ error: firstError }, { status: 500 });
@@ -132,6 +141,8 @@ export async function GET(req: NextRequest) {
   const frames = (framesRes.data ?? []) as FrameRow[];
   const players = (playersRes.data ?? []) as PlayerRow[];
   const breaks = (breaksRes.data ?? []) as BreakRow[];
+  const locations = (locationQueryRes.data ?? []) as LocationRow[];
+  const greenhitheLocationId = locations.find((row) => row.name === GREENHITHE_LEGION_LOCATION_NAME)?.id ?? locations[0]?.id ?? null;
 
   const playerById = new Map(players.map((player) => [player.id, player]));
   const teamById = new Map(teams.map((team) => [team.id, team]));
@@ -229,10 +240,12 @@ export async function GET(req: NextRequest) {
     .map((playerId) => {
       const result = singlesPlayed.get(playerId) ?? { won: 0, lost: 0, pointsFor: 0, pointsAgainst: 0 };
       const played = result.won + result.lost;
+      const player = playerById.get(playerId);
       return {
         player_id: playerId,
-        player_name: named(playerById.get(playerId)),
+        player_name: named(player),
         team_name: playerTeamName.get(playerId) ?? "-",
+        location_id: player?.location_id ?? null,
         appearances: singlesAppearanceByPlayer.get(playerId)?.size ?? 0,
         played,
         won: result.won,
@@ -242,6 +255,7 @@ export async function GET(req: NextRequest) {
         win_pct: played > 0 ? Math.round((result.won / played) * 1000) / 10 : 0,
       };
     })
+    .filter((row) => (greenhitheLocationId ? row.location_id === greenhitheLocationId : true))
     .filter((row) => row.played > 0)
     .sort((a, b) => b.win_pct - a.win_pct || b.won - a.won || a.player_name.localeCompare(b.player_name))
     .slice(0, 10)
