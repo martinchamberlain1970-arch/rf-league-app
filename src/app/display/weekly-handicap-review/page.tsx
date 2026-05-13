@@ -11,7 +11,6 @@ type ChangeRow = {
   current: number;
   baseline: number;
   rating: number;
-  target: number;
   changedThisWeek: boolean;
   ratedFrames: number;
   reason: string;
@@ -81,7 +80,7 @@ export default function PublicWeeklyHandicapReviewPage() {
             {batchLabel} · Updated {updatedAt || "--:--"}
           </p>
           <p className="mt-2 text-sm text-slate-300">
-            Full current player list, showing each player&apos;s starting Elo for the completed week, new Elo after review, and current playing handicap.
+            Players whose Elo changed in the completed week, showing their before-and-after Elo and current playing handicap.
           </p>
         </header>
 
@@ -109,9 +108,6 @@ export default function PublicWeeklyHandicapReviewPage() {
                     Player
                   </p>
                   <h2 className="mt-2 text-2xl font-bold text-white">{row.name}</h2>
-                  <p className="mt-2 text-sm font-medium text-amber-200">
-                    {row.changedThisWeek ? "Elo moved this week" : "No Elo movement this week"}
-                  </p>
                   <p className="mt-2 text-sm text-slate-300">{row.reason}</p>
                 </div>
                 <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-right">
@@ -124,7 +120,7 @@ export default function PublicWeeklyHandicapReviewPage() {
                 </div>
               </div>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-4">
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
                     Elo (Previous Week)
@@ -145,14 +141,6 @@ export default function PublicWeeklyHandicapReviewPage() {
                   </p>
                   <p className="mt-2 text-2xl font-bold text-white">
                     {formatHandicap(row.current)}
-                  </p>
-                </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    Elo Target Handicap
-                  </p>
-                  <p className="mt-2 text-2xl font-bold text-white">
-                    {formatHandicap(row.target)}
                   </p>
                 </div>
               </div>
