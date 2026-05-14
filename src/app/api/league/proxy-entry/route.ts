@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { logServerAudit } from "@/lib/server-audit";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -42,6 +43,7 @@ export async function POST(req: NextRequest) {
   if (authError || !authData.user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
 
   const userId = authData.user.id;
+  const userEmail = authData.user.email?.trim().toLowerCase() ?? null;
   const body = await req.json().catch(() => null);
   const fixtureId = body?.fixtureId as string | undefined;
   if (!fixtureId) {
@@ -107,6 +109,7 @@ export async function POST(req: NextRequest) {
   if (!actingRole) {
     return NextResponse.json({ error: "Only a captain or vice-captain for this fixture can enable proxy entry." }, { status: 403 });
   }
+  const actorRole = actingRole.is_captain ? "captain" : "vice_captain";
 
   const actingSide = actingRole.team_id === fixture.home_team_id ? "home" : actingRole.team_id === fixture.away_team_id ? "away" : null;
   if (!actingSide) {
@@ -128,6 +131,22 @@ export async function POST(req: NextRequest) {
   if (updateRes.error) {
     return NextResponse.json({ error: updateRes.error.message }, { status: 400 });
   }
+
+  await logServerAudit(adminClient, {
+    actorUserId: userId,
+    actorEmail: userEmail,
+    actorRole,
+    action: "league_proxy_entry_enabled",
+    entityType: "league_fixture",
+    entityId: fixture.id,
+    summary: `Proxy entry enabled by ${actorRole.replace("_", "-")} on ${actingSide} side.`,
+    meta: {
+      fixture_id: fixture.id,
+      fixture_date: fixture.fixture_date,
+      acting_side: actingSide,
+      user_agent: req.headers.get("user-agent"),
+    },
+  });
 
   return NextResponse.json({ ok: true, actingSide });
 }

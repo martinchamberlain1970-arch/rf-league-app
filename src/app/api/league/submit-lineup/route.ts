@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { logServerAudit } from "@/lib/server-audit";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -37,6 +38,7 @@ export async function POST(req: NextRequest) {
   if (authError || !authData.user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
 
   const userId = authData.user.id;
+  const userEmail = authData.user.email?.trim().toLowerCase() ?? null;
   const body = await req.json().catch(() => null);
   const fixtureId = body?.fixtureId as string | undefined;
   const side = body?.side as "home" | "away" | undefined;
@@ -119,6 +121,7 @@ export async function POST(req: NextRequest) {
   if (!allowedTeam) {
     return NextResponse.json({ error: "Only captain or vice-captain for this fixture can submit a lineup." }, { status: 403 });
   }
+  const actorRole = allowedTeam.is_captain ? "captain" : "vice_captain";
 
   const proxyEntryEnabled = Boolean(fixture.proxy_entry_enabled);
   const actingSide = allowedTeam.team_id === fixture.home_team_id ? "home" : allowedTeam.team_id === fixture.away_team_id ? "away" : null;
@@ -242,6 +245,25 @@ export async function POST(req: NextRequest) {
   if (!fixtureUpdate.data?.id) {
     return NextResponse.json({ error: "The lineup was not saved to the fixture record." }, { status: 400 });
   }
+
+  await logServerAudit(adminClient, {
+    actorUserId: userId,
+    actorEmail: userEmail,
+    actorRole,
+    action: side === "home" ? "league_home_lineup_submitted" : "league_away_lineup_submitted",
+    entityType: "league_fixture",
+    entityId: fixture.id,
+    summary: `${side === "home" ? "Home" : "Away"} lineup submitted by ${actorRole.replace("_", "-")}${proxyEntryEnabled ? " using proxy entry" : ""}.`,
+    meta: {
+      fixture_id: fixture.id,
+      fixture_date: fixture.fixture_date,
+      submitted_side: side,
+      acting_side: actingSide,
+      proxy_entry_enabled: proxyEntryEnabled,
+      frame_count: sideFields.length,
+      user_agent: req.headers.get("user-agent"),
+    },
+  });
 
   return NextResponse.json({ ok: true, fixture: fixtureUpdate.data, proxyEntryEnabled, actingSide });
 }

@@ -26,6 +26,10 @@ const ACTION_LABELS: Record<string, string> = {
   system_clear_data: "Reset app data",
   system_restore_backup: "Restored backup file",
   system_restore_point: "Restored restore point",
+  league_proxy_entry_enabled: "Enabled proxy entry",
+  league_home_lineup_submitted: "Submitted home lineup",
+  league_away_lineup_submitted: "Submitted away lineup",
+  league_live_progress_saved: "Saved live score progress",
   league_fixture_saved: "Saved fixture result",
   league_submission_sent: "Submitted fixture result",
   league_submission_approved: "Approved fixture result",
@@ -34,6 +38,30 @@ const ACTION_LABELS: Record<string, string> = {
 
 function prettyAction(action: string) {
   return ACTION_LABELS[action] ?? action.replaceAll("_", " ");
+}
+
+function detailLines(meta?: Record<string, unknown> | null) {
+  if (!meta) return [];
+  const lines: string[] = [];
+  const push = (label: string, value: unknown) => {
+    if (value === null || typeof value === "undefined" || value === "") return;
+    lines.push(`${label}: ${String(value)}`);
+  };
+  push("Fixture", meta.fixture_id);
+  push("Date", meta.fixture_date);
+  push("Submitted side", meta.submitted_side);
+  push("Acting side", meta.acting_side);
+  push("Proxy", typeof meta.proxy_entry_enabled === "boolean" ? (meta.proxy_entry_enabled ? "Yes" : "No") : meta.proxy_entry_used);
+  push("Frame rows", meta.frame_rows_received);
+  push("Completed frames", meta.completed_frames);
+  push("Scored frames", meta.scored_frames);
+  push("Frames with results", meta.frames_with_results);
+  push("Recorded breaks", meta.recorded_breaks);
+  push("Photo", meta.scorecard_photo_url ? "Attached" : null);
+  push("Decision", meta.decision);
+  push("Reason", meta.rejection_reason);
+  push("Device", meta.user_agent);
+  return lines;
 }
 
 export default function AuditPage() {
@@ -125,11 +153,14 @@ export default function AuditPage() {
                         <th className="px-3 py-2 text-left font-semibold text-slate-700">Action</th>
                         <th className="px-3 py-2 text-left font-semibold text-slate-700">Entity</th>
                         <th className="px-3 py-2 text-left font-semibold text-slate-700">Summary</th>
+                        <th className="px-3 py-2 text-left font-semibold text-slate-700">Details</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filtered.map((r) => (
-                        <tr key={r.id} className="border-t border-slate-200">
+                      {filtered.map((r) => {
+                        const details = detailLines(r.meta);
+                        return (
+                        <tr key={r.id} className="border-t border-slate-200 align-top">
                           <td className="px-3 py-2 text-slate-700">{new Date(r.created_at).toLocaleString()}</td>
                           <td className="px-3 py-2 text-slate-700">{r.actor_email || "-"}</td>
                           <td className="px-3 py-2 text-slate-700">{r.actor_role || "-"}</td>
@@ -140,8 +171,21 @@ export default function AuditPage() {
                             {r.entity_type && r.entity_id ? `${r.entity_type}: ${r.entity_id.slice(0, 8)}` : "-"}
                           </td>
                           <td className="px-3 py-2 text-slate-700">{r.summary || "-"}</td>
+                          <td className="px-3 py-2 text-xs text-slate-600">
+                            {details.length > 0 ? (
+                              <div className="space-y-1">
+                                {details.map((line) => (
+                                  <p key={`${r.id}-${line}`} className="whitespace-pre-wrap break-words">
+                                    {line}
+                                  </p>
+                                ))}
+                              </div>
+                            ) : (
+                              "-"
+                            )}
+                          </td>
                         </tr>
-                      ))}
+                      )})}
                     </tbody>
                   </table>
                 </div>
@@ -153,4 +197,3 @@ export default function AuditPage() {
     </main>
   );
 }
-

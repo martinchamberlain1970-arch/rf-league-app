@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { logServerAudit } from "@/lib/server-audit";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -119,6 +120,7 @@ export async function POST(req: NextRequest) {
   if (!fixture.proxy_entry_enabled && allowedTeam.team_id !== fixture.home_team_id) {
     return NextResponse.json({ error: "Only the home captain or vice-captain can submit the scorecard." }, { status: 403 });
   }
+  const actorRole = allowedTeam.is_captain ? "captain" : "vice_captain";
   const submitterSide = allowedTeam.team_id === fixture.home_team_id ? "home" : allowedTeam.team_id === fixture.away_team_id ? "away" : null;
 
   const existingRes = await adminClient
@@ -190,6 +192,27 @@ export async function POST(req: NextRequest) {
 
   const fixtureUpdate = await adminClient.from("league_fixtures").update({ status: "in_progress" }).eq("id", fixture.id);
   if (fixtureUpdate.error) return NextResponse.json({ error: fixtureUpdate.error.message }, { status: 400 });
+
+  await logServerAudit(adminClient, {
+    actorUserId: userId,
+    actorEmail: userEmail || null,
+    actorRole,
+    action: "league_submission_sent",
+    entityType: "league_fixture",
+    entityId: fixture.id,
+    summary: `Scorecard submitted for approval by ${actorRole.replace("_", "-")}${fixture.proxy_entry_enabled ? " using proxy entry" : ""}.`,
+    meta: {
+      fixture_id: fixture.id,
+      fixture_date: fixture.fixture_date,
+      submitter_side: submitterSide,
+      proxy_entry_used: Boolean(fixture.proxy_entry_enabled),
+      recorded_frames: cleanFrameResults.length,
+      frames_with_results: cleanFrameResults.filter((row) => row.winner_side).length,
+      recorded_breaks: cleanFrameResults.flatMap((row) => row.break_entries ?? []).length,
+      scorecard_photo_url: scorecardPhotoUrl && scorecardPhotoUrl.trim() ? scorecardPhotoUrl.trim() : null,
+      user_agent: req.headers.get("user-agent"),
+    },
+  });
 
   return NextResponse.json({ ok: true });
 }

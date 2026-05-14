@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { logServerAudit } from "@/lib/server-audit";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -43,6 +44,7 @@ export async function POST(req: NextRequest) {
   if (authError || !authData.user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
 
   const userId = authData.user.id;
+  const userEmail = authData.user.email?.trim().toLowerCase() ?? null;
   const body = await req.json().catch(() => null);
   const fixtureId = body?.fixtureId as string | undefined;
   const frameResults = (body?.frameResults ?? []) as FrameResult[];
@@ -121,6 +123,8 @@ export async function POST(req: NextRequest) {
   if (!fixture.proxy_entry_enabled && allowedTeam.team_id !== fixture.home_team_id) {
     return NextResponse.json({ error: "Only the home captain or vice-captain can save live score progress." }, { status: 403 });
   }
+  const actorRole = allowedTeam.is_captain ? "captain" : "vice_captain";
+  const actorSide = allowedTeam.team_id === fixture.home_team_id ? "home" : "away";
 
   const cleaned = frameResults
     .filter((r) => Number.isInteger(r.slot_no) && r.slot_no > 0)
@@ -214,6 +218,32 @@ export async function POST(req: NextRequest) {
   if (fixtureUpdate.error) {
     return NextResponse.json({ error: fixtureUpdate.error.message }, { status: 400 });
   }
+
+  const completedFrames = cleaned.filter((item) => item.winner_side || item.home_forfeit || item.away_forfeit).length;
+  const scoredFrames = cleaned.filter(
+    (item) => typeof item.home_points_scored === "number" || typeof item.away_points_scored === "number"
+  ).length;
+  await logServerAudit(adminClient, {
+    actorUserId: userId,
+    actorEmail: userEmail,
+    actorRole,
+    action: "league_live_progress_saved",
+    entityType: "league_fixture",
+    entityId: fixture.id,
+    summary: `Live progress saved for fixture ${fixture.id.slice(0, 8)} by ${actorRole.replace("_", "-")} on ${actorSide} side.`,
+    meta: {
+      fixture_id: fixture.id,
+      fixture_date: fixture.fixture_date,
+      actor_side: actorSide,
+      proxy_entry_enabled: Boolean(fixture.proxy_entry_enabled),
+      frame_rows_received: cleaned.length,
+      completed_frames: completedFrames,
+      scored_frames: scoredFrames,
+      recorded_breaks: breaks.length,
+      scorecard_photo_url: scorecardPhotoUrl && scorecardPhotoUrl.trim() ? scorecardPhotoUrl.trim() : null,
+      user_agent: req.headers.get("user-agent"),
+    },
+  });
 
   return NextResponse.json({ ok: true, scorecardPhotoUrl: scorecardPhotoUrl && scorecardPhotoUrl.trim() ? scorecardPhotoUrl.trim() : null });
 }

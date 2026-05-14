@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { rebuildLeagueFixtureSnookerRatings } from "@/lib/snooker-rating";
+import { logServerAudit } from "@/lib/server-audit";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -272,6 +273,25 @@ export async function POST(req: NextRequest) {
     const resetFixture = await adminClient.from("league_fixtures").update({ status: "pending" }).eq("id", submission.fixture_id);
     if (resetFixture.error) return NextResponse.json({ error: resetFixture.error.message }, { status: 400 });
   }
+
+  await logServerAudit(adminClient, {
+    actorUserId: userId,
+    actorEmail: userEmail,
+    actorRole: "super_user",
+    action: decision === "approved" ? "league_submission_approved" : "league_submission_rejected",
+    entityType: "league_fixture",
+    entityId: submission.fixture_id,
+    summary:
+      decision === "approved"
+        ? "Fixture submission approved by Super User."
+        : `Fixture submission rejected by Super User${rejectionReason ? `: ${rejectionReason}` : "."}`,
+    meta: {
+      fixture_id: submission.fixture_id,
+      submission_id: submission.id,
+      decision,
+      rejection_reason: decision === "rejected" ? rejectionReason || null : null,
+    },
+  });
 
   return NextResponse.json({ ok: true });
 }
