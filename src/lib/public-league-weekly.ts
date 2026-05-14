@@ -57,6 +57,13 @@ type PlayerRow = {
   snooker_handicap: number | null;
 };
 
+type BreakRow = {
+  fixture_id: string;
+  player_id: string | null;
+  entered_player_name: string | null;
+  break_value: number | null;
+};
+
 type ReceiptRow = {
   source_result_id: string;
   source_app: string | null;
@@ -152,7 +159,7 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
     };
   }
 
-  const [teamsRes, membersRes, fixturesRes, framesRes, playersRes, receiptsRes] = await Promise.all([
+  const [teamsRes, membersRes, fixturesRes, framesRes, playersRes, receiptsRes, breaksRes] = await Promise.all([
     adminClient.from("league_teams").select("id,season_id,name").eq("season_id", season.id),
     adminClient.from("league_team_members").select("season_id,team_id,player_id").eq("season_id", season.id),
     adminClient
@@ -171,6 +178,10 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
       .from("rating_result_receipts")
       .select("source_result_id,source_app,status,metadata")
       .eq("source_app", "league"),
+    adminClient
+      .from("league_fixture_breaks")
+      .select("fixture_id,player_id,entered_player_name,break_value")
+      .gte("break_value", 30),
   ]);
 
   const firstError =
@@ -179,7 +190,8 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
     fixturesRes.error?.message ||
     framesRes.error?.message ||
     playersRes.error?.message ||
-    receiptsRes.error?.message;
+    receiptsRes.error?.message ||
+    breaksRes.error?.message;
   if (firstError) throw new Error(firstError);
 
   const teams = (teamsRes.data ?? []) as TeamRow[];
@@ -188,6 +200,7 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
   const frames = (framesRes.data ?? []) as FrameRow[];
   const players = (playersRes.data ?? []) as PlayerRow[];
   const receipts = (receiptsRes.data ?? []) as ReceiptRow[];
+  const breaks = (breaksRes.data ?? []) as BreakRow[];
 
   const completeWeeks = Array.from(
     new Set(
@@ -308,6 +321,15 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
 
   const weekFixtureIds = new Set(weekFixtures.map((fixture) => fixture.id));
   const weekFrames = frames.filter((frame) => weekFixtureIds.has(frame.fixture_id));
+  const weekBreaks = breaks
+    .filter((row) => weekFixtureIds.has(row.fixture_id))
+    .map((row) => ({
+      fixtureId: row.fixture_id,
+      playerName: row.player_id ? playerNameMap.get(row.player_id) ?? row.entered_player_name?.trim() ?? "Unknown" : row.entered_player_name?.trim() || "Unknown",
+      breakValue: Number(row.break_value ?? 0),
+    }))
+    .filter((row) => Number.isFinite(row.breakValue) && row.breakValue >= 30)
+    .sort((a, b) => b.breakValue - a.breakValue || a.playerName.localeCompare(b.playerName));
 
   const fixtureRows = weekFixtures.map((fixture) => {
     const home = teamById.get(fixture.home_team_id) ?? "Home";
@@ -460,6 +482,12 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
 
   const star = Array.from(wins.entries()).sort((a, b) => b[1] - a[1])[0];
   const topOverperformance = overperformances.sort((a, b) => b.gap - a.gap)[0] ?? null;
+  const standoutBreaks = weekBreaks
+    .slice(0, 3)
+    .map((row) => {
+      const fixture = fixtureRows.find((item) => item.id === row.fixtureId);
+      return `${row.playerName} made a ${row.breakValue} in ${fixture ? `${fixture.home} vs ${fixture.away}` : "this week’s fixtures"}.`;
+    });
 
   return {
     season,
@@ -476,6 +504,7 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
       star: star
         ? `${playerNameMap.get(star[0]) ?? "Player"} was standout with ${star[1]} frame win${star[1] === 1 ? "" : "s"}.`
         : "No standout player recorded this week yet.",
+      breaks: standoutBreaks,
       lines: fixtureRows.map((fixture) => `${fixture.home} ${fixture.score} ${fixture.away}`),
     },
     fixtures: fixtureRows,

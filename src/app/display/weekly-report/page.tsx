@@ -33,6 +33,7 @@ type Payload = {
     upset: string;
     overperformance: string;
     star: string;
+    breaks: string[];
     lines: string[];
   } | null;
   fixtures: FixtureReport[];
@@ -108,6 +109,20 @@ export default function PublicWeeklyReportPage() {
                   <span className="font-semibold text-white">Standout player:</span>{" "}
                   {data.summary.star}
                 </p>
+                <div>
+                  <span className="font-semibold text-white">Stand-out 30+ breaks:</span>
+                  {data.summary.breaks.length > 0 ? (
+                    <ul className="mt-2 space-y-2 text-sm text-slate-100">
+                      {data.summary.breaks.map((line) => (
+                        <li key={line} className="rounded-2xl border border-white/10 bg-white/5 px-4 py-3">
+                          {line}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-sm text-slate-300">No 30+ breaks were recorded in the completed week.</p>
+                  )}
+                </div>
               </div>
             </article>
 
