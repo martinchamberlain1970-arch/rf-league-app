@@ -1163,7 +1163,7 @@ export default function EventsPage() {
       .sort((a, b) => b.surprise - a.surprise)[0] ?? null;
     const fixtureIds = new Set(weekFixtures.map((f) => f.id));
     const wins = new Map<string, number>();
-    const handicapMoments: Array<{ text: string; strength: number }> = [];
+    const eloGapMoments: Array<{ text: string; gap: number }> = [];
     const overperformances: Array<{ text: string; gap: number }> = [];
     for (const fr of seasonFrames) {
       if (!fixtureIds.has(fr.fixture_id) || !fr.winner_side || fr.home_forfeit || fr.away_forfeit) continue;
@@ -1179,40 +1179,6 @@ export default function EventsPage() {
       const awayName = [playerNameMap.get(fr.away_player1_id ?? "") ?? null, playerNameMap.get(fr.away_player2_id ?? "") ?? null].filter(Boolean).join(" / ") || "Away player";
       const homePoints = typeof fr.home_points_scored === "number" ? fr.home_points_scored : null;
       const awayPoints = typeof fr.away_points_scored === "number" ? fr.away_points_scored : null;
-      const homeHandicap =
-        fr.slot_type === "doubles"
-          ? ((playerByIdMap.get(fr.home_player1_id ?? "")?.snooker_handicap ?? 0) + (playerByIdMap.get(fr.home_player2_id ?? "")?.snooker_handicap ?? 0)) / 2
-          : Number(playerByIdMap.get(fr.home_player1_id ?? "")?.snooker_handicap ?? 0);
-      const awayHandicap =
-        fr.slot_type === "doubles"
-          ? ((playerByIdMap.get(fr.away_player1_id ?? "")?.snooker_handicap ?? 0) + (playerByIdMap.get(fr.away_player2_id ?? "")?.snooker_handicap ?? 0)) / 2
-          : Number(playerByIdMap.get(fr.away_player1_id ?? "")?.snooker_handicap ?? 0);
-      if (homePoints !== null && awayPoints !== null) {
-        const adjusted = calculateAdjustedScoresWithCap(homePoints, awayPoints, homeHandicap, awayHandicap);
-        const receivingSide = adjusted.homeStart > 0 ? "home" : adjusted.awayStart > 0 ? "away" : null;
-        const receivingName = receivingSide === "home" ? homeName : receivingSide === "away" ? awayName : "";
-        const startValue = receivingSide === "home" ? adjusted.homeStart : receivingSide === "away" ? adjusted.awayStart : 0;
-        const rawWinner = homePoints > awayPoints ? "home" : awayPoints > homePoints ? "away" : null;
-        if (receivingSide && startValue > 0) {
-          if (rawWinner === receivingSide) {
-            handicapMoments.push({
-              text: `${receivingName} won on the table and did not need the ${startValue}-point start.`,
-              strength: startValue,
-            });
-          } else if (fr.slot_type === "doubles" && fr.winner_side === receivingSide) {
-            handicapMoments.push({
-              text: `${receivingName} made the ${startValue}-point start count and won after handicap was applied.`,
-              strength: startValue,
-            });
-          } else if (rawWinner && rawWinner !== receivingSide) {
-            const givingName = rawWinner === "home" ? homeName : awayName;
-            handicapMoments.push({
-              text: `${givingName} overcame a ${startValue}-point start and still won on the table.`,
-              strength: startValue,
-            });
-          }
-        }
-      }
       const winnerName = fr.winner_side === "home" ? homeName : awayName;
       const winnerRating =
         fr.winner_side === "home"
@@ -1230,6 +1196,27 @@ export default function EventsPage() {
           : fr.slot_type === "doubles"
             ? ((playerByIdMap.get(fr.home_player1_id ?? "")?.rating_snooker ?? 1000) + (playerByIdMap.get(fr.home_player2_id ?? "")?.rating_snooker ?? 1000)) / 2
             : Number(playerByIdMap.get(fr.home_player1_id ?? "")?.rating_snooker ?? 1000);
+      const homeRating =
+        fr.slot_type === "doubles"
+          ? ((playerByIdMap.get(fr.home_player1_id ?? "")?.rating_snooker ?? 1000) + (playerByIdMap.get(fr.home_player2_id ?? "")?.rating_snooker ?? 1000)) / 2
+          : Number(playerByIdMap.get(fr.home_player1_id ?? "")?.rating_snooker ?? 1000);
+      const awayRating =
+        fr.slot_type === "doubles"
+          ? ((playerByIdMap.get(fr.away_player1_id ?? "")?.rating_snooker ?? 1000) + (playerByIdMap.get(fr.away_player2_id ?? "")?.rating_snooker ?? 1000)) / 2
+          : Number(playerByIdMap.get(fr.away_player1_id ?? "")?.rating_snooker ?? 1000);
+      const absoluteGap = Math.abs(homeRating - awayRating);
+      if (absoluteGap > 0) {
+        const higherRatedSide = homeRating >= awayRating ? "home" : "away";
+        const higherRatedName = higherRatedSide === "home" ? homeName : awayName;
+        const lowerRatedName = higherRatedSide === "home" ? awayName : homeName;
+        eloGapMoments.push({
+          text:
+            fr.winner_side === higherRatedSide
+              ? `${higherRatedName} handled the widest rating gap of the week, winning a frame where the pre-frame Elo difference was about ${Math.round(absoluteGap)} points.`
+              : `${winnerName} produced the result across the widest rating gap of the week, beating an opponent who started about ${Math.round(absoluteGap)} Elo points higher (${lowerRatedName} vs ${higherRatedName}).`,
+          gap: absoluteGap,
+        });
+      }
       const ratingGap = loserRating - winnerRating;
       if (ratingGap > 0) {
         overperformances.push({
@@ -1239,7 +1226,7 @@ export default function EventsPage() {
       }
     }
     const star = Array.from(wins.entries()).sort((a, b) => b[1] - a[1])[0];
-    const topHandicapMoment = handicapMoments.sort((a, b) => b.strength - a.strength)[0] ?? null;
+    const topEloGapMoment = eloGapMoments.sort((a, b) => b.gap - a.gap)[0] ?? null;
     const topOverperformance = overperformances.sort((a, b) => b.gap - a.gap)[0] ?? null;
     return {
       lines,
@@ -1248,7 +1235,7 @@ export default function EventsPage() {
         fixtureUpset && fixtureUpset.actualWinner !== "draw"
           ? `${fixtureUpset.winner} produced the biggest upset of the week in ${fixtureUpset.label}. Before the match, their chance on the model was only about ${fixtureUpset.expectedPct}%.`
           : "No result this week stood out as a major upset against the model.",
-      handicapMoment: topHandicapMoment?.text ?? "No handicap moment stood out strongly enough to define the week.",
+      eloGapMoment: topEloGapMoment?.text ?? "No rating-gap matchup stood out strongly enough to define the week.",
       overperformance: topOverperformance?.text ?? "No individual frame winner produced a major frame-by-frame Elo upset this week.",
     };
   }, [roundupWeek, seasonFixtures, teamById, seasonFrames, playerNameMap, seasonPlayers, playersByTeam, teamStats, teamPosition]);
@@ -1289,7 +1276,7 @@ export default function EventsPage() {
       ...weeklyRoundup.lines.map((l) => `- ${l.text}`),
       "",
       `- Biggest upset: ${weeklyRoundup.upset}`,
-      `- Strongest handicap performance: ${weeklyRoundup.handicapMoment}`,
+      `- Widest Elo-gap frame: ${weeklyRoundup.eloGapMoment}`,
       `- Standout Elo over-performance: ${weeklyRoundup.overperformance}`,
       "",
       weeklyRoundup.star,
@@ -1886,8 +1873,8 @@ export default function EventsPage() {
                         <p className="mt-2 text-xs text-indigo-950">{weeklyRoundup.upset}</p>
                       </div>
                       <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Strongest Handicap Performance</p>
-                        <p className="mt-2 text-xs text-amber-950">{weeklyRoundup.handicapMoment}</p>
+                        <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Widest Elo-Gap Frame</p>
+                        <p className="mt-2 text-xs text-amber-950">{weeklyRoundup.eloGapMoment}</p>
                       </div>
                       <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3">
                         <p className="text-xs font-semibold uppercase tracking-wide text-emerald-700">Standout Elo Over-Performance</p>
