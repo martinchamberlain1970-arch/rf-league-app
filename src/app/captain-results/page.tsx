@@ -114,6 +114,19 @@ type CaptainResultDraft = {
   savedAt: string;
 };
 
+function breakRowHasAnyContent(row: BreakRow) {
+  return Boolean(row.player_id || row.entered_player_name.trim() || row.break_value.trim());
+}
+
+function breakRowsContainUnsavedDraft(rows: BreakRow[]) {
+  return rows.some((row) => {
+    if (!breakRowHasAnyContent(row)) return false;
+    const value = Number(row.break_value || 0);
+    const hasPersistableBreak = Number.isFinite(value) && value >= 30 && (row.player_id || row.entered_player_name.trim());
+    return !hasPersistableBreak;
+  });
+}
+
 const named = (p?: Player | null) => (p ? (p.full_name?.trim() ? p.full_name : p.display_name) : "Unknown");
 const ratingOf = (p?: Player | null) => Number(p?.rating_snooker ?? 1000);
 const sortLabelByFirstName = (a: string, b: string) => {
@@ -610,7 +623,17 @@ export default function CaptainResultsPage() {
         }
       }
       if (savedDraftRaw && shouldPreferLiveScorecard) {
-        window.localStorage.removeItem(`rf_league_captain_draft_${selectedFixture.id}`);
+        try {
+          const savedDraft = JSON.parse(savedDraftRaw) as CaptainResultDraft;
+          if (Array.isArray(savedDraft.fixtureBreaks) && breakRowsContainUnsavedDraft(savedDraft.fixtureBreaks)) {
+            setFixtureBreaks(savedDraft.fixtureBreaks);
+            setScorecardDirty(true);
+          } else {
+            window.localStorage.removeItem(`rf_league_captain_draft_${selectedFixture.id}`);
+          }
+        } catch {
+          window.localStorage.removeItem(`rf_league_captain_draft_${selectedFixture.id}`);
+        }
       }
     }
     setScorecardDirty(false);
@@ -699,6 +722,8 @@ export default function CaptainResultsPage() {
       return;
     }
 
+    const hasUnsavedBreakDraft = breakRowsContainUnsavedDraft(fixtureBreaks);
+
     const client = supabase;
     if (!client) {
       if (mode === "manual") {
@@ -761,13 +786,15 @@ export default function CaptainResultsPage() {
         autoSaveMutedRef.current = false;
       }, 600);
       baselineScorecardSignatureRef.current = buildScorecardSignature(slots, fixtureBreaks);
-      setScorecardDirty(false);
+      setScorecardDirty(hasUnsavedBreakDraft);
       setRemoteScorecardChanged(false);
       setLastAutoSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
       if (mode === "manual") {
         setInfo({
           title: "Progress saved",
-          description: "Your draft has been saved on this device and the live match board has been updated.",
+          description: hasUnsavedBreakDraft
+            ? "Scores have been saved and your partial break entry has been kept on this device so you can finish it."
+            : "Your draft has been saved on this device and the live match board has been updated.",
         });
       }
     } catch (error) {
