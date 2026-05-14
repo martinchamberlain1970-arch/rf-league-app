@@ -280,9 +280,7 @@ export default function EventsPage() {
         const teamMap = new Map(((teamsRes.data ?? []) as LeagueTeam[]).map((t) => [t.id, t.name]));
         setTeamById(teamMap);
 
-        const allSeasonFixtures = ((fixturesRes.data ?? []) as LeagueFixture[]).filter(
-          (fixture) => memberTeamIds.includes(fixture.home_team_id) || memberTeamIds.includes(fixture.away_team_id)
-        );
+        const allSeasonFixtures = (fixturesRes.data ?? []) as LeagueFixture[];
         const token = sessionRes.data.session?.access_token;
         if (token) {
           const requestRes = await fetch("/api/league/fixture-change-requests?scope=published", {
