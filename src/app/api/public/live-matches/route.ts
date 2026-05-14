@@ -179,18 +179,28 @@ export async function GET(req: NextRequest) {
   const teamById = new Map(teams.map((team) => [team.id, team]));
   const playerById = new Map(players.map((player) => [player.id, player]));
 
-  const liveFixtures = fixtures
-    .filter(
-      (fixture) =>
-        fixture.status !== "complete" &&
-        !fixture.pre_match_paper_record &&
-        Boolean(fixture.home_lineup_submitted_at) &&
-        Boolean(fixture.away_lineup_submitted_at)
-    )
+  const matchNightCandidates = fixtures.filter((fixture) => {
+    if (fixture.pre_match_paper_record) return false;
+    if (fixture.status === "complete") return true;
+    return Boolean(fixture.home_lineup_submitted_at) && Boolean(fixture.away_lineup_submitted_at);
+  });
+
+  const currentMatchNightDate =
+    [...new Set(matchNightCandidates.map((fixture) => fixture.fixture_date).filter((value): value is string => Boolean(value)))]
+      .sort((a, b) => b.localeCompare(a))[0] ?? null;
+
+  const liveFixtures = matchNightCandidates
+    .filter((fixture) => (currentMatchNightDate ? fixture.fixture_date === currentMatchNightDate : true))
     .sort((a, b) => {
+      const statusRank = (status: FixtureRow["status"]) =>
+        status === "in_progress" ? 0 : status === "complete" ? 1 : 2;
       const aDate = a.fixture_date ?? "9999-12-31";
       const bDate = b.fixture_date ?? "9999-12-31";
-      return aDate.localeCompare(bDate) || (a.week_no ?? 999) - (b.week_no ?? 999);
+      return (
+        aDate.localeCompare(bDate) ||
+        (a.week_no ?? 999) - (b.week_no ?? 999) ||
+        statusRank(a.status) - statusRank(b.status)
+      );
     });
 
   const liveMatches = liveFixtures.map((fixture) => {

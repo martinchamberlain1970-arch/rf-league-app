@@ -39,6 +39,12 @@ function statusTone(status: string) {
   return "border-white/15 bg-white/5 text-slate-200";
 }
 
+function fixtureTone(status: string) {
+  if (status === "complete") return "border-emerald-300/30 bg-emerald-400/10 text-emerald-100";
+  if (status === "in_progress") return "border-cyan-300/30 bg-cyan-400/10 text-cyan-100";
+  return "border-white/15 bg-white/10 text-slate-100";
+}
+
 export default function MatchNightDisplayPage() {
   const [data, setData] = useState<LiveMatchData>(emptyData);
   const [loading, setLoading] = useState(true);
@@ -77,6 +83,8 @@ export default function MatchNightDisplayPage() {
     () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     [data]
   );
+  const liveCount = data.liveMatches.filter((match) => match.status === "in_progress").length;
+  const completedCount = data.liveMatches.filter((match) => match.status === "complete").length;
 
   return (
     <main className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_58%)] p-5 text-white">
@@ -91,7 +99,8 @@ export default function MatchNightDisplayPage() {
             </div>
             <div className="flex items-center gap-3">
               <div className="rounded-full border border-rose-200/20 bg-rose-400/10 px-4 py-2 text-sm font-semibold text-rose-100">
-                {data.liveMatches.length} live match{data.liveMatches.length === 1 ? "" : "es"}
+                {liveCount > 0 ? `${liveCount} live` : "No live matches"}
+                {completedCount > 0 ? ` · ${completedCount} completed` : ""}
               </div>
               <div className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-slate-100">
                 Updated {generatedAt}
@@ -125,22 +134,8 @@ export default function MatchNightDisplayPage() {
         ) : null}
 
         {!loading && !data.error && data.liveMatches.length > 0 ? (
-          <div className="grid flex-1 grid-cols-2 grid-rows-2 gap-4">
-            {Array.from({ length: 4 }).map((_, index) => {
-              const match = data.liveMatches[index] ?? null;
-              if (!match) {
-                return (
-                  <section
-                    key={`empty-${index}`}
-                    className="rounded-[2rem] border border-white/10 bg-white/5 p-5 shadow-2xl backdrop-blur"
-                  >
-                    <div className="flex h-full items-center justify-center rounded-[1.5rem] border border-dashed border-white/10 bg-slate-950/20">
-                      <p className="text-lg font-semibold text-slate-300">No fourth match to show</p>
-                    </div>
-                  </section>
-                );
-              }
-
+          <div className="grid flex-1 auto-rows-fr grid-cols-2 gap-4">
+            {data.liveMatches.slice(0, 4).map((match) => {
               return (
                 <section
                   key={match.fixtureId}
@@ -156,9 +151,18 @@ export default function MatchNightDisplayPage() {
                       </h2>
                       <p className="mt-1 text-lg font-semibold text-cyan-200">vs {match.awayTeam}</p>
                     </div>
-                    <div className="rounded-2xl border border-emerald-200/20 bg-emerald-400/10 px-4 py-3 text-center">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-100">Frames</p>
-                      <p className="mt-1 text-3xl font-black text-white">{match.overallScore}</p>
+                    <div className="flex flex-col items-end gap-2">
+                      <span
+                        className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${fixtureTone(
+                          match.status
+                        )}`}
+                      >
+                        {match.status === "complete" ? "Completed" : match.status === "in_progress" ? "Live" : "Lineups ready"}
+                      </span>
+                      <div className="rounded-2xl border border-emerald-200/20 bg-emerald-400/10 px-4 py-3 text-center">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-100">Frames</p>
+                        <p className="mt-1 text-3xl font-black text-white">{match.overallScore}</p>
+                      </div>
                     </div>
                   </div>
 
