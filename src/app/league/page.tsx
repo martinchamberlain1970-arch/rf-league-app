@@ -3001,15 +3001,35 @@ export default function LeaguePage() {
       setMessage("Network error while recalculating handicaps.");
       return;
     }
-    const payload = (await res.json().catch(() => ({}))) as { error?: string; reviewed?: number; changed?: number };
+    const payload = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      reviewed?: number;
+      changed?: number;
+      changedRows?: Array<{
+        name: string;
+        previous: number;
+        next: number;
+        rating: number;
+        target: number;
+        reason: string;
+      }>;
+    };
     setRecalculatingHandicaps(false);
     if (!res.ok) {
       setMessage(payload.error ?? "Failed to recalculate handicaps.");
       return;
     }
+    const changeLines = (payload.changedRows ?? []).map((row) => {
+      const previous = row.previous > 0 ? `+${row.previous}` : `${row.previous}`;
+      const next = row.next > 0 ? `+${row.next}` : `${row.next}`;
+      return `${row.name}: ${previous} -> ${next} (Elo ${row.rating}). ${row.reason}`;
+    });
     setInfoModal({
       title: "Handicaps Recalculated",
-      description: `${payload.changed ?? 0} player handicaps updated from current Elo ratings.`,
+      description:
+        changeLines.length > 0
+          ? `${payload.changed ?? 0} player handicaps updated from current Elo ratings.\n\n${changeLines.join("\n")}`
+          : `${payload.changed ?? 0} player handicaps updated from current Elo ratings.`,
     });
     await loadAll();
   };
@@ -4610,6 +4630,17 @@ export default function LeaguePage() {
   );
   const selectedPlayerTableResults = useMemo(() => {
     if (!selectedPlayerTablePlayerId) return [];
+    const slotPlayerLabel = (
+      playerId: string | null,
+      nominated: boolean,
+      nominatedName: string | null | undefined,
+      forfeit: boolean
+    ) => {
+      if (forfeit) return "No Show";
+      if (nominated) return nominatedName?.trim() || "Nominated Player";
+      if (playerId) return named(playerById.get(playerId));
+      return "Not recorded";
+    };
     const rows: Array<{
       fixtureId: string;
       fixtureDate: string | null;
@@ -4618,6 +4649,7 @@ export default function LeaguePage() {
       slotType: "singles" | "doubles";
       teamName: string;
       opponentName: string;
+      opponentTeamName: string;
       partnerName: string | null;
       score: string;
       result: "W" | "L" | "-";
@@ -4636,7 +4668,25 @@ export default function LeaguePage() {
       const isAway = isAwayPrimary || isAwayPartner;
       if (!isHome && !isAway) continue;
       const teamName = teamById.get(isHome ? fixture.home_team_id : fixture.away_team_id)?.name ?? "Team";
-      const opponentName = teamById.get(isHome ? fixture.away_team_id : fixture.home_team_id)?.name ?? "Opponent";
+      const opponentTeamName = teamById.get(isHome ? fixture.away_team_id : fixture.home_team_id)?.name ?? "Opponent";
+      const opponentName =
+        slot.slot_type === "doubles"
+          ? isHome
+            ? [
+                slotPlayerLabel(slot.away_player1_id, slot.away_nominated, slot.away_nominated_name, slot.away_forfeit),
+                slotPlayerLabel(slot.away_player2_id, false, null, false),
+              ]
+                .filter((value, index, arr) => value !== "Not recorded" || arr.length === 1 || index === 0)
+                .join(" / ")
+            : [
+                slotPlayerLabel(slot.home_player1_id, slot.home_nominated, slot.home_nominated_name, slot.home_forfeit),
+                slotPlayerLabel(slot.home_player2_id, false, null, false),
+              ]
+                .filter((value, index, arr) => value !== "Not recorded" || arr.length === 1 || index === 0)
+                .join(" / ")
+          : isHome
+            ? slotPlayerLabel(slot.away_player1_id, slot.away_nominated, slot.away_nominated_name, slot.away_forfeit)
+            : slotPlayerLabel(slot.home_player1_id, slot.home_nominated, slot.home_nominated_name, slot.home_forfeit);
       const partnerName =
         slot.slot_type === "doubles"
           ? named(
@@ -4663,6 +4713,7 @@ export default function LeaguePage() {
         slotType: slot.slot_type,
         teamName,
         opponentName,
+        opponentTeamName,
         partnerName: slot.slot_type === "doubles" ? partnerName : null,
         score,
         result,
@@ -8093,7 +8144,7 @@ export default function LeaguePage() {
 
               {selectedPlayerTablePlayerId ? (
                 <div className="fixed inset-0 z-[55] flex items-start justify-center bg-slate-900/45 p-4">
-                  <div className="max-h-[88vh] w-full max-w-4xl overflow-auto rounded-3xl border border-violet-200 bg-white shadow-xl">
+                  <div className="max-h-[88vh] w-full max-w-5xl overflow-auto rounded-3xl border border-violet-200 bg-white shadow-xl">
                     <div className="border-b border-slate-200 bg-gradient-to-r from-violet-50 via-white to-indigo-50 px-5 py-4">
                       <div className="flex items-start justify-between gap-4">
                         <div>
@@ -8135,23 +8186,23 @@ export default function LeaguePage() {
                         <table className="min-w-full border-separate border-spacing-0 text-sm">
                           <thead>
                             <tr className="text-left text-[11px] uppercase tracking-[0.18em] text-slate-500">
-                              <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Week</th>
-                              <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Date</th>
+                              <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Week / Date</th>
                               <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Frame</th>
-                              <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Team</th>
+                              <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Fixture</th>
                               <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Opponent</th>
                               <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Partner</th>
                               <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Score</th>
-                              <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Result</th>
                               <th className="border-b border-slate-200 bg-slate-100 px-3 py-3">Status</th>
                             </tr>
                           </thead>
                           <tbody>
                             {selectedPlayerTableResults.map((row) => (
                               <tr key={`${row.fixtureId}-${row.slotLabel}-${row.teamName}`} className="bg-white text-slate-800">
-                                <td className="border-b border-slate-100 px-3 py-3 font-medium text-slate-700">{row.weekNo ?? "-"}</td>
                                 <td className="border-b border-slate-100 px-3 py-3">
-                                  {row.fixtureDate ? new Date(`${row.fixtureDate}T12:00:00`).toLocaleDateString() : "No date"}
+                                  <p className="font-semibold text-slate-900">Week {row.weekNo ?? "-"}</p>
+                                  <p className="mt-1 text-xs text-slate-600">
+                                    {row.fixtureDate ? new Date(`${row.fixtureDate}T12:00:00`).toLocaleDateString() : "No date"}
+                                  </p>
                                 </td>
                                 <td className="border-b border-slate-100 px-3 py-3">
                                   <span className={`inline-flex rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
@@ -8162,24 +8213,36 @@ export default function LeaguePage() {
                                     {row.slotLabel}
                                   </span>
                                 </td>
-                                <td className="border-b border-slate-100 px-3 py-3 font-medium text-slate-900">{row.teamName}</td>
-                                <td className="border-b border-slate-100 px-3 py-3">{row.opponentName}</td>
-                                <td className="border-b border-slate-100 px-3 py-3">{row.partnerName ?? "-"}</td>
                                 <td className="border-b border-slate-100 px-3 py-3">
-                                  <span className="rounded-lg bg-white px-2.5 py-1 font-semibold text-slate-900 shadow-sm ring-1 ring-slate-200">
-                                    {row.score}
-                                  </span>
+                                  <p className="font-medium text-slate-900">{row.teamName}</p>
+                                  <p className="mt-1 text-xs text-slate-500">vs {row.opponentTeamName}</p>
                                 </td>
                                 <td className="border-b border-slate-100 px-3 py-3">
-                                  <span className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${
-                                    row.result === "W"
-                                      ? "border-emerald-300 bg-emerald-100 text-emerald-900"
-                                      : row.result === "L"
-                                        ? "border-rose-300 bg-rose-100 text-rose-900"
-                                        : "border-slate-300 bg-white text-slate-600"
-                                  }`}>
-                                    {row.result}
-                                  </span>
+                                  <p className="font-medium text-slate-900">{row.opponentName}</p>
+                                  <p className="mt-1 text-xs text-slate-500">{row.opponentTeamName}</p>
+                                </td>
+                                <td className="border-b border-slate-100 px-3 py-3">
+                                  {row.partnerName ? (
+                                    <p className="font-medium text-slate-900">{row.partnerName}</p>
+                                  ) : (
+                                    <span className="text-slate-400">-</span>
+                                  )}
+                                </td>
+                                <td className="border-b border-slate-100 px-3 py-3">
+                                  <div className="flex items-center gap-2">
+                                    <span className="rounded-lg bg-white px-2.5 py-1 font-semibold text-slate-900 shadow-sm ring-1 ring-slate-200">
+                                      {row.score}
+                                    </span>
+                                    <span className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-semibold ${
+                                      row.result === "W"
+                                        ? "border-emerald-300 bg-emerald-100 text-emerald-900"
+                                        : row.result === "L"
+                                          ? "border-rose-300 bg-rose-100 text-rose-900"
+                                          : "border-slate-300 bg-white text-slate-600"
+                                    }`}>
+                                      {row.result}
+                                    </span>
+                                  </div>
                                 </td>
                                 <td className="border-b border-slate-100 px-3 py-3">
                                   <span className={`inline-flex rounded-md border px-2 py-0.5 text-xs font-medium ${
@@ -8196,7 +8259,7 @@ export default function LeaguePage() {
                             ))}
                             {selectedPlayerTableResults.length === 0 ? (
                               <tr>
-                                <td className="px-3 py-3 text-slate-500" colSpan={9}>
+                                <td className="px-3 py-3 text-slate-500" colSpan={7}>
                                   No league results recorded for this player in the selected league yet.
                                 </td>
                               </tr>
