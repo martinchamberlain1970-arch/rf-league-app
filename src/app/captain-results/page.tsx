@@ -5,6 +5,7 @@ import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
 import InfoModal from "@/components/InfoModal";
+import ConfirmModal from "@/components/ConfirmModal";
 import useAdminStatus from "@/components/useAdminStatus";
 import { supabase } from "@/lib/supabase";
 import { calculateAdjustedScoresWithCap, MAX_SNOOKER_START } from "@/lib/snooker-handicap";
@@ -229,6 +230,7 @@ export default function CaptainResultsPage() {
   const admin = useAdminStatus();
   const [message, setMessage] = useState<string | null>(null);
   const [info, setInfo] = useState<{ title: string; description: string } | null>(null);
+  const [confirmSubmitPromptOpen, setConfirmSubmitPromptOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -751,6 +753,7 @@ export default function CaptainResultsPage() {
       home_points_scored: typeof s.home_points_scored === "number" ? s.home_points_scored : null,
       away_points_scored: typeof s.away_points_scored === "number" ? s.away_points_scored : null,
     }));
+    const allFramesComplete = frameResults.length > 0 && frameResults.every((row) => row.winner_side || row.home_forfeit || row.away_forfeit);
     const breakRows = getValidatedBreakRows();
     if (breakRows.error) {
       setMessage(breakRows.error);
@@ -790,12 +793,18 @@ export default function CaptainResultsPage() {
       setRemoteScorecardChanged(false);
       setLastAutoSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
       if (mode === "manual") {
-        setInfo({
-          title: "Progress saved",
-          description: hasUnsavedBreakDraft
-            ? "Scores have been saved and your partial break entry has been kept on this device so you can finish it."
-            : "Your draft has been saved on this device and the live match board has been updated.",
-        });
+        if (allFramesComplete && !hasUnsavedBreakDraft && !pendingByFixture.has(selectedFixture.id)) {
+          setConfirmSubmitPromptOpen(true);
+        } else {
+          setInfo({
+            title: "Progress saved",
+            description: hasUnsavedBreakDraft
+              ? "Scores have been saved and your partial break entry has been kept on this device so you can finish it."
+              : allFramesComplete
+                ? "All frames are now complete. Record any 30+ breaks if needed, then press Complete and submit scorecard."
+                : "Your draft has been saved on this device and the live match board has been updated.",
+          });
+        }
       }
     } catch (error) {
       if (mode === "manual") {
@@ -2457,6 +2466,18 @@ export default function CaptainResultsPage() {
 
           <MessageModal message={message} onClose={() => setMessage(null)} />
           <InfoModal open={Boolean(info)} title={info?.title ?? ""} description={info?.description ?? ""} onClose={() => setInfo(null)} />
+          <ConfirmModal
+            open={confirmSubmitPromptOpen}
+            title="Match card ready to submit"
+            description="All frame scores and recorded breaks have been saved. Do you want to submit this scorecard now for Super User approval?"
+            confirmLabel="Submit now"
+            cancelLabel="Review first"
+            onCancel={() => setConfirmSubmitPromptOpen(false)}
+            onConfirm={() => {
+              setConfirmSubmitPromptOpen(false);
+              void submit();
+            }}
+          />
         </RequireAuth>
       </div>
     </main>
