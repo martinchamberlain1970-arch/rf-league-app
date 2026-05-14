@@ -57,11 +57,18 @@ export async function POST(req: NextRequest) {
   const linkedPlayerId = (appUserRes.data?.linked_player_id as string | null) ?? null;
   if (!linkedPlayerId) return NextResponse.json({ error: "Your account is not linked to a player profile." }, { status: 400 });
 
-  const fixtureRes = await adminClient
+  let fixtureRes = await adminClient
     .from("league_fixtures")
-    .select("id,season_id,status,fixture_date,home_team_id,away_team_id,home_lineup_submitted_at,away_lineup_submitted_at,pre_match_paper_record")
+    .select("id,season_id,status,fixture_date,home_team_id,away_team_id,home_lineup_submitted_at,away_lineup_submitted_at,pre_match_paper_record,proxy_entry_enabled")
     .eq("id", fixtureId)
     .maybeSingle();
+  if (fixtureRes.error && fixtureRes.error.message.toLowerCase().includes("proxy_entry")) {
+    fixtureRes = await adminClient
+      .from("league_fixtures")
+      .select("id,season_id,status,fixture_date,home_team_id,away_team_id,home_lineup_submitted_at,away_lineup_submitted_at,pre_match_paper_record")
+      .eq("id", fixtureId)
+      .maybeSingle();
+  }
   if (fixtureRes.error || !fixtureRes.data) return NextResponse.json({ error: "Fixture not found." }, { status: 404 });
 
   const fixture = fixtureRes.data as {
@@ -74,6 +81,7 @@ export async function POST(req: NextRequest) {
     home_lineup_submitted_at?: string | null;
     away_lineup_submitted_at?: string | null;
     pre_match_paper_record?: boolean | null;
+    proxy_entry_enabled?: boolean | null;
   };
 
   if (fixture.status === "complete") {
@@ -103,11 +111,14 @@ export async function POST(req: NextRequest) {
     .select("team_id,is_captain,is_vice_captain")
     .eq("season_id", fixture.season_id)
     .eq("player_id", linkedPlayerId)
-    .eq("team_id", fixture.home_team_id);
+    .or(`team_id.eq.${fixture.home_team_id},team_id.eq.${fixture.away_team_id}`);
   if (memberRes.error) return NextResponse.json({ error: memberRes.error.message }, { status: 400 });
 
   const allowedTeam = (memberRes.data ?? []).find((r: { team_id: string; is_captain: boolean; is_vice_captain: boolean }) => r.is_captain || r.is_vice_captain);
   if (!allowedTeam) {
+    return NextResponse.json({ error: "Only the home captain or vice-captain can save live score progress." }, { status: 403 });
+  }
+  if (!fixture.proxy_entry_enabled && allowedTeam.team_id !== fixture.home_team_id) {
     return NextResponse.json({ error: "Only the home captain or vice-captain can save live score progress." }, { status: 403 });
   }
 

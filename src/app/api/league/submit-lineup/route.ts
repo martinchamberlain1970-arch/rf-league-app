@@ -53,11 +53,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Your account is not linked to a player profile." }, { status: 400 });
   }
 
-  const fixtureRes = await adminClient
+  let fixtureRes = await adminClient
     .from("league_fixtures")
-    .select("id,season_id,fixture_date,status,pre_match_paper_record,home_team_id,away_team_id,home_lineup_submitted_at,away_lineup_submitted_at")
+    .select("id,season_id,fixture_date,status,pre_match_paper_record,home_team_id,away_team_id,home_lineup_submitted_at,away_lineup_submitted_at,proxy_entry_enabled")
     .eq("id", fixtureId)
     .maybeSingle();
+
+  if (fixtureRes.error && fixtureRes.error.message.toLowerCase().includes("proxy_entry")) {
+    fixtureRes = await adminClient
+      .from("league_fixtures")
+      .select("id,season_id,fixture_date,status,pre_match_paper_record,home_team_id,away_team_id,home_lineup_submitted_at,away_lineup_submitted_at")
+      .eq("id", fixtureId)
+      .maybeSingle();
+  }
 
   if (fixtureRes.error || !fixtureRes.data) {
     return NextResponse.json({ error: "Fixture not found." }, { status: 404 });
@@ -73,6 +81,7 @@ export async function POST(req: NextRequest) {
     away_team_id: string;
     home_lineup_submitted_at?: string | null;
     away_lineup_submitted_at?: string | null;
+    proxy_entry_enabled?: boolean | null;
   };
 
   if (fixture.status === "complete") {
@@ -111,8 +120,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Only captain or vice-captain for this fixture can submit a lineup." }, { status: 403 });
   }
 
+  const proxyEntryEnabled = Boolean(fixture.proxy_entry_enabled);
+  const actingSide = allowedTeam.team_id === fixture.home_team_id ? "home" : allowedTeam.team_id === fixture.away_team_id ? "away" : null;
+
   if (side === "home") {
-    if (allowedTeam.team_id !== fixture.home_team_id) {
+    if (!proxyEntryEnabled && allowedTeam.team_id !== fixture.home_team_id) {
       return NextResponse.json({ error: "Only the home captain or vice-captain can submit the home lineup." }, { status: 403 });
     }
     if (fixture.home_lineup_submitted_at || fixture.away_lineup_submitted_at) {
@@ -121,7 +133,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (side === "away") {
-    if (allowedTeam.team_id !== fixture.away_team_id) {
+    if (!proxyEntryEnabled && allowedTeam.team_id !== fixture.away_team_id) {
       return NextResponse.json({ error: "Only the away captain or vice-captain can submit the away lineup." }, { status: 403 });
     }
     if (!fixture.home_lineup_submitted_at) {
@@ -231,5 +243,5 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "The lineup was not saved to the fixture record." }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true, fixture: fixtureUpdate.data });
+  return NextResponse.json({ ok: true, fixture: fixtureUpdate.data, proxyEntryEnabled, actingSide });
 }

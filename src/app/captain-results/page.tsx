@@ -40,6 +40,11 @@ type Fixture = {
   home_lineup_submitted_by_user_id?: string | null;
   away_lineup_submitted_at?: string | null;
   away_lineup_submitted_by_user_id?: string | null;
+  proxy_entry_enabled?: boolean | null;
+  proxy_entry_confirmed_at?: string | null;
+  proxy_entry_confirmed_by_user_id?: string | null;
+  proxy_entry_by_team_side?: "home" | "away" | null;
+  proxy_entry_note?: string | null;
 };
 type Player = {
   id: string;
@@ -310,7 +315,7 @@ export default function CaptainResultsPage() {
       client.from("league_team_members").select("season_id,team_id,player_id,is_captain,is_vice_captain"),
       client
         .from("league_fixtures")
-        .select("id,season_id,home_team_id,away_team_id,fixture_date,week_no,status,pre_match_paper_record,pre_match_paper_at,pre_match_paper_by_user_id,home_lineup_submitted_at,home_lineup_submitted_by_user_id,away_lineup_submitted_at,away_lineup_submitted_by_user_id")
+        .select("id,season_id,home_team_id,away_team_id,fixture_date,week_no,status,pre_match_paper_record,pre_match_paper_at,pre_match_paper_by_user_id,home_lineup_submitted_at,home_lineup_submitted_by_user_id,away_lineup_submitted_at,away_lineup_submitted_by_user_id,proxy_entry_enabled,proxy_entry_confirmed_at,proxy_entry_confirmed_by_user_id,proxy_entry_by_team_side,proxy_entry_note")
         .order("fixture_date", { ascending: true }),
       client
         .from("league_fixture_frames")
@@ -321,7 +326,7 @@ export default function CaptainResultsPage() {
     ]);
     let fixtureRows = initialFixtureRes.data ?? [];
     let fixtureError = initialFixtureRes.error?.message ?? null;
-    if (initialFixtureRes.error && initialFixtureRes.error.message.toLowerCase().includes("pre_match_")) {
+    if (initialFixtureRes.error && (initialFixtureRes.error.message.toLowerCase().includes("pre_match_") || initialFixtureRes.error.message.toLowerCase().includes("proxy_entry"))) {
       const fallbackFixtureRes = await client
         .from("league_fixtures")
         .select("id,season_id,home_team_id,away_team_id,fixture_date,week_no,status")
@@ -335,6 +340,11 @@ export default function CaptainResultsPage() {
           home_lineup_submitted_by_user_id: null,
           away_lineup_submitted_at: null,
           away_lineup_submitted_by_user_id: null,
+          proxy_entry_enabled: false,
+          proxy_entry_confirmed_at: null,
+          proxy_entry_confirmed_by_user_id: null,
+          proxy_entry_by_team_side: null,
+          proxy_entry_note: null,
         }));
       fixtureError = fallbackFixtureRes.error?.message ?? null;
     }
@@ -408,13 +418,22 @@ export default function CaptainResultsPage() {
     return null;
   }, [captainTeamIds, selectedFixture]);
   const preMatchPaperRecord = Boolean(selectedFixture?.pre_match_paper_record);
+  const proxyEntryEnabled = Boolean(selectedFixture?.proxy_entry_enabled);
   const homeLineupSubmitted = Boolean(selectedFixture?.home_lineup_submitted_at);
   const awayLineupSubmitted = Boolean(selectedFixture?.away_lineup_submitted_at);
   const lineupsLocked = Boolean(preMatchPaperRecord || (homeLineupSubmitted && awayLineupSubmitted));
   const lineupWindowOpen = Boolean(selectedFixture && isLineupSubmissionOpen(selectedFixture.fixture_date));
+  const canEnableProxyEntry = Boolean(
+    selectedFixture &&
+      selectedFixtureSide &&
+      !proxyEntryEnabled &&
+      !preMatchPaperRecord &&
+      !pendingByFixture.has(selectedFixture.id) &&
+      isFixtureOpenForSubmission(selectedFixture.fixture_date)
+  );
   const canSubmitHomeLineup = Boolean(
     selectedFixture &&
-      selectedFixtureSide === "home" &&
+      (selectedFixtureSide === "home" || proxyEntryEnabled) &&
       lineupWindowOpen &&
       !preMatchPaperRecord &&
       !homeLineupSubmitted &&
@@ -422,7 +441,7 @@ export default function CaptainResultsPage() {
   );
   const canSubmitAwayLineup = Boolean(
     selectedFixture &&
-      selectedFixtureSide === "away" &&
+      (selectedFixtureSide === "away" || proxyEntryEnabled) &&
       lineupWindowOpen &&
       !preMatchPaperRecord &&
       homeLineupSubmitted &&
@@ -430,18 +449,20 @@ export default function CaptainResultsPage() {
   );
   const canEditSubmittedHomeLineup = Boolean(
     selectedFixture &&
-      selectedFixtureSide === "home" &&
+      (selectedFixtureSide === "home" || proxyEntryEnabled) &&
       homeLineupSubmitted &&
       !awayLineupSubmitted &&
       isBeforeHomeLineupCutoff(selectedFixture.fixture_date)
   );
   const homeSideCanManageScorecard = Boolean(
     selectedFixture &&
-      selectedFixtureSide === "home" &&
+      (selectedFixtureSide === "home" || proxyEntryEnabled) &&
       !pendingByFixture.has(selectedFixture.id)
   );
   const homeLineupStepLabel = preMatchPaperRecord
     ? "Paper record selected"
+    : proxyEntryEnabled && !homeLineupSubmitted
+      ? "Ready for agreed proxy"
     : canEditSubmittedHomeLineup
       ? "Submitted (editable)"
       : homeLineupSubmitted
@@ -451,6 +472,8 @@ export default function CaptainResultsPage() {
         : "Waiting for home captain";
   const awayLineupStepLabel = preMatchPaperRecord
     ? "Paper record selected"
+    : proxyEntryEnabled && homeLineupSubmitted && !awayLineupSubmitted
+      ? "Ready for agreed proxy"
     : awayLineupSubmitted
       ? "Confirmed"
       : canSubmitAwayLineup
@@ -460,6 +483,8 @@ export default function CaptainResultsPage() {
           : "Waiting for home lineup";
   const lineupNextAction = preMatchPaperRecord
     ? "Paper lineup selected. You can move to the scorecard whenever you are ready."
+    : proxyEntryEnabled && !awayLineupSubmitted
+      ? "Agreed proxy entry is active. One captain or vice-captain can now complete both teams in the app for tonight's fixture."
     : awayLineupSubmitted
       ? "Both lineups are locked. You can now switch to the scorecard tab."
       : canEditSubmittedHomeLineup
@@ -1203,6 +1228,10 @@ export default function CaptainResultsPage() {
     if (side === "home" && homeLineupSubmitted) return true;
     if (side === "away" && awayLineupSubmitted) return true;
     if (!lineupWindowOpen) return true;
+    if (proxyEntryEnabled) {
+      if (side === "away" && !homeLineupSubmitted) return true;
+      return false;
+    }
     if (side === "home") return selectedFixtureSide !== "home";
     if (!homeLineupSubmitted) return true;
     return selectedFixtureSide !== "away";
@@ -1279,14 +1308,54 @@ export default function CaptainResultsPage() {
       if (!resp.ok) throw new Error(payload?.error ?? "Failed to submit lineup.");
       await loadAll();
       setInfo({
-        title: side === "home" ? "Home lineup submitted" : "Away lineup submitted",
+        title: proxyEntryEnabled
+          ? side === "home"
+            ? "Home lineup entered by agreement"
+            : "Both lineups confirmed by agreement"
+          : side === "home"
+            ? "Home lineup submitted"
+            : "Away lineup submitted",
         description:
-          side === "home"
-            ? "Home lineup saved. The away captain can now complete and confirm the lineup for tonight's fixture."
-            : "Away lineup saved. Lineups are now locked and the fixture is ready for score entry.",
+          proxyEntryEnabled
+            ? side === "home"
+              ? "Home lineup saved under agreed proxy entry. You can now complete the away lineup for tonight's fixture."
+              : "Away lineup saved under agreed proxy entry. Lineups are now locked and the fixture is ready for score entry."
+            : side === "home"
+              ? "Home lineup saved. The away captain can now complete and confirm the lineup for tonight's fixture."
+              : "Away lineup saved. Lineups are now locked and the fixture is ready for score entry.",
       });
     } catch (error) {
       setMessage(normaliseCaptainApiError(error, "Failed to submit lineup."));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const enableProxyEntry = async () => {
+    const client = supabase;
+    if (!client || !selectedFixture || !selectedFixtureSide) return;
+    setSubmitting(true);
+    try {
+      const sessionRes = await client.auth.getSession();
+      const token = sessionRes.data.session?.access_token;
+      if (!token) throw new Error("You must be signed in to enable agreed proxy entry.");
+      const resp = await fetch("/api/league/proxy-entry", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({ fixtureId: selectedFixture.id }),
+      });
+      const payload = await resp.json().catch(() => ({}));
+      if (!resp.ok) throw new Error(payload?.error ?? "Failed to enable agreed proxy entry.");
+      await loadAll();
+      setInfo({
+        title: "Agreed proxy entry enabled",
+        description: "This fixture is now marked for agreed proxy entry. You can complete both team lineups and submit tonight's scorecard on behalf of both sides.",
+      });
+    } catch (error) {
+      setMessage(normaliseCaptainApiError(error, "Failed to enable agreed proxy entry."));
     } finally {
       setSubmitting(false);
     }
@@ -1428,7 +1497,11 @@ export default function CaptainResultsPage() {
       return;
     }
 
-    setInfo({ title: "Result Submitted", description: "Your result has been submitted for Super User approval." });
+    if (proxyEntryEnabled) {
+      setInfo({ title: "Proxy Result Submitted", description: "Your agreed proxy entry has been submitted for Super User approval with both teams entered from the app." });
+    } else {
+      setInfo({ title: "Result Submitted", description: "Your result has been submitted for Super User approval." });
+    }
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(`rf_league_captain_draft_${selectedFixture.id}`);
     }
@@ -1540,7 +1613,11 @@ export default function CaptainResultsPage() {
                       </span>
                     </button>
                   </div>
-                  {selectedFixtureSide === "home" ? (
+                  {proxyEntryEnabled ? (
+                    <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900">
+                      <strong>Agreed proxy entry:</strong> one captain or vice-captain is handling both teams in the app for tonight's fixture by agreement.
+                    </div>
+                  ) : selectedFixtureSide === "home" ? (
                     <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
                       <strong>Home team action:</strong> your team is the default result submitter for this fixture. Please complete the card in the app and submit it by midnight on the following day.
                     </div>
@@ -1615,7 +1692,7 @@ export default function CaptainResultsPage() {
                           Lineup order: <strong>home team first, away team second</strong>
                         </p>
                         <p>
-                          Result submission responsibility: <strong>Home team by default</strong>
+                          Result submission responsibility: <strong>{proxyEntryEnabled ? "Agreed proxy entry in use" : "Home team by default"}</strong>
                         </p>
                         <p>
                           Result deadline: <strong>midnight on the following day</strong>
@@ -1637,6 +1714,9 @@ export default function CaptainResultsPage() {
                         {preMatchPaperRecord ? (
                           <p className="text-sky-800"><strong>Paper record selected.</strong> Pre-match lineup is being handled off-app for this fixture.</p>
                         ) : null}
+                        {proxyEntryEnabled ? (
+                          <p className="text-violet-800"><strong>Proxy entry active.</strong> One captain or vice-captain can enter both teams and submit the final result for this fixture by agreement.</p>
+                        ) : null}
                       </div>
                       <div className="flex flex-wrap gap-2">
                         {selectedFixtureSide === "home" && lineupWindowOpen && !awayLineupSubmitted ? (
@@ -1649,6 +1729,24 @@ export default function CaptainResultsPage() {
                             Save lineup draft
                           </button>
                         ) : null}
+                        {canEnableProxyEntry ? (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              if (
+                                window.confirm(
+                                  "Enable agreed proxy entry for tonight? Use this only when both teams agree that one captain or vice-captain will enter both lineups and the final result in the app."
+                                )
+                              ) {
+                                void enableProxyEntry();
+                              }
+                            }}
+                            disabled={submitting}
+                            className="rounded-xl border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-900"
+                          >
+                            Use agreed proxy entry
+                          </button>
+                        ) : null}
                         {canSubmitHomeLineup ? (
                           <>
                             <button
@@ -1657,7 +1755,7 @@ export default function CaptainResultsPage() {
                               disabled={submitting}
                               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
                             >
-                              {submitting ? "Saving..." : "Submit team to opponent"}
+                              {submitting ? "Saving..." : proxyEntryEnabled ? "Submit home lineup by agreement" : "Submit team to opponent"}
                             </button>
                             <button
                               type="button"
@@ -1696,7 +1794,7 @@ export default function CaptainResultsPage() {
                             disabled={submitting}
                             className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
                           >
-                            {submitting ? "Saving..." : "Submit and confirm lineup"}
+                            {submitting ? "Saving..." : proxyEntryEnabled ? "Confirm both lineups by agreement" : "Submit and confirm lineup"}
                           </button>
                         ) : null}
                       </div>
@@ -1708,11 +1806,13 @@ export default function CaptainResultsPage() {
                         <div>
                           <h3 className="text-base font-semibold text-slate-900">Lineup entry</h3>
                           <p className="mt-1 text-sm text-slate-600">
-                            Enter the players for frames 1-{slots.length}. Home team sends its lineup first. The away team then confirms against the home lineup already shown here.
+                            {proxyEntryEnabled
+                              ? `Enter the players for frames 1-${slots.length}. Agreed proxy entry is active, so one captain or vice-captain can complete both teams for tonight's fixture.`
+                              : `Enter the players for frames 1-${slots.length}. Home team sends its lineup first. The away team then confirms against the home lineup already shown here.`}
                           </p>
                         </div>
                         <span className="rounded-full border border-sky-200 bg-sky-50 px-3 py-1 text-xs font-semibold text-sky-800">
-                          {selectedFixtureSide === "home" ? "Home team view" : selectedFixtureSide === "away" ? "Away team view" : "Fixture view"}
+                          {proxyEntryEnabled ? "Agreed proxy view" : selectedFixtureSide === "home" ? "Home team view" : selectedFixtureSide === "away" ? "Away team view" : "Fixture view"}
                         </span>
                       </div>
                       <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
@@ -1728,7 +1828,7 @@ export default function CaptainResultsPage() {
                               {homeLineupStepLabel}
                             </span>
                           </div>
-                          <p className="mt-2 text-sm text-slate-700">Slots 1-6 should be submitted to the opponent by 19:15.</p>
+                          <p className="mt-2 text-sm text-slate-700">{proxyEntryEnabled ? "Enter the home lineup first so the fixture order stays consistent before you confirm both teams." : "Slots 1-6 should be submitted to the opponent by 19:15."}</p>
                         </div>
                         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
                           <div className="flex items-center justify-between gap-3">
@@ -1742,13 +1842,17 @@ export default function CaptainResultsPage() {
                               {awayLineupStepLabel}
                             </span>
                           </div>
-                          <p className="mt-2 text-sm text-slate-700">Once the home team has sent its players, the away team should confirm by 19:30.</p>
+                          <p className="mt-2 text-sm text-slate-700">{proxyEntryEnabled ? "Once the home lineup is in, confirm the away lineup by agreement so the scorecard can unlock." : "Once the home team has sent its players, the away team should confirm by 19:30."}</p>
                         </div>
                       </div>
                       <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
                         <strong>What happens next:</strong> {lineupNextAction}
                       </div>
-                      {selectedFixtureSide === "home" ? (
+                      {proxyEntryEnabled ? (
+                        <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-900">
+                          Use proxy entry only where both teams agree the logged-in captain or vice-captain will handle both lineups and the final result in the app tonight.
+                        </div>
+                      ) : selectedFixtureSide === "home" ? (
                         <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                           Home captains can save a draft locally first. Only use <strong>Submit team to opponent</strong> once you know the lineup is final. After 19:15, or once the away team confirms, the home players can no longer be changed.
                         </div>

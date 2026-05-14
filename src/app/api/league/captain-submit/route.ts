@@ -60,11 +60,18 @@ export async function POST(req: NextRequest) {
   const linkedPlayerId = (appUserRes.data?.linked_player_id as string | null) ?? null;
   if (!linkedPlayerId) return NextResponse.json({ error: "Your account is not linked to a player profile." }, { status: 400 });
 
-  const fixtureRes = await adminClient
+  let fixtureRes = await adminClient
     .from("league_fixtures")
-    .select("id,season_id,location_id,fixture_date,home_team_id,away_team_id,status")
+    .select("id,season_id,location_id,fixture_date,home_team_id,away_team_id,status,proxy_entry_enabled,proxy_entry_by_team_side,proxy_entry_note")
     .eq("id", fixtureId)
     .maybeSingle();
+  if (fixtureRes.error && fixtureRes.error.message.toLowerCase().includes("proxy_entry")) {
+    fixtureRes = await adminClient
+      .from("league_fixtures")
+      .select("id,season_id,location_id,fixture_date,home_team_id,away_team_id,status")
+      .eq("id", fixtureId)
+      .maybeSingle();
+  }
   if (fixtureRes.error || !fixtureRes.data) return NextResponse.json({ error: "Fixture not found." }, { status: 404 });
   const fixture = fixtureRes.data as {
     id: string;
@@ -74,6 +81,9 @@ export async function POST(req: NextRequest) {
     home_team_id: string;
     away_team_id: string;
     status: string;
+    proxy_entry_enabled?: boolean | null;
+    proxy_entry_by_team_side?: "home" | "away" | null;
+    proxy_entry_note?: string | null;
   };
   if (fixture.status === "complete") {
     return NextResponse.json({ error: "This fixture is already complete." }, { status: 400 });
@@ -106,9 +116,10 @@ export async function POST(req: NextRequest) {
   if (memberRes.error) return NextResponse.json({ error: memberRes.error.message }, { status: 400 });
   const allowedTeam = (memberRes.data ?? []).find((r: { team_id: string; is_captain: boolean; is_vice_captain: boolean }) => r.is_captain || r.is_vice_captain);
   if (!allowedTeam) return NextResponse.json({ error: "Only captain or vice-captain for this fixture can submit." }, { status: 403 });
-  if (allowedTeam.team_id !== fixture.home_team_id) {
+  if (!fixture.proxy_entry_enabled && allowedTeam.team_id !== fixture.home_team_id) {
     return NextResponse.json({ error: "Only the home captain or vice-captain can submit the scorecard." }, { status: 403 });
   }
+  const submitterSide = allowedTeam.team_id === fixture.home_team_id ? "home" : allowedTeam.team_id === fixture.away_team_id ? "away" : null;
 
   const existingRes = await adminClient
     .from("league_result_submissions")
@@ -158,7 +169,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Select at least one frame result before submitting." }, { status: 400 });
   }
 
-  const ins = await adminClient.from("league_result_submissions").insert({
+  const submissionPayload: Record<string, unknown> = {
     fixture_id: fixture.id,
     season_id: fixture.season_id,
     location_id: fixture.location_id,
@@ -167,7 +178,14 @@ export async function POST(req: NextRequest) {
     frame_results: cleanFrameResults,
     scorecard_photo_url: scorecardPhotoUrl && scorecardPhotoUrl.trim() ? scorecardPhotoUrl.trim() : null,
     status: "pending",
-  });
+  };
+  if (typeof fixture.proxy_entry_enabled !== "undefined") {
+    submissionPayload.proxy_entry_used = Boolean(fixture.proxy_entry_enabled);
+    submissionPayload.proxy_entry_by_team_side = fixture.proxy_entry_enabled ? submitterSide : null;
+    submissionPayload.proxy_entry_note = fixture.proxy_entry_enabled ? (fixture.proxy_entry_note ?? "Submitted by agreed proxy entry.") : null;
+  }
+
+  const ins = await adminClient.from("league_result_submissions").insert(submissionPayload);
   if (ins.error) return NextResponse.json({ error: ins.error.message }, { status: 400 });
 
   const fixtureUpdate = await adminClient.from("league_fixtures").update({ status: "in_progress" }).eq("id", fixture.id);
