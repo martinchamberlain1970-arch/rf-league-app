@@ -1,14 +1,28 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import InfoModal from "@/components/InfoModal";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import { supabase } from "@/lib/supabase";
 
 type Season = { id: string; name: string; is_published: boolean | null };
-type Fixture = { id: string; season_id: string; status: "pending" | "in_progress" | "complete" };
+type Team = { id: string; name: string };
+type Fixture = {
+  id: string;
+  season_id: string;
+  status: "pending" | "in_progress" | "complete";
+  fixture_date: string | null;
+  home_team_id: string;
+  away_team_id: string;
+};
 type BreakRow = { fixture_id: string; player_id: string | null; entered_player_name: string | null; break_value: number | null };
 type Player = { id: string; display_name: string; full_name: string | null };
+type BreakHistoryRow = {
+  breakValue: number;
+  fixtureLabel: string;
+  fixtureDate: string | null;
+};
 
 type TableRow = {
   key: string;
@@ -17,14 +31,17 @@ type TableRow = {
   centuryCount: number;
   breaks30Plus: number;
   seasons: Set<string>;
+  breakHistory: BreakHistoryRow[];
 };
 
 export default function LeagueHighBreaksPage() {
   const [seasons, setSeasons] = useState<Season[]>([]);
+  const [teams, setTeams] = useState<Team[]>([]);
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [breaks, setBreaks] = useState<BreakRow[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [selectedSeasonId, setSelectedSeasonId] = useState<string>("all");
+  const [selectedPlayer, setSelectedPlayer] = useState<TableRow | null>(null);
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -37,20 +54,22 @@ export default function LeagueHighBreaksPage() {
     }
     let active = true;
     const load = async () => {
-      const [seasonRes, fixtureRes, breakRes, playerRes] = await Promise.all([
+      const [seasonRes, teamRes, fixtureRes, breakRes, playerRes] = await Promise.all([
         client.from("league_seasons").select("id,name,is_published").eq("is_published", true).order("created_at", { ascending: false }),
-        client.from("league_fixtures").select("id,season_id,status").eq("status", "complete"),
+        client.from("league_teams").select("id,name"),
+        client.from("league_fixtures").select("id,season_id,status,fixture_date,home_team_id,away_team_id").eq("status", "complete"),
         client.from("league_fixture_breaks").select("fixture_id,player_id,entered_player_name,break_value").gte("break_value", 30).order("break_value", { ascending: false }),
         client.from("players").select("id,display_name,full_name").eq("is_archived", false),
       ]);
       if (!active) return;
-      const error = seasonRes.error?.message || fixtureRes.error?.message || breakRes.error?.message || playerRes.error?.message;
+      const error = seasonRes.error?.message || teamRes.error?.message || fixtureRes.error?.message || breakRes.error?.message || playerRes.error?.message;
       if (error) {
         setMessage(error);
         setLoading(false);
         return;
       }
       setSeasons((seasonRes.data ?? []) as Season[]);
+      setTeams((teamRes.data ?? []) as Team[]);
       setFixtures((fixtureRes.data ?? []) as Fixture[]);
       setBreaks((breakRes.data ?? []) as BreakRow[]);
       setPlayers((playerRes.data ?? []) as Player[]);
@@ -66,6 +85,7 @@ export default function LeagueHighBreaksPage() {
     () => new Map(players.map((player) => [player.id, player.full_name?.trim() || player.display_name])),
     [players]
   );
+  const teamNameById = useMemo(() => new Map(teams.map((team) => [team.id, team.name])), [teams]);
   const fixtureById = useMemo(() => new Map(fixtures.map((fixture) => [fixture.id, fixture])), [fixtures]);
   const seasonNameById = useMemo(() => new Map(seasons.map((season) => [season.id, season.name])), [seasons]);
 
@@ -88,16 +108,47 @@ export default function LeagueHighBreaksPage() {
         centuryCount: 0,
         breaks30Plus: 0,
         seasons: new Set<string>(),
+        breakHistory: [],
       };
       current.playerName = playerName;
       current.highBreak = Math.max(current.highBreak, value);
       current.breaks30Plus += 1;
       if (value >= 100) current.centuryCount += 1;
       current.seasons.add(fixture.season_id);
+      current.breakHistory.push({
+        breakValue: value,
+        fixtureLabel: `${teamNameById.get(fixture.home_team_id) ?? "Home team"} vs ${teamNameById.get(fixture.away_team_id) ?? "Away team"}`,
+        fixtureDate: fixture.fixture_date,
+      });
       table.set(key, current);
     }
-    return Array.from(table.values()).sort((a, b) => b.highBreak - a.highBreak || b.centuryCount - a.centuryCount || b.breaks30Plus - a.breaks30Plus || a.playerName.localeCompare(b.playerName));
-  }, [breaks, fixtureById, playerNameById, selectedSeasonId]);
+    return Array.from(table.values())
+      .map((row) => ({
+        ...row,
+        breakHistory: [...row.breakHistory].sort((a, b) => {
+          const byValue = b.breakValue - a.breakValue;
+          if (byValue !== 0) return byValue;
+          return (b.fixtureDate ?? "").localeCompare(a.fixtureDate ?? "");
+        }),
+      }))
+      .sort((a, b) => b.highBreak - a.highBreak || b.centuryCount - a.centuryCount || b.breaks30Plus - a.breaks30Plus || a.playerName.localeCompare(b.playerName));
+  }, [breaks, fixtureById, playerNameById, selectedSeasonId, teamNameById]);
+
+  const selectedPlayerDescription = useMemo(() => {
+    if (!selectedPlayer) return "";
+    return selectedPlayer.breakHistory
+      .map((entry) => {
+        const dateLabel = entry.fixtureDate
+          ? new Date(`${entry.fixtureDate}T12:00:00`).toLocaleDateString("en-GB", {
+              day: "2-digit",
+              month: "short",
+              year: "numeric",
+            })
+          : "Date not recorded";
+        return `${entry.breakValue} - ${entry.fixtureLabel}\n${dateLabel}`;
+      })
+      .join("\n\n");
+  }, [selectedPlayer]);
 
   const topBreak = rows[0]?.highBreak ?? 0;
   const totalCenturies = rows.reduce((sum, row) => sum + row.centuryCount, 0);
@@ -161,7 +212,15 @@ export default function LeagueHighBreaksPage() {
                       {rows.map((row, index) => (
                         <tr key={row.key} className="border-b border-slate-100 last:border-b-0">
                           <td className="px-3 py-2 font-medium text-slate-900">#{index + 1}</td>
-                          <td className="px-3 py-2 text-slate-900">{row.playerName}</td>
+                          <td className="px-3 py-2 text-slate-900">
+                            <button
+                              type="button"
+                              className="text-left font-medium text-teal-700 underline decoration-teal-300 underline-offset-2 hover:text-teal-800"
+                              onClick={() => setSelectedPlayer(row)}
+                            >
+                              {row.playerName}
+                            </button>
+                          </td>
                           <td className="px-3 py-2 text-slate-900">{row.highBreak}</td>
                           <td className="px-3 py-2 text-slate-700">{row.centuryCount}</td>
                           <td className="px-3 py-2 text-slate-700">{row.breaks30Plus}</td>
@@ -176,6 +235,13 @@ export default function LeagueHighBreaksPage() {
           </section>
         </RequireAuth>
       </div>
+      <InfoModal
+        open={Boolean(selectedPlayer)}
+        title={selectedPlayer ? `${selectedPlayer.playerName} · 30+ breaks` : "30+ breaks"}
+        description={selectedPlayerDescription}
+        closeLabel="Close"
+        onClose={() => setSelectedPlayer(null)}
+      />
     </main>
   );
 }
