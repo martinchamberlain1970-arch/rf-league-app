@@ -207,6 +207,12 @@ export async function GET(req: NextRequest) {
     const fixtureFrames = frames.filter((frame) => frame.fixture_id === fixture.id).sort((a, b) => a.slot_no - b.slot_no);
     const homeFramesWon = fixtureFrames.filter((frame) => frame.winner_side === "home").length;
     const awayFramesWon = fixtureFrames.filter((frame) => frame.winner_side === "away").length;
+    const effectiveStatus =
+      fixture.status === "pending" &&
+      fixture.home_lineup_submitted_at &&
+      fixture.away_lineup_submitted_at
+        ? "in_progress"
+        : fixture.status;
 
     const frameRows = fixtureFrames.map((frame) => {
       const homePrimary = frame.home_player1_id ? playerById.get(frame.home_player1_id) : null;
@@ -320,7 +326,7 @@ export async function GET(req: NextRequest) {
       fixtureId: fixture.id,
       fixtureDate: fixture.fixture_date,
       weekNo: fixture.week_no,
-      status: fixture.status,
+      status: effectiveStatus,
       homeTeam: teamById.get(fixture.home_team_id)?.name ?? "Home team",
       awayTeam: teamById.get(fixture.away_team_id)?.name ?? "Away team",
       overallScore: `${homeFramesWon} - ${awayFramesWon}`,
