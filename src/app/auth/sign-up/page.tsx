@@ -336,6 +336,27 @@ export default function SignUpPage() {
       );
     }
 
+    const preflight = await fetch("/api/auth/preflight-signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email }),
+    }).then((res) => res.json()).catch(() => null) as { status?: string; error?: string } | null;
+    if (preflight?.error) {
+      setBusy(false);
+      setMessage(preflight.error);
+      return;
+    }
+    if (preflight?.status === "linked_account_exists") {
+      setBusy(false);
+      setMessage("An account already exists for this email address. Please sign in instead of registering again.");
+      return;
+    }
+    if (preflight?.status === "pending_request_exists" || preflight?.status === "unlinked_account_exists") {
+      setBusy(false);
+      setMessage("A registration for this email address has already been received and is awaiting approval. Please sign in rather than registering again.");
+      return;
+    }
+
     const pending = typeof window !== "undefined" ? window.localStorage.getItem("pending_claim") : null;
     if (!pending) {
       setBusy(false);

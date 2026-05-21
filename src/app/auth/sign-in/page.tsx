@@ -115,6 +115,14 @@ export default function SignInPage() {
           return;
         }
         const submitClaim = async (playerId: string, fullName: string, requestedDateOfBirth?: string | null) => {
+          const existingClaim = await client
+            .from("player_claim_requests")
+            .select("id,status")
+            .eq("player_id", playerId)
+            .eq("requester_user_id", userId)
+            .in("status", ["pending", "approved"])
+            .maybeSingle();
+          if (existingClaim.data?.id) return false;
           await client.from("player_claim_requests").insert({
             player_id: playerId,
             requester_user_id: userId,
@@ -122,6 +130,20 @@ export default function SignInPage() {
             requested_date_of_birth: requestedDateOfBirth ?? null,
             status: "pending",
           });
+          return true;
+        };
+        const notifySignupRequest = async (subject: string, text: string) => {
+          const sessionRes = await client.auth.getSession();
+          const accessToken = sessionRes.data.session?.access_token;
+          if (!accessToken) return;
+          await fetch("/api/auth/notify-signup-request", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${accessToken}`,
+            },
+            body: JSON.stringify({ subject, text }),
+          }).catch(() => undefined);
         };
         const requestedLocationId = parsed.locationId?.trim() ?? "";
         const { data: requestedLocation } = requestedLocationId
@@ -137,20 +159,39 @@ export default function SignInPage() {
           return;
         }
         if (parsed.type === "existing" && parsed.playerId && parsed.fullName) {
-          await submitClaim(parsed.playerId, parsed.fullName, parsed.dateOfBirth ?? null);
-          setMessage("Your profile-link request has been submitted for administrator approval.");
-          await client.from("player_update_requests").insert({
-            player_id: parsed.playerId,
-            requester_user_id: userId,
-            requested_full_name: null,
-            requested_location_id: validLocationId,
-            requested_age_band: parsed.ageBand ?? null,
-            requested_guardian_consent: parsed.guardianConsent ?? null,
-            requested_guardian_name: parsed.guardianName ?? null,
-            requested_guardian_email: parsed.guardianEmail ?? null,
-            requested_guardian_user_id: parsed.guardianUserId ?? null,
-            status: "pending",
-          });
+          const claimCreated = await submitClaim(parsed.playerId, parsed.fullName, parsed.dateOfBirth ?? null);
+          setMessage(
+            claimCreated
+              ? "Your profile-link request has been submitted for administrator approval."
+              : "A profile-link request for this account is already awaiting approval."
+          );
+          const existingUpdate = await client
+            .from("player_update_requests")
+            .select("id,status")
+            .eq("player_id", parsed.playerId)
+            .eq("requester_user_id", userId)
+            .eq("status", "pending")
+            .maybeSingle();
+          if (!existingUpdate.data?.id) {
+            await client.from("player_update_requests").insert({
+              player_id: parsed.playerId,
+              requester_user_id: userId,
+              requested_full_name: null,
+              requested_location_id: validLocationId,
+              requested_age_band: parsed.ageBand ?? null,
+              requested_guardian_consent: parsed.guardianConsent ?? null,
+              requested_guardian_name: parsed.guardianName ?? null,
+              requested_guardian_email: parsed.guardianEmail ?? null,
+              requested_guardian_user_id: parsed.guardianUserId ?? null,
+              status: "pending",
+            });
+          }
+          if (claimCreated) {
+            await notifySignupRequest(
+              "New league signup approval request",
+              `A new profile-link request is waiting for review.\n\nName: ${parsed.fullName}\nEmail: ${data.user?.email ?? "Unknown"}\nClub ID: ${validLocationId}\nRoute: Existing player profile`
+            );
+          }
         }
         if (parsed.type === "create" && parsed.firstName) {
           const effectiveAgeBand = parsed.ageBand ?? "18_plus";
@@ -191,8 +232,18 @@ export default function SignInPage() {
                 });
               }
             }
-            await submitClaim(created.id, fullName, parsed.dateOfBirth ?? null);
-            setMessage("Your profile-link request has been submitted for administrator approval.");
+            const claimCreated = await submitClaim(created.id, fullName, parsed.dateOfBirth ?? null);
+            setMessage(
+              claimCreated
+                ? "Your profile-link request has been submitted for administrator approval."
+                : "A profile-link request for this account is already awaiting approval."
+            );
+            if (claimCreated) {
+              await notifySignupRequest(
+                "New league player registration awaiting approval",
+                `A new player registration is waiting for review.\n\nName: ${fullName}\nEmail: ${data.user?.email ?? "Unknown"}\nClub ID: ${validLocationId}\nRoute: New player profile request`
+              );
+            }
           }
         }
       } catch {

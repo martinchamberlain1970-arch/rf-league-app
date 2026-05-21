@@ -36,6 +36,23 @@ type LeaguePublicationRow = {
 type LeagueSeasonRow = { id: string; name: string };
 type LeagueSubmissionRow = { id: string; fixture_id: string; status: string; created_at: string };
 type FixtureChangeRequestRow = { id: string; fixture_id: string; status: string; created_at: string; request_type: "play_early" | "play_late"; proposed_fixture_date: string };
+type SignupClaimNotifyRow = {
+  id: string;
+  player_id: string;
+  requester_user_id: string;
+  requested_full_name: string | null;
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+};
+type LocationRequestNotifyRow = {
+  id: string;
+  requester_user_id: string | null;
+  requester_email: string;
+  requester_full_name: string;
+  requested_location_name: string;
+  status: "pending" | "approved" | "rejected";
+  created_at: string;
+};
 type LeagueFixtureRow = { id: string; home_team_id: string; away_team_id: string; fixture_date: string | null };
 type FixtureLineupNotifyRow = {
   id: string;
@@ -548,7 +565,7 @@ export default function NotificationsPage() {
           });
         });
       } else if (admin.isAdmin) {
-        const [leaguePendingRes, fixtureChangePendingRes, updateRes] = await Promise.all([
+        const [leaguePendingRes, fixtureChangePendingRes, updateRes, signupClaimRes, locationReqRes] = await Promise.all([
           softQuery<LeagueSubmissionRow>(
             client
               .from("league_result_submissions")
@@ -564,9 +581,23 @@ export default function NotificationsPage() {
               .order("created_at", { ascending: false })
           ),
           loadPlayerUpdateNotificationRows(client, { pendingOnly: true, useAdminRoute: true }),
+          softQuery<SignupClaimNotifyRow>(
+            client
+              .from("player_claim_requests")
+              .select("id,player_id,requester_user_id,requested_full_name,status,created_at")
+              .eq("status", "pending")
+              .order("created_at", { ascending: false })
+          ),
+          softQuery<LocationRequestNotifyRow>(
+            client
+              .from("location_requests")
+              .select("id,requester_user_id,requester_email,requester_full_name,requested_location_name,status,created_at")
+              .eq("status", "pending")
+              .order("created_at", { ascending: false })
+          ),
         ]);
-        if (leaguePendingRes.error || fixtureChangePendingRes.error || updateRes.error) {
-          setMessage(`Failed to load notifications: ${leaguePendingRes.error?.message ?? fixtureChangePendingRes.error?.message ?? updateRes.error?.message}`);
+        if (leaguePendingRes.error || fixtureChangePendingRes.error || updateRes.error || signupClaimRes.error || locationReqRes.error) {
+          setMessage(`Failed to load notifications: ${leaguePendingRes.error?.message ?? fixtureChangePendingRes.error?.message ?? updateRes.error?.message ?? signupClaimRes.error?.message ?? locationReqRes.error?.message}`);
           return;
         }
         const pendingRows = (leaguePendingRes.data ?? []) as LeagueSubmissionRow[];
@@ -601,6 +632,39 @@ export default function NotificationsPage() {
             detail: r.requested_avatar_url ? `Player ${r.player_id} · photo submitted for approval` : `Player ${r.player_id}`,
             created_at: r.created_at,
             href: "/players?tab=claims",
+            status: r.status,
+          });
+        });
+        const signupClaims = (signupClaimRes.data ?? []) as SignupClaimNotifyRow[];
+        const claimPlayerIds = Array.from(new Set(signupClaims.map((r) => r.player_id).filter(Boolean)));
+        const claimRequesterIds = Array.from(new Set(signupClaims.map((r) => r.requester_user_id).filter(Boolean)));
+        const [claimPlayersRes, claimUsersRes] = await Promise.all([
+          claimPlayerIds.length
+            ? client.from("players").select("id,full_name,display_name").in("id", claimPlayerIds)
+            : Promise.resolve({ data: [] as PlayerNameRow[], error: null }),
+          claimRequesterIds.length
+            ? client.from("app_users").select("id,email").in("id", claimRequesterIds)
+            : Promise.resolve({ data: [] as AppUserEmailRow[], error: null }),
+        ]);
+        const claimPlayerById = new Map(((claimPlayersRes.data ?? []) as PlayerNameRow[]).map((p) => [p.id, p.full_name?.trim() || p.display_name || "Unknown player"]));
+        const claimEmailByUserId = new Map(((claimUsersRes.data ?? []) as AppUserEmailRow[]).map((u) => [u.id, u.email || "Unknown user"]));
+        signupClaims.forEach((r) => {
+          out.push({
+            key: `signup_claim:${r.id}`,
+            title: "Signup approval pending",
+            detail: `${r.requested_full_name ?? claimPlayerById.get(r.player_id) ?? "Unknown player"} · ${claimEmailByUserId.get(r.requester_user_id) ?? "Unknown user"}`,
+            created_at: r.created_at,
+            href: "/signup-requests",
+            status: r.status,
+          });
+        });
+        ((locationReqRes.data ?? []) as LocationRequestNotifyRow[]).forEach((r) => {
+          out.push({
+            key: `location_request:${r.id}`,
+            title: "New club request pending approval",
+            detail: `${r.requester_full_name} · ${r.requested_location_name}`,
+            created_at: r.created_at,
+            href: "/signup-requests",
             status: r.status,
           });
         });
