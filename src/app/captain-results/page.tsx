@@ -704,7 +704,14 @@ export default function CaptainResultsPage() {
     return false;
   };
 
-  const saveProgress = async (mode: "manual" | "auto" = "manual") => {
+  const saveProgress = async (
+    mode: "manual" | "auto" = "manual",
+    options?: {
+      successTitle?: string;
+      successDescription?: string;
+      suppressSubmitPrompt?: boolean;
+    }
+  ) => {
     if (!selectedFixture || !draftStorageKey || typeof window === "undefined") return;
     const draft: CaptainResultDraft = {
       slots,
@@ -793,16 +800,23 @@ export default function CaptainResultsPage() {
       setRemoteScorecardChanged(false);
       setLastAutoSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
       if (mode === "manual") {
-        if (allFramesComplete && !hasUnsavedBreakDraft && !pendingByFixture.has(selectedFixture.id)) {
+        if (
+          !options?.suppressSubmitPrompt &&
+          allFramesComplete &&
+          !hasUnsavedBreakDraft &&
+          !pendingByFixture.has(selectedFixture.id)
+        ) {
           setConfirmSubmitPromptOpen(true);
         } else {
           setInfo({
-            title: "Progress saved",
-            description: hasUnsavedBreakDraft
-              ? "Scores have been saved and your partial break entry has been kept on this device so you can finish it."
-              : allFramesComplete
-                ? "All frames are now complete. Record any 30+ breaks if needed, then press Complete and submit scorecard."
-                : "Your draft has been saved on this device and the live match board has been updated.",
+            title: options?.successTitle ?? "Progress saved",
+            description:
+              options?.successDescription ??
+              (hasUnsavedBreakDraft
+                ? "Scores have been saved and your partial break entry has been kept on this device so you can finish it."
+                : allFramesComplete
+                  ? "All frames are now complete. Record any 30+ breaks if needed, then press Complete and submit scorecard."
+                  : "Your draft has been saved on this device and the live match board has been updated."),
           });
         }
       }
@@ -903,6 +917,15 @@ export default function CaptainResultsPage() {
     setInfo({
       title: "Lineup draft saved",
       description: "Your lineup draft has been saved on this device. Only submit it once the team is final.",
+    });
+  };
+
+  const saveBreaksOnly = () => {
+    void saveProgress("manual", {
+      suppressSubmitPrompt: true,
+      successTitle: "Breaks saved",
+      successDescription:
+        "Any complete 30+ break entries have been saved with the live scorecard. If you leave a break row half-finished, it stays on this device until you complete it.",
     });
   };
 
@@ -2366,6 +2389,9 @@ export default function CaptainResultsPage() {
 
                       <section className={`rounded-2xl border border-violet-200 bg-violet-50/70 p-4 ${!homeSideCanManageScorecard ? "opacity-80" : ""}`}>
                         <h3 className="text-base font-semibold text-slate-900">Breaks 30+</h3>
+                        <p className="mt-1 text-xs text-slate-600">
+                          Complete the player and break value together, then use <strong>Save breaks 30+</strong> so they are written straight through to the fixture.
+                        </p>
                         {!breaksFeatureAvailable ? (
                           <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                             Break tracking table is missing. Run the SQL migration first.
@@ -2415,6 +2441,14 @@ export default function CaptainResultsPage() {
                         <div className="mt-3 flex gap-2">
                           <button type="button" onClick={addBreakRow} disabled={!homeSideCanManageScorecard} className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 disabled:opacity-60">
                             More
+                          </button>
+                          <button
+                            type="button"
+                            onClick={saveBreaksOnly}
+                            disabled={!homeSideCanManageScorecard}
+                            className="rounded-xl border border-violet-300 bg-white px-3 py-1.5 text-sm font-medium text-violet-900 disabled:opacity-60"
+                          >
+                            Save breaks 30+
                           </button>
                         </div>
                       </section>

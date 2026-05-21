@@ -2932,7 +2932,7 @@ export default function LeaguePage() {
     const client = supabase;
     if (!client || !fixtureId) return;
     const activeFixture = seasonFixtures.find((f) => f.id === fixtureId) ?? null;
-    if (activeFixture?.status === "complete") {
+    if (activeFixture?.status === "complete" && !canManage) {
       setMessage("This fixture is locked because it is complete.");
       return;
     }
@@ -2970,7 +2970,12 @@ export default function LeaguePage() {
       }
     }
     await loadAll();
-    setInfoModal({ title: "Breaks Saved", description: "Breaks 30+ have been recorded for this fixture." });
+    setInfoModal({
+      title: "Breaks Saved",
+      description: activeFixture?.status === "complete" && canManage
+        ? "Breaks 30+ have been updated on this completed fixture."
+        : "Breaks 30+ have been recorded for this fixture.",
+    });
   };
 
   const recalculateSnookerHandicapsFromElo = async () => {
@@ -7450,9 +7455,12 @@ export default function LeaguePage() {
                     </div>
 
                     <section className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <fieldset disabled={isCurrentFixtureLocked} className={isCurrentFixtureLocked ? "cursor-not-allowed opacity-85" : ""}>
+                      <fieldset disabled={isCurrentFixtureLocked && !canManage} className={isCurrentFixtureLocked && !canManage ? "cursor-not-allowed opacity-85" : ""}>
                       <h3 className="text-base font-semibold text-slate-900">Breaks 30+</h3>
-                      <p className="mt-1 text-xs text-slate-600">Record up to 4 by default. Use More for additional breaks.</p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        Record up to 4 by default. Use More for additional breaks.
+                        {canManage ? " Super User can also correct these after the fixture if needed." : ""}
+                      </p>
                       {!breaksFeatureAvailable ? (
                         <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
                           Break tracking table is missing. Run the SQL migration first.
