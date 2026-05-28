@@ -607,7 +607,6 @@ export default function LeaguePage() {
     { player_id: null, entered_player_name: "", break_value: "" },
   ]);
   const [breaksFeatureAvailable, setBreaksFeatureAvailable] = useState(true);
-  const [statusBackfillSeasonId, setStatusBackfillSeasonId] = useState<string | null>(null);
   const [selectedTableTeamId, setSelectedTableTeamId] = useState<string | null>(null);
   const [selectedTeamResultFixtureId, setSelectedTeamResultFixtureId] = useState<string | null>(null);
   const [selectedPlayerTablePlayerId, setSelectedPlayerTablePlayerId] = useState<string | null>(null);
@@ -3190,44 +3189,6 @@ export default function LeaguePage() {
     return { homePoints, awayPoints, status, completedCount, expectedCount };
   };
 
-  useEffect(() => {
-    const client = supabase;
-    if (!client || !canManage || activeView !== "fixtures" || !seasonId || statusBackfillSeasonId === seasonId) return;
-    let cancelled = false;
-    const run = async () => {
-      const targets = seasonFixtures.filter((f) => {
-        const computed = computeFixtureProgress(f);
-        return (
-          f.status !== computed.status ||
-          f.home_points !== computed.homePoints ||
-          f.away_points !== computed.awayPoints
-        );
-      });
-      for (const f of targets) {
-        if (cancelled) return;
-        const computed = computeFixtureProgress(f);
-        const { error } = await client
-          .from("league_fixtures")
-          .update({
-            status: computed.status,
-            home_points: computed.homePoints,
-            away_points: computed.awayPoints,
-          })
-          .eq("id", f.id);
-        if (error) {
-          setMessage(error.message);
-          return;
-        }
-      }
-      setStatusBackfillSeasonId(seasonId);
-      if (!cancelled && targets.length > 0) await loadAll();
-    };
-    void run();
-    return () => {
-      cancelled = true;
-    };
-  }, [activeView, canManage, seasonId, statusBackfillSeasonId, seasonFixtures, fixtureSlotsByFixtureId]);
-
   const updateSlot = async (slotId: string, patch: Partial<FrameSlot>, opts?: { localOnly?: boolean }) => {
     const existingSlot = slots.find((s) => s.id === slotId) ?? null;
     const targetFixtureId = existingSlot?.fixture_id ?? null;
@@ -4795,8 +4756,10 @@ export default function LeaguePage() {
             })})`
           : "";
         const label = weekNo > 0 ? `Week ${weekNo}${dateLabel}` : "Unscheduled";
+        const scheduledWeekFixtures =
+          weekNo > 0 ? seasonFixtures.filter((fixture) => (fixture.week_no ?? 0) === weekNo) : items;
         const teamsPlaying = new Set<string>();
-        for (const fixture of items) {
+        for (const fixture of scheduledWeekFixtures) {
           teamsPlaying.add(fixture.home_team_id);
           teamsPlaying.add(fixture.away_team_id);
         }
@@ -4809,7 +4772,7 @@ export default function LeaguePage() {
             : [];
         return { label, items, byeTeams };
       });
-  }, [visibleFixtures, seasonTeams]);
+  }, [seasonFixtures, seasonTeams, visibleFixtures]);
   return (
     <main className="min-h-screen bg-slate-100 p-6">
       <div className="mx-auto max-w-6xl space-y-4">
