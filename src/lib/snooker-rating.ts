@@ -107,15 +107,31 @@ export async function applyGroupSnookerRating({
     return { ok: true, skipped: true as const, reason: "missing_players" };
   }
 
-  const existingReceipt = await adminClient
-    .from("rating_result_receipts")
-    .select("id,status")
-    .eq("source_app", sourceApp)
-    .eq("source_result_id", sourceResultId)
-    .maybeSingle();
+  const [existingReceipt, existingEvents] = await Promise.all([
+    adminClient
+      .from("rating_result_receipts")
+      .select("id,status")
+      .eq("source_app", sourceApp)
+      .eq("source_result_id", sourceResultId)
+      .maybeSingle(),
+    adminClient
+      .from("rating_events")
+      .select("id")
+      .eq("source_app", sourceApp)
+      .eq("source_result_id", sourceResultId)
+      .limit(1),
+  ]);
   if (existingReceipt.error) throw new Error(existingReceipt.error.message);
-  if (existingReceipt.data?.id) {
-    return { ok: true, skipped: true as const, reason: existingReceipt.data.status ?? "already_processed" };
+  if (existingEvents.error) throw new Error(existingEvents.error.message);
+  if (existingReceipt.data?.status === "processed") {
+    return { ok: true, skipped: true as const, reason: existingReceipt.data.status };
+  }
+  if (existingReceipt.data?.id || (existingEvents.data?.length ?? 0) > 0) {
+    await revertSnookerRatingSources({
+      adminClient,
+      sourceApp,
+      sourceResultIds: [sourceResultId],
+    });
   }
 
   const receiptInsert = await adminClient.from("rating_result_receipts").insert({
