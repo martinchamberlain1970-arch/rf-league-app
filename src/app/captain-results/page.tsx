@@ -128,6 +128,22 @@ function breakRowsContainUnsavedDraft(rows: BreakRow[]) {
   });
 }
 
+function padBreakRows(rows: BreakRow[]) {
+  const padded = [...rows];
+  while (padded.length < 4) padded.push({ player_id: null, entered_player_name: "", break_value: "" });
+  return padded;
+}
+
+function hydrateBreakRows(rows: SubmissionBreakEntry[]) {
+  return padBreakRows(
+    rows.map((row) => ({
+      player_id: row.player_id ?? null,
+      entered_player_name: row.entered_player_name ?? "",
+      break_value: String(row.break_value ?? ""),
+    }))
+  );
+}
+
 const named = (p?: Player | null) => (p ? (p.full_name?.trim() ? p.full_name : p.display_name) : "Unknown");
 const ratingOf = (p?: Player | null) => Number(p?.rating_snooker ?? 1000);
 const sortLabelByFirstName = (a: string, b: string) => {
@@ -264,6 +280,7 @@ export default function CaptainResultsPage() {
   const autoSaveNoticeShownRef = useRef(false);
   const [scorecardCurrentIndex, setScorecardCurrentIndex] = useState(0);
   const [scorecardReviewMode, setScorecardReviewMode] = useState(false);
+  const [submitPromptMode, setSubmitPromptMode] = useState<"general" | "final_frame">("general");
 
   const baselineScorecardSignatureRef = useRef("");
   const [scorecardDirty, setScorecardDirty] = useState(false);
@@ -293,9 +310,7 @@ export default function CaptainResultsPage() {
       entered_player_name: (r.entered_player_name as string | null) ?? "",
       break_value: String(r.break_value ?? ""),
     }));
-    const padded = [...rows];
-    while (padded.length < 4) padded.push({ player_id: null, entered_player_name: "", break_value: "" });
-    setFixtureBreaks(padded);
+    setFixtureBreaks(padBreakRows(rows));
   };
 
   const loadAll = useCallback(async () => {
@@ -562,19 +577,10 @@ export default function CaptainResultsPage() {
       setNominatedNames(nn);
       setScorecardPhotoUrl(pendingSubmission.scorecard_photo_url ?? "");
       const pendingBreaks = pendingSubmission.frame_results.flatMap((row) => row.break_entries ?? []);
-      const hydratedBreaks = pendingBreaks.length > 0
-        ? pendingBreaks.map((row) => ({
-            player_id: row.player_id ?? null,
-            entered_player_name: row.entered_player_name ?? "",
-            break_value: String(row.break_value ?? ""),
-          }))
-        : [
-            { player_id: null, entered_player_name: "", break_value: "" },
-            { player_id: null, entered_player_name: "", break_value: "" },
-            { player_id: null, entered_player_name: "", break_value: "" },
-            { player_id: null, entered_player_name: "", break_value: "" },
-          ];
-      while (hydratedBreaks.length < 4) hydratedBreaks.push({ player_id: null, entered_player_name: "", break_value: "" });
+      const hydratedBreaks =
+        pendingBreaks.length > 0
+          ? hydrateBreakRows(pendingBreaks)
+          : padBreakRows([]);
       setFixtureBreaks(hydratedBreaks);
       baselineScorecardSignatureRef.current = buildScorecardSignature(mergedSlots, hydratedBreaks);
       setScorecardDirty(false);
@@ -688,8 +694,7 @@ export default function CaptainResultsPage() {
       entered_player_name: row.entered_player_name ?? "",
       break_value: String(row.break_value ?? ""),
     }));
-    while (remoteBreaks.length < 4) remoteBreaks.push({ player_id: null, entered_player_name: "", break_value: "" });
-    return buildScorecardSignature(remoteSlots, remoteBreaks);
+    return buildScorecardSignature(remoteSlots, padBreakRows(remoteBreaks));
   };
 
   const guardAgainstRemoteOverwrite = async () => {
@@ -710,9 +715,12 @@ export default function CaptainResultsPage() {
       successTitle?: string;
       successDescription?: string;
       suppressSubmitPrompt?: boolean;
+      submitPromptMode?: "general" | "final_frame";
     }
-  ) => {
-    if (!selectedFixture || !draftStorageKey || typeof window === "undefined") return;
+  ): Promise<{ saved: boolean; allFramesComplete: boolean; hasUnsavedBreakDraft: boolean }> => {
+    if (!selectedFixture || !draftStorageKey || typeof window === "undefined") {
+      return { saved: false, allFramesComplete: false, hasUnsavedBreakDraft: false };
+    }
     const draft: CaptainResultDraft = {
       slots,
       fixtureBreaks,
@@ -724,11 +732,11 @@ export default function CaptainResultsPage() {
       if (mode === "manual") {
         setInfo({ title: "Progress saved", description: "Your draft has been saved on this device and can be restored when you return." });
       }
-      return;
+      return { saved: false, allFramesComplete: false, hasUnsavedBreakDraft: false };
     }
 
     if (mode === "auto" && slots.some((slot) => isFrameStarted(slot) && !isFrameComplete(slot))) {
-      return;
+      return { saved: false, allFramesComplete: false, hasUnsavedBreakDraft: false };
     }
 
     const hasUnsavedBreakDraft = breakRowsContainUnsavedDraft(fixtureBreaks);
@@ -738,10 +746,12 @@ export default function CaptainResultsPage() {
       if (mode === "manual") {
         setInfo({ title: "Progress saved", description: "Your draft has been saved on this device and can be restored when you return." });
       }
-      return;
+      return { saved: false, allFramesComplete: false, hasUnsavedBreakDraft };
     }
 
-    if (await guardAgainstRemoteOverwrite()) return;
+    if (await guardAgainstRemoteOverwrite()) {
+      return { saved: false, allFramesComplete: false, hasUnsavedBreakDraft };
+    }
 
     const frameResults: SubmissionFrameResult[] = slots.map((s) => ({
       slot_no: s.slot_no,
@@ -764,7 +774,7 @@ export default function CaptainResultsPage() {
     const breakRows = getValidatedBreakRows();
     if (breakRows.error) {
       setMessage(breakRows.error);
-      return;
+      return { saved: false, allFramesComplete, hasUnsavedBreakDraft };
     }
     if (frameResults.length > 0) frameResults[0].break_entries = breakRows.rows;
 
@@ -772,7 +782,7 @@ export default function CaptainResultsPage() {
     const token = sessionRes.data.session?.access_token ?? null;
     if (!token) {
       setMessage("Session expired. Please sign in again.");
-      return;
+      return { saved: false, allFramesComplete, hasUnsavedBreakDraft };
     }
 
     try {
@@ -795,7 +805,23 @@ export default function CaptainResultsPage() {
       window.setTimeout(() => {
         autoSaveMutedRef.current = false;
       }, 600);
-      baselineScorecardSignatureRef.current = buildScorecardSignature(slots, fixtureBreaks);
+      const persistedBreakRows = hydrateBreakRows(breakRows.rows);
+      if (!hasUnsavedBreakDraft) {
+        setFixtureBreaks(persistedBreakRows);
+        if (draftStorageKey) {
+          const refreshedDraft: CaptainResultDraft = {
+            slots,
+            fixtureBreaks: persistedBreakRows,
+            scorecardPhotoUrl,
+            savedAt: new Date().toISOString(),
+          };
+          window.localStorage.setItem(draftStorageKey, JSON.stringify(refreshedDraft));
+        }
+      }
+      baselineScorecardSignatureRef.current = buildScorecardSignature(
+        slots,
+        hasUnsavedBreakDraft ? fixtureBreaks : persistedBreakRows
+      );
       setScorecardDirty(hasUnsavedBreakDraft);
       setRemoteScorecardChanged(false);
       setLastAutoSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
@@ -806,6 +832,7 @@ export default function CaptainResultsPage() {
           !hasUnsavedBreakDraft &&
           !pendingByFixture.has(selectedFixture.id)
         ) {
+          setSubmitPromptMode(options?.submitPromptMode ?? "general");
           setConfirmSubmitPromptOpen(true);
         } else {
           setInfo({
@@ -820,10 +847,12 @@ export default function CaptainResultsPage() {
           });
         }
       }
+      return { saved: true, allFramesComplete, hasUnsavedBreakDraft };
     } catch (error) {
       if (mode === "manual") {
         setMessage(normaliseCaptainApiError(error, "Failed to save live score progress."));
       }
+      return { saved: false, allFramesComplete, hasUnsavedBreakDraft };
     }
   };
 
@@ -1575,9 +1604,15 @@ export default function CaptainResultsPage() {
       setMessage(validationError);
       return;
     }
-    await saveProgress("manual");
-    if (scorecardCurrentIndex >= orderedScoreSlots.length - 1) {
-      setScorecardReviewMode(true);
+    const isFinalFrame = scorecardCurrentIndex >= orderedScoreSlots.length - 1;
+    const saveResult = await saveProgress("manual", {
+      submitPromptMode: isFinalFrame ? "final_frame" : "general",
+    });
+    if (!saveResult.saved) return;
+    if (isFinalFrame) {
+      if (saveResult.allFramesComplete && saveResult.hasUnsavedBreakDraft) {
+        setScorecardReviewMode(true);
+      }
       return;
     }
     setScorecardCurrentIndex((prev) => Math.min(prev + 1, Math.max(orderedScoreSlots.length - 1, 0)));
@@ -2352,7 +2387,7 @@ export default function CaptainResultsPage() {
                                 onClick={() => void saveAndContinueCurrentFrame()}
                                 className="rounded-xl bg-sky-700 px-4 py-2 text-sm font-medium text-white"
                               >
-                                {scorecardCurrentIndex >= orderedScoreSlots.length - 1 ? "Save and review final card" : "Save and continue"}
+                                {scorecardCurrentIndex >= orderedScoreSlots.length - 1 ? "Save final frame" : "Save and continue"}
                               </button>
                             </div>
                           </div>
@@ -2502,11 +2537,21 @@ export default function CaptainResultsPage() {
           <InfoModal open={Boolean(info)} title={info?.title ?? ""} description={info?.description ?? ""} onClose={() => setInfo(null)} />
           <ConfirmModal
             open={confirmSubmitPromptOpen}
-            title="Match card ready to submit"
-            description="All frame scores and recorded breaks have been saved. Do you want to submit this scorecard now for Super User approval?"
+            title={submitPromptMode === "final_frame" ? "Final frame saved" : "Match card ready to submit"}
+            description={
+              submitPromptMode === "final_frame"
+                ? "The final frame has been saved. You now need to either submit this match for Super User approval, or go back and amend the final frame score."
+                : "All frame scores and recorded breaks have been saved. Do you want to submit this scorecard now for Super User approval?"
+            }
             confirmLabel="Submit now"
-            cancelLabel="Review first"
-            onCancel={() => setConfirmSubmitPromptOpen(false)}
+            cancelLabel={submitPromptMode === "final_frame" ? "Amend final frame" : "Review first"}
+            onCancel={() => {
+              setConfirmSubmitPromptOpen(false);
+              if (submitPromptMode === "final_frame") {
+                setScorecardReviewMode(false);
+                setScorecardCurrentIndex(Math.max(orderedScoreSlots.length - 1, 0));
+              }
+            }}
             onConfirm={() => {
               setConfirmSubmitPromptOpen(false);
               void submit();
