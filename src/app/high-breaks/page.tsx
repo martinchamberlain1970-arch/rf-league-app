@@ -34,6 +34,10 @@ type TableRow = {
   breakHistory: BreakHistoryRow[];
 };
 
+function normaliseName(value: string | null | undefined) {
+  return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 export default function LeagueHighBreaksPage() {
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
@@ -85,6 +89,16 @@ export default function LeagueHighBreaksPage() {
     () => new Map(players.map((player) => [player.id, player.full_name?.trim() || player.display_name])),
     [players]
   );
+  const playerIdByNormalisedName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const player of players) {
+      const full = normaliseName(player.full_name);
+      const display = normaliseName(player.display_name);
+      if (full && !map.has(full)) map.set(full, player.id);
+      if (display && !map.has(display)) map.set(display, player.id);
+    }
+    return map;
+  }, [players]);
   const teamNameById = useMemo(() => new Map(teams.map((team) => [team.id, team.name])), [teams]);
   const fixtureById = useMemo(() => new Map(fixtures.map((fixture) => [fixture.id, fixture])), [fixtures]);
   const seasonNameById = useMemo(() => new Map(seasons.map((season) => [season.id, season.name])), [seasons]);
@@ -97,10 +111,12 @@ export default function LeagueHighBreaksPage() {
       if (selectedSeasonId !== "all" && fixture.season_id !== selectedSeasonId) continue;
       const value = Number(row.break_value ?? 0);
       if (!Number.isFinite(value) || value < 30) continue;
-      const key = row.player_id ?? `manual:${(row.entered_player_name ?? "Unknown").trim().toLowerCase()}`;
-      const playerName = row.player_id
-        ? playerNameById.get(row.player_id) ?? row.entered_player_name?.trim() ?? "Unknown"
-        : row.entered_player_name?.trim() || "Unknown";
+      const manualName = row.entered_player_name?.trim() || "";
+      const resolvedPlayerId = row.player_id ?? playerIdByNormalisedName.get(normaliseName(manualName)) ?? null;
+      const key = resolvedPlayerId ?? `manual:${normaliseName(manualName || "Unknown")}`;
+      const playerName = resolvedPlayerId
+        ? (playerNameById.get(resolvedPlayerId) ?? manualName ?? "Unknown")
+        : manualName || "Unknown";
       const current = table.get(key) ?? {
         key,
         playerName,
@@ -132,7 +148,7 @@ export default function LeagueHighBreaksPage() {
         }),
       }))
       .sort((a, b) => b.highBreak - a.highBreak || b.centuryCount - a.centuryCount || b.breaks30Plus - a.breaks30Plus || a.playerName.localeCompare(b.playerName));
-  }, [breaks, fixtureById, playerNameById, selectedSeasonId, teamNameById]);
+  }, [breaks, fixtureById, playerIdByNormalisedName, playerNameById, selectedSeasonId, teamNameById]);
 
   const selectedPlayerDescription = useMemo(() => {
     if (!selectedPlayer) return "";

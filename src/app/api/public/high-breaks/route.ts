@@ -41,6 +41,10 @@ function named(player?: PlayerRow | null) {
   return player?.full_name?.trim() || player?.display_name || "Unknown";
 }
 
+function normaliseName(value: string | null | undefined) {
+  return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 export async function GET(req: NextRequest) {
   if (!supabaseUrl || !serviceRoleKey) {
     return NextResponse.json({ error: "Server configuration missing." }, { status: 500 });
@@ -75,6 +79,13 @@ export async function GET(req: NextRequest) {
   const players = (playersRes.data ?? []) as PlayerRow[];
 
   const playerById = new Map(players.map((player) => [player.id, player]));
+  const playerIdByNormalisedName = new Map<string, string>();
+  for (const player of players) {
+    const full = normaliseName(player.full_name);
+    const display = normaliseName(player.display_name);
+    if (full && !playerIdByNormalisedName.has(full)) playerIdByNormalisedName.set(full, player.id);
+    if (display && !playerIdByNormalisedName.has(display)) playerIdByNormalisedName.set(display, player.id);
+  }
   const teamNameById = new Map(teams.map((team) => [team.id, team.name]));
   const allowedSeasonIds = seasonIdParam === "all" ? null : new Set([seasonIdParam]);
 
@@ -106,10 +117,12 @@ export async function GET(req: NextRequest) {
     const breakValue = Number(row.break_value ?? 0);
     if (!Number.isFinite(breakValue) || breakValue < 30) continue;
 
-    const key = row.player_id ?? `manual:${(row.entered_player_name ?? "Unknown").trim().toLowerCase()}`;
-    const playerName = row.player_id
-      ? named(playerById.get(row.player_id))
-      : row.entered_player_name?.trim() || "Unknown";
+    const manualName = row.entered_player_name?.trim() || "";
+    const resolvedPlayerId = row.player_id ?? playerIdByNormalisedName.get(normaliseName(manualName)) ?? null;
+    const key = resolvedPlayerId ?? `manual:${normaliseName(manualName || "Unknown")}`;
+    const playerName = resolvedPlayerId
+      ? (playerById.get(resolvedPlayerId)?.full_name?.trim() || playerById.get(resolvedPlayerId)?.display_name || manualName || "Unknown")
+      : manualName || "Unknown";
 
     const existing = rowsByPlayer.get(key) ?? {
       key,

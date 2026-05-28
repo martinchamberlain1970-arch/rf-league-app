@@ -69,6 +69,10 @@ type BreakRow = {
   break_value: number | null;
 };
 
+function normaliseName(value: string | null | undefined) {
+  return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
 function named(player?: PlayerRow | null) {
   return player?.full_name?.trim() || player?.display_name || "Unknown";
 }
@@ -145,6 +149,13 @@ export async function GET(req: NextRequest) {
   const greenhitheLocationId = locations.find((row) => row.name === GREENHITHE_LEGION_LOCATION_NAME)?.id ?? locations[0]?.id ?? null;
 
   const playerById = new Map(players.map((player) => [player.id, player]));
+  const playerIdByNormalisedName = new Map<string, string>();
+  for (const player of players) {
+    const full = normaliseName(player.full_name);
+    const display = normaliseName(player.display_name);
+    if (full && !playerIdByNormalisedName.has(full)) playerIdByNormalisedName.set(full, player.id);
+    if (display && !playerIdByNormalisedName.has(display)) playerIdByNormalisedName.set(display, player.id);
+  }
   const teamById = new Map(teams.map((team) => [team.id, team]));
 
   const leagueTable = teams
@@ -268,10 +279,12 @@ export async function GET(req: NextRequest) {
       if (!fixture || fixture.status !== "complete") return map;
       const value = Number(row.break_value ?? 0);
       if (!Number.isFinite(value) || value < 30) return map;
-      const key = row.player_id ?? `manual:${(row.entered_player_name ?? "Unknown").trim().toLowerCase()}`;
+      const manualName = row.entered_player_name?.trim() || "";
+      const resolvedPlayerId = row.player_id ?? playerIdByNormalisedName.get(normaliseName(manualName)) ?? null;
+      const key = resolvedPlayerId ?? `manual:${normaliseName(manualName || "Unknown")}`;
       const existing = map.get(key) ?? {
         key,
-        player_name: row.player_id ? named(playerById.get(row.player_id)) : row.entered_player_name?.trim() || "Unknown",
+        player_name: resolvedPlayerId ? named(playerById.get(resolvedPlayerId)) : manualName || "Unknown",
         high_break: 0,
         breaks_30_plus: 0,
       };
