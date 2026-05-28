@@ -105,6 +105,7 @@ export default function LeagueHighBreaksPage() {
 
   const rows = useMemo(() => {
     const table = new Map<string, TableRow>();
+    const seenByPlayer = new Map<string, Set<string>>();
     for (const row of breaks) {
       const fixture = fixtureById.get(row.fixture_id);
       if (!fixture) continue;
@@ -126,6 +127,11 @@ export default function LeagueHighBreaksPage() {
         seasons: new Set<string>(),
         breakHistory: [],
       };
+      const dedupeKey = `${fixture.id}|${value}|${normaliseName(playerName)}`;
+      const seen = seenByPlayer.get(key) ?? new Set<string>();
+      if (seen.has(dedupeKey)) continue;
+      seen.add(dedupeKey);
+      seenByPlayer.set(key, seen);
       current.playerName = playerName;
       current.highBreak = Math.max(current.highBreak, value);
       current.breaks30Plus += 1;

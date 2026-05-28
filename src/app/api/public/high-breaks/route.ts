@@ -105,6 +105,7 @@ export async function GET(req: NextRequest) {
       }>;
     }
   >();
+  const seenByPlayer = new Map<string, Set<string>>();
 
   const seasonNameById = new Map(seasons.map((season) => [season.id, season.name]));
   const fixtureById = new Map(fixtures.map((fixture) => [fixture.id, fixture]));
@@ -133,6 +134,11 @@ export async function GET(req: NextRequest) {
       league_names: new Set<string>(),
       break_history: [],
     };
+    const dedupeKey = `${fixture.id}|${breakValue}|${normaliseName(playerName)}`;
+    const seen = seenByPlayer.get(key) ?? new Set<string>();
+    if (seen.has(dedupeKey)) continue;
+    seen.add(dedupeKey);
+    seenByPlayer.set(key, seen);
 
     existing.player_name = playerName;
     existing.high_break = Math.max(existing.high_break, breakValue);

@@ -274,25 +274,35 @@ export async function GET(req: NextRequest) {
 
   const fixtureById = new Map(fixtures.map((fixture) => [fixture.id, fixture]));
   const topHighBreaks = Array.from(
-    breaks.reduce((map, row) => {
+    breaks.reduce((state, row) => {
+      const { map, seen } = state;
       const fixture = fixtureById.get(row.fixture_id);
-      if (!fixture || fixture.status !== "complete") return map;
+      if (!fixture || fixture.status !== "complete") return state;
       const value = Number(row.break_value ?? 0);
-      if (!Number.isFinite(value) || value < 30) return map;
+      if (!Number.isFinite(value) || value < 30) return state;
       const manualName = row.entered_player_name?.trim() || "";
       const resolvedPlayerId = row.player_id ?? playerIdByNormalisedName.get(normaliseName(manualName)) ?? null;
       const key = resolvedPlayerId ?? `manual:${normaliseName(manualName || "Unknown")}`;
+      const playerName = resolvedPlayerId ? named(playerById.get(resolvedPlayerId)) : manualName || "Unknown";
+      const dedupeKey = `${fixture.id}|${value}|${normaliseName(playerName)}`;
+      const seenForPlayer = seen.get(key) ?? new Set<string>();
+      if (seenForPlayer.has(dedupeKey)) return state;
+      seenForPlayer.add(dedupeKey);
+      seen.set(key, seenForPlayer);
       const existing = map.get(key) ?? {
         key,
-        player_name: resolvedPlayerId ? named(playerById.get(resolvedPlayerId)) : manualName || "Unknown",
+        player_name: playerName,
         high_break: 0,
         breaks_30_plus: 0,
       };
       existing.high_break = Math.max(existing.high_break, value);
       existing.breaks_30_plus += 1;
       map.set(key, existing);
-      return map;
-    }, new Map<string, { key: string; player_name: string; high_break: number; breaks_30_plus: number }>())
+      return state;
+    }, {
+      map: new Map<string, { key: string; player_name: string; high_break: number; breaks_30_plus: number }>(),
+      seen: new Map<string, Set<string>>(),
+    }).map
     .values()
   )
     .sort((a, b) => b.high_break - a.high_break || b.breaks_30_plus - a.breaks_30_plus || a.player_name.localeCompare(b.player_name))
