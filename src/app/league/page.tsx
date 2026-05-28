@@ -7045,13 +7045,15 @@ export default function LeaguePage() {
                       const buttonState =
                         isEditing
                           ? { label: "Editing", className: "border-slate-900 bg-slate-900 text-white" }
-                          : pendingSubmission || f.status === "in_progress"
+                          : pendingSubmission
                             ? { label: "Submitted", className: "border-amber-300 bg-amber-100 text-amber-900" }
-                            : computed.status === "complete"
-                              ? { label: "Locked", className: "border-emerald-300 bg-emerald-100 text-emerald-900" }
-                              : !isFixtureDueNow(f.fixture_date)
-                                ? { label: "Scheduled", className: "border-slate-300 bg-slate-100 text-slate-700" }
-                                : { label: "Action required", className: "border-rose-300 bg-rose-100 text-rose-900" };
+                            : f.status === "in_progress"
+                              ? { label: "In progress", className: "border-sky-300 bg-sky-100 text-sky-900" }
+                              : computed.status === "complete"
+                                ? { label: "Locked", className: "border-emerald-300 bg-emerald-100 text-emerald-900" }
+                                : !isFixtureDueNow(f.fixture_date)
+                                  ? { label: "Scheduled", className: "border-slate-300 bg-slate-100 text-slate-700" }
+                                  : { label: "Action required", className: "border-rose-300 bg-rose-100 text-rose-900" };
                       const canOpenFixture = canManage || captainTeamIds.has(f.home_team_id) || captainTeamIds.has(f.away_team_id);
                       return (
                         <div key={f.id} className="grid items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 sm:grid-cols-[180px_1fr_auto]">
@@ -7110,13 +7112,15 @@ export default function LeaguePage() {
                             const buttonState =
                               isEditing
                                 ? { label: "Editing", className: "border-slate-900 bg-slate-900 text-white" }
-                                : pendingSubmission || f.status === "in_progress"
+                                : pendingSubmission
                                   ? { label: "Submitted", className: "border-amber-300 bg-amber-100 text-amber-900" }
-                                  : computed.status === "complete"
-                                    ? { label: "Locked", className: "border-emerald-300 bg-emerald-100 text-emerald-900" }
-                                    : !isFixtureDueNow(f.fixture_date)
-                                      ? { label: "Scheduled", className: "border-slate-300 bg-slate-100 text-slate-700" }
-                                      : { label: "Action required", className: "border-rose-300 bg-rose-100 text-rose-900" };
+                                  : f.status === "in_progress"
+                                    ? { label: "In progress", className: "border-sky-300 bg-sky-100 text-sky-900" }
+                                    : computed.status === "complete"
+                                      ? { label: "Locked", className: "border-emerald-300 bg-emerald-100 text-emerald-900" }
+                                      : !isFixtureDueNow(f.fixture_date)
+                                        ? { label: "Scheduled", className: "border-slate-300 bg-slate-100 text-slate-700" }
+                                        : { label: "Action required", className: "border-rose-300 bg-rose-100 text-rose-900" };
                             return (
                               <div key={f.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
                                 <div className="text-sm text-slate-800">
