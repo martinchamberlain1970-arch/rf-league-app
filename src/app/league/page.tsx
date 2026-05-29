@@ -7168,9 +7168,14 @@ export default function LeaguePage() {
                     {currentSeason?.handicap_enabled && currentSeasonDoublesCount > 0 ? (
                       <p className="mt-1 text-xs text-slate-600">Doubles handicap uses (player 1 + player 2) ÷ 2 per team.</p>
                     ) : null}
-                    {isCurrentFixtureLocked ? (
+                    {isCurrentFixtureLocked && !canManage ? (
                       <p className="mt-2 inline-flex rounded-lg border border-emerald-300 bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-900">
                         Locked: result approved/finalized (read-only)
+                      </p>
+                    ) : null}
+                    {isCurrentFixtureLocked && canManage ? (
+                      <p className="mt-2 inline-flex rounded-lg border border-amber-300 bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900">
+                        Super User edit mode: completed fixture can be corrected and rechecked
                       </p>
                     ) : null}
                     {currentFixtureReschedule ? (
@@ -7184,7 +7189,7 @@ export default function LeaguePage() {
                       </div>
                     ) : null}
                     <div className="mt-3 space-y-3">
-                      <fieldset disabled={isCurrentFixtureLocked} className={isCurrentFixtureLocked ? "cursor-not-allowed opacity-85" : ""}>
+                      <fieldset disabled={isCurrentFixtureLocked && !canManage} className={isCurrentFixtureLocked && !canManage ? "cursor-not-allowed opacity-85" : ""}>
                       {fixtureSlots.map((slot) => {
                         const fixture = seasonFixtures.find((f) => f.id === slot.fixture_id);
                         if (!fixture) return null;
