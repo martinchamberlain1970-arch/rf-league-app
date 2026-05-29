@@ -3193,7 +3193,7 @@ export default function LeaguePage() {
     const existingSlot = slots.find((s) => s.id === slotId) ?? null;
     const targetFixtureId = existingSlot?.fixture_id ?? null;
     const targetFixture = targetFixtureId ? seasonFixtures.find((f) => f.id === targetFixtureId) ?? null : null;
-    if (targetFixture?.status === "complete") {
+    if (targetFixture?.status === "complete" && !canManage) {
       setMessage("This fixture is locked because it is complete.");
       return;
     }
