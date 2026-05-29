@@ -134,20 +134,27 @@ export async function applyGroupSnookerRating({
     });
   }
 
-  const receiptInsert = await adminClient.from("rating_result_receipts").insert({
-    source_app: sourceApp,
-    source_result_id: sourceResultId,
-    winner_player_id: scoreA === scoreB ? null : scoreA > scoreB ? sideA[0] : sideB[0],
-    loser_player_id: scoreA === scoreB ? null : scoreA > scoreB ? sideB[0] : sideA[0],
-    status: "processing",
-    metadata: {
-      side_a_ids: sideA,
-      side_b_ids: sideB,
-      score_a: scoreA,
-      score_b: scoreB,
-      ...metadata,
-    },
-  });
+  const receiptInsert = await adminClient
+    .from("rating_result_receipts")
+    .upsert(
+      {
+        source_app: sourceApp,
+        source_result_id: sourceResultId,
+        winner_player_id: scoreA === scoreB ? null : scoreA > scoreB ? sideA[0] : sideB[0],
+        loser_player_id: scoreA === scoreB ? null : scoreA > scoreB ? sideB[0] : sideA[0],
+        status: "processing",
+        processed_at: null,
+        error_message: null,
+        metadata: {
+          side_a_ids: sideA,
+          side_b_ids: sideB,
+          score_a: scoreA,
+          score_b: scoreB,
+          ...metadata,
+        },
+      },
+      { onConflict: "source_app,source_result_id" }
+    );
   if (receiptInsert.error) throw new Error(receiptInsert.error.message);
 
   try {
@@ -504,27 +511,33 @@ export async function rebuildLeagueFixtureSnookerRatings({
     });
   }
 
-  const summaryInsert = await adminClient.from("rating_result_receipts").insert({
-    source_app: "league",
-    source_result_id: summarySourceId,
-    winner_player_id: null,
-    loser_player_id: null,
-    status: "processed",
-    processed_at: new Date().toISOString(),
-    metadata: {
-      fixture_id: fixtureId,
-      season_id: seasonId ?? null,
-      rating_mode: "per_frame",
-      rated_frame_count: ratedFrames.length,
-      player_deltas: Array.from(playerDeltaMap.entries()).map(([player_id, value]) => ({
-        player_id,
-        delta: value.delta,
-        side: value.side,
-      })),
-      rated_frames: ratedFrames,
-      ...metadata,
-    },
-  });
+  const summaryInsert = await adminClient
+    .from("rating_result_receipts")
+    .upsert(
+      {
+        source_app: "league",
+        source_result_id: summarySourceId,
+        winner_player_id: null,
+        loser_player_id: null,
+        status: "processed",
+        processed_at: new Date().toISOString(),
+        error_message: null,
+        metadata: {
+          fixture_id: fixtureId,
+          season_id: seasonId ?? null,
+          rating_mode: "per_frame",
+          rated_frame_count: ratedFrames.length,
+          player_deltas: Array.from(playerDeltaMap.entries()).map(([player_id, value]) => ({
+            player_id,
+            delta: value.delta,
+            side: value.side,
+          })),
+          rated_frames: ratedFrames,
+          ...metadata,
+        },
+      },
+      { onConflict: "source_app,source_result_id" }
+    );
   if (summaryInsert.error) throw new Error(summaryInsert.error.message);
 
   await rebuildSnookerRatedMatchCounts(adminClient, touchedPlayerIds);
