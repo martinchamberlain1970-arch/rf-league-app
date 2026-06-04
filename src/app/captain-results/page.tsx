@@ -145,6 +145,12 @@ function hydrateBreakRows(rows: SubmissionBreakEntry[]) {
 }
 
 const named = (p?: Player | null) => (p ? (p.full_name?.trim() ? p.full_name : p.display_name) : "Unknown");
+const handicapLabel = (value: number | null | undefined) => {
+  const handicap = Number(value ?? 0);
+  if (!Number.isFinite(handicap) || handicap === 0) return "(0)";
+  return handicap > 0 ? `(+${handicap})` : `(${handicap})`;
+};
+const namedWithHandicap = (p?: Player | null) => `${named(p)} ${handicapLabel(p?.snooker_handicap)}`;
 const ratingOf = (p?: Player | null) => Number(p?.rating_snooker ?? 1000);
 const sortLabelByFirstName = (a: string, b: string) => {
   const aParts = a.trim().split(/\s+/);
@@ -990,7 +996,7 @@ export default function CaptainResultsPage() {
       if (s.away_player2_id) ids.add(s.away_player2_id);
     }
     return Array.from(ids)
-      .map((id) => ({ id, label: named(playerById.get(id)) }))
+      .map((id) => ({ id, label: namedWithHandicap(playerById.get(id)) }))
       .sort((a, b) => sortLabelByFirstName(a.label, b.label));
   }, [homeRosterIds, awayRosterIds, slots, playerById]);
   const sortRosterIds = (ids: string[]) =>
@@ -1976,11 +1982,11 @@ export default function CaptainResultsPage() {
                                     <div className="grid gap-2 sm:grid-cols-2">
                                       <select className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={slot.home_player1_id ?? ""} onChange={(e) => updateSlotLocal(slot.id, { home_player1_id: e.target.value || null, home_forfeit: false })} disabled={homeSelectionLocked}>
                                         <option value="">Home player 1</option>
-                                        {homeDoublesOptions.map((id) => <option key={id} value={id} disabled={slot.home_player2_id === id}>{named(playerById.get(id))}</option>)}
+                                        {homeDoublesOptions.map((id) => <option key={id} value={id} disabled={slot.home_player2_id === id}>{namedWithHandicap(playerById.get(id))}</option>)}
                                       </select>
                                       <select className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={slot.home_player2_id ?? ""} onChange={(e) => updateSlotLocal(slot.id, { home_player2_id: e.target.value || null })} disabled={homeSelectionLocked}>
                                         <option value="">Home player 2</option>
-                                        {homeDoublesOptions.map((id) => <option key={id} value={id} disabled={slot.home_player1_id === id}>{named(playerById.get(id))}</option>)}
+                                        {homeDoublesOptions.map((id) => <option key={id} value={id} disabled={slot.home_player1_id === id}>{namedWithHandicap(playerById.get(id))}</option>)}
                                       </select>
                                     </div>
                                   ) : (
@@ -1991,7 +1997,7 @@ export default function CaptainResultsPage() {
                                       {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                       {sortRosterIds(homeRosterIds).map((id) => (
                                         <option key={id} value={id} disabled={(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id}>
-                                          {named(playerById.get(id))}
+                                          {namedWithHandicap(playerById.get(id))}
                                           {(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id ? " (Already used in singles)" : ""}
                                         </option>
                                       ))}
@@ -2004,11 +2010,11 @@ export default function CaptainResultsPage() {
                                     <div className="grid gap-2 sm:grid-cols-2">
                                       <select className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={slot.away_player1_id ?? ""} onChange={(e) => updateSlotLocal(slot.id, { away_player1_id: e.target.value || null, away_forfeit: false })} disabled={awaySelectionLocked}>
                                         <option value="">Away player 1</option>
-                                        {awayDoublesOptions.map((id) => <option key={id} value={id} disabled={slot.away_player2_id === id}>{named(playerById.get(id))}</option>)}
+                                        {awayDoublesOptions.map((id) => <option key={id} value={id} disabled={slot.away_player2_id === id}>{namedWithHandicap(playerById.get(id))}</option>)}
                                       </select>
                                       <select className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={slot.away_player2_id ?? ""} onChange={(e) => updateSlotLocal(slot.id, { away_player2_id: e.target.value || null })} disabled={awaySelectionLocked}>
                                         <option value="">Away player 2</option>
-                                        {awayDoublesOptions.map((id) => <option key={id} value={id} disabled={slot.away_player1_id === id}>{named(playerById.get(id))}</option>)}
+                                        {awayDoublesOptions.map((id) => <option key={id} value={id} disabled={slot.away_player1_id === id}>{namedWithHandicap(playerById.get(id))}</option>)}
                                       </select>
                                     </div>
                                   ) : (
@@ -2019,7 +2025,7 @@ export default function CaptainResultsPage() {
                                       {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                       {sortRosterIds(awayRosterIds).map((id) => (
                                         <option key={id} value={id} disabled={(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id}>
-                                          {named(playerById.get(id))}
+                                          {namedWithHandicap(playerById.get(id))}
                                           {(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id ? " (Already used in singles)" : ""}
                                         </option>
                                       ))}
@@ -2205,7 +2211,7 @@ export default function CaptainResultsPage() {
                                 >
                                   <option value="">Home player 1</option>
                                   {homeDoublesOptions.map((id) => (
-                                    <option key={id} value={id} disabled={slot.home_player2_id === id}>{named(playerById.get(id))}</option>
+                                    <option key={id} value={id} disabled={slot.home_player2_id === id}>{namedWithHandicap(playerById.get(id))}</option>
                                   ))}
                                 </select>
                                 <select
@@ -2216,7 +2222,7 @@ export default function CaptainResultsPage() {
                                 >
                                   <option value="">Home player 2</option>
                                   {homeDoublesOptions.map((id) => (
-                                    <option key={id} value={id} disabled={slot.home_player1_id === id}>{named(playerById.get(id))}</option>
+                                    <option key={id} value={id} disabled={slot.home_player1_id === id}>{namedWithHandicap(playerById.get(id))}</option>
                                   ))}
                                 </select>
                               </div>
@@ -2233,7 +2239,7 @@ export default function CaptainResultsPage() {
                                 {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                 {sortRosterIds(homeRosterIds).map((id) => (
                                   <option key={id} value={id} disabled={(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id}>
-                                    {named(playerById.get(id))}
+                                    {namedWithHandicap(playerById.get(id))}
                                     {(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id ? " (Already used in singles)" : ""}
                                   </option>
                                 ))}
@@ -2268,7 +2274,7 @@ export default function CaptainResultsPage() {
                                 >
                                   <option value="">Away player 1</option>
                                   {awayDoublesOptions.map((id) => (
-                                    <option key={id} value={id} disabled={slot.away_player2_id === id}>{named(playerById.get(id))}</option>
+                                    <option key={id} value={id} disabled={slot.away_player2_id === id}>{namedWithHandicap(playerById.get(id))}</option>
                                   ))}
                                 </select>
                                 <select
@@ -2279,7 +2285,7 @@ export default function CaptainResultsPage() {
                                 >
                                   <option value="">Away player 2</option>
                                   {awayDoublesOptions.map((id) => (
-                                    <option key={id} value={id} disabled={slot.away_player1_id === id}>{named(playerById.get(id))}</option>
+                                    <option key={id} value={id} disabled={slot.away_player1_id === id}>{namedWithHandicap(playerById.get(id))}</option>
                                   ))}
                                 </select>
                               </div>
@@ -2296,7 +2302,7 @@ export default function CaptainResultsPage() {
                                 {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                 {sortRosterIds(awayRosterIds).map((id) => (
                                   <option key={id} value={id} disabled={(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id}>
-                                    {named(playerById.get(id))}
+                                    {namedWithHandicap(playerById.get(id))}
                                     {(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id ? " (Already used in singles)" : ""}
                                   </option>
                                 ))}
@@ -2333,7 +2339,7 @@ export default function CaptainResultsPage() {
                                 disabled={homeSelectionLocked}
                               >
                                 <option value="">Home nominated player (info)</option>
-                                {homeNominatedOptions.map((id) => <option key={id} value={named(playerById.get(id))}>{named(playerById.get(id))}</option>)}
+                                {homeNominatedOptions.map((id) => <option key={id} value={named(playerById.get(id))}>{namedWithHandicap(playerById.get(id))}</option>)}
                               </select>
                             ) : <div />}
                             {slot.away_nominated ? (
@@ -2347,7 +2353,7 @@ export default function CaptainResultsPage() {
                                 disabled={awaySelectionLocked}
                               >
                                 <option value="">Away nominated player (info)</option>
-                                {awayNominatedOptions.map((id) => <option key={id} value={named(playerById.get(id))}>{named(playerById.get(id))}</option>)}
+                                {awayNominatedOptions.map((id) => <option key={id} value={named(playerById.get(id))}>{namedWithHandicap(playerById.get(id))}</option>)}
                               </select>
                             ) : <div />}
                           </div>
