@@ -314,6 +314,8 @@ export default function CompetitionSignupsPage() {
               const canEnter = !deadlinePassed && !full && (!userEntry || userEntry.status === "rejected" || userEntry.status === "withdrawn");
               const isAlreadyEntered = userEntry?.status === "approved";
               const minAge = getMinimumAgeForCompetition(c.name);
+              const dobValue = dobByCompetitionId[c.id] ?? userEntry?.entrant_date_of_birth ?? linkedPlayerDob ?? "";
+              const requiresDobBeforeEntry = minAge !== null && !dobValue.trim();
               const entrantsRequired = requiredEntrants(c);
               const extraNames = entryNamesByCompetitionId[c.id] ?? { second: "", third: "" };
               return (
@@ -371,12 +373,24 @@ export default function CompetitionSignupsPage() {
                       <div className="space-y-1">
                         <input
                           type="date"
-                          value={dobByCompetitionId[c.id] ?? userEntry?.entrant_date_of_birth ?? linkedPlayerDob ?? ""}
+                          value={dobValue}
                           onChange={(e) => setDobByCompetitionId((prev) => ({ ...prev, [c.id]: e.target.value }))}
                           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
                           aria-label={`Date of birth for ${c.name}`}
                         />
-                        <p className="text-[11px] text-slate-500">Used to validate age eligibility for this competition.</p>
+                        <p className="text-[11px] text-slate-500">
+                          Used to validate age eligibility for this competition.
+                          {!linkedPlayerDob ? " If your profile does not already hold a date of birth, this must be entered before you can continue." : ""}
+                        </p>
+                        {!linkedPlayerDob && linkedPlayerId ? (
+                          <p className="text-[11px] text-amber-700">
+                            Your player profile does not currently have a date of birth saved. Enter it here to continue, or update it on{" "}
+                            <Link href={`/players/${linkedPlayerId}`} className="font-semibold underline underline-offset-2">
+                              your player profile
+                            </Link>
+                            .
+                          </p>
+                        ) : null}
                       </div>
                     ) : null}
                     {userEntry ? (
@@ -391,11 +405,17 @@ export default function CompetitionSignupsPage() {
                     ) : (
                       <button
                         type="button"
-                        disabled={admin.isSuper || !canEnter || busyId === c.id}
+                        disabled={admin.isSuper || !canEnter || busyId === c.id || requiresDobBeforeEntry}
                         onClick={() => void submitEntry(c.id)}
                         className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
                       >
-                        {busyId === c.id ? "Submitting..." : admin.isSuper ? "Super User cannot enter" : "Enter Competition"}
+                        {busyId === c.id
+                          ? "Submitting..."
+                          : admin.isSuper
+                            ? "Super User cannot enter"
+                            : requiresDobBeforeEntry
+                              ? "Enter DOB to continue"
+                              : "Enter Competition"}
                       </button>
                     )}
                     {!admin.isSuper && userEntry && (userEntry.status === "pending" || userEntry.status === "approved") ? (

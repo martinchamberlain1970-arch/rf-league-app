@@ -33,6 +33,7 @@ function WelcomePageInner() {
   const [dobInput, setDobInput] = useState("");
   const [savingDob, setSavingDob] = useState(false);
   const promptDob = search.get("prompt") === "dob";
+  const returnTo = search.get("returnTo")?.trim() || null;
   const playerAge = useMemo(() => calculateAge(linkedPlayer?.date_of_birth), [linkedPlayer?.date_of_birth]);
 
   useEffect(() => {
@@ -154,6 +155,11 @@ function WelcomePageInner() {
                         </button>
                       </div>
                     </div>
+                  ) : null}
+                  {returnTo ? (
+                    <Link href={returnTo} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">
+                      Return to profile
+                    </Link>
                   ) : null}
                   <Link href="/" className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-medium text-white">
                     Go to dashboard

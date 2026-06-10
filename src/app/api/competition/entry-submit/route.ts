@@ -128,6 +128,13 @@ export async function POST(req: NextRequest) {
     if (age < minAge) return NextResponse.json({ error: `You are not eligible for ${competition.name}. Minimum age is ${minAge}.` }, { status: 400 });
   }
 
+  if (!linkedPlayer.date_of_birth && dob) {
+    const dobUpdateRes = await adminClient.from("players").update({ date_of_birth: dob }).eq("id", linkedPlayer.id);
+    if (dobUpdateRes.error) {
+      return NextResponse.json({ error: `Date of birth could not be saved to your player profile: ${dobUpdateRes.error.message}` }, { status: 400 });
+    }
+  }
+
   const entrantsNeeded = requiredEntrants(competition);
   if (teamMemberNames.length !== Math.max(0, entrantsNeeded - 1)) {
     return NextResponse.json(

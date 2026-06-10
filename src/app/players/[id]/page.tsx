@@ -2073,6 +2073,22 @@ export default function PlayerProfilePage() {
                     </div>
                   </div>
                 ) : null}
+                {canEditOwnContact && !admin.isSuper && !player?.date_of_birth ? (
+                  <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
+                    <p className="text-sm font-semibold">Date of birth still needed</p>
+                    <p className="mt-1 text-xs">
+                      Your profile does not currently have a date of birth saved. This is required before you can enter age-restricted competitions such as Over 50s or Over 60s.
+                    </p>
+                    <div className="mt-3">
+                      <Link
+                        href={`/auth/welcome?prompt=dob&returnTo=${encodeURIComponent(`/players/${player.id}`)}`}
+                        className="inline-flex rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-medium text-amber-900"
+                      >
+                        Add date of birth now
+                      </Link>
+                    </div>
+                  </div>
+                ) : null}
                 {canEditOwnContact && !admin.isSuper ? (
                   <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <p className="text-sm font-semibold text-slate-900">Contact Preferences</p>
