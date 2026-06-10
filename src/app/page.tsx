@@ -22,6 +22,7 @@ const links = [
   { href: "/reschedule-fixture", title: "Reschedule Fixture", desc: "Request permission to play early or, exceptionally, later." },
   { href: "/events", title: "Match Centre", desc: "View your fixtures, reports, and competition activity." },
   { href: "/signups", title: "Competition Sign-ups", desc: "Enter open competitions and track entry status." },
+  { href: "/documents", title: "Documents", desc: "Upload and read AGM minutes, rules, and captain meeting notes." },
   { href: "/backup", title: "Data Management", desc: "Backup, restore, and controlled data reset." },
   { href: "/audit", title: "Audit Log", desc: "Super User action trail across the system." },
   { href: "/signup-requests", title: "Signup Requests", desc: "Review new-account profile and location requests." },
@@ -112,6 +113,7 @@ export default function HomePage() {
         "/signup-requests",
         "/high-breaks",
         "/signups",
+        "/documents",
         "/notifications",
         "/results",
         "/reschedule-fixture",
@@ -128,7 +130,7 @@ export default function HomePage() {
       // Admins still see these cards, but they can be disabled per-account.
       return true;
     }
-    return ["/events", "/league", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/signups", "/help", "/legal", "/notifications"].includes(href);
+    return ["/events", "/league", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/signups", "/documents", "/help", "/legal", "/notifications"].includes(href);
   };
 
   const visibleLinks = links.filter((item) => isVisibleLink(item.href));
