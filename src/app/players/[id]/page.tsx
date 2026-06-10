@@ -2073,7 +2073,7 @@ export default function PlayerProfilePage() {
                     </div>
                   </div>
                 ) : null}
-                {canEditOwnContact && !admin.isSuper && !player?.date_of_birth ? (
+                {canEditOwnContact && !admin.isSuper && player && !player.date_of_birth ? (
                   <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
                     <p className="text-sm font-semibold">Date of birth still needed</p>
                     <p className="mt-1 text-xs">
