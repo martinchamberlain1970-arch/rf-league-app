@@ -130,7 +130,7 @@ function breakRowsContainUnsavedDraft(rows: BreakRow[]) {
 
 function padBreakRows(rows: BreakRow[]) {
   const padded = [...rows];
-  while (padded.length < 4) padded.push({ player_id: null, entered_player_name: "", break_value: "" });
+  while (padded.length < 3) padded.push({ player_id: null, entered_player_name: "", break_value: "" });
   return padded;
 }
 
@@ -277,7 +277,6 @@ export default function CaptainResultsPage() {
     { player_id: null, entered_player_name: "", break_value: "" },
     { player_id: null, entered_player_name: "", break_value: "" },
     { player_id: null, entered_player_name: "", break_value: "" },
-    { player_id: null, entered_player_name: "", break_value: "" },
   ]);
 
   const [lastAutoSavedAt, setLastAutoSavedAt] = useState<string | null>(null);
@@ -287,6 +286,7 @@ export default function CaptainResultsPage() {
   const [scorecardCurrentIndex, setScorecardCurrentIndex] = useState(0);
   const [scorecardReviewMode, setScorecardReviewMode] = useState(false);
   const [submitPromptMode, setSubmitPromptMode] = useState<"general" | "final_frame">("general");
+  const [frameAdvancePrompt, setFrameAdvancePrompt] = useState<{ slotNo: number; isFinalFrame: boolean } | null>(null);
 
   const baselineScorecardSignatureRef = useRef("");
   const [scorecardDirty, setScorecardDirty] = useState(false);
@@ -557,7 +557,6 @@ export default function CaptainResultsPage() {
       setNominatedNames({});
       setScorecardPhotoUrl("");
       setFixtureBreaks([
-        { player_id: null, entered_player_name: "", break_value: "" },
         { player_id: null, entered_player_name: "", break_value: "" },
         { player_id: null, entered_player_name: "", break_value: "" },
         { player_id: null, entered_player_name: "", break_value: "" },
@@ -1235,6 +1234,44 @@ export default function CaptainResultsPage() {
     return null;
   };
 
+  const currentFrameBreakSummary = useMemo(() => {
+    if (!currentScorecardFrame) {
+      return { recorded: [] as string[], hasPartial: false };
+    }
+    const participantIds = new Set(
+      [
+        currentScorecardFrame.home_player1_id,
+        currentScorecardFrame.home_player2_id,
+        currentScorecardFrame.away_player1_id,
+        currentScorecardFrame.away_player2_id,
+      ].filter((value): value is string => Boolean(value))
+    );
+    const recorded = fixtureBreaks
+      .map((row) => {
+        const breakValue = Number(row.break_value || 0);
+        if (!Number.isFinite(breakValue) || breakValue < 30) return null;
+        const label = row.player_id
+          ? named(playerById.get(row.player_id) ?? null)
+          : row.entered_player_name.trim();
+        if (!label) return null;
+        if (row.player_id && !participantIds.has(row.player_id)) return null;
+        return `${label} ${breakValue}`;
+      })
+      .filter((value): value is string => Boolean(value));
+    const hasPartial = fixtureBreaks.some((row) => {
+      if (!breakRowHasAnyContent(row)) return false;
+      if (row.player_id && !participantIds.has(row.player_id)) return false;
+      if (!row.player_id) {
+        const entered = row.entered_player_name.trim().toLowerCase();
+        const currentLabels = Array.from(participantIds).map((id) => named(playerById.get(id) ?? null).trim().toLowerCase());
+        if (entered && !currentLabels.includes(entered)) return false;
+      }
+      const breakValue = Number(row.break_value || 0);
+      return !(Number.isFinite(breakValue) && breakValue >= 30 && (row.player_id || row.entered_player_name.trim()));
+    });
+    return { recorded, hasPartial };
+  }, [currentScorecardFrame, fixtureBreaks, playerById]);
+
   const getSinglesSelectionValue = (slot: FrameSlot, side: "home" | "away") => {
     const playerId = side === "home" ? slot.home_player1_id : slot.away_player1_id;
     const nominated = side === "home" ? slot.home_nominated : slot.away_nominated;
@@ -1604,6 +1641,19 @@ export default function CaptainResultsPage() {
   };
 
   const saveAndContinueCurrentFrame = async () => {
+    if (!currentScorecardFrame) return;
+    const validationError = validateFrameCompletion(currentScorecardFrame);
+    if (validationError) {
+      setMessage(validationError);
+      return;
+    }
+    setFrameAdvancePrompt({
+      slotNo: currentScorecardFrame.slot_no,
+      isFinalFrame: scorecardCurrentIndex >= orderedScoreSlots.length - 1,
+    });
+  };
+
+  const confirmSaveAndContinueCurrentFrame = async () => {
     if (!currentScorecardFrame) return;
     const validationError = validateFrameCompletion(currentScorecardFrame);
     if (validationError) {
@@ -2431,7 +2481,7 @@ export default function CaptainResultsPage() {
                       <section className={`rounded-2xl border border-violet-200 bg-violet-50/70 p-4 ${!homeSideCanManageScorecard ? "opacity-80" : ""}`}>
                         <h3 className="text-base font-semibold text-slate-900">Breaks 30+</h3>
                         <p className="mt-1 text-xs text-slate-600">
-                          Complete the player and break value together, then use <strong>Save breaks 30+</strong> so they are written straight through to the fixture.
+                          Record any 30+ breaks for this stage of the match before you move on. Three spaces are shown by default, and you can press <strong>More</strong> if a frame has extra breaks.
                         </p>
                         {!breaksFeatureAvailable ? (
                           <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -2472,7 +2522,7 @@ export default function CaptainResultsPage() {
                                 type="button"
                                 onClick={() => setFixtureBreaks((prev) => prev.filter((_, i) => i !== idx))}
                                 className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700"
-                                disabled={!homeSideCanManageScorecard || (fixtureBreaks.length <= 4 && idx < 4)}
+                                disabled={!homeSideCanManageScorecard || (fixtureBreaks.length <= 3 && idx < 3)}
                               >
                                 Remove
                               </button>
@@ -2541,6 +2591,32 @@ export default function CaptainResultsPage() {
 
           <MessageModal message={message} onClose={() => setMessage(null)} />
           <InfoModal open={Boolean(info)} title={info?.title ?? ""} description={info?.description ?? ""} onClose={() => setInfo(null)} />
+          <ConfirmModal
+            open={Boolean(frameAdvancePrompt)}
+            title={frameAdvancePrompt?.isFinalFrame ? `Frame ${frameAdvancePrompt.slotNo} final check` : `Frame ${frameAdvancePrompt?.slotNo ?? ""} ready to save?`}
+            description={
+              currentScorecardFrame
+                ? [
+                    `Score entered: ${currentScorecardFrame.home_points_scored ?? 0}-${currentScorecardFrame.away_points_scored ?? 0}.`,
+                    currentFrameBreakSummary.recorded.length > 0
+                      ? `Recorded 30+ breaks: ${currentFrameBreakSummary.recorded.join(", ")}.`
+                      : "No 30+ breaks recorded for this frame.",
+                    currentFrameBreakSummary.hasPartial
+                      ? "There is also an unfinished break row on the card. That draft will stay on this device until you complete it."
+                      : frameAdvancePrompt?.isFinalFrame
+                        ? "Saving this frame will open the final submit/amend prompt."
+                        : "If everything looks right, save this frame and move on to the next one.",
+                  ].join(" ")
+                : ""
+            }
+            confirmLabel={frameAdvancePrompt?.isFinalFrame ? "Save final frame" : "Save and continue"}
+            cancelLabel="Go back"
+            onCancel={() => setFrameAdvancePrompt(null)}
+            onConfirm={() => {
+              setFrameAdvancePrompt(null);
+              void confirmSaveAndContinueCurrentFrame();
+            }}
+          />
           <ConfirmModal
             open={confirmSubmitPromptOpen}
             title={submitPromptMode === "final_frame" ? "Final frame saved" : "Match card ready to submit"}

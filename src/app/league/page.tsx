@@ -4183,7 +4183,7 @@ export default function LeaguePage() {
 
     for (const f of seasonFixtures) {
       const computed = computeFixtureProgress(f);
-      if (computed.status !== "complete") continue;
+      if (f.status !== "complete") continue;
       const home = stats.get(f.home_team_id);
       const away = stats.get(f.away_team_id);
       if (!home || !away) continue;
@@ -4288,14 +4288,14 @@ export default function LeaguePage() {
         const teamScore = isHome ? computed.homePoints : computed.awayPoints;
         const oppScore = isHome ? computed.awayPoints : computed.homePoints;
         const result =
-          computed.status === "complete"
+          f.status === "complete"
             ? teamScore > oppScore
               ? "W"
               : teamScore < oppScore
                 ? "L"
                 : "D"
             : "-";
-        const score = computed.status === "pending" ? "-" : `${teamScore}-${oppScore}`;
+        const score = f.status === "pending" ? "-" : `${teamScore}-${oppScore}`;
         return {
           id: f.id,
           week: f.week_no,
@@ -4303,7 +4303,7 @@ export default function LeaguePage() {
           opponent: teamById.get(opponentId)?.name ?? "Opponent",
           isHome,
           score,
-          status: computed.status,
+          status: f.status,
           result,
         };
       })
@@ -7310,7 +7310,7 @@ export default function LeaguePage() {
                           <div className="text-sm text-slate-800">
                             {teamById.get(f.home_team_id)?.name ?? "Home"} vs {teamById.get(f.away_team_id)?.name ?? "Away"}
                             <span className="ml-2 text-xs text-slate-600">
-                              ({computed.homePoints}-{computed.awayPoints}) · {statusLabel(computed.status)}
+                              ({computed.homePoints}-{computed.awayPoints}) · {statusLabel(f.status)}
                             </span>
                             {fixtureChange ? (
                               <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
@@ -7372,7 +7372,7 @@ export default function LeaguePage() {
                                 <div className="text-sm text-slate-800">
                                   {teamById.get(f.home_team_id)?.name ?? "Home"} vs {teamById.get(f.away_team_id)?.name ?? "Away"}
                                   <span className="ml-2 text-xs text-slate-600">
-                                    ({computed.homePoints}-{computed.awayPoints}) · {statusLabel(computed.status)}
+                                    ({computed.homePoints}-{computed.awayPoints}) · {statusLabel(f.status)}
                                   </span>
                                   {fixtureChange ? (
                                     <div className="mt-1 flex flex-wrap items-center gap-2 text-xs">
