@@ -2480,6 +2480,15 @@ export default function CaptainResultsPage() {
 
                       <section className={`rounded-2xl border border-violet-200 bg-violet-50/70 p-4 ${!homeSideCanManageScorecard ? "opacity-80" : ""}`}>
                         <h3 className="text-base font-semibold text-slate-900">Breaks 30+</h3>
+                        {currentScorecardFrame && !scorecardReviewMode ? (
+                          <p className="mt-1 text-sm font-medium text-violet-900">
+                            You are currently recording breaks while entering Frame {currentScorecardFrame.slot_no}.
+                          </p>
+                        ) : scorecardReviewMode ? (
+                          <p className="mt-1 text-sm font-medium text-violet-900">
+                            Final review mode: check every recorded 30+ break before you submit the match card.
+                          </p>
+                        ) : null}
                         <p className="mt-1 text-xs text-slate-600">
                           Record any 30+ breaks for this stage of the match before you move on. Three spaces are shown by default, and you can press <strong>More</strong> if a frame has extra breaks.
                         </p>
