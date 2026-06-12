@@ -13,6 +13,7 @@ import InfoModal from "@/components/InfoModal";
 import MessageModal from "@/components/MessageModal";
 import { MAX_SNOOKER_START } from "@/lib/snooker-handicap";
 import { countryCodeToFlagEmoji } from "@/lib/country-flags";
+import { targetHandicapFromElo } from "@/lib/snooker-rating";
 
 type Player = {
   id: string;
@@ -103,6 +104,19 @@ type HandicapHistoryEntry = {
   reason: string | null;
   created_at: string;
 };
+type RatingHistoryEntry = {
+  id: string;
+  player_id: string;
+  opponent_player_id: string | null;
+  source_app: "league" | "club";
+  source_result_id: string;
+  event_type: "result_win" | "result_loss" | "result_draw";
+  rating_before: number;
+  rating_after: number;
+  rating_delta: number;
+  notes: string | null;
+  created_at: string;
+};
 type RecentHistoryItem = {
   key: string;
   kind: "league_fixture" | "competition_match";
@@ -140,6 +154,10 @@ function deriveAgeBandFromDob(dob: string | null | undefined): "under_13" | "13_
 function displayPlayerName(player: Pick<Player, "full_name" | "display_name">) {
   return player.full_name?.trim() || player.display_name || "Unnamed player";
 }
+function formatSignedNumber(value: number | null | undefined) {
+  const next = Number(value ?? 0);
+  return next > 0 ? `+${next}` : `${next}`;
+}
 
 function describeAvatarUploadError(error: unknown) {
   const message = error instanceof Error ? error.message : typeof error === "string" ? error : "Unknown error";
@@ -164,6 +182,7 @@ export default function PlayerProfilePage() {
   const [leagueSeasons, setLeagueSeasons] = useState<LeagueSeasonLite[]>([]);
   const [leagueFrames, setLeagueFrames] = useState<LeagueFrameLite[]>([]);
   const [handicapHistory, setHandicapHistory] = useState<HandicapHistoryEntry[]>([]);
+  const [ratingHistory, setRatingHistory] = useState<RatingHistoryEntry[]>([]);
   const [message, setMessage] = useState<string | null>(null);
   const [savingName, setSavingName] = useState(false);
   const [uploading, setUploading] = useState(false);
@@ -358,6 +377,17 @@ export default function PlayerProfilePage() {
         setHandicapHistory((handicapRes.data ?? []) as HandicapHistoryEntry[]);
       } else if (!handicapRes.error.message.toLowerCase().includes("league_handicap_history")) {
         setMessage(`Failed to load handicap history: ${handicapRes.error.message}`);
+      }
+      const ratingRes = await client
+        .from("rating_events")
+        .select("id,player_id,opponent_player_id,source_app,source_result_id,event_type,rating_before,rating_after,rating_delta,notes,created_at")
+        .eq("player_id", id)
+        .order("created_at", { ascending: false })
+        .limit(150);
+      if (!ratingRes.error) {
+        setRatingHistory((ratingRes.data ?? []) as RatingHistoryEntry[]);
+      } else if (!ratingRes.error.message.toLowerCase().includes("rating_events")) {
+        setMessage(`Failed to load Elo history: ${ratingRes.error.message}`);
       }
       if (!locRes.error && locRes.data) {
         setLocations(locRes.data as Location[]);
@@ -1102,12 +1132,50 @@ export default function PlayerProfilePage() {
     ],
     []
   );
+  const currentTargetHandicap = useMemo(
+    () => targetHandicapFromElo(Number(player?.rating_snooker ?? 1000)),
+    [player?.rating_snooker]
+  );
+  const currentTargetGap = useMemo(
+    () => currentTargetHandicap - Number(player?.snooker_handicap ?? 0),
+    [currentTargetHandicap, player?.snooker_handicap]
+  );
   const isWalkoverMatch = (m: MatchRow) => {
     const rows = framesByMatch.get(m.id) ?? [];
     return rows.length > 0 && rows.every((f) => f.is_walkover_award);
   };
   const leagueFixtureById = useMemo(() => new Map(leagueFixtures.map((f) => [f.id, f])), [leagueFixtures]);
   const leagueTeamById = useMemo(() => new Map(leagueTeams.map((t) => [t.id, t.name])), [leagueTeams]);
+  const playerNameById = useMemo(
+    () => new Map(players.map((entry) => [entry.id, displayPlayerName(entry)])),
+    [players]
+  );
+  const ratingTimeline = useMemo(
+    () =>
+      ratingHistory.map((entry) => {
+        const opponentName = entry.opponent_player_id ? playerNameById.get(entry.opponent_player_id) ?? "Unknown opponent" : "-";
+        const leagueMatch = entry.source_result_id.match(/^league_fixture:(.+):frame:(\d+)$/);
+        const fixture = leagueMatch ? leagueFixtureById.get(leagueMatch[1]) ?? null : null;
+        const frameNo = leagueMatch ? Number(leagueMatch[2]) : null;
+        const fixtureLabel = fixture
+          ? `${leagueTeamById.get(fixture.home_team_id) ?? "Home"} vs ${leagueTeamById.get(fixture.away_team_id) ?? "Away"}`
+          : entry.notes?.trim() || entry.source_result_id;
+        const sublabel =
+          fixture && frameNo
+            ? `Week ${fixture.week_no ?? "-"} · Frame ${frameNo} · ${fixture.fixture_date ? new Date(`${fixture.fixture_date}T12:00:00`).toLocaleDateString() : "Date TBC"}`
+            : entry.created_at
+              ? new Date(entry.created_at).toLocaleDateString()
+              : "-";
+        return {
+          ...entry,
+          opponentName,
+          fixtureLabel,
+          sublabel,
+          resultLabel: entry.event_type === "result_win" ? "Win" : entry.event_type === "result_loss" ? "Loss" : "Draw",
+        };
+      }),
+    [leagueFixtureById, leagueTeamById, playerNameById, ratingHistory]
+  );
   const leagueRelevant = useMemo(
     () =>
       leagueFrames.filter((s) => {
@@ -1781,6 +1849,7 @@ export default function PlayerProfilePage() {
                       <p className="font-semibold text-slate-900">What your handicap means in points start</p>
                       <p className="mt-1">{handicapExplain}</p>
                       <p className="mt-1">{baselineExplain}</p>
+                      <p className="mt-1">Current Elo target handicap: <span className="font-semibold text-slate-900">{formatSignedNumber(currentTargetHandicap)}</span>. Gap to current live handicap: <span className="font-semibold text-slate-900">{formatSignedNumber(currentTargetGap)}</span>.</p>
                     </div>
                     <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
                       <p className="font-semibold text-slate-900">Why the maximum start is capped at {MAX_SNOOKER_START}</p>
@@ -1811,6 +1880,43 @@ export default function PlayerProfilePage() {
                           </tbody>
                         </table>
                       </div>
+                    </div>
+                    <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3">
+                      <div className="flex items-center justify-between gap-3">
+                        <div>
+                          <p className="text-sm font-semibold text-slate-900">Elo change history</p>
+                          <p className="mt-1 text-xs text-slate-600">Frame-by-frame Elo movements, with opponent and the rating shift recorded for each rated result.</p>
+                        </div>
+                      </div>
+                      {ratingTimeline.length === 0 ? (
+                        <p className="mt-3 text-sm text-slate-600">No Elo changes recorded yet.</p>
+                      ) : (
+                        <div className="mt-3 max-h-64 overflow-auto rounded-xl border border-slate-200">
+                          <div className="grid grid-cols-12 border-b border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-700">
+                            <span className="col-span-2">Date</span>
+                            <span className="col-span-2">Result</span>
+                            <span className="col-span-2">Elo</span>
+                            <span className="col-span-2">Delta</span>
+                            <span className="col-span-4">Fixture / Opponent</span>
+                          </div>
+                          {ratingTimeline.map((entry) => (
+                            <div key={entry.id} className="grid grid-cols-12 border-b border-slate-100 px-3 py-2 text-xs text-slate-700 last:border-b-0">
+                              <span className="col-span-2">{new Date(entry.created_at).toLocaleDateString()}</span>
+                              <span className={`col-span-2 font-semibold ${entry.event_type === "result_win" ? "text-emerald-700" : entry.event_type === "result_loss" ? "text-rose-700" : "text-amber-700"}`}>
+                                {entry.resultLabel}
+                              </span>
+                              <span className="col-span-2">{entry.rating_before}→{entry.rating_after}</span>
+                              <span className={`col-span-2 font-semibold ${entry.rating_delta > 0 ? "text-emerald-700" : entry.rating_delta < 0 ? "text-rose-700" : "text-slate-700"}`}>
+                                {formatSignedNumber(entry.rating_delta)}
+                              </span>
+                              <span className="col-span-4">
+                                <span className="block font-medium text-slate-900">{entry.fixtureLabel}</span>
+                                <span className="block text-slate-600">v {entry.opponentName} · {entry.sublabel}</span>
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                     {handicapHistory.length === 0 ? (
                       <p className="text-sm text-slate-600">No handicap changes recorded yet.</p>

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import { supabase } from "@/lib/supabase";
@@ -281,7 +282,11 @@ export default function HandicapsPage() {
                     {rows.map((row) => (
                       <tr key={row.id} className={`border-b border-slate-100 last:border-b-0 ${row.id === linkedPlayerId ? "bg-cyan-50" : "bg-white"}`}>
                         <td className="px-3 py-2 font-semibold">{row.rank}</td>
-                        <td className="px-3 py-2">{row.name}</td>
+                        <td className="px-3 py-2">
+                          <Link href={`/players/${row.id}`} className="font-medium text-sky-700 underline-offset-2 hover:text-sky-900 hover:underline">
+                            {row.name}
+                          </Link>
+                        </td>
                         <td className="px-3 py-2">{row.elo}</td>
                         <td className="px-3 py-2">{row.seededElo}</td>
                         <td className="px-3 py-2 font-semibold text-sky-700">{formatHandicap(row.target)}</td>
