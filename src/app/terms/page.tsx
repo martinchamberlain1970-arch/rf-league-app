@@ -50,7 +50,7 @@ export default function TermsPage() {
             <ul className="mt-2 list-disc space-y-1 pl-5">
               <li>League standings and player tables are calculated from approved data.</li>
               <li>Snooker Elo ratings are updated from approved valid competitive frames.</li>
-              <li>Snooker handicaps are reviewed from Elo and may be adjusted by up to 4 points per review cycle.</li>
+              <li>Snooker handicaps are reviewed from Elo and updated to the current Elo-based target when the league review is run.</li>
               <li>Live handicap starts are capped at 40 points, even if the reviewed Elo gap is larger.</li>
               <li>No-show, void, and nominated-player frames do not affect Elo or handicap.</li>
               <li>Super User may apply manual handicap corrections where required by league rules.</li>

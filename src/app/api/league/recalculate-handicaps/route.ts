@@ -63,21 +63,13 @@ export async function POST(req: NextRequest) {
     const rating = Number(player.rating_snooker ?? 1000);
     const current = Number(player.snooker_handicap ?? 0);
     const target = targetHandicapFromElo(rating);
-    const next =
-      target > current
-        ? Math.min(current + 4, target)
-        : target < current
-          ? Math.max(current - 4, target)
-          : current;
+    const next = target;
 
     if (next === current) continue;
 
     const name = player.full_name?.trim() || player.display_name?.trim() || "Unknown player";
     const targetLabel = target > 0 ? `+${target}` : `${target}`;
-    const reason =
-      next === target
-        ? `Moved directly to Elo-based target handicap ${targetLabel}.`
-        : `Moved one 4-point step toward Elo-based target handicap ${targetLabel}.`;
+    const reason = `Aligned directly to Elo-based target handicap ${targetLabel}.`;
 
     changed.push({
       id: player.id,

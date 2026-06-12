@@ -213,10 +213,10 @@ export default function HandicapsPage() {
                 Elo updates after each valid competitive frame. Handicap is then reviewed from Elo rather than changing automatically after every win or loss.
               </p>
               <p>
-                The table now shows both the current live handicap and the target handicap that the present Elo points to. If those differ, it normally means the player is still moving toward the new mark in review steps rather than changing all at once.
+                The table now shows both the current live handicap and the target handicap that the present Elo points to. If those differ, it means the current handicap has not yet been brought back into line with the latest Elo position.
               </p>
               <p>
-                `Gap to target` is calculated as `target from Elo - current handicap`. A value of `0` means the player is aligned. A negative figure means their current handicap still needs to move further into giving start. A positive figure means they still need to move further into receiving start.
+                `Gap to target` is calculated as `target from Elo - current handicap`. A value of `0` means the player is aligned. A negative figure means the current handicap needs to move further into giving start. A positive figure means it needs to move further into receiving start.
               </p>
               <p>
                 Handicaps are reviewed in full, but match starts are capped at {MAX_SNOOKER_START}. This keeps frames competitive and stops very large starts deciding the frame too early, while still reflecting player strength over time.

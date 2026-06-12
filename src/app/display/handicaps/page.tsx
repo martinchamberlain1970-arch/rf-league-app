@@ -58,11 +58,11 @@ export default function PublicHandicapsPage() {
         </section>
 
         <section className="rounded-2xl border border-violet-400/20 bg-violet-500/10 p-4 text-sm text-violet-100">
-          `Target from Elo` shows where a player currently projects from their rating. `Current` is the live handicap being used on match night, so the two can differ temporarily while reviews catch up.
+          `Target from Elo` shows where a player currently projects from their rating. `Current` is the live handicap being used on match night, so any difference means the latest Elo review still needs to bring that handicap back into line.
         </section>
 
         <section className="rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4 text-sm text-cyan-100">
-          `Gap to target` is `target from Elo - current handicap`. `0` means aligned. Negative means the player still needs to move further into giving start, while positive means they still need to move further into receiving start.
+          `Gap to target` is `target from Elo - current handicap`. `0` means aligned. Negative means the handicap needs to move further into giving start, while positive means it needs to move further into receiving start.
         </section>
 
         {data?.error ? <section className="rounded-2xl border border-rose-400/40 bg-rose-500/10 p-4 text-rose-100">{data.error}</section> : null}

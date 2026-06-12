@@ -1460,7 +1460,7 @@ export default function LeaguePage() {
       title: "Handicaps Guide",
       points: [
         "Snooker Elo updates after every valid competitive frame, but handicaps do not move automatically after each win or loss.",
-        "Use Recalculate from Elo when you want to review handicaps for the current week. Each review moves a player by a maximum of 4 points toward their Elo-based target handicap.",
+        "Use Recalculate from Elo when you want to review handicaps for the current week. Each review aligns a player's handicap directly to their current Elo-based target handicap.",
         "Filter by club/team/player to review current values quickly, or use the copy-ready handicap list to send a full update by WhatsApp or email.",
         "Use override controls for league-corrective changes and open history to trace when and why each change was made.",
       ],
@@ -8092,7 +8092,7 @@ export default function LeaguePage() {
                       <li>No-show, nominated-player, and void frames do not affect Elo or handicap.</li>
                       <li>Handicaps are reviewed from Elo when the Super User runs a review.</li>
                       <li>Target handicap now matches the original Elo seed formula: handicap = nearest multiple of 4 to (1000 - Elo) / 5.</li>
-                      <li>Each review moves a player by a maximum of 4 points toward that Elo-based target handicap.</li>
+                      <li>Each review now aligns a player directly to that Elo-based target handicap.</li>
                       <li>Live match starts are capped at {MAX_SNOOKER_START} so a fixture stays competitive even when the Elo gap is wider.</li>
                       <li>Manual overrides remain available where league rules require correction.</li>
                     </ul>
@@ -8126,7 +8126,7 @@ export default function LeaguePage() {
                     <div>
                       <p className="text-sm font-semibold text-slate-900">Weekly Elo review</p>
                       <p className="text-xs text-slate-600">
-                        Recalculate current handicaps from each league player's snooker Elo. Movement is capped at 4 points per review and recorded in history.
+                        Recalculate current handicaps from each league player's snooker Elo. Each review now brings the live handicap directly into line with the current Elo target and records the change in history.
                       </p>
                     </div>
                     <button

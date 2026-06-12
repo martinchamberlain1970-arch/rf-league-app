@@ -17,7 +17,6 @@ type AuditRow = {
   current_handicap: number;
   target_handicap: number;
   handicap_gap: number;
-  review_steps_away: number;
   baseline_handicap: number;
   rated_matches_stored: number;
   rating_event_count: number;
@@ -134,7 +133,7 @@ export default function RatingAuditPage() {
                   {" "}and stored rated-frame count versus actual rating events.
                 </p>
                 <p className="mt-2 text-xs text-slate-500">
-                  If `handicap gap` is not `0`, the player is not fully aligned to the current Elo target yet. Because reviews move in 4-point steps, that can be expected after recent movement.
+                  If `handicap gap` is not `0`, the player's current handicap no longer matches the latest Elo target and should be brought back into line on the next review.
                 </p>
                 {data?.generated_at ? (
                   <p className="mt-2 text-xs text-slate-500">Generated {new Date(data.generated_at).toLocaleString()}</p>
@@ -205,7 +204,6 @@ export default function RatingAuditPage() {
                           <th className="px-3 py-2 text-left font-semibold text-slate-700">Current Hcp</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-700">Target Hcp</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-700">Gap</th>
-                          <th className="px-3 py-2 text-left font-semibold text-slate-700">Review Steps</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-700">Rated Frames</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-700">Flags</th>
                         </tr>
@@ -234,7 +232,6 @@ export default function RatingAuditPage() {
                             </td>
                             <td className="px-3 py-2 text-slate-700">{formatSigned(row.target_handicap)}</td>
                             <td className={`px-3 py-2 font-semibold ${row.handicap_gap === 0 ? "text-emerald-700" : "text-amber-700"}`}>{formatSigned(row.handicap_gap)}</td>
-                            <td className="px-3 py-2 text-slate-700">{row.review_steps_away}</td>
                             <td className="px-3 py-2 text-slate-700">
                               <span className="font-semibold text-slate-900">{row.rated_matches_stored}</span>
                               <p className="mt-1 text-xs text-slate-500">Events {row.rating_event_count}</p>

@@ -1904,7 +1904,7 @@ export default function PlayerProfilePage() {
                         Your snooker Elo rating updates after every valid competitive frame. Handicap is then reviewed from Elo by the league, rather than changing automatically after every win or loss.
                       </p>
                       <p className="mt-1">
-                        Target handicap now matches the original Elo seed formula: handicap = nearest multiple of 4 to (1000 - Elo) / 5. Each review can move your handicap by a maximum of 4 points toward that target. No-show, nominated-player, and void frames are excluded.
+                        Target handicap now matches the original Elo seed formula: handicap = nearest multiple of 4 to (1000 - Elo) / 5. Each weekly review brings your handicap directly into line with that target. No-show, nominated-player, and void frames are excluded.
                       </p>
                       <p className="mt-1">
                         The live match start is capped at {MAX_SNOOKER_START}. That cap keeps frames competitive and stops a large rating gap from making the opening score feel like the whole result.

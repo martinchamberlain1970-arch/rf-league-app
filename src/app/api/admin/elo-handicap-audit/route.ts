@@ -111,7 +111,6 @@ export async function GET(req: NextRequest) {
       const baselineHandicap = Number(player.snooker_handicap_base ?? player.snooker_handicap ?? 0);
       const targetHandicap = targetHandicapFromElo(Number(player.rating_snooker ?? 1000));
       const handicapGap = targetHandicap - currentHandicap;
-      const reviewStepsAway = Math.abs(handicapGap) / 4;
       const ratedMatchesStored = Number(player.rated_matches_snooker ?? 0);
       const ratingEventCount = eventCountByPlayer.get(player.id) ?? 0;
       const latestEvent = latestEventByPlayer.get(player.id) ?? null;
@@ -136,7 +135,6 @@ export async function GET(req: NextRequest) {
         current_handicap: currentHandicap,
         target_handicap: targetHandicap,
         handicap_gap: handicapGap,
-        review_steps_away: reviewStepsAway,
         baseline_handicap: baselineHandicap,
         rated_matches_stored: ratedMatchesStored,
         rating_event_count: ratingEventCount,
