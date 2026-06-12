@@ -164,6 +164,21 @@ const formatFixtureReschedule = (request?: FixtureChangeRequest | null) => {
   };
 };
 
+const predictionConfidenceLabel = (probability: number) => {
+  if (probability >= 72) return "strong edge";
+  if (probability >= 60) return "clear edge";
+  if (probability >= 53) return "narrow edge";
+  return "too close to call";
+};
+
+const componentImpactLabel = (value: number) => {
+  const abs = Math.abs(value);
+  if (abs >= 8) return "major";
+  if (abs >= 4) return "solid";
+  if (abs >= 1.5) return "useful";
+  return "small";
+};
+
 export default function EventsPage() {
   const admin = useAdminStatus();
   const [rows, setRows] = useState<Competition[]>([]);
@@ -633,7 +648,9 @@ export default function EventsPage() {
   );
   const avg = (nums: number[], fallback: number) => (nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : fallback);
   const formScore = (recent: ("W" | "L" | "D")[]) =>
-    recent.slice(-5).reduce((acc, r) => acc + (r === "W" ? 1 : r === "D" ? 0.5 : 0), 0);
+    recent.length === 0
+      ? 0.5
+      : recent.slice(-5).reduce((acc, r) => acc + (r === "W" ? 1 : r === "D" ? 0.5 : 0), 0) / Math.min(recent.length, 5);
   const frameRecordFor = (playerId: string) => {
     let won = 0;
     let lost = 0;
@@ -709,9 +726,9 @@ export default function EventsPage() {
     const homePos = teamPosition.get(f.home_team_id) ?? maxTeams;
     const awayPos = teamPosition.get(f.away_team_id) ?? maxTeams;
     const styleWeights: Record<PredictionStyle, { rating: number; handicap: number; form: number; table: number; home: number; scale: number }> = {
-      balanced: { rating: 0.18, handicap: 1.6, form: 12, table: 3.5, home: 2, scale: 12 },
-      form: { rating: 0.14, handicap: 1.2, form: 16, table: 4, home: 2, scale: 12 },
-      handicap: { rating: 0.12, handicap: 2.2, form: 10, table: 3, home: 2, scale: 12 },
+      balanced: { rating: 0.07, handicap: 0.35, form: 6, table: 1.2, home: 0.6, scale: 15 },
+      form: { rating: 0.06, handicap: 0.3, form: 8, table: 1.4, home: 0.6, scale: 15 },
+      handicap: { rating: 0.05, handicap: 0.5, form: 5, table: 1.0, home: 0.6, scale: 15 },
     };
     const w = styleWeights[predictionStyle];
     // Weighted prediction model tuned for league snooker:
@@ -727,6 +744,34 @@ export default function EventsPage() {
     const winnerSide: "home" | "away" = homeProb >= awayProb ? "home" : "away";
     const homeTeam = teamById.get(f.home_team_id) ?? "Home";
     const awayTeam = teamById.get(f.away_team_id) ?? "Away";
+    const homeProbPct = Math.round(homeProb * 1000) / 10;
+    const awayProbPct = Math.round(awayProb * 1000) / 10;
+    const favouriteTeam = winnerSide === "home" ? homeTeam : awayTeam;
+    const confidence = predictionConfidenceLabel(Math.max(homeProbPct, awayProbPct));
+    const componentSummaries = [
+      { key: "rating", value: ratingComponent, homeLabel: `${homeTeam} have the stronger rating average`, awayLabel: `${awayTeam} have the stronger rating average` },
+      { key: "handicap", value: handicapComponent, homeLabel: `${homeTeam} carry the lighter handicap profile`, awayLabel: `${awayTeam} carry the lighter handicap profile` },
+      { key: "form", value: formComponent, homeLabel: `${homeTeam} come in with the better recent form`, awayLabel: `${awayTeam} come in with the better recent form` },
+      { key: "table", value: positionComponent, homeLabel: `${homeTeam} hold the stronger league position`, awayLabel: `${awayTeam} hold the stronger league position` },
+      { key: "home", value: homeAdvantage, homeLabel: `${homeTeam} have home-table advantage`, awayLabel: `${awayTeam} have the away edge` },
+    ]
+      .filter((item) => Math.abs(item.value) > 0.35)
+      .sort((a, b) => Math.abs(b.value) - Math.abs(a.value));
+    const topReasons = componentSummaries.slice(0, 3).map((item) =>
+      item.value >= 0
+        ? `${componentImpactLabel(item.value)}: ${item.homeLabel}`
+        : `${componentImpactLabel(item.value)}: ${item.awayLabel}`
+    );
+    const expectationSummary =
+      confidence === "too close to call"
+        ? `The model cannot split them with much conviction, so this reads as close to a coin-flip.`
+        : `${favouriteTeam} come in as the ${confidence} favourite rather than an overwhelming lock.`;
+    const styleSummary =
+      predictionStyle === "balanced"
+        ? "Balanced view mixes rating, handicap, form, league position, and home edge."
+        : predictionStyle === "form"
+          ? "Form-heavy view leans harder on recent match trend and table position."
+          : "Handicap-heavy view leans harder on the handicap shape of each squad.";
     const describeTopPlayer = (teamPlayers: LeaguePlayer[]) => {
       if (teamPlayers.length === 0) return "No registered player history yet for this team.";
       const sorted = [...teamPlayers].sort(
@@ -775,9 +820,13 @@ export default function EventsPage() {
       fixture: f,
       homeTeam,
       awayTeam,
-      homeProb: Math.round(homeProb * 100),
-      awayProb: Math.round(awayProb * 100),
+      homeProb: homeProbPct,
+      awayProb: awayProbPct,
       winnerSide,
+      confidence,
+      expectationSummary,
+      styleSummary,
+      topReasons,
       homePos,
       awayPos,
       homeForm: homeStats.recent.slice(-5).join("") || "-",
@@ -849,7 +898,7 @@ export default function EventsPage() {
     const maxTeams = Math.max(2, teamPosition.size);
     const homePos = teamPosition.get(reportFixture.home_team_id) ?? maxTeams;
     const awayPos = teamPosition.get(reportFixture.away_team_id) ?? maxTeams;
-    const weights = { rating: 0.18, handicap: 1.6, form: 12, table: 3.5, home: 2, scale: 12 };
+    const weights = { rating: 0.07, handicap: 0.35, form: 6, table: 1.2, home: 0.6, scale: 15 };
     const ratingComponent = (homeRating - awayRating) * weights.rating;
     const handicapComponent = (awayHcp - homeHcp) * weights.handicap;
     const formComponent = (homeForm - awayForm) * weights.form;
@@ -863,10 +912,12 @@ export default function EventsPage() {
     const expectedTeam = expectedWinner === "home" ? home : away;
     const expectationLabel =
       actualWinner === "draw"
-        ? "The match finished level, so neither side clearly beat or missed the pre-match expectation."
+        ? expectedHomeProb >= 0.6 || expectedHomeProb <= 0.4
+          ? `${expectedTeam} held the pre-match edge, but a level finish says that advantage never turned into control on the night.`
+          : "The pre-match numbers only hinted at a slim edge either way, and the drawn result backed that up."
         : actualWinner === expectedWinner
-          ? `${expectedTeam} were the model favourite and the result broadly followed expectation.`
-          : `${actualWinner === "home" ? home : away} outperformed the pre-match model, so this result landed as an upset on the numbers.`;
+          ? `${expectedTeam} were favoured before the first frame, and they justified that edge without it being a foregone conclusion.`
+          : `${actualWinner === "home" ? home : away} beat the pre-match numbers, so this landed as a genuine upset against the model.`;
     const formLabel =
       homeForm === awayForm
         ? "Both teams came in with very similar recent form."
@@ -878,7 +929,7 @@ export default function EventsPage() {
     const homeDelta = typeof meta?.delta_a === "number" ? meta.delta_a : null;
     const awayDelta = typeof meta?.delta_b === "number" ? meta.delta_b : null;
     const kFactor = typeof meta?.k_factor === "number" ? meta.k_factor : null;
-    const expectedPct = typeof meta?.expected_a === "number" ? Math.round(meta.expected_a * 100) : Math.round(expectedHomeProb * 100);
+    const expectedPct = typeof meta?.expected_a === "number" ? Math.round(meta.expected_a * 1000) / 10 : Math.round(expectedHomeProb * 1000) / 10;
     const playerDeltas = Array.isArray(meta?.player_deltas) ? meta.player_deltas : [];
     const ratedFrameCount = typeof meta?.rated_frame_count === "number" ? meta.rated_frame_count : 0;
     const biggestGain = playerDeltas
@@ -1730,15 +1781,25 @@ export default function EventsPage() {
                       Expected result: {prediction.winnerSide === "home" ? prediction.homeTeam : prediction.awayTeam}
                     </p>
                     <p className="text-xs text-emerald-900">
-                      Win probability estimate: {prediction.homeTeam} {prediction.homeProb}% · {prediction.awayTeam} {prediction.awayProb}%
+                      Estimated edge: {prediction.homeTeam} {prediction.homeProb}% · {prediction.awayTeam} {prediction.awayProb}%
+                    </p>
+                    <p className="mt-1 text-[11px] font-medium text-emerald-900">{prediction.expectationSummary}</p>
+                    <p className="mt-1 text-[11px] text-emerald-800">{prediction.styleSummary}</p>
+                    {prediction.topReasons.length > 0 ? (
+                      <p className="mt-1 text-[11px] text-emerald-800">
+                        Main reasons: {prediction.topReasons.join(" · ")}.
+                      </p>
+                    ) : (
+                      <p className="mt-1 text-[11px] text-emerald-800">
+                        The underlying factors are tightly balanced, which is why the model sees this as close.
+                      </p>
+                    )}
+                    <p className="mt-1 text-[11px] text-emerald-800">
+                      Raw model balance: rating {prediction.ratingComponent >= 0 ? "+" : ""}{prediction.ratingComponent}, handicap {prediction.handicapComponent >= 0 ? "+" : ""}{prediction.handicapComponent}, form {prediction.formComponent >= 0 ? "+" : ""}{prediction.formComponent}, table {prediction.positionComponent >= 0 ? "+" : ""}{prediction.positionComponent}, home {prediction.homeAdvantage >= 0 ? "+" : ""}{prediction.homeAdvantage}.
                     </p>
                     <p className="mt-1 text-[11px] text-emerald-800">
-                      Based on team form, player ratings, handicaps, and current league position.
+                      Active style: {prediction.style === "balanced" ? "Balanced" : prediction.style === "form" ? "Form-heavy" : "Handicap-heavy"}.
                     </p>
-                    <p className="mt-1 text-[11px] text-emerald-800">
-                      Model factors: rating {prediction.ratingComponent >= 0 ? "+" : ""}{prediction.ratingComponent}, handicap {prediction.handicapComponent >= 0 ? "+" : ""}{prediction.handicapComponent}, form {prediction.formComponent >= 0 ? "+" : ""}{prediction.formComponent}, table {prediction.positionComponent >= 0 ? "+" : ""}{prediction.positionComponent}, home {prediction.homeAdvantage >= 0 ? "+" : ""}{prediction.homeAdvantage}.
-                    </p>
-                    <p className="mt-1 text-[11px] text-emerald-800">Active style: {prediction.style === "balanced" ? "Balanced" : prediction.style === "form" ? "Form-heavy" : "Handicap-heavy"}.</p>
                   </div>
                 </article>
               ) : null}
