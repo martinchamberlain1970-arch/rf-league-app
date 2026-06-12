@@ -1176,6 +1176,44 @@ export default function PlayerProfilePage() {
       }),
     [leagueFixtureById, leagueTeamById, playerNameById, ratingHistory]
   );
+  const ratingTrendPoints = useMemo(() => {
+    const points = [...ratingTimeline]
+      .slice()
+      .reverse()
+      .map((entry, index) => ({
+        index,
+        value: Number(entry.rating_after ?? entry.rating_before ?? 1000),
+        label: entry.sublabel,
+        resultLabel: entry.resultLabel,
+      }));
+    return points;
+  }, [ratingTimeline]);
+  const ratingTrendChart = useMemo(() => {
+    if (ratingTrendPoints.length === 0) return null;
+    const width = 520;
+    const height = 160;
+    const padX = 18;
+    const padY = 16;
+    const values = ratingTrendPoints.map((point) => point.value);
+    const min = Math.min(...values);
+    const max = Math.max(...values);
+    const spread = Math.max(1, max - min);
+    const xStep = ratingTrendPoints.length === 1 ? 0 : (width - padX * 2) / (ratingTrendPoints.length - 1);
+    const toX = (index: number) => padX + index * xStep;
+    const toY = (value: number) => {
+      if (spread === 0) return height / 2;
+      return padY + ((max - value) / spread) * (height - padY * 2);
+    };
+    const path = ratingTrendPoints
+      .map((point, index) => `${index === 0 ? "M" : "L"} ${toX(index).toFixed(2)} ${toY(point.value).toFixed(2)}`)
+      .join(" ");
+    const points = ratingTrendPoints.map((point, index) => ({
+      ...point,
+      x: toX(index),
+      y: toY(point.value),
+    }));
+    return { width, height, min, max, path, points };
+  }, [ratingTrendPoints]);
   const leagueRelevant = useMemo(
     () =>
       leagueFrames.filter((s) => {
@@ -1750,6 +1788,33 @@ export default function PlayerProfilePage() {
                           : "Current rank unavailable"}
                       </p>
                       <p className="text-xs text-slate-500">Peak {Math.round(rankingCard.snookerPeak)} · Rated matches {rankingCard.snookerMatches}</p>
+                      {ratingTrendChart ? (
+                        <div className="mt-4 rounded-xl border border-cyan-200 bg-white p-3">
+                          <div className="flex items-center justify-between gap-2">
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-cyan-700">Elo Trend</p>
+                            <p className="text-[11px] text-slate-500">{ratingTrendChart.min} to {ratingTrendChart.max}</p>
+                          </div>
+                          <svg viewBox={`0 0 ${ratingTrendChart.width} ${ratingTrendChart.height}`} className="mt-3 h-36 w-full">
+                            <defs>
+                              <linearGradient id="eloTrendFill" x1="0" x2="0" y1="0" y2="1">
+                                <stop offset="0%" stopColor="#22d3ee" stopOpacity="0.25" />
+                                <stop offset="100%" stopColor="#22d3ee" stopOpacity="0" />
+                              </linearGradient>
+                            </defs>
+                            <line x1="18" y1={ratingTrendChart.height - 16} x2={ratingTrendChart.width - 18} y2={ratingTrendChart.height - 16} stroke="#cbd5e1" strokeDasharray="4 4" />
+                            <line x1="18" y1="16" x2="18" y2={ratingTrendChart.height - 16} stroke="#e2e8f0" />
+                            <path d={`${ratingTrendChart.path} L ${ratingTrendChart.points[ratingTrendChart.points.length - 1]?.x ?? 0} ${ratingTrendChart.height - 16} L ${ratingTrendChart.points[0]?.x ?? 0} ${ratingTrendChart.height - 16} Z`} fill="url(#eloTrendFill)" />
+                            <path d={ratingTrendChart.path} fill="none" stroke="#0891b2" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                            {ratingTrendChart.points.map((point) => (
+                              <g key={`${point.index}-${point.value}`}>
+                                <circle cx={point.x} cy={point.y} r="4" fill="#0f172a" />
+                                <title>{`${point.value} Elo · ${point.resultLabel} · ${point.label}`}</title>
+                              </g>
+                            ))}
+                          </svg>
+                          <p className="mt-2 text-[11px] text-slate-600">Left to right shows oldest to latest rated frame result. Hover the dots on desktop for the exact Elo after each result.</p>
+                        </div>
+                      ) : null}
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-white p-4">
                       <div className="flex flex-wrap items-center justify-between gap-2">
