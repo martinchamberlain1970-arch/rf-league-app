@@ -25,6 +25,7 @@ const links = [
   { href: "/documents", title: "Documents", desc: "Upload and read AGM minutes, rules, and captain meeting notes." },
   { href: "/backup", title: "Data Management", desc: "Backup, restore, and controlled data reset." },
   { href: "/audit", title: "Audit Log", desc: "Super User action trail across the system." },
+  { href: "/rating-audit", title: "Elo Audit", desc: "Super User pulse check for Elo, handicap alignment, and rated-frame counts." },
   { href: "/signup-requests", title: "Signup Requests", desc: "Review new-account profile and location requests." },
   { href: "/usage", title: "Usage Analytics", desc: "Super User page-usage summary." },
   { href: "/results", title: "Results Queue", desc: "Review and approve submitted results." },
@@ -118,6 +119,7 @@ export default function HomePage() {
         "/results",
         "/reschedule-fixture",
         "/audit",
+        "/rating-audit",
         "/usage",
         "/backup",
         "/announcements",
@@ -125,7 +127,7 @@ export default function HomePage() {
         "/legal",
       ].includes(href);
     }
-    if (!admin.isSuper && (href === "/audit" || href === "/usage" || href === "/signup-requests" || href === "/announcements")) return false;
+    if (!admin.isSuper && (href === "/audit" || href === "/rating-audit" || href === "/usage" || href === "/signup-requests" || href === "/announcements")) return false;
     if (admin.isAdmin) {
       // Admins still see these cards, but they can be disabled per-account.
       return true;
@@ -145,12 +147,12 @@ export default function HomePage() {
     (href === "/events/new" && pendingFeatureRequests.has("competition_create"));
 
   const primaryHrefs = admin.isSuper
-    ? ["/signup-requests", "/players", "/notifications", "/league", "/results", "/reschedule-fixture", "/backup", "/signups", "/announcements", "/legal"]
+    ? ["/signup-requests", "/players", "/notifications", "/league", "/results", "/reschedule-fixture", "/rating-audit", "/backup", "/signups", "/announcements", "/legal"]
     : admin.isAdmin
       ? ["/league", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/quick-match", "/events/new", "/signups", "/help", "/legal"]
       : ["/league", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/notifications", "/signups", "/help", "/legal"];
   const quickAccessHrefs = admin.isSuper
-    ? ["/audit", "/usage"]
+    ? ["/audit", "/rating-audit", "/usage"]
     : admin.isAdmin
       ? ["/results", "/notifications", "/live", "/stats"]
       : [];
