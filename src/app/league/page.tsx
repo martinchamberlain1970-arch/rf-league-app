@@ -4159,6 +4159,7 @@ export default function LeaguePage() {
         team_name: string;
         played: number;
         won: number;
+        drawn: number;
         lost: number;
         frames_for: number;
         frames_against: number;
@@ -4173,6 +4174,7 @@ export default function LeaguePage() {
         team_name: t.name,
         played: 0,
         won: 0,
+        drawn: 0,
         lost: 0,
         frames_for: 0,
         frames_against: 0,
@@ -4211,6 +4213,8 @@ export default function LeaguePage() {
         away.form.push({ sortKey: dateSort, result: "W" });
         home.form.push({ sortKey: dateSort, result: "L" });
       } else {
+        home.drawn += 1;
+        away.drawn += 1;
         home.form.push({ sortKey: dateSort, result: "D" });
         away.form.push({ sortKey: dateSort, result: "D" });
       }
@@ -7861,6 +7865,7 @@ export default function LeaguePage() {
                         <th className="px-2 py-2">Team</th>
                         <th className="px-2 py-2">P</th>
                         <th className="px-2 py-2">W</th>
+                        <th className="px-2 py-2">D</th>
                         <th className="px-2 py-2">L</th>
                         <th className="px-2 py-2">FF</th>
                         <th className="px-2 py-2">FA</th>
@@ -7885,6 +7890,7 @@ export default function LeaguePage() {
                           </td>
                           <td className="px-2 py-2">{r.played}</td>
                           <td className="px-2 py-2">{r.won}</td>
+                          <td className="px-2 py-2">{r.drawn}</td>
                           <td className="px-2 py-2">{r.lost}</td>
                           <td className="px-2 py-2">{r.frames_for}</td>
                           <td className="px-2 py-2">{r.frames_against}</td>
