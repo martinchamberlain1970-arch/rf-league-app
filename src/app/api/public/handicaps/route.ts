@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { targetHandicapFromElo } from "@/lib/snooker-rating";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -85,7 +86,9 @@ export async function GET(req: NextRequest) {
       player_id: player.id,
       player_name: named(player),
       elo: Math.round(Number(player.rating_snooker ?? 1000)),
+      target_handicap: targetHandicapFromElo(Number(player.rating_snooker ?? 1000)),
       current_handicap: Number(player.snooker_handicap ?? 0),
+      gap_to_target: targetHandicapFromElo(Number(player.rating_snooker ?? 1000)) - Number(player.snooker_handicap ?? 0),
       baseline_handicap: Number(player.snooker_handicap_base ?? player.snooker_handicap ?? 0),
       rated_matches: Number(player.rated_matches_snooker ?? 0),
     }));

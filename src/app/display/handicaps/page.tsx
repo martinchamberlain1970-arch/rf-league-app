@@ -6,7 +6,9 @@ type HandicapRow = {
   rank: number;
   player_name: string;
   elo: number;
+  target_handicap: number;
   current_handicap: number;
+  gap_to_target: number;
   baseline_handicap: number;
   rated_matches: number;
 };
@@ -55,6 +57,14 @@ export default function PublicHandicapsPage() {
           Elo updates automatically when a match result is approved and complete. Handicap does not auto-change after every match; it is reviewed from Elo and any league decisions.
         </section>
 
+        <section className="rounded-2xl border border-violet-400/20 bg-violet-500/10 p-4 text-sm text-violet-100">
+          `Target from Elo` shows where a player currently projects from their rating. `Current` is the live handicap being used on match night, so the two can differ temporarily while reviews catch up.
+        </section>
+
+        <section className="rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4 text-sm text-cyan-100">
+          `Gap to target` is `target from Elo - current handicap`. `0` means aligned. Negative means the player still needs to move further into giving start, while positive means they still need to move further into receiving start.
+        </section>
+
         {data?.error ? <section className="rounded-2xl border border-rose-400/40 bg-rose-500/10 p-4 text-rose-100">{data.error}</section> : null}
 
         <section className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/80 shadow-2xl shadow-black/20">
@@ -65,7 +75,9 @@ export default function PublicHandicapsPage() {
                   <th className="px-3 py-3">#</th>
                   <th className="px-3 py-3">Player</th>
                   <th className="px-3 py-3 text-center">Elo</th>
+                  <th className="px-3 py-3 text-center">Target From Elo</th>
                   <th className="px-3 py-3 text-center">Current</th>
+                  <th className="px-3 py-3 text-center">Gap To Target</th>
                   <th className="px-3 py-3 text-center">Baseline</th>
                   <th className="px-3 py-3 text-center">Rated Matches</th>
                 </tr>
@@ -76,7 +88,9 @@ export default function PublicHandicapsPage() {
                     <td className="px-3 py-3 font-semibold text-cyan-300">{row.rank}</td>
                     <td className="px-3 py-3 font-medium">{row.player_name}</td>
                     <td className="px-3 py-3 text-center">{row.elo}</td>
+                    <td className="px-3 py-3 text-center font-semibold text-sky-300">{formatHandicap(row.target_handicap)}</td>
                     <td className="px-3 py-3 text-center font-semibold text-emerald-300">{formatHandicap(row.current_handicap)}</td>
+                    <td className="px-3 py-3 text-center font-semibold text-cyan-300">{formatHandicap(row.gap_to_target)}</td>
                     <td className="px-3 py-3 text-center">{formatHandicap(row.baseline_handicap)}</td>
                     <td className="px-3 py-3 text-center">{row.rated_matches}</td>
                   </tr>

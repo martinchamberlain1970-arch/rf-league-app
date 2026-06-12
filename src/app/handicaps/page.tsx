@@ -5,6 +5,7 @@ import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import { supabase } from "@/lib/supabase";
 import { MAX_SNOOKER_START } from "@/lib/snooker-handicap";
+import { targetHandicapFromElo } from "@/lib/snooker-rating";
 
 type Player = {
   id: string;
@@ -159,8 +160,10 @@ export default function HandicapsPage() {
           rank: index + 1,
           name: named(player),
           elo: Math.round(Number(player.rating_snooker ?? 1000)),
+          target: targetHandicapFromElo(Number(player.rating_snooker ?? 1000)),
           current: Number(player.snooker_handicap ?? 0),
           baseline: Number(player.snooker_handicap_base ?? player.snooker_handicap ?? 0),
+          gapToTarget: targetHandicapFromElo(Number(player.rating_snooker ?? 1000)) - Number(player.snooker_handicap ?? 0),
           ratedMatches: Number(player.rated_matches_snooker ?? 0),
           seededElo: Math.round(1000 - Number(player.snooker_handicap_base ?? player.snooker_handicap ?? 0) * 5),
         })),
@@ -178,7 +181,7 @@ export default function HandicapsPage() {
           {message ? <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">{message}</section> : null}
 
           {currentPlayer ? (
-            <section className="grid gap-3 md:grid-cols-3">
+            <section className="grid gap-3 md:grid-cols-4">
               <div className="rounded-2xl border border-violet-200 bg-white p-4 shadow-sm">
                 <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Your Elo</p>
                 <p className="mt-2 text-3xl font-bold text-slate-900">{currentPlayer.elo}</p>
@@ -187,12 +190,17 @@ export default function HandicapsPage() {
               <div className="rounded-2xl border border-teal-200 bg-white p-4 shadow-sm">
                 <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Current Handicap</p>
                 <p className="mt-2 text-3xl font-bold text-slate-900">{formatHandicap(currentPlayer.current)}</p>
-                <p className="mt-1 text-sm text-slate-600">Live reviewed handicap.</p>
+                <p className="mt-1 text-sm text-slate-600">Live reviewed handicap. Elo currently points toward {formatHandicap(currentPlayer.target)}.</p>
               </div>
               <div className="rounded-2xl border border-amber-200 bg-white p-4 shadow-sm">
                 <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Baseline Handicap</p>
                 <p className="mt-2 text-3xl font-bold text-slate-900">{formatHandicap(currentPlayer.baseline)}</p>
                 <p className="mt-1 text-sm text-slate-600">Original starting handicap.</p>
+              </div>
+              <div className="rounded-2xl border border-sky-200 bg-white p-4 shadow-sm">
+                <p className="text-xs font-semibold uppercase tracking-wide text-sky-700">Gap To Target</p>
+                <p className="mt-2 text-3xl font-bold text-slate-900">{formatHandicap(currentPlayer.gapToTarget)}</p>
+                <p className="mt-1 text-sm text-slate-600">Difference between current handicap and Elo target.</p>
               </div>
             </section>
           ) : null}
@@ -202,6 +210,12 @@ export default function HandicapsPage() {
             <div className="mt-3 space-y-3 text-sm text-slate-700">
               <p>
                 Elo updates after each valid competitive frame. Handicap is then reviewed from Elo rather than changing automatically after every win or loss.
+              </p>
+              <p>
+                The table now shows both the current live handicap and the target handicap that the present Elo points to. If those differ, it normally means the player is still moving toward the new mark in review steps rather than changing all at once.
+              </p>
+              <p>
+                `Gap to target` is calculated as `target from Elo - current handicap`. A value of `0` means the player is aligned. A negative figure means their current handicap still needs to move further into giving start. A positive figure means they still need to move further into receiving start.
               </p>
               <p>
                 Handicaps are reviewed in full, but match starts are capped at {MAX_SNOOKER_START}. This keeps frames competitive and stops very large starts deciding the frame too early, while still reflecting player strength over time.
@@ -256,7 +270,9 @@ export default function HandicapsPage() {
                       <th className="px-3 py-2">Player</th>
                       <th className="px-3 py-2">Elo</th>
                       <th className="px-3 py-2">Seeded Elo</th>
+                      <th className="px-3 py-2">Target From Elo</th>
                       <th className="px-3 py-2">Current</th>
+                      <th className="px-3 py-2">Gap To Target</th>
                       <th className="px-3 py-2">Baseline</th>
                       <th className="px-3 py-2">Rated Frames</th>
                     </tr>
@@ -268,7 +284,9 @@ export default function HandicapsPage() {
                         <td className="px-3 py-2">{row.name}</td>
                         <td className="px-3 py-2">{row.elo}</td>
                         <td className="px-3 py-2">{row.seededElo}</td>
+                        <td className="px-3 py-2 font-semibold text-sky-700">{formatHandicap(row.target)}</td>
                         <td className="px-3 py-2 font-semibold">{formatHandicap(row.current)}</td>
+                        <td className="px-3 py-2 font-semibold text-cyan-700">{formatHandicap(row.gapToTarget)}</td>
                         <td className="px-3 py-2">{formatHandicap(row.baseline)}</td>
                         <td className="px-3 py-2">{row.ratedMatches}</td>
                       </tr>
