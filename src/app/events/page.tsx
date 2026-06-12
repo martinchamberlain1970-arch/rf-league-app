@@ -824,6 +824,7 @@ export default function EventsPage() {
       awayProb: awayProbPct,
       winnerSide,
       confidence,
+      expectedLabel: confidence === "too close to call" ? "Too close to call" : favouriteTeam,
       expectationSummary,
       styleSummary,
       topReasons,
@@ -1125,6 +1126,12 @@ export default function EventsPage() {
       overperformance && overperformance.ratingGap > 0
         ? `${overperformance.winnerName} produced the biggest over-performance against rating in ${overperformance.label}, beating an opponent rated ${Math.round(overperformance.ratingGap)} Elo points higher.`
         : "No frame winner finished with a clear rating deficit, so the match broadly followed the rating order on a frame-by-frame basis.";
+    const matchFlowLabel =
+      finalTurningPoint
+        ? finalTurningPoint
+        : (reportFixture.home_points ?? 0) === (reportFixture.away_points ?? 0)
+          ? "Neither side found the one frame that completely broke the match open, so the contest stayed live all the way to the finish."
+          : "The match never hinged on one dramatic turning point; instead, the winner gradually built enough control across the night.";
     return {
       home,
       away,
@@ -1139,6 +1146,7 @@ export default function EventsPage() {
       top,
       handicapHighlights,
       turningPoint: finalTurningPoint,
+      matchFlowLabel,
       handicapNoteOfNight,
       overperformanceLabel,
     };
@@ -1292,30 +1300,39 @@ export default function EventsPage() {
   }, [roundupWeek, seasonFixtures, teamById, seasonFrames, playerNameMap, seasonPlayers, playersByTeam, teamStats, teamPosition]);
   const matchReportText = useMemo(() => {
     if (!matchupReport || !reportFixture || !reportInsights) return "";
+    const expectationLead =
+      reportInsights.expectedPct >= 55
+        ? `${reportInsights.expectedWinner} held the stronger pre-match position at roughly ${reportInsights.expectedPct}%.`
+        : `The pre-match numbers were tight, with only a marginal edge at around ${reportInsights.expectedPct}%.`;
+    const keyPerformerLine =
+      matchupReport.top.length > 0
+        ? `The main names on the night were ${matchupReport.top.join(", ")}.`
+        : "";
+    const handicapWrap =
+      matchupReport.handicapNoteOfNight
+        ? `From a handicap point of view, ${matchupReport.handicapNoteOfNight}`
+        : "";
     const lines = [
       `${matchupReport.home} vs ${matchupReport.away} (${leagueFixtureDate(reportFixture)})`,
       `Result: ${matchupReport.score}`,
       "",
       "Result summary:",
-      `- ${matchupReport.headline}`,
-      `- Elo model used: corrected frame-by-frame Elo, so only the players involved in each rated frame were affected.`,
-      `- Expected result: ${reportInsights.expectedWinner} came in as the model favourite at about ${reportInsights.expectedPct}%.`,
-      `- Outcome vs expectation: ${reportInsights.expectationLabel}`,
-      `- Form guide: ${reportInsights.formLabel}`,
-      `- ${reportInsights.homeFormLine}`,
-      `- ${reportInsights.awayFormLine}`,
-      reportInsights.biggestMargin !== null ? `- Biggest frame winning margin: ${reportInsights.biggestMargin} points.` : "",
-      matchupReport.top.length ? `- Key performers: ${matchupReport.top.join(" · ")}` : "",
-      matchupReport.turningPoint ? `- Turning point: ${matchupReport.turningPoint}` : "",
-      matchupReport.handicapNoteOfNight ? `- Handicap note of the night: ${matchupReport.handicapNoteOfNight}` : "",
-      matchupReport.overperformanceLabel ? `- Rating over-performance: ${matchupReport.overperformanceLabel}` : "",
-      ...matchupReport.handicapHighlights.map((line) => `- Handicap note: ${line}`),
+      `${matchupReport.headline} ${reportInsights.expectationLabel}`,
+      `${expectationLead} ${reportInsights.formLabel}`,
+      `${reportInsights.homeFormLine} ${reportInsights.awayFormLine}`,
+      `${matchupReport.matchFlowLabel} ${keyPerformerLine}`.trim(),
+      reportInsights.biggestMargin !== null ? `The biggest single-frame winning margin was ${reportInsights.biggestMargin} points.` : "",
+      handicapWrap,
+      matchupReport.overperformanceLabel,
+      matchupReport.handicapHighlights.length > 0
+        ? `Other handicap talking points: ${matchupReport.handicapHighlights.join(" ")}` 
+        : "",
       "",
       "Elo impact:",
-      `- ${reportInsights.eloLabel}`,
+      reportInsights.eloLabel,
       "",
       "Frame facts:",
-      ...matchupReport.frameRows.map((r) => `- ${r.label}: ${r.homeName} vs ${r.awayName} | Score: ${r.scoreLabel} | Winner: ${r.winner} | ${r.handicapNote}`),
+      ...matchupReport.frameRows.map((r) => `- ${r.label}: ${r.homeName} vs ${r.awayName}. Score ${r.scoreLabel}. Winner: ${r.winner}. ${r.handicapNote}`),
     ].filter(Boolean);
     return lines.join("\n");
   }, [matchupReport, reportFixture, reportInsights]);
@@ -1777,9 +1794,7 @@ export default function EventsPage() {
                     </div>
                   </div>
                   <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
-                    <p className="text-sm font-semibold text-emerald-900">
-                      Expected result: {prediction.winnerSide === "home" ? prediction.homeTeam : prediction.awayTeam}
-                    </p>
+                    <p className="text-sm font-semibold text-emerald-900">Expected result: {prediction.expectedLabel}</p>
                     <p className="text-xs text-emerald-900">
                       Estimated edge: {prediction.homeTeam} {prediction.homeProb}% · {prediction.awayTeam} {prediction.awayProb}%
                     </p>
@@ -1799,6 +1814,9 @@ export default function EventsPage() {
                     </p>
                     <p className="mt-1 text-[11px] text-emerald-800">
                       Active style: {prediction.style === "balanced" ? "Balanced" : prediction.style === "form" ? "Form-heavy" : "Handicap-heavy"}.
+                    </p>
+                    <p className="mt-1 text-[11px] text-emerald-800">
+                      Guide note: this preview is based on the squads currently registered to each team, not the final submitted lineup for the night.
                     </p>
                   </div>
                 </article>
@@ -1826,7 +1844,15 @@ export default function EventsPage() {
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Expectation</p>
                       <p className="mt-2 text-sm text-slate-900">
-                        {reportInsights.expectedWinner} were the model favourite at about <span className="font-semibold">{reportInsights.expectedPct}%</span>.
+                        {reportInsights.expectedPct >= 55 ? (
+                          <>
+                            {reportInsights.expectedWinner} held the pre-match edge at about <span className="font-semibold">{reportInsights.expectedPct}%</span>.
+                          </>
+                        ) : (
+                          <>
+                            The model only gave this a very slim edge at about <span className="font-semibold">{reportInsights.expectedPct}%</span>.
+                          </>
+                        )}
                       </p>
                       <p className="mt-2 text-xs text-slate-700">{reportInsights.expectationLabel}</p>
                     </div>
@@ -1842,7 +1868,7 @@ export default function EventsPage() {
                     <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3">
                       <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Match Turned In</p>
                       <p className="mt-2 text-xs text-indigo-950">
-                        {matchupReport.turningPoint ?? "No single frame clearly changed the direction of the match, so the contest stayed balanced throughout."}
+                        {matchupReport.matchFlowLabel}
                       </p>
                     </div>
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
