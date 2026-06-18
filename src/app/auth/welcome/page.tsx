@@ -91,15 +91,40 @@ function WelcomePageInner() {
       setMessage("Enter your date of birth.");
       return;
     }
-    setSavingDob(true);
-    const { error } = await client.from("players").update({ date_of_birth: dobInput }).eq("id", linkedPlayer.id);
-    setSavingDob(false);
-    if (error) {
-      setMessage(`Failed to save date of birth: ${error.message}`);
+    const { data: sessionRes } = await client.auth.getSession();
+    const token = sessionRes.session?.access_token;
+    if (!token) {
+      setMessage("Session expired. Please sign in again.");
       return;
     }
-    setLinkedPlayer((prev) => (prev ? { ...prev, date_of_birth: dobInput } : prev));
-    setMessage(null);
+    setSavingDob(true);
+    const resp = await fetch("/api/player/date-of-birth", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        playerId: linkedPlayer.id,
+        dateOfBirth: dobInput,
+      }),
+    });
+    setSavingDob(false);
+    const data = await resp.json().catch(() => ({}));
+    if (!resp.ok) {
+      setMessage(data?.error ?? "Failed to save date of birth.");
+      return;
+    }
+    setLinkedPlayer((prev) =>
+      prev
+        ? {
+            ...prev,
+            date_of_birth: String(data?.player?.date_of_birth ?? dobInput),
+          }
+        : prev
+    );
+    setDobInput(String(data?.player?.date_of_birth ?? dobInput));
+    setMessage("Date of birth saved.");
   };
 
   return (
