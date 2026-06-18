@@ -124,7 +124,7 @@ function WelcomePageInner() {
         : prev
     );
     setDobInput(String(data?.player?.date_of_birth ?? dobInput));
-    setMessage("Date of birth saved.");
+    setMessage("Date of birth saved to your player profile.");
   };
 
   return (
