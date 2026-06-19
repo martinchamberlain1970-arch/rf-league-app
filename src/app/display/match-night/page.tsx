@@ -70,6 +70,10 @@ function initials(name: string) {
     .join("") || "?";
 }
 
+function stripHandicapSuffix(label: string) {
+  return label.replace(/\s\([+-]?\d+(?:\.\d+)?\)/g, "");
+}
+
 function PlayerAvatars({
   players,
 }: {
@@ -242,7 +246,7 @@ export default function MatchNightDisplayPage() {
                             {frame.startAmount > 0 ? `${frame.startRecipient} start ${frame.startAmount}` : "Level start"}
                           </p>
                           <p className="mt-1 text-[13px] font-semibold leading-snug text-white">
-                            {frame.homeName} <span className="text-cyan-200">{frame.scoreLabel.replace("-", " vs. ")}</span> {frame.awayName}
+                            {stripHandicapSuffix(frame.homeName)} <span className="text-cyan-200">{frame.scoreLabel.replace("-", " vs. ")}</span> {stripHandicapSuffix(frame.awayName)}
                           </p>
                         </div>
                         <div className="mt-2 grid grid-cols-2 gap-3">

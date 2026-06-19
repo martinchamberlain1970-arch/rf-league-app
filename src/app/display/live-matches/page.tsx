@@ -56,6 +56,10 @@ function PlayerBadge({ player, align = "left" }: { player: { name: string; avata
   );
 }
 
+function stripHandicapSuffix(label: string) {
+  return label.replace(/\s\([+-]?\d+(?:\.\d+)?\)/g, "");
+}
+
 export default function PublicLiveMatchesPage() {
   const [data, setData] = useState<LiveMatchData>(emptyData);
   const [loading, setLoading] = useState(true);
@@ -164,7 +168,7 @@ export default function PublicLiveMatchesPage() {
                           {frame.startAmount > 0 ? `${frame.startRecipient} start ${frame.startAmount}` : "Level start"}
                         </p>
                         <p className="mt-1 text-[13px] font-semibold leading-snug text-white">
-                          {frame.homeName} <span className="text-cyan-200">{frame.scoreLabel.replace("-", " vs. ")}</span> {frame.awayName}
+                          {stripHandicapSuffix(frame.homeName)} <span className="text-cyan-200">{frame.scoreLabel.replace("-", " vs. ")}</span> {stripHandicapSuffix(frame.awayName)}
                         </p>
                       </div>
                       <div className="mt-3 grid gap-2 text-sm xl:grid-cols-[1fr_auto_1fr] xl:items-center">
