@@ -268,7 +268,7 @@ export async function GET(req: NextRequest) {
     })
     .filter((row) => (greenhitheLocationId ? row.location_id === greenhitheLocationId : true))
     .filter((row) => row.played > 0)
-    .sort((a, b) => b.win_pct - a.win_pct || b.won - a.won || a.player_name.localeCompare(b.player_name))
+    .sort((a, b) => b.won - a.won || b.win_pct - a.win_pct || b.played - a.played || a.player_name.localeCompare(b.player_name))
     .slice(0, 10)
     .map((row, index) => ({ ...row, rank: index + 1 }));
 

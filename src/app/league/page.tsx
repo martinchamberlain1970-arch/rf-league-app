@@ -4695,7 +4695,7 @@ export default function LeaguePage() {
             win_pct: played > 0 ? Math.round((won / played) * 1000) / 10 : 0,
           };
         })
-        .sort((a, b) => b.win_pct - a.win_pct || b.won - a.won || a.player_name.localeCompare(b.player_name));
+        .sort((a, b) => b.won - a.won || b.win_pct - a.win_pct || b.played - a.played || a.player_name.localeCompare(b.player_name));
     };
 
     const singles = toRows(singlesAppearanceByPlayer, singlesPlayed);
@@ -4727,7 +4727,7 @@ export default function LeaguePage() {
     singles.forEach(merge);
     doubles.forEach(merge);
     const totals = Array.from(totalByPlayer.values()).sort(
-      (a, b) => b.win_pct - a.win_pct || b.won - a.won || a.player_name.localeCompare(b.player_name)
+      (a, b) => b.won - a.won || b.win_pct - a.win_pct || b.played - a.played || a.player_name.localeCompare(b.player_name)
     );
     return { singles, doubles, totals };
   }, [seasonId, seasonTeams, seasonFixtures, slots, members, playerById, fallbackRosterByLeagueTeamId]);
