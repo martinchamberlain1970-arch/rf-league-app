@@ -247,19 +247,13 @@ export default function MatchNightDisplayPage() {
                         </div>
                         <div className="mt-2 grid grid-cols-2 gap-3">
                           <div className="min-w-0">
-                            <p className="line-clamp-2 text-[11px] font-medium text-slate-200">
-                              {frame.homeName}
-                            </p>
-                            <p className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-slate-400">
+                            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400">
                               Hcp {frame.homeHandicapLabel}
                             </p>
                             <PlayerAvatars players={frame.homePlayers} />
                           </div>
                           <div className="min-w-0 text-right">
-                            <p className="line-clamp-2 text-[11px] font-medium text-slate-200">
-                              {frame.awayName}
-                            </p>
-                            <p className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-slate-400">
+                            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400">
                               Hcp {frame.awayHandicapLabel}
                             </p>
                             <div className="flex justify-end">

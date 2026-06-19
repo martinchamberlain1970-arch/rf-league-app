@@ -169,8 +169,7 @@ export default function PublicLiveMatchesPage() {
                       </div>
                       <div className="mt-3 grid gap-2 text-sm xl:grid-cols-[1fr_auto_1fr] xl:items-center">
                         <div>
-                          <p className="font-semibold text-white">{frame.homeName}</p>
-                          <p className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-slate-400">
+                          <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400">
                             Hcp {frame.homeHandicapLabel}
                           </p>
                           <div className="mt-2 flex flex-wrap gap-2">
@@ -181,8 +180,7 @@ export default function PublicLiveMatchesPage() {
                         </div>
                         <p className="text-center text-cyan-200">vs.</p>
                         <div>
-                          <p className="font-semibold text-white xl:text-right">{frame.awayName}</p>
-                          <p className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-slate-400 xl:text-right">
+                          <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400 xl:text-right">
                             Hcp {frame.awayHandicapLabel}
                           </p>
                           <div className="mt-2 flex flex-wrap justify-start gap-2 xl:justify-end">
