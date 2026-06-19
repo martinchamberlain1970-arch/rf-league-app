@@ -39,14 +39,22 @@ const emptyData: LiveMatchData = {
   liveMatches: [],
 };
 
-function PlayerBadge({ player, align = "left" }: { player: { name: string; avatarUrl?: string | null; nationality?: string | null; countryCode?: string | null }; align?: "left" | "right" }) {
+function PlayerBadge({
+  player,
+  align = "left",
+  avatarClass = "border-white/15 bg-slate-900/60 text-white",
+}: {
+  player: { name: string; avatarUrl?: string | null; nationality?: string | null; countryCode?: string | null };
+  align?: "left" | "right";
+  avatarClass?: string;
+}) {
   const flag = countryCodeToFlagEmoji(player.countryCode);
   return (
     <div className={`flex items-center gap-2 ${align === "right" ? "justify-end" : ""}`}>
       {align === "right" && (flag || player.nationality) ? (
         <span className="text-xs text-slate-300">{flag ? `${flag} ` : ""}{player.nationality ?? ""}</span>
       ) : null}
-      <div className="flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-slate-900/60 text-xs font-black text-white">
+      <div className={`flex h-10 w-10 items-center justify-center overflow-hidden rounded-full border text-xs font-black ${avatarClass}`}>
         {player.avatarUrl ? <img src={player.avatarUrl} alt={player.name} className="h-full w-full object-cover" /> : <span>{player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>}
       </div>
       {align === "left" && (flag || player.nationality) ? (
@@ -58,6 +66,29 @@ function PlayerBadge({ player, align = "left" }: { player: { name: string; avata
 
 function stripHandicapSuffix(label: string) {
   return label.replace(/\s\([+-]?\d+(?:\.\d+)?\)/g, "");
+}
+
+function sideHighlight(frameStatus: string, side: "home" | "away") {
+  const winner = frameStatus === "Home won" ? "home" : frameStatus === "Away won" ? "away" : null;
+  if (!winner) {
+    return {
+      nameClass: "text-white",
+      metaClass: "text-slate-400",
+      avatarClass: "border-white/15 bg-slate-900/60 text-white",
+    };
+  }
+  if (winner === side) {
+    return {
+      nameClass: "text-emerald-200",
+      metaClass: "text-emerald-300/90",
+      avatarClass: "border-emerald-300/40 bg-emerald-400/10 text-emerald-100",
+    };
+  }
+  return {
+    nameClass: "text-rose-200",
+    metaClass: "text-rose-300/90",
+    avatarClass: "border-rose-300/35 bg-rose-400/10 text-rose-100",
+  };
 }
 
 export default function PublicLiveMatchesPage() {
@@ -152,6 +183,11 @@ export default function PublicLiveMatchesPage() {
                 <div className="mt-4 space-y-3">
                   {match.frameRows.map((frame) => (
                     <div key={frame.id} className="rounded-2xl border border-white/10 bg-slate-950/35 p-3">
+                      {(() => {
+                        const homeTone = sideHighlight(frame.frameStatus, "home");
+                        const awayTone = sideHighlight(frame.frameStatus, "away");
+                        return (
+                          <>
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-300">{frame.title}</p>
                         <div className="flex items-center gap-2">
@@ -163,46 +199,53 @@ export default function PublicLiveMatchesPage() {
                           </span>
                         </div>
                       </div>
-                        <div className="mt-3 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-200/80">
-                            {frame.startAmount > 0 ? `${frame.startRecipient} start ${frame.startAmount}` : "Level start"}
-                          </p>
-                          <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                            <p className="text-[13px] font-semibold leading-snug text-white">
+                      <div className="mt-3 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-200/80">
+                          {frame.startAmount > 0 ? `${frame.startRecipient} start ${frame.startAmount}` : "Level start"}
+                        </p>
+                        <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                            <p className={`text-[13px] font-semibold leading-snug ${homeTone.nameClass}`}>
                               {stripHandicapSuffix(frame.homeName)}
                             </p>
                             <span className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-3 py-1 text-[13px] font-black text-cyan-100">
                               {frame.scoreLabel}
                             </span>
-                            <p className="text-right text-[13px] font-semibold leading-snug text-white">
+                            <p className={`text-right text-[13px] font-semibold leading-snug ${awayTone.nameClass}`}>
                               {stripHandicapSuffix(frame.awayName)}
                             </p>
                           </div>
                         </div>
                       <div className="mt-3 grid gap-2 text-sm xl:grid-cols-[1fr_auto_1fr] xl:items-center">
                         <div>
-                          <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400">
+                          <p className={`text-[10px] uppercase tracking-[0.14em] ${homeTone.metaClass}`}>
                             Hcp {frame.homeHandicapLabel}
                           </p>
                           <div className="mt-2 flex flex-wrap gap-2">
                             {frame.homePlayers.map((player, index) => (
-                              <PlayerBadge key={`${frame.id}-home-${index}`} player={player} />
+                              <div key={`${frame.id}-home-${index}`} className={homeTone.nameClass}>
+                                <PlayerBadge player={player} avatarClass={homeTone.avatarClass} />
+                              </div>
                             ))}
                           </div>
                         </div>
                         <p className="text-center text-cyan-200">vs.</p>
                         <div>
-                          <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400 xl:text-right">
+                          <p className={`text-[10px] uppercase tracking-[0.14em] xl:text-right ${awayTone.metaClass}`}>
                             Hcp {frame.awayHandicapLabel}
                           </p>
                           <div className="mt-2 flex flex-wrap justify-start gap-2 xl:justify-end">
                             {frame.awayPlayers.map((player, index) => (
-                              <PlayerBadge key={`${frame.id}-away-${index}`} player={player} align="right" />
+                              <div key={`${frame.id}-away-${index}`} className={awayTone.nameClass}>
+                                <PlayerBadge player={player} align="right" avatarClass={awayTone.avatarClass} />
+                              </div>
                             ))}
                           </div>
                         </div>
                       </div>
                       <p className="mt-3 text-xs text-slate-300">{frame.startLabel}</p>
+                          </>
+                        );
+                      })()}
                     </div>
                   ))}
                 </div>

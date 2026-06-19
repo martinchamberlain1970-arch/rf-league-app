@@ -61,6 +61,29 @@ function fixtureTone(status: string) {
   return "border-white/15 bg-white/10 text-slate-100";
 }
 
+function sideHighlight(frameStatus: string, side: "home" | "away") {
+  const winner = frameStatus === "Home won" ? "home" : frameStatus === "Away won" ? "away" : null;
+  if (!winner) {
+    return {
+      nameClass: "text-white",
+      metaClass: "text-slate-400",
+      avatarClass: "border-white/15 bg-slate-800 text-slate-200",
+    };
+  }
+  if (winner === side) {
+    return {
+      nameClass: "text-emerald-200",
+      metaClass: "text-emerald-300/90",
+      avatarClass: "border-emerald-300/40 bg-emerald-400/10 text-emerald-100",
+    };
+  }
+  return {
+    nameClass: "text-rose-200",
+    metaClass: "text-rose-300/90",
+    avatarClass: "border-rose-300/35 bg-rose-400/10 text-rose-100",
+  };
+}
+
 function initials(name: string) {
   return name
     .split(/\s+/)
@@ -76,18 +99,22 @@ function stripHandicapSuffix(label: string) {
 
 function PlayerAvatars({
   players,
+  tone,
 }: {
   players: Array<{
     name: string;
     avatarUrl: string | null;
   }>;
+  tone: {
+    avatarClass: string;
+  };
 }) {
   return (
     <div className="mt-1 flex items-center gap-1.5">
       {players.map((player, idx) => (
         <div
           key={`${player.name}-${idx}`}
-          className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-slate-800 text-[10px] font-bold text-slate-200"
+          className={`flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border text-[10px] font-bold ${tone.avatarClass}`}
           title={player.name}
         >
           {player.avatarUrl ? (
@@ -229,6 +256,11 @@ export default function MatchNightDisplayPage() {
                         key={frame.id}
                         className="rounded-2xl border border-white/10 bg-slate-950/35 px-3 py-2"
                       >
+                        {(() => {
+                          const homeTone = sideHighlight(frame.frameStatus, "home");
+                          const awayTone = sideHighlight(frame.frameStatus, "away");
+                          return (
+                            <>
                         <div className="flex items-center justify-between gap-2">
                           <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">
                             {frame.title}
@@ -246,33 +278,36 @@ export default function MatchNightDisplayPage() {
                             {frame.startAmount > 0 ? `${frame.startRecipient} start ${frame.startAmount}` : "Level start"}
                           </p>
                           <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                            <p className="text-[13px] font-semibold leading-snug text-white">
+                            <p className={`text-[13px] font-semibold leading-snug ${homeTone.nameClass}`}>
                               {stripHandicapSuffix(frame.homeName)}
                             </p>
                             <span className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-3 py-1 text-[13px] font-black text-cyan-100">
                               {frame.scoreLabel}
                             </span>
-                            <p className="text-right text-[13px] font-semibold leading-snug text-white">
+                            <p className={`text-right text-[13px] font-semibold leading-snug ${awayTone.nameClass}`}>
                               {stripHandicapSuffix(frame.awayName)}
                             </p>
                           </div>
                         </div>
                         <div className="mt-2 grid grid-cols-2 gap-3">
                           <div className="min-w-0">
-                            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400">
+                            <p className={`text-[10px] uppercase tracking-[0.14em] ${homeTone.metaClass}`}>
                               Hcp {frame.homeHandicapLabel}
                             </p>
-                            <PlayerAvatars players={frame.homePlayers} />
+                            <PlayerAvatars players={frame.homePlayers} tone={homeTone} />
                           </div>
                           <div className="min-w-0 text-right">
-                            <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400">
+                            <p className={`text-[10px] uppercase tracking-[0.14em] ${awayTone.metaClass}`}>
                               Hcp {frame.awayHandicapLabel}
                             </p>
                             <div className="flex justify-end">
-                              <PlayerAvatars players={frame.awayPlayers} />
+                              <PlayerAvatars players={frame.awayPlayers} tone={awayTone} />
                             </div>
                           </div>
                         </div>
+                            </>
+                          );
+                        })()}
                       </div>
                     ))}
                   </div>
