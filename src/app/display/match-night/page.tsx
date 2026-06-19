@@ -19,9 +19,25 @@ type LiveMatchData = {
       title: string;
       homeName: string;
       awayName: string;
+      homeHandicapLabel: string;
+      awayHandicapLabel: string;
+      homePlayers: Array<{
+        name: string;
+        avatarUrl: string | null;
+        nationality: string | null;
+        countryCode: string | null;
+      }>;
+      awayPlayers: Array<{
+        name: string;
+        avatarUrl: string | null;
+        nationality: string | null;
+        countryCode: string | null;
+      }>;
       scoreLabel: string;
       frameStatus: string;
       startLabel: string;
+      startRecipient: string;
+      startAmount: number;
     }>;
   }>;
   error?: string;
@@ -43,6 +59,43 @@ function fixtureTone(status: string) {
   if (status === "complete") return "border-emerald-300/30 bg-emerald-400/10 text-emerald-100";
   if (status === "in_progress") return "border-cyan-300/30 bg-cyan-400/10 text-cyan-100";
   return "border-white/15 bg-white/10 text-slate-100";
+}
+
+function initials(name: string) {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("") || "?";
+}
+
+function PlayerAvatars({
+  players,
+}: {
+  players: Array<{
+    name: string;
+    avatarUrl: string | null;
+  }>;
+}) {
+  return (
+    <div className="mt-1 flex items-center gap-1.5">
+      {players.map((player, idx) => (
+        <div
+          key={`${player.name}-${idx}`}
+          className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-slate-800 text-[10px] font-bold text-slate-200"
+          title={player.name}
+        >
+          {player.avatarUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={player.avatarUrl} alt={player.name} className="h-full w-full object-cover" />
+          ) : (
+            <span>{initials(player.name)}</span>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function MatchNightDisplayPage() {
@@ -184,9 +237,36 @@ export default function MatchNightDisplayPage() {
                             {frame.frameStatus}
                           </span>
                         </div>
-                        <p className="mt-2 text-sm font-semibold text-white">{frame.scoreLabel}</p>
-                        <p className="mt-1 line-clamp-1 text-xs text-slate-300">{frame.homeName}</p>
-                        <p className="line-clamp-1 text-xs text-slate-300">{frame.awayName}</p>
+                        <div className="mt-2 rounded-xl border border-white/8 bg-white/[0.03] px-2.5 py-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-200/80">
+                            {frame.startAmount > 0 ? `${frame.startRecipient} start ${frame.startAmount}` : "Level start"}
+                          </p>
+                          <p className="mt-1 text-[13px] font-semibold leading-snug text-white">
+                            {frame.homeName} <span className="text-cyan-200">{frame.scoreLabel.replace("-", " vs. ")}</span> {frame.awayName}
+                          </p>
+                        </div>
+                        <div className="mt-2 grid grid-cols-2 gap-3">
+                          <div className="min-w-0">
+                            <p className="line-clamp-2 text-[11px] font-medium text-slate-200">
+                              {frame.homeName}
+                            </p>
+                            <p className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-slate-400">
+                              Hcp {frame.homeHandicapLabel}
+                            </p>
+                            <PlayerAvatars players={frame.homePlayers} />
+                          </div>
+                          <div className="min-w-0 text-right">
+                            <p className="line-clamp-2 text-[11px] font-medium text-slate-200">
+                              {frame.awayName}
+                            </p>
+                            <p className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-slate-400">
+                              Hcp {frame.awayHandicapLabel}
+                            </p>
+                            <div className="flex justify-end">
+                              <PlayerAvatars players={frame.awayPlayers} />
+                            </div>
+                          </div>
+                        </div>
                       </div>
                     ))}
                   </div>

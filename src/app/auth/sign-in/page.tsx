@@ -317,6 +317,26 @@ export default function SignInPage() {
               </Link>{" "}
               for the before-match and result-submission steps.
             </p>
+            <div className="mt-4 rounded-[1.35rem] border border-sky-200 bg-sky-50 px-4 py-4">
+              <p className="text-sm font-semibold text-sky-900">Captain / vice-captain quick start</p>
+              <p className="mt-1 text-sm text-sky-800">
+                Match night? Use these shortcuts so sign-in sends you straight to the right place.
+              </p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link
+                  href="/auth/sign-in?next=%2Fcaptain-results"
+                  className="rounded-xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white"
+                >
+                  Go to lineups & results
+                </Link>
+                <Link
+                  href="/auth/sign-in?next=%2Fcaptain-guide"
+                  className="rounded-xl border border-sky-300 bg-white px-4 py-2 text-sm font-semibold text-sky-900"
+                >
+                  Open captain guide
+                </Link>
+              </div>
+            </div>
             <form onSubmit={onSignIn} className="mt-8 space-y-5">
               <div>
                 <label className="mb-2 block text-sm font-medium text-slate-700">Email address</label>

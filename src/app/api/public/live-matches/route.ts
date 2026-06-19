@@ -71,6 +71,22 @@ type PlayerSelectRow = {
   country_code?: string | null;
 };
 
+type PublicPlayerCard = {
+  name: string;
+  avatarUrl: string | null;
+  nationality: string | null;
+  countryCode: string | null;
+};
+
+function publicPlayerCard(player?: PlayerRow | null, fallbackName?: string): PublicPlayerCard {
+  return {
+    name: player?.full_name?.trim() || player?.display_name || fallbackName || "Player",
+    avatarUrl: player?.avatar_url ?? null,
+    nationality: player?.nationality_name ?? null,
+    countryCode: player?.country_code ?? null,
+  };
+}
+
 function named(player?: PlayerRow | null) {
   return player?.full_name?.trim() || player?.display_name || "Unknown";
 }
@@ -92,6 +108,12 @@ function playerLabel(player?: PlayerRow | null, fallbackName?: string) {
 
 function doublesPlayerLabel(player: PlayerRow | null | undefined, fallbackName: string) {
   return playerLabel(player, fallbackName);
+}
+
+function formatStartDetail(homeStart: number, awayStart: number) {
+  if (homeStart > 0) return { recipient: "Home", amount: homeStart, label: `Home receives ${homeStart}` };
+  if (awayStart > 0) return { recipient: "Away", amount: awayStart, label: `Away receives ${awayStart}` };
+  return { recipient: "Level", amount: 0, label: "Level start" };
 }
 
 function isMissingColumnError(message?: string | null) {
@@ -242,12 +264,7 @@ export async function GET(req: NextRequest) {
           ? (playerHandicap(awayPrimary) + playerHandicap(awaySecondary)) / 2
           : playerHandicap(awayPrimary);
       const starts = calculateAdjustedScoresWithCap(0, 0, homeHandicap, awayHandicap);
-      const startLabel =
-        starts.homeStart > 0
-          ? `Home receives ${starts.homeStart} start`
-          : starts.awayStart > 0
-            ? `Away receives ${starts.awayStart} start`
-            : "Level start";
+      const startDetail = formatStartDetail(starts.homeStart, starts.awayStart);
 
       const homeScore = typeof frame.home_points_scored === "number" ? frame.home_points_scored : null;
       const awayScore = typeof frame.away_points_scored === "number" ? frame.away_points_scored : null;
@@ -268,57 +285,37 @@ export async function GET(req: NextRequest) {
         title: `Frame ${frame.slot_no}`,
         homeName,
         awayName,
+        homeHandicapLabel:
+          frame.slot_type === "doubles"
+            ? `${formatHandicap(Math.round(homeHandicap))}`
+            : `${formatHandicap(playerHandicap(homePrimary))}`,
+        awayHandicapLabel:
+          frame.slot_type === "doubles"
+            ? `${formatHandicap(Math.round(awayHandicap))}`
+            : `${formatHandicap(playerHandicap(awayPrimary))}`,
         homePlayers:
           frame.slot_type === "doubles"
             ? [
-                {
-                  name: named(homePrimary),
-                  avatarUrl: homePrimary?.avatar_url ?? null,
-                  nationality: homePrimary?.nationality_name ?? null,
-                  countryCode: homePrimary?.country_code ?? null,
-                },
-                {
-                  name: named(homeSecondary),
-                  avatarUrl: homeSecondary?.avatar_url ?? null,
-                  nationality: homeSecondary?.nationality_name ?? null,
-                  countryCode: homeSecondary?.country_code ?? null,
-                },
+                publicPlayerCard(homePrimary, "Home player 1"),
+                publicPlayerCard(homeSecondary, "Home player 2"),
               ]
             : [
-                {
-                  name: frame.home_nominated ? frame.home_nominated_name?.trim() || "Nominated Player" : named(homePrimary),
-                  avatarUrl: homePrimary?.avatar_url ?? null,
-                  nationality: homePrimary?.nationality_name ?? null,
-                  countryCode: homePrimary?.country_code ?? null,
-                },
+                publicPlayerCard(homePrimary, frame.home_nominated ? frame.home_nominated_name?.trim() || "Nominated Player" : "Home player"),
               ],
         awayPlayers:
           frame.slot_type === "doubles"
             ? [
-                {
-                  name: named(awayPrimary),
-                  avatarUrl: awayPrimary?.avatar_url ?? null,
-                  nationality: awayPrimary?.nationality_name ?? null,
-                  countryCode: awayPrimary?.country_code ?? null,
-                },
-                {
-                  name: named(awaySecondary),
-                  avatarUrl: awaySecondary?.avatar_url ?? null,
-                  nationality: awaySecondary?.nationality_name ?? null,
-                  countryCode: awaySecondary?.country_code ?? null,
-                },
+                publicPlayerCard(awayPrimary, "Away player 1"),
+                publicPlayerCard(awaySecondary, "Away player 2"),
               ]
             : [
-                {
-                  name: frame.away_nominated ? frame.away_nominated_name?.trim() || "Nominated Player" : named(awayPrimary),
-                  avatarUrl: awayPrimary?.avatar_url ?? null,
-                  nationality: awayPrimary?.nationality_name ?? null,
-                  countryCode: awayPrimary?.country_code ?? null,
-                },
+                publicPlayerCard(awayPrimary, frame.away_nominated ? frame.away_nominated_name?.trim() || "Nominated Player" : "Away player"),
               ],
         scoreLabel,
         frameStatus,
-        startLabel: `Max start ${MAX_SNOOKER_START} · ${startLabel}`,
+        startLabel: `Max start ${MAX_SNOOKER_START} · ${startDetail.label}`,
+        startRecipient: startDetail.recipient,
+        startAmount: startDetail.amount,
       };
     });
 

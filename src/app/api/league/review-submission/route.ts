@@ -9,6 +9,7 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
 
 type SubmissionBreakEntry = {
+  slot_no?: number | null;
   player_id?: string | null;
   entered_player_name?: string | null;
   break_value?: number;
@@ -115,7 +116,7 @@ export async function POST(req: NextRequest) {
 
   if (decision === "approved") {
     const frameResults = (submission.frame_results ?? []) as SubmissionFrameResult[];
-    const breaks: Array<{ player_id: string | null; entered_player_name: string | null; break_value: number }> = [];
+    const breaks: Array<{ frame_slot_no: number; player_id: string | null; entered_player_name: string | null; break_value: number }> = [];
 
     for (const item of frameResults) {
       if (!item?.slot_no || !Number.isInteger(item.slot_no)) continue;
@@ -151,6 +152,7 @@ export async function POST(req: NextRequest) {
           const val = Number(br?.break_value ?? 0);
           if (!Number.isFinite(val) || val < 30) continue;
           breaks.push({
+            frame_slot_no: Number.isInteger(br?.slot_no) ? Number(br.slot_no) : item.slot_no,
             player_id: br?.player_id ?? null,
             entered_player_name: br?.entered_player_name ?? null,
             break_value: val,
@@ -167,6 +169,7 @@ export async function POST(req: NextRequest) {
       const insBreaks = await adminClient.from("league_fixture_breaks").insert(
         breaks.map((b) => ({
           fixture_id: submission.fixture_id,
+          frame_slot_no: b.frame_slot_no,
           player_id: b.player_id,
           entered_player_name: b.entered_player_name,
           break_value: b.break_value,

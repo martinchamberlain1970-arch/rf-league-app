@@ -20,11 +20,15 @@ type LiveMatchData = {
       title: string;
       homeName: string;
       awayName: string;
+      homeHandicapLabel: string;
+      awayHandicapLabel: string;
       homePlayers: Array<{ name: string; avatarUrl?: string | null; nationality?: string | null; countryCode?: string | null }>;
       awayPlayers: Array<{ name: string; avatarUrl?: string | null; nationality?: string | null; countryCode?: string | null }>;
       scoreLabel: string;
       frameStatus: string;
       startLabel: string;
+      startRecipient: string;
+      startAmount: number;
     }>;
   }>;
   error?: string;
@@ -155,9 +159,20 @@ export default function PublicLiveMatchesPage() {
                           </span>
                         </div>
                       </div>
+                      <div className="mt-3 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-200/80">
+                          {frame.startAmount > 0 ? `${frame.startRecipient} start ${frame.startAmount}` : "Level start"}
+                        </p>
+                        <p className="mt-1 text-[13px] font-semibold leading-snug text-white">
+                          {frame.homeName} <span className="text-cyan-200">{frame.scoreLabel.replace("-", " vs. ")}</span> {frame.awayName}
+                        </p>
+                      </div>
                       <div className="mt-3 grid gap-2 text-sm xl:grid-cols-[1fr_auto_1fr] xl:items-center">
                         <div>
                           <p className="font-semibold text-white">{frame.homeName}</p>
+                          <p className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-slate-400">
+                            Hcp {frame.homeHandicapLabel}
+                          </p>
                           <div className="mt-2 flex flex-wrap gap-2">
                             {frame.homePlayers.map((player, index) => (
                               <PlayerBadge key={`${frame.id}-home-${index}`} player={player} />
@@ -167,6 +182,9 @@ export default function PublicLiveMatchesPage() {
                         <p className="text-center text-cyan-200">vs.</p>
                         <div>
                           <p className="font-semibold text-white xl:text-right">{frame.awayName}</p>
+                          <p className="mt-0.5 text-[10px] uppercase tracking-[0.14em] text-slate-400 xl:text-right">
+                            Hcp {frame.awayHandicapLabel}
+                          </p>
                           <div className="mt-2 flex flex-wrap justify-start gap-2 xl:justify-end">
                             {frame.awayPlayers.map((player, index) => (
                               <PlayerBadge key={`${frame.id}-away-${index}`} player={player} align="right" />

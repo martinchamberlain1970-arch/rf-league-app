@@ -8,6 +8,7 @@ const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
 
 type SubmissionBreakEntry = {
+  slot_no?: number | null;
   player_id?: string | null;
   entered_player_name?: string | null;
   break_value?: number;
@@ -160,11 +161,12 @@ export async function POST(req: NextRequest) {
       break_entries: Array.isArray(r.break_entries)
         ? r.break_entries
             .map((b) => ({
+              slot_no: Number.isInteger(b?.slot_no) ? Number(b.slot_no) : r.slot_no,
               player_id: b?.player_id ?? null,
               entered_player_name: b?.entered_player_name ?? null,
               break_value: Number(b?.break_value ?? 0),
             }))
-            .filter((b) => Number.isFinite(b.break_value) && b.break_value >= 30 && (b.player_id || b.entered_player_name))
+            .filter((b) => Number.isFinite(b.break_value) && b.break_value >= 30 && Number.isInteger(b.slot_no) && (b.player_id || b.entered_player_name))
         : undefined,
     }));
   if (!cleanFrameResults.some((r) => r.winner_side)) {

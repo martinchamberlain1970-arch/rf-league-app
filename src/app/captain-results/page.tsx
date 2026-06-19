@@ -74,12 +74,14 @@ type FrameSlot = {
   away_points_scored?: number | null;
 };
 type BreakRow = {
+  slot_no: number | null;
   player_id: string | null;
   entered_player_name: string;
   break_value: string;
 };
 
 type SubmissionBreakEntry = {
+  slot_no?: number | null;
   player_id: string | null;
   entered_player_name: string | null;
   break_value: number;
@@ -128,15 +130,20 @@ function breakRowsContainUnsavedDraft(rows: BreakRow[]) {
   });
 }
 
-function padBreakRows(rows: BreakRow[]) {
+function createEmptyBreakRow(slotNo: number | null = null): BreakRow {
+  return { slot_no: slotNo, player_id: null, entered_player_name: "", break_value: "" };
+}
+
+function padBreakRows(rows: BreakRow[], slotNo: number | null = null) {
   const padded = [...rows];
-  while (padded.length < 3) padded.push({ player_id: null, entered_player_name: "", break_value: "" });
+  while (padded.length < 3) padded.push(createEmptyBreakRow(slotNo));
   return padded;
 }
 
 function hydrateBreakRows(rows: SubmissionBreakEntry[]) {
   return padBreakRows(
     rows.map((row) => ({
+      slot_no: row.slot_no ?? null,
       player_id: row.player_id ?? null,
       entered_player_name: row.entered_player_name ?? "",
       break_value: String(row.break_value ?? ""),
@@ -178,6 +185,7 @@ function buildScorecardSignature(slots: FrameSlot[], fixtureBreaks: BreakRow[]) 
       away_player2_id: slot.away_player2_id ?? null,
     })),
     fixtureBreaks: fixtureBreaks.map((row) => ({
+      slot_no: row.slot_no ?? null,
       player_id: row.player_id ?? null,
       entered_player_name: row.entered_player_name ?? "",
       break_value: row.break_value ?? "",
@@ -273,11 +281,7 @@ export default function CaptainResultsPage() {
   const [activeEntryTab, setActiveEntryTab] = useState<"lineup" | "scorecard">("lineup");
   const [nominatedNames, setNominatedNames] = useState<Record<string, string>>({});
   const [breaksFeatureAvailable, setBreaksFeatureAvailable] = useState(true);
-  const [fixtureBreaks, setFixtureBreaks] = useState<BreakRow[]>([
-    { player_id: null, entered_player_name: "", break_value: "" },
-    { player_id: null, entered_player_name: "", break_value: "" },
-    { player_id: null, entered_player_name: "", break_value: "" },
-  ]);
+  const [fixtureBreaks, setFixtureBreaks] = useState<BreakRow[]>(padBreakRows([]));
 
   const [lastAutoSavedAt, setLastAutoSavedAt] = useState<string | null>(null);
   const autoSaveTimerRef = useRef<number | null>(null);
@@ -287,6 +291,8 @@ export default function CaptainResultsPage() {
   const [scorecardReviewMode, setScorecardReviewMode] = useState(false);
   const [submitPromptMode, setSubmitPromptMode] = useState<"general" | "final_frame">("general");
   const [frameAdvancePrompt, setFrameAdvancePrompt] = useState<{ slotNo: number; isFinalFrame: boolean } | null>(null);
+  const [showPreviewGuide, setShowPreviewGuide] = useState(false);
+  const [showJourneyGuide, setShowJourneyGuide] = useState(false);
 
   const baselineScorecardSignatureRef = useRef("");
   const [scorecardDirty, setScorecardDirty] = useState(false);
@@ -299,19 +305,33 @@ export default function CaptainResultsPage() {
   const loadBreaks = async (fixtureId: string) => {
     const client = supabase;
     if (!client || !fixtureId) return;
+    let resData: Array<{ frame_slot_no?: number | null; player_id: string | null; entered_player_name: string | null; break_value: number | null }> = [];
+    let resError: { message?: string } | null = null;
     const res = await client
       .from("league_fixture_breaks")
-      .select("player_id,entered_player_name,break_value")
+      .select("frame_slot_no,player_id,entered_player_name,break_value")
       .eq("fixture_id", fixtureId)
       .order("break_value", { ascending: false });
-    if (res.error) {
-      if (res.error.message?.toLowerCase().includes("does not exist")) {
+    resData = (res.data ?? []) as Array<{ frame_slot_no?: number | null; player_id: string | null; entered_player_name: string | null; break_value: number | null }>;
+    resError = res.error;
+    if (resError && resError.message?.toLowerCase().includes("frame_slot_no")) {
+      const fallbackRes = await client
+        .from("league_fixture_breaks")
+        .select("player_id,entered_player_name,break_value")
+        .eq("fixture_id", fixtureId)
+        .order("break_value", { ascending: false });
+      resData = (fallbackRes.data ?? []) as Array<{ player_id: string | null; entered_player_name: string | null; break_value: number | null }>;
+      resError = fallbackRes.error;
+    }
+    if (resError) {
+      if (resError.message?.toLowerCase().includes("does not exist")) {
         setBreaksFeatureAvailable(false);
       }
       return;
     }
     setBreaksFeatureAvailable(true);
-    const rows = (res.data ?? []).map((r) => ({
+    const rows = resData.map((r) => ({
+      slot_no: "frame_slot_no" in r ? ((r.frame_slot_no as number | null) ?? null) : null,
       player_id: (r.player_id as string | null) ?? null,
       entered_player_name: (r.entered_player_name as string | null) ?? "",
       break_value: String(r.break_value ?? ""),
@@ -556,11 +576,7 @@ export default function CaptainResultsPage() {
       setSlots([]);
       setNominatedNames({});
       setScorecardPhotoUrl("");
-      setFixtureBreaks([
-        { player_id: null, entered_player_name: "", break_value: "" },
-        { player_id: null, entered_player_name: "", break_value: "" },
-        { player_id: null, entered_player_name: "", break_value: "" },
-      ]);
+      setFixtureBreaks(padBreakRows([]));
       return;
     }
     const pendingSubmission = pendingSubmissionMap.get(selectedFixture.id);
@@ -581,7 +597,12 @@ export default function CaptainResultsPage() {
       }
       setNominatedNames(nn);
       setScorecardPhotoUrl(pendingSubmission.scorecard_photo_url ?? "");
-      const pendingBreaks = pendingSubmission.frame_results.flatMap((row) => row.break_entries ?? []);
+      const pendingBreaks = pendingSubmission.frame_results.flatMap((row) =>
+        (row.break_entries ?? []).map((entry) => ({
+          ...entry,
+          slot_no: entry.slot_no ?? row.slot_no,
+        }))
+      );
       const hydratedBreaks =
         pendingBreaks.length > 0
           ? hydrateBreakRows(pendingBreaks)
@@ -674,12 +695,14 @@ export default function CaptainResultsPage() {
     const fallbackIndex = firstIncompleteScorecardIndex >= 0 ? firstIncompleteScorecardIndex : 0;
     setScorecardCurrentIndex(fallbackIndex);
     setScorecardReviewMode(false);
+    setShowPreviewGuide(false);
+    setShowJourneyGuide(false);
   }, [selectedFixture?.id, activeEntryTab]);
 
   const fetchRemoteScorecardSignature = async () => {
     const client = supabase;
     if (!client || !selectedFixture) return null;
-    const [slotRes, breakRes] = await Promise.all([
+    const [slotRes, initialBreakRes] = await Promise.all([
       client
         .from("league_fixture_frames")
         .select("id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_forfeit,away_forfeit,winner_side,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored")
@@ -687,14 +710,26 @@ export default function CaptainResultsPage() {
         .order("slot_no", { ascending: true }),
       client
         .from("league_fixture_breaks")
-        .select("player_id,entered_player_name,break_value")
+        .select("frame_slot_no,player_id,entered_player_name,break_value")
         .eq("fixture_id", selectedFixture.id)
         .order("break_value", { ascending: false }),
     ]);
+    let breakData = (initialBreakRes.data ?? []) as Array<{ frame_slot_no?: number | null; player_id: string | null; entered_player_name: string | null; break_value: number | null }>;
+    let breakError = initialBreakRes.error;
+    if (breakError && breakError.message.toLowerCase().includes("frame_slot_no")) {
+      const fallbackBreakRes = await client
+        .from("league_fixture_breaks")
+        .select("player_id,entered_player_name,break_value")
+        .eq("fixture_id", selectedFixture.id)
+        .order("break_value", { ascending: false });
+      breakData = (fallbackBreakRes.data ?? []) as Array<{ player_id: string | null; entered_player_name: string | null; break_value: number | null }>;
+      breakError = fallbackBreakRes.error;
+    }
     if (slotRes.error) throw new Error(slotRes.error.message);
-    if (breakRes.error && !breakRes.error.message.toLowerCase().includes("does not exist")) throw new Error(breakRes.error.message);
+    if (breakError && !breakError.message.toLowerCase().includes("does not exist")) throw new Error(breakError.message);
     const remoteSlots = (slotRes.data ?? []) as FrameSlot[];
-    const remoteBreaks = ((breakRes.data ?? []) as Array<{ player_id: string | null; entered_player_name: string | null; break_value: number | null }>).map((row) => ({
+    const remoteBreaks = breakData.map((row) => ({
+      slot_no: row.frame_slot_no ?? null,
       player_id: row.player_id ?? null,
       entered_player_name: row.entered_player_name ?? "",
       break_value: String(row.break_value ?? ""),
@@ -781,7 +816,16 @@ export default function CaptainResultsPage() {
       setMessage(breakRows.error);
       return { saved: false, allFramesComplete, hasUnsavedBreakDraft };
     }
-    if (frameResults.length > 0) frameResults[0].break_entries = breakRows.rows;
+    const breakRowsBySlot = new Map<number, SubmissionBreakEntry[]>();
+    for (const row of breakRows.rows) {
+      if (!row.slot_no) continue;
+      const existing = breakRowsBySlot.get(row.slot_no) ?? [];
+      existing.push(row);
+      breakRowsBySlot.set(row.slot_no, existing);
+    }
+    for (const frameResult of frameResults) {
+      frameResult.break_entries = breakRowsBySlot.get(frameResult.slot_no) ?? [];
+    }
 
     const sessionRes = await client.auth.getSession();
     const token = sessionRes.data.session?.access_token ?? null;
@@ -954,15 +998,6 @@ export default function CaptainResultsPage() {
     });
   };
 
-  const saveBreaksOnly = () => {
-    void saveProgress("manual", {
-      suppressSubmitPrompt: true,
-      successTitle: "Breaks saved",
-      successDescription:
-        "Any complete 30+ break entries have been saved with the live scorecard. If you leave a break row half-finished, it stays on this device until you complete it.",
-    });
-  };
-
   const teamMembersByTeam = useMemo(() => {
     const map = new Map<string, string[]>();
     for (const m of members) {
@@ -985,17 +1020,23 @@ export default function CaptainResultsPage() {
   }, [teamMembersByTeam, selectedFixture]);
 
   const fixturePlayerOptions = useMemo(() => {
-    const ids = new Set<string>();
-    for (const id of homeRosterIds) ids.add(id);
-    for (const id of awayRosterIds) ids.add(id);
+    const slotNosByPlayer = new Map<string, Set<number>>();
     for (const s of slots) {
-      if (s.home_player1_id) ids.add(s.home_player1_id);
-      if (s.home_player2_id) ids.add(s.home_player2_id);
-      if (s.away_player1_id) ids.add(s.away_player1_id);
-      if (s.away_player2_id) ids.add(s.away_player2_id);
+      for (const playerId of [s.home_player1_id, s.home_player2_id, s.away_player1_id, s.away_player2_id]) {
+        if (!playerId) continue;
+        const existing = slotNosByPlayer.get(playerId) ?? new Set<number>();
+        existing.add(s.slot_no);
+        slotNosByPlayer.set(playerId, existing);
+      }
     }
-    return Array.from(ids)
-      .map((id) => ({ id, label: namedWithHandicap(playerById.get(id)) }))
+    for (const id of homeRosterIds) {
+      if (!slotNosByPlayer.has(id)) slotNosByPlayer.set(id, new Set<number>());
+    }
+    for (const id of awayRosterIds) {
+      if (!slotNosByPlayer.has(id)) slotNosByPlayer.set(id, new Set<number>());
+    }
+    return Array.from(slotNosByPlayer.entries())
+      .map(([id, slotNos]) => ({ id, label: namedWithHandicap(playerById.get(id)), frameEligibleSlotNos: slotNos }))
       .sort((a, b) => sortLabelByFirstName(a.label, b.label));
   }, [homeRosterIds, awayRosterIds, slots, playerById]);
   const sortRosterIds = (ids: string[]) =>
@@ -1034,6 +1075,13 @@ export default function CaptainResultsPage() {
     Number(playerById.get(playerId ?? "")?.snooker_handicap ?? 0);
   const playerRating = (playerId: string | null | undefined) =>
     ratingOf(playerById.get(playerId ?? ""));
+  const framePlayerLabel = (slot: FrameSlot, side: "home" | "away") => {
+    const namedPlayer =
+      side === "home"
+        ? slot.home_nominated_name?.trim() || named(playerById.get(slot.home_player1_id ?? "") ?? null)
+        : slot.away_nominated_name?.trim() || named(playerById.get(slot.away_player1_id ?? "") ?? null);
+    return namedPlayer || (side === "home" ? "Home player" : "Away player");
+  };
 
   const singlesHandicapLabel = (slot: FrameSlot) => {
     const home = playerHandicap(slot.home_player1_id);
@@ -1219,6 +1267,32 @@ export default function CaptainResultsPage() {
   const currentScorecardFrame = orderedScoreSlots[Math.min(scorecardCurrentIndex, Math.max(orderedScoreSlots.length - 1, 0))] ?? null;
   const scorecardFramesToDisplay = scorecardReviewMode ? orderedScoreSlots : currentScorecardFrame ? [currentScorecardFrame] : [];
 
+  useEffect(() => {
+    if (!currentScorecardFrame || scorecardReviewMode) return;
+    setFixtureBreaks((prev) => {
+      const currentRows = prev.filter((row) => row.slot_no === currentScorecardFrame.slot_no);
+      if (currentRows.length >= 3) return prev;
+      return [...prev, ...Array.from({ length: 3 - currentRows.length }, () => createEmptyBreakRow(currentScorecardFrame.slot_no))];
+    });
+  }, [currentScorecardFrame, scorecardReviewMode]);
+
+  const currentFrameBreakRows = useMemo(() => {
+    if (!currentScorecardFrame) return [] as Array<{ row: BreakRow; index: number }>;
+    return fixtureBreaks
+      .map((row, index) => ({ row, index }))
+      .filter(({ row }) => row.slot_no === currentScorecardFrame.slot_no);
+  }, [currentScorecardFrame, fixtureBreaks]);
+
+  const currentFrameHomeLabel = currentScorecardFrame ? framePlayerLabel(currentScorecardFrame, "home") : "Home player";
+  const currentFrameAwayLabel = currentScorecardFrame ? framePlayerLabel(currentScorecardFrame, "away") : "Away player";
+
+  const reviewBreakRows = useMemo(
+    () => fixtureBreaks.map((row, index) => ({ row, index })).filter(({ row }) => breakRowHasAnyContent(row)),
+    [fixtureBreaks]
+  );
+
+  const displayedBreakRows = scorecardReviewMode ? reviewBreakRows : currentFrameBreakRows;
+
   const validateFrameCompletion = (row: FrameSlot) => {
     if (!isFrameLineupReady(row)) {
       return `Frame ${row.slot_no} is not ready yet. Confirm both players before saving and continuing.`;
@@ -1248,6 +1322,7 @@ export default function CaptainResultsPage() {
     );
     const recorded = fixtureBreaks
       .map((row) => {
+        if (row.slot_no !== currentScorecardFrame.slot_no) return null;
         const breakValue = Number(row.break_value || 0);
         if (!Number.isFinite(breakValue) || breakValue < 30) return null;
         const label = row.player_id
@@ -1259,6 +1334,7 @@ export default function CaptainResultsPage() {
       })
       .filter((value): value is string => Boolean(value));
     const hasPartial = fixtureBreaks.some((row) => {
+      if (row.slot_no !== currentScorecardFrame.slot_no) return false;
       if (!breakRowHasAnyContent(row)) return false;
       if (row.player_id && !participantIds.has(row.player_id)) return false;
       if (!row.player_id) {
@@ -1315,41 +1391,98 @@ export default function CaptainResultsPage() {
 
   const setBreakField = (idx: number, patch: Partial<BreakRow>) => {
     setScorecardDirty(true);
-    setFixtureBreaks((prev) => prev.map((r, i) => (i === idx ? { ...r, ...patch } : r)));
+    setFixtureBreaks((prev) =>
+      prev.map((r, i) =>
+        i === idx
+          ? {
+              ...r,
+              ...patch,
+              slot_no: patch.slot_no ?? r.slot_no ?? currentScorecardFrame?.slot_no ?? null,
+            }
+          : r
+      )
+    );
   };
 
   const addBreakRow = () => {
     setScorecardDirty(true);
-    setFixtureBreaks((prev) => [...prev, { player_id: null, entered_player_name: "", break_value: "" }]);
+    setFixtureBreaks((prev) => [...prev, createEmptyBreakRow(currentScorecardFrame?.slot_no ?? null)]);
+  };
+
+  const removeBreakRow = (idx: number) => {
+    setScorecardDirty(true);
+    setFixtureBreaks((prev) => {
+      const target = prev[idx];
+      const next = prev.filter((_, i) => i !== idx);
+      if (!target?.slot_no || scorecardReviewMode) return next;
+      const remainingForFrame = next.filter((row) => row.slot_no === target.slot_no);
+      if (remainingForFrame.length >= 3) return next;
+      return [...next, ...Array.from({ length: 3 - remainingForFrame.length }, () => createEmptyBreakRow(target.slot_no))];
+    });
   };
 
   const getValidatedBreakRows = () => {
-    const valid = fixtureBreaks
-      .map((r) => ({
-        player_id: r.player_id || null,
-        entered_player_name: r.entered_player_name.trim() || null,
-        break_value: Number(r.break_value || 0),
-      }))
-      .filter((r) => Number.isFinite(r.break_value) && r.break_value >= 30 && (r.player_id || r.entered_player_name));
-
-    const pointsByPlayer = new Map<string, number>();
+    const participantNameBySlot = new Map<number, Map<string, string>>();
+    const pointsByPlayerAndSlot = new Map<string, number>();
     for (const slot of slots) {
       const homePoints = typeof slot.home_points_scored === "number" ? slot.home_points_scored : 0;
       const awayPoints = typeof slot.away_points_scored === "number" ? slot.away_points_scored : 0;
+      const slotNames = new Map<string, string>();
       const homePlayers = [slot.home_player1_id, slot.home_player2_id].filter(Boolean) as string[];
       const awayPlayers = [slot.away_player1_id, slot.away_player2_id].filter(Boolean) as string[];
-      for (const id of homePlayers) pointsByPlayer.set(id, Math.max(pointsByPlayer.get(id) ?? 0, homePoints));
-      for (const id of awayPlayers) pointsByPlayer.set(id, Math.max(pointsByPlayer.get(id) ?? 0, awayPoints));
-    }
-    for (const row of valid) {
-      if (!row.player_id) continue;
-      const maxFramePoints = pointsByPlayer.get(row.player_id);
-      if (maxFramePoints === undefined) return { error: "Break entry failed: selected player is not part of this fixture.", rows: [] as SubmissionBreakEntry[] };
-      if (row.break_value > maxFramePoints) {
-        return { error: `Break entry failed: ${row.break_value} exceeds the player's frame points (${maxFramePoints}).`, rows: [] as SubmissionBreakEntry[] };
+      for (const id of homePlayers) {
+        pointsByPlayerAndSlot.set(`${slot.slot_no}:${id}`, homePoints);
+        slotNames.set(named(playerById.get(id) ?? null).trim().toLowerCase(), id);
       }
+      for (const id of awayPlayers) {
+        pointsByPlayerAndSlot.set(`${slot.slot_no}:${id}`, awayPoints);
+        slotNames.set(named(playerById.get(id) ?? null).trim().toLowerCase(), id);
+      }
+      participantNameBySlot.set(slot.slot_no, slotNames);
     }
-    return { error: null, rows: valid as SubmissionBreakEntry[] };
+
+    const valid: SubmissionBreakEntry[] = [];
+    for (const row of fixtureBreaks) {
+      const breakValue = Number(row.break_value || 0);
+      const slotNo = row.slot_no ?? null;
+      const enteredName = row.entered_player_name.trim();
+      if (!Number.isFinite(breakValue) || breakValue < 30) continue;
+      if (!slotNo) {
+        return { error: "Break entry failed: each 30+ break must be attached to a frame before it can be saved.", rows: [] as SubmissionBreakEntry[] };
+      }
+
+      let resolvedPlayerId = row.player_id || null;
+      if (!resolvedPlayerId && enteredName) {
+        const byName = participantNameBySlot.get(slotNo);
+        const matchedId = byName?.get(enteredName.toLowerCase()) ?? null;
+        if (matchedId) resolvedPlayerId = matchedId;
+      }
+      if (!resolvedPlayerId && !enteredName) {
+        return { error: `Break entry failed: Frame ${slotNo} has a 30+ break with no player selected.`, rows: [] as SubmissionBreakEntry[] };
+      }
+      if (!resolvedPlayerId && enteredName) {
+        return { error: `Break entry failed: "${enteredName}" is not one of the selected players in Frame ${slotNo}. Please choose the player from the list.`, rows: [] as SubmissionBreakEntry[] };
+      }
+
+      if (resolvedPlayerId) {
+        const maxFramePoints = pointsByPlayerAndSlot.get(`${slotNo}:${resolvedPlayerId}`);
+        if (maxFramePoints === undefined) {
+          return { error: `Break entry failed: selected player is not part of Frame ${slotNo}.`, rows: [] as SubmissionBreakEntry[] };
+        }
+        if (breakValue > maxFramePoints) {
+          return { error: `Break entry failed: ${breakValue} exceeds the player's frame points (${maxFramePoints}) in Frame ${slotNo}.`, rows: [] as SubmissionBreakEntry[] };
+        }
+      }
+
+      valid.push({
+        slot_no: slotNo,
+        player_id: resolvedPlayerId,
+        entered_player_name: resolvedPlayerId ? null : enteredName || null,
+        break_value: breakValue,
+      });
+    }
+
+    return { error: null, rows: valid };
   };
 
   const isSideSelectionLocked = (side: "home" | "away") => {
@@ -1590,7 +1723,16 @@ export default function CaptainResultsPage() {
       setMessage(breakRows.error);
       return;
     }
-    if (frameResults.length > 0) frameResults[0].break_entries = breakRows.rows;
+    const breakRowsBySlot = new Map<number, SubmissionBreakEntry[]>();
+    for (const row of breakRows.rows) {
+      if (!row.slot_no) continue;
+      const existing = breakRowsBySlot.get(row.slot_no) ?? [];
+      existing.push(row);
+      breakRowsBySlot.set(row.slot_no, existing);
+    }
+    for (const frameResult of frameResults) {
+      frameResult.break_entries = breakRowsBySlot.get(frameResult.slot_no) ?? [];
+    }
 
     setSubmitting(true);
     const sessionRes = await client.auth.getSession();
@@ -2128,11 +2270,20 @@ export default function CaptainResultsPage() {
                                 Based on the current lineups, capped handicap starts, and current player Elo. This is a guide only, not a guarantee.
                               </p>
                             </div>
-                            <span className="rounded-full border border-violet-200 bg-white px-3 py-1 text-xs font-semibold text-violet-800">
-                              Max start {MAX_SNOOKER_START}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setShowPreviewGuide((prev) => !prev)}
+                                className="rounded-full border border-violet-200 bg-white px-3 py-1 text-xs font-semibold text-violet-800 lg:hidden"
+                              >
+                                {showPreviewGuide ? "Hide preview" : "Show preview"}
+                              </button>
+                              <span className="rounded-full border border-violet-200 bg-white px-3 py-1 text-xs font-semibold text-violet-800">
+                                Max start {MAX_SNOOKER_START}
+                              </span>
+                            </div>
                           </div>
-                          <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                          <div className={`mt-3 grid gap-3 lg:grid-cols-2 ${showPreviewGuide ? "" : "hidden lg:grid"}`}>
                             {lineupPreviewRows.map((row) => (
                               <div key={row.slotId} className="rounded-xl border border-violet-200 bg-white p-3 shadow-sm">
                                 <p className="text-sm font-semibold text-slate-900">{row.title}</p>
@@ -2162,17 +2313,26 @@ export default function CaptainResultsPage() {
                                 Work through one frame at a time, save it, then continue. You can review and amend everything at the end before the final submission.
                               </p>
                             </div>
-                            {!scorecardReviewMode && currentScorecardFrame ? (
-                              <span className="rounded-full border border-cyan-200 bg-white px-3 py-1 text-xs font-semibold text-cyan-800">
-                                Frame {currentScorecardFrame.slot_no} of {orderedScoreSlots.length}
-                              </span>
-                            ) : (
-                              <span className="rounded-full border border-cyan-200 bg-white px-3 py-1 text-xs font-semibold text-cyan-800">
-                                Final review
-                              </span>
-                            )}
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setShowJourneyGuide((prev) => !prev)}
+                                className="rounded-full border border-cyan-200 bg-white px-3 py-1 text-xs font-semibold text-cyan-800 lg:hidden"
+                              >
+                                {showJourneyGuide ? "Hide all frames" : "Show all frames"}
+                              </button>
+                              {!scorecardReviewMode && currentScorecardFrame ? (
+                                <span className="rounded-full border border-cyan-200 bg-white px-3 py-1 text-xs font-semibold text-cyan-800">
+                                  Frame {currentScorecardFrame.slot_no} of {orderedScoreSlots.length}
+                                </span>
+                              ) : (
+                                <span className="rounded-full border border-cyan-200 bg-white px-3 py-1 text-xs font-semibold text-cyan-800">
+                                  Final review
+                                </span>
+                              )}
+                            </div>
                           </div>
-                          <div className="mt-3 grid gap-2 lg:grid-cols-3">
+                          <div className={`mt-3 grid grid-cols-2 gap-2 lg:grid-cols-3 ${showJourneyGuide ? "" : "hidden lg:grid"}`}>
                             {orderedScoreSlots.map((slot, index) => (
                               <div
                                 key={`journey-${slot.id}`}
@@ -2234,17 +2394,176 @@ export default function CaptainResultsPage() {
                             : "border-teal-200 bg-teal-50/70"
                         }`}
                       >
-                          <p className="text-sm font-semibold text-slate-900">
+                        {!scorecardReviewMode ? (
+                          <div className="mb-3 rounded-xl border border-white/70 bg-white/80 p-3 shadow-sm sm:hidden">
+                            <div className="flex items-start justify-between gap-3">
+                              <div>
+                                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Current frame</p>
+                                <p className="mt-1 text-lg font-bold text-slate-900">
+                                  Frame {slot.slot_no} · {slot.slot_type === "doubles" ? "Doubles" : "Singles"}
+                                </p>
+                              </div>
+                              <span className="rounded-full border border-teal-200 bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-800">
+                                Step 1 score
+                              </span>
+                            </div>
+                            <div className="mt-3 grid gap-2">
+                              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{teamById.get(selectedFixture.home_team_id)?.name ?? "Home"}</p>
+                                <p className="mt-1 text-sm font-semibold text-slate-900">{framePlayerLabel(slot, "home")}</p>
+                              </div>
+                              <div className="rounded-xl border border-slate-200 bg-white px-3 py-2">
+                                <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{teamById.get(selectedFixture.away_team_id)?.name ?? "Away"}</p>
+                                <p className="mt-1 text-sm font-semibold text-slate-900">{framePlayerLabel(slot, "away")}</p>
+                              </div>
+                            </div>
+                          </div>
+                        ) : null}
+                        <p className="text-sm font-semibold text-slate-900">
                           {slot.slot_type === "doubles" ? `Frame ${slot.slot_no} · Doubles` : `Frame ${slot.slot_no} · Singles`}
+                        </p>
+                        {selectedSeason?.handicap_enabled ? (
+                          <p className="mt-1 text-xs text-slate-600">
+                            {slot.slot_type === "doubles"
+                              ? `${doublesHandicapLabel(slot)} (combined player handicaps ÷ 2)`
+                              : singlesHandicapLabel(slot)}
                           </p>
-                          {selectedSeason?.handicap_enabled ? (
-                            <p className="mt-1 text-xs text-slate-600">
-                              {slot.slot_type === "doubles"
-                                ? `${doublesHandicapLabel(slot)} (combined player handicaps ÷ 2)`
-                                : singlesHandicapLabel(slot)}
-                            </p>
-                          ) : null}
-                        <div className="mt-2 grid gap-2 sm:grid-cols-5">
+                        ) : null}
+                        <div className="mt-3 rounded-xl border border-white/70 bg-white/70 p-3 sm:hidden">
+                          <div className="grid gap-3">
+                            <div className="rounded-xl border border-slate-200 bg-white p-3">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{teamById.get(selectedFixture.home_team_id)?.name ?? "Home"}</p>
+                              <div className="mt-2">
+                                {slot.slot_type === "doubles" ? (
+                                  <div className="grid gap-2">
+                                    <select
+                                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                                      value={slot.home_player1_id ?? ""}
+                                      onChange={(e) => updateSlotLocal(slot.id, { home_player1_id: e.target.value || null, home_forfeit: false })}
+                                      disabled={homeSelectionLocked}
+                                    >
+                                      <option value="">Home player 1</option>
+                                      {homeDoublesOptions.map((id) => (
+                                        <option key={id} value={id} disabled={slot.home_player2_id === id}>{namedWithHandicap(playerById.get(id))}</option>
+                                      ))}
+                                    </select>
+                                    <select
+                                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                                      value={slot.home_player2_id ?? ""}
+                                      onChange={(e) => updateSlotLocal(slot.id, { home_player2_id: e.target.value || null })}
+                                      disabled={homeSelectionLocked}
+                                    >
+                                      <option value="">Home player 2</option>
+                                      {homeDoublesOptions.map((id) => (
+                                        <option key={id} value={id} disabled={slot.home_player1_id === id}>{namedWithHandicap(playerById.get(id))}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                ) : (
+                                  <select
+                                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                                    value={homeSelection}
+                                    onChange={(e) => applySinglesSelection(slot, "home", e.target.value)}
+                                    disabled={homeSelectionLocked}
+                                  >
+                                    <option value="">Home player</option>
+                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                    {isWinterFormat && slot.slot_no === 3 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                    {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                    {sortRosterIds(homeRosterIds).map((id) => (
+                                      <option key={id} value={id} disabled={(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id}>
+                                        {namedWithHandicap(playerById.get(id))}
+                                        {(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id ? " (Already used in singles)" : ""}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+                              <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">Points scored</label>
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                min={0}
+                                max={200}
+                                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base"
+                                value={slot.home_points_scored ?? ""}
+                                onChange={(e) => {
+                                  const raw = e.target.value === "" ? null : Number.parseInt(e.target.value, 10);
+                                  const parsed = raw === null || Number.isNaN(raw) ? null : Math.min(200, Math.max(0, raw));
+                                  updateSlotLocal(slot.id, { home_points_scored: slot.home_forfeit || slot.away_forfeit ? 0 : parsed });
+                                }}
+                                placeholder="0-200"
+                              />
+                            </div>
+                            <div className="rounded-xl border border-slate-200 bg-white p-3">
+                              <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{teamById.get(selectedFixture.away_team_id)?.name ?? "Away"}</p>
+                              <div className="mt-2">
+                                {slot.slot_type === "doubles" ? (
+                                  <div className="grid gap-2">
+                                    <select
+                                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                                      value={slot.away_player1_id ?? ""}
+                                      onChange={(e) => updateSlotLocal(slot.id, { away_player1_id: e.target.value || null, away_forfeit: false })}
+                                      disabled={awaySelectionLocked}
+                                    >
+                                      <option value="">Away player 1</option>
+                                      {awayDoublesOptions.map((id) => (
+                                        <option key={id} value={id} disabled={slot.away_player2_id === id}>{namedWithHandicap(playerById.get(id))}</option>
+                                      ))}
+                                    </select>
+                                    <select
+                                      className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                                      value={slot.away_player2_id ?? ""}
+                                      onChange={(e) => updateSlotLocal(slot.id, { away_player2_id: e.target.value || null })}
+                                      disabled={awaySelectionLocked}
+                                    >
+                                      <option value="">Away player 2</option>
+                                      {awayDoublesOptions.map((id) => (
+                                        <option key={id} value={id} disabled={slot.away_player1_id === id}>{namedWithHandicap(playerById.get(id))}</option>
+                                      ))}
+                                    </select>
+                                  </div>
+                                ) : (
+                                  <select
+                                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                                    value={awaySelection}
+                                    onChange={(e) => applySinglesSelection(slot, "away", e.target.value)}
+                                    disabled={awaySelectionLocked}
+                                  >
+                                    <option value="">Away player</option>
+                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                    {isWinterFormat && slot.slot_no === 3 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                    {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                    {sortRosterIds(awayRosterIds).map((id) => (
+                                      <option key={id} value={id} disabled={(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id}>
+                                        {namedWithHandicap(playerById.get(id))}
+                                        {(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id ? " (Already used in singles)" : ""}
+                                      </option>
+                                    ))}
+                                  </select>
+                                )}
+                              </div>
+                              <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-slate-500">Points scored</label>
+                              <input
+                                type="number"
+                                inputMode="numeric"
+                                pattern="[0-9]*"
+                                min={0}
+                                max={200}
+                                className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-base"
+                                value={slot.away_points_scored ?? ""}
+                                onChange={(e) => {
+                                  const raw = e.target.value === "" ? null : Number.parseInt(e.target.value, 10);
+                                  const parsed = raw === null || Number.isNaN(raw) ? null : Math.min(200, Math.max(0, raw));
+                                  updateSlotLocal(slot.id, { away_points_scored: slot.home_forfeit || slot.away_forfeit ? 0 : parsed });
+                                }}
+                                placeholder="0-200"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                        <div className="mt-2 hidden gap-2 sm:grid sm:grid-cols-5">
                           <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Home</div>
                           <div className="text-xs font-semibold uppercase tracking-wide text-slate-500 sm:col-span-3">Player(s)</div>
                           <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">Points</div>
@@ -2423,33 +2742,6 @@ export default function CaptainResultsPage() {
                         </div>
                       )}
 
-                      {homeSideCanManageScorecard && currentScorecardFrame && !scorecardReviewMode ? (
-                        <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-3">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <p className="text-sm font-semibold text-slate-900">
-                              Current step: enter Frame {currentScorecardFrame.slot_no}, then save and continue.
-                            </p>
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() => setScorecardCurrentIndex((prev) => Math.max(prev - 1, 0))}
-                                disabled={scorecardCurrentIndex === 0}
-                                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
-                              >
-                                Previous frame
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => void saveAndContinueCurrentFrame()}
-                                className="rounded-xl bg-sky-700 px-4 py-2 text-sm font-medium text-white"
-                              >
-                                {scorecardCurrentIndex >= orderedScoreSlots.length - 1 ? "Save final frame" : "Save and continue"}
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      ) : null}
-
                       {homeSideCanManageScorecard && scorecardReviewMode ? (
                         <div className="rounded-xl border border-sky-200 bg-sky-50/70 p-3 text-sm text-slate-700">
                           Final review is open. You can amend any frame score below before you submit the match result.
@@ -2479,10 +2771,19 @@ export default function CaptainResultsPage() {
                       ) : null}
 
                       <section className={`rounded-2xl border border-violet-200 bg-violet-50/70 p-4 ${!homeSideCanManageScorecard ? "opacity-80" : ""}`}>
-                        <h3 className="text-base font-semibold text-slate-900">Breaks 30+</h3>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h3 className="text-base font-semibold text-slate-900">
+                            {scorecardReviewMode ? "Review 30+ breaks" : "Step 2 - record 30+ breaks"}
+                          </h3>
+                          {!scorecardReviewMode && currentScorecardFrame ? (
+                            <span className="rounded-full border border-violet-200 bg-white px-3 py-1 text-xs font-semibold text-violet-800">
+                              Frame {currentScorecardFrame.slot_no}
+                            </span>
+                          ) : null}
+                        </div>
                         {currentScorecardFrame && !scorecardReviewMode ? (
                           <p className="mt-1 text-sm font-medium text-violet-900">
-                            You are currently recording breaks while entering Frame {currentScorecardFrame.slot_no}.
+                            Add any 30+ breaks for this frame before you save and move on.
                           </p>
                         ) : scorecardReviewMode ? (
                           <p className="mt-1 text-sm font-medium text-violet-900">
@@ -2490,7 +2791,7 @@ export default function CaptainResultsPage() {
                           </p>
                         ) : null}
                         <p className="mt-1 text-xs text-slate-600">
-                          Record any 30+ breaks for this stage of the match before you move on. Three spaces are shown by default, and you can press <strong>More</strong> if a frame has extra breaks.
+                          Three spaces are shown by default. If a frame has more than three 30+ breaks, press <strong>More</strong>.
                         </p>
                         {!breaksFeatureAvailable ? (
                           <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -2498,22 +2799,35 @@ export default function CaptainResultsPage() {
                           </p>
                         ) : null}
                         <div className="mt-3 space-y-2">
-                          {fixtureBreaks.map((row, idx) => (
-                            <div key={`break-${idx}`} className="grid gap-2 sm:grid-cols-4">
+                          {displayedBreakRows.length === 0 && scorecardReviewMode ? (
+                            <div className="rounded-xl border border-dashed border-violet-200 bg-white/80 px-3 py-4 text-sm text-slate-600">
+                              No 30+ breaks have been recorded on this scorecard yet.
+                            </div>
+                          ) : null}
+                          {displayedBreakRows.map(({ row, index }) => (
+                            <div key={`break-${index}`} className="grid gap-2 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_140px_auto]">
                               <select
                                 className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
                                 value={row.player_id ?? ""}
-                                onChange={(e) => setBreakField(idx, { player_id: e.target.value || null })}
+                                onChange={(e) =>
+                                  setBreakField(index, {
+                                    slot_no: row.slot_no ?? currentScorecardFrame?.slot_no ?? null,
+                                    player_id: e.target.value || null,
+                                    entered_player_name: "",
+                                  })
+                                }
                                 disabled={!homeSideCanManageScorecard}
                               >
                                 <option value="">Select player</option>
-                                {fixturePlayerOptions.map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
+                                {fixturePlayerOptions
+                                  .filter((opt) => scorecardReviewMode || !currentScorecardFrame || opt.frameEligibleSlotNos.has(currentScorecardFrame.slot_no))
+                                  .map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
                               </select>
                               <input
                                 className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
-                                placeholder="Or enter player name"
+                                placeholder={scorecardReviewMode ? "Optional typed name" : "Typed name only if needed"}
                                 value={row.entered_player_name}
-                                onChange={(e) => setBreakField(idx, { entered_player_name: e.target.value })}
+                                onChange={(e) => setBreakField(index, { slot_no: row.slot_no ?? currentScorecardFrame?.slot_no ?? null, entered_player_name: e.target.value })}
                                 disabled={!homeSideCanManageScorecard}
                               />
                               <input
@@ -2524,14 +2838,14 @@ export default function CaptainResultsPage() {
                                 className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
                                 placeholder="Break value (30+)"
                                 value={row.break_value}
-                                onChange={(e) => setBreakField(idx, { break_value: e.target.value })}
+                                onChange={(e) => setBreakField(index, { slot_no: row.slot_no ?? currentScorecardFrame?.slot_no ?? null, break_value: e.target.value })}
                                 disabled={!homeSideCanManageScorecard}
                               />
                               <button
                                 type="button"
-                                onClick={() => setFixtureBreaks((prev) => prev.filter((_, i) => i !== idx))}
+                                onClick={() => removeBreakRow(index)}
                                 className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700"
-                                disabled={!homeSideCanManageScorecard || (fixtureBreaks.length <= 3 && idx < 3)}
+                                disabled={!homeSideCanManageScorecard || (!scorecardReviewMode && currentFrameBreakRows.length <= 3)}
                               >
                                 Remove
                               </button>
@@ -2539,19 +2853,43 @@ export default function CaptainResultsPage() {
                           ))}
                         </div>
                         <div className="mt-3 flex gap-2">
-                          <button type="button" onClick={addBreakRow} disabled={!homeSideCanManageScorecard} className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 disabled:opacity-60">
+                          <button type="button" onClick={addBreakRow} disabled={!homeSideCanManageScorecard || scorecardReviewMode} className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 disabled:opacity-60">
                             More
-                          </button>
-                          <button
-                            type="button"
-                            onClick={saveBreaksOnly}
-                            disabled={!homeSideCanManageScorecard}
-                            className="rounded-xl border border-violet-300 bg-white px-3 py-1.5 text-sm font-medium text-violet-900 disabled:opacity-60"
-                          >
-                            Save breaks 30+
                           </button>
                         </div>
                       </section>
+
+                      {homeSideCanManageScorecard && currentScorecardFrame && !scorecardReviewMode ? (
+                        <div className="sticky bottom-3 z-20 rounded-xl border border-sky-200 bg-sky-50/95 p-3 shadow-[0_16px_40px_-24px_rgba(15,23,42,0.55)] backdrop-blur sm:static sm:shadow-none sm:backdrop-blur-0">
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div>
+                              <p className="text-sm font-semibold text-slate-900">
+                                Step 3 - save Frame {currentScorecardFrame.slot_no} and continue
+                              </p>
+                              <p className="mt-1 text-xs text-slate-700">
+                                Save the frame score and any 30+ breaks together so nothing gets missed on mobile.
+                              </p>
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                onClick={() => setScorecardCurrentIndex((prev) => Math.max(prev - 1, 0))}
+                                disabled={scorecardCurrentIndex === 0}
+                                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
+                              >
+                                Previous frame
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => void saveAndContinueCurrentFrame()}
+                                className="rounded-xl bg-sky-700 px-4 py-2 text-sm font-medium text-white shadow-sm"
+                              >
+                                {scorecardCurrentIndex >= orderedScoreSlots.length - 1 ? "Save final frame" : "Save and continue"}
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
 
                       <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
                         {homeSideCanManageScorecard ? (
