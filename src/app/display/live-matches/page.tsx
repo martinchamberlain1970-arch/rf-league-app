@@ -163,14 +163,22 @@ export default function PublicLiveMatchesPage() {
                           </span>
                         </div>
                       </div>
-                      <div className="mt-3 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-200/80">
-                          {frame.startAmount > 0 ? `${frame.startRecipient} start ${frame.startAmount}` : "Level start"}
-                        </p>
-                        <p className="mt-1 text-[13px] font-semibold leading-snug text-white">
-                          {stripHandicapSuffix(frame.homeName)} <span className="text-cyan-200">{frame.scoreLabel.replace("-", " vs. ")}</span> {stripHandicapSuffix(frame.awayName)}
-                        </p>
-                      </div>
+                        <div className="mt-3 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-200/80">
+                            {frame.startAmount > 0 ? `${frame.startRecipient} start ${frame.startAmount}` : "Level start"}
+                          </p>
+                          <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                            <p className="text-[13px] font-semibold leading-snug text-white">
+                              {stripHandicapSuffix(frame.homeName)}
+                            </p>
+                            <span className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-3 py-1 text-[13px] font-black text-cyan-100">
+                              {frame.scoreLabel}
+                            </span>
+                            <p className="text-right text-[13px] font-semibold leading-snug text-white">
+                              {stripHandicapSuffix(frame.awayName)}
+                            </p>
+                          </div>
+                        </div>
                       <div className="mt-3 grid gap-2 text-sm xl:grid-cols-[1fr_auto_1fr] xl:items-center">
                         <div>
                           <p className="text-[10px] uppercase tracking-[0.14em] text-slate-400">
