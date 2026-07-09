@@ -1862,8 +1862,174 @@ export default function CaptainResultsPage() {
     });
   };
 
+  const mobileMatchActionBar = selectedFixture ? (() => {
+    if (activeEntryTab === "lineup") {
+      return (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t border-slate-200 bg-white/95 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-16px_36px_-24px_rgba(15,23,42,0.8)] backdrop-blur sm:hidden">
+          <div className="mx-auto max-w-6xl space-y-2">
+            <div className="flex items-center justify-between gap-3 text-xs">
+              <div>
+                <p className="font-semibold uppercase tracking-[0.18em] text-slate-500">Lineup</p>
+                <p className="mt-0.5 font-semibold text-slate-900">
+                  {homeLineupSubmitted && awayLineupSubmitted ? "Both teams locked" : homeLineupSubmitted ? "Away team to confirm" : "Home team to submit"}
+                </p>
+              </div>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 font-semibold text-slate-700">
+                {preMatchPaperRecord ? "Paper" : proxyEntryEnabled ? "Proxy" : selectedFixtureSide === "away" ? "Away" : "Home"}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              {selectedFixtureSide === "home" && lineupWindowOpen && !awayLineupSubmitted ? (
+                <button
+                  type="button"
+                  onClick={saveLineupDraft}
+                  disabled={submitting}
+                  className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60"
+                >
+                  Save draft
+                </button>
+              ) : null}
+              {canEditSubmittedHomeLineup ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (
+                      window.confirm(
+                        "Reopen the submitted home lineup for editing? You can only do this before 19:15 and before the away team confirms its lineup."
+                      )
+                    ) {
+                      void reopenSubmittedHomeLineup();
+                    }
+                  }}
+                  disabled={submitting}
+                  className="min-h-11 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 disabled:opacity-60"
+                >
+                  Edit lineup
+                </button>
+              ) : null}
+              {canSubmitHomeLineup ? (
+                <button
+                  type="button"
+                  onClick={() => void submitLineupForSide("home")}
+                  disabled={submitting}
+                  className="min-h-11 rounded-xl bg-sky-700 px-3 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
+                >
+                  {submitting ? "Saving..." : proxyEntryEnabled ? "Submit home" : "Submit lineup"}
+                </button>
+              ) : canSubmitAwayLineup ? (
+                <button
+                  type="button"
+                  onClick={() => void submitLineupForSide("away")}
+                  disabled={submitting}
+                  className="min-h-11 rounded-xl bg-sky-700 px-3 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
+                >
+                  {submitting ? "Saving..." : proxyEntryEnabled ? "Confirm both" : "Confirm lineup"}
+                </button>
+              ) : lineupsLocked || preMatchPaperRecord ? (
+                <button
+                  type="button"
+                  onClick={() => setActiveEntryTab("scorecard")}
+                  className="min-h-11 rounded-xl bg-emerald-700 px-3 py-2 text-sm font-semibold text-white shadow-sm"
+                >
+                  Open scorecard
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  disabled
+                  className="min-h-11 rounded-xl bg-slate-200 px-3 py-2 text-sm font-semibold text-slate-600"
+                >
+                  Waiting
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (activeEntryTab === "scorecard") {
+      if (homeSideCanManageScorecard && currentScorecardFrame && !scorecardReviewMode) {
+        return (
+          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-sky-200 bg-sky-50/95 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-16px_36px_-24px_rgba(15,23,42,0.8)] backdrop-blur sm:hidden">
+            <div className="mx-auto max-w-6xl space-y-2">
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <div>
+                  <p className="font-semibold uppercase tracking-[0.18em] text-sky-700">Scorecard</p>
+                  <p className="mt-0.5 font-semibold text-slate-900">
+                    Frame {currentScorecardFrame.slot_no} of {orderedScoreSlots.length}
+                  </p>
+                </div>
+                <span className="rounded-full border border-sky-200 bg-white px-3 py-1 font-semibold text-sky-800">
+                  {lastAutoSavedAt ? `Saved ${lastAutoSavedAt}` : "Auto-save ready"}
+                </span>
+              </div>
+              <div className="grid grid-cols-[0.8fr_1.2fr] gap-2">
+                <button
+                  type="button"
+                  onClick={() => setScorecardCurrentIndex((prev) => Math.max(prev - 1, 0))}
+                  disabled={scorecardCurrentIndex === 0}
+                  className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60"
+                >
+                  Previous
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveAndContinueCurrentFrame()}
+                  className="min-h-11 rounded-xl bg-sky-700 px-3 py-2 text-sm font-semibold text-white shadow-sm"
+                >
+                  {scorecardCurrentIndex >= orderedScoreSlots.length - 1 ? "Save final frame" : "Save & continue"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      if (homeSideCanManageScorecard && scorecardReviewMode) {
+        return (
+          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-emerald-200 bg-emerald-50/95 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-16px_36px_-24px_rgba(15,23,42,0.8)] backdrop-blur sm:hidden">
+            <div className="mx-auto max-w-6xl space-y-2">
+              <div className="flex items-center justify-between gap-3 text-xs">
+                <div>
+                  <p className="font-semibold uppercase tracking-[0.18em] text-emerald-700">Final review</p>
+                  <p className="mt-0.5 font-semibold text-slate-900">Submit when every frame is checked</p>
+                </div>
+                <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 font-semibold text-emerald-800">
+                  {orderedScoreSlots.length} frames
+                </span>
+              </div>
+              <div className="grid grid-cols-[0.8fr_1.2fr] gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setScorecardReviewMode(false);
+                    setScorecardCurrentIndex(firstIncompleteScorecardIndex >= 0 ? firstIncompleteScorecardIndex : 0);
+                  }}
+                  className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
+                >
+                  Amend
+                </button>
+                <button
+                  type="button"
+                  onClick={submit}
+                  disabled={submitting}
+                  className="min-h-11 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
+                >
+                  {submitting ? "Submitting..." : "Submit result"}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      }
+    }
+
+    return null;
+  })() : null;
+
   return (
-    <main className="min-h-screen bg-slate-100 p-6">
+    <main className="min-h-screen bg-slate-100 px-4 pb-36 pt-4 sm:p-6">
       <div className="mx-auto max-w-6xl space-y-4">
         <RequireAuth>
           <ScreenHeader title="Captain Lineups & Results" eyebrow="League" subtitle="Enter pre-match lineups first, then submit your team result for Super User approval." />
@@ -2218,11 +2384,11 @@ export default function CaptainResultsPage() {
                                   <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{teamById.get(selectedFixture.home_team_id)?.name ?? "Home"}</p>
                                   {slot.slot_type === "doubles" ? (
                                     <div className="grid gap-2 sm:grid-cols-2">
-                                      <select className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={slot.home_player1_id ?? ""} onChange={(e) => updateSlotLocal(slot.id, { home_player1_id: e.target.value || null, home_forfeit: false })} disabled={homeSelectionLocked}>
+                                      <select className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1" value={slot.home_player1_id ?? ""} onChange={(e) => updateSlotLocal(slot.id, { home_player1_id: e.target.value || null, home_forfeit: false })} disabled={homeSelectionLocked}>
                                         <option value="">Home player 1</option>
                                         {homeDoublesOptions.map((id) => <option key={id} value={id} disabled={slot.home_player2_id === id}>{namedWithHandicap(playerById.get(id))}</option>)}
                                       </select>
-                                      <select className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={slot.home_player2_id ?? ""} onChange={(e) => updateSlotLocal(slot.id, { home_player2_id: e.target.value || null })} disabled={homeSelectionLocked}>
+                                      <select className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1" value={slot.home_player2_id ?? ""} onChange={(e) => updateSlotLocal(slot.id, { home_player2_id: e.target.value || null })} disabled={homeSelectionLocked}>
                                         <option value="">Home player 2</option>
                                         {homeDoublesOptions.map((id) => <option key={id} value={id} disabled={slot.home_player1_id === id}>{namedWithHandicap(playerById.get(id))}</option>)}
                                       </select>
@@ -2246,11 +2412,11 @@ export default function CaptainResultsPage() {
                                   <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{teamById.get(selectedFixture.away_team_id)?.name ?? "Away"}</p>
                                   {slot.slot_type === "doubles" ? (
                                     <div className="grid gap-2 sm:grid-cols-2">
-                                      <select className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={slot.away_player1_id ?? ""} onChange={(e) => updateSlotLocal(slot.id, { away_player1_id: e.target.value || null, away_forfeit: false })} disabled={awaySelectionLocked}>
+                                      <select className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1" value={slot.away_player1_id ?? ""} onChange={(e) => updateSlotLocal(slot.id, { away_player1_id: e.target.value || null, away_forfeit: false })} disabled={awaySelectionLocked}>
                                         <option value="">Away player 1</option>
                                         {awayDoublesOptions.map((id) => <option key={id} value={id} disabled={slot.away_player2_id === id}>{namedWithHandicap(playerById.get(id))}</option>)}
                                       </select>
-                                      <select className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={slot.away_player2_id ?? ""} onChange={(e) => updateSlotLocal(slot.id, { away_player2_id: e.target.value || null })} disabled={awaySelectionLocked}>
+                                      <select className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1" value={slot.away_player2_id ?? ""} onChange={(e) => updateSlotLocal(slot.id, { away_player2_id: e.target.value || null })} disabled={awaySelectionLocked}>
                                         <option value="">Away player 2</option>
                                         {awayDoublesOptions.map((id) => <option key={id} value={id} disabled={slot.away_player1_id === id}>{namedWithHandicap(playerById.get(id))}</option>)}
                                       </select>
@@ -2642,7 +2808,7 @@ export default function CaptainResultsPage() {
                             {slot.slot_type === "doubles" ? (
                               <div className="grid gap-2 sm:grid-cols-2">
                                 <select
-                                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                  className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1"
                                   value={slot.home_player1_id ?? ""}
                                   onChange={(e) => updateSlotLocal(slot.id, { home_player1_id: e.target.value || null, home_forfeit: false })}
                                   disabled={homeSelectionLocked}
@@ -2653,7 +2819,7 @@ export default function CaptainResultsPage() {
                                   ))}
                                 </select>
                                 <select
-                                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                  className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1"
                                   value={slot.home_player2_id ?? ""}
                                   onChange={(e) => updateSlotLocal(slot.id, { home_player2_id: e.target.value || null })}
                                   disabled={homeSelectionLocked}
@@ -2690,7 +2856,7 @@ export default function CaptainResultsPage() {
                             pattern="[0-9]*"
                             min={0}
                             max={200}
-                            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                            className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1"
                             value={slot.home_points_scored ?? ""}
                             onChange={(e) => {
                               const raw = e.target.value === "" ? null : Number.parseInt(e.target.value, 10);
@@ -2705,7 +2871,7 @@ export default function CaptainResultsPage() {
                             {slot.slot_type === "doubles" ? (
                               <div className="grid gap-2 sm:grid-cols-2">
                                 <select
-                                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                  className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1"
                                   value={slot.away_player1_id ?? ""}
                                   onChange={(e) => updateSlotLocal(slot.id, { away_player1_id: e.target.value || null, away_forfeit: false })}
                                   disabled={awaySelectionLocked}
@@ -2716,7 +2882,7 @@ export default function CaptainResultsPage() {
                                   ))}
                                 </select>
                                 <select
-                                  className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                  className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1"
                                   value={slot.away_player2_id ?? ""}
                                   onChange={(e) => updateSlotLocal(slot.id, { away_player2_id: e.target.value || null })}
                                   disabled={awaySelectionLocked}
@@ -2753,7 +2919,7 @@ export default function CaptainResultsPage() {
                             pattern="[0-9]*"
                             min={0}
                             max={200}
-                            className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                            className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1"
                             value={slot.away_points_scored ?? ""}
                             onChange={(e) => {
                               const raw = e.target.value === "" ? null : Number.parseInt(e.target.value, 10);
@@ -2768,7 +2934,7 @@ export default function CaptainResultsPage() {
                           <div className="mt-2 grid gap-2 sm:grid-cols-2">
                             {slot.home_nominated ? (
                               <select
-                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1"
                                 value={nominatedNames[`${slot.id}:home`] ?? ""}
                                 onChange={(e) => {
                                   setNominatedNames((prev) => ({ ...prev, [`${slot.id}:home`]: e.target.value }));
@@ -2782,7 +2948,7 @@ export default function CaptainResultsPage() {
                             ) : <div />}
                             {slot.away_nominated ? (
                               <select
-                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1"
                                 value={nominatedNames[`${slot.id}:away`] ?? ""}
                                 onChange={(e) => {
                                   setNominatedNames((prev) => ({ ...prev, [`${slot.id}:away`]: e.target.value }));
@@ -2881,7 +3047,7 @@ export default function CaptainResultsPage() {
                           {displayedBreakRows.map(({ row, index }) => (
                             <div key={`break-${index}`} className="grid gap-2 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_140px_auto]">
                               <select
-                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1"
                                 value={row.player_id ?? ""}
                                 onChange={(e) =>
                                   setBreakField(index, {
@@ -2898,7 +3064,7 @@ export default function CaptainResultsPage() {
                                   .map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
                               </select>
                               <input
-                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1"
                                 placeholder={scorecardReviewMode ? "Optional typed name" : "Typed name only if needed"}
                                 value={row.entered_player_name}
                                 onChange={(e) => setBreakField(index, { slot_no: row.slot_no ?? currentScorecardFrame?.slot_no ?? null, entered_player_name: e.target.value })}
@@ -2909,7 +3075,7 @@ export default function CaptainResultsPage() {
                                 inputMode="numeric"
                                 pattern="[0-9]*"
                                 min={30}
-                                className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
+                                className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1"
                                 placeholder="Break value (30+)"
                                 value={row.break_value}
                                 onChange={(e) => setBreakField(index, { slot_no: row.slot_no ?? currentScorecardFrame?.slot_no ?? null, break_value: e.target.value })}
@@ -2918,7 +3084,7 @@ export default function CaptainResultsPage() {
                               <button
                                 type="button"
                                 onClick={() => removeBreakRow(index)}
-                                className="rounded-lg border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700"
+                                className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-700 sm:min-h-0 sm:py-1"
                                 disabled={!homeSideCanManageScorecard || (!scorecardReviewMode && currentFrameBreakRows.length <= 3)}
                               >
                                 Remove
@@ -2927,14 +3093,14 @@ export default function CaptainResultsPage() {
                           ))}
                         </div>
                         <div className="mt-3 flex gap-2">
-                          <button type="button" onClick={addBreakRow} disabled={!homeSideCanManageScorecard || scorecardReviewMode} className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 disabled:opacity-60">
+                          <button type="button" onClick={addBreakRow} disabled={!homeSideCanManageScorecard || scorecardReviewMode} className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 disabled:opacity-60 sm:min-h-0 sm:px-3 sm:py-1.5 sm:font-normal">
                             More
                           </button>
                         </div>
                       </section>
 
                       {homeSideCanManageScorecard && currentScorecardFrame && !scorecardReviewMode ? (
-                        <div className="sticky bottom-3 z-20 rounded-xl border border-sky-200 bg-sky-50/95 p-3 shadow-[0_16px_40px_-24px_rgba(15,23,42,0.55)] backdrop-blur sm:static sm:shadow-none sm:backdrop-blur-0">
+                        <div className="hidden rounded-xl border border-sky-200 bg-sky-50/95 p-3 sm:block">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                               <p className="text-sm font-semibold text-slate-900">
@@ -3009,6 +3175,8 @@ export default function CaptainResultsPage() {
               ) : null}
             </section>
           ) : null}
+
+          {mobileMatchActionBar}
 
           <MessageModal message={message} onClose={() => setMessage(null)} />
           <InfoModal open={Boolean(info)} title={info?.title ?? ""} description={info?.description ?? ""} onClose={() => setInfo(null)} />
