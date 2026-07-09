@@ -293,6 +293,9 @@ export default function CaptainResultsPage() {
   const [frameAdvancePrompt, setFrameAdvancePrompt] = useState<{ slotNo: number; isFinalFrame: boolean } | null>(null);
   const [showPreviewGuide, setShowPreviewGuide] = useState(false);
   const [showJourneyGuide, setShowJourneyGuide] = useState(false);
+  const [breakPromptSlotNo, setBreakPromptSlotNo] = useState<number | null>(null);
+  const [breakPromptAnsweredSlots, setBreakPromptAnsweredSlots] = useState<Set<number>>(new Set());
+  const [breakRequiredSlotNo, setBreakRequiredSlotNo] = useState<number | null>(null);
 
   const baselineScorecardSignatureRef = useRef("");
   const [scorecardDirty, setScorecardDirty] = useState(false);
@@ -697,6 +700,9 @@ export default function CaptainResultsPage() {
     setScorecardReviewMode(false);
     setShowPreviewGuide(false);
     setShowJourneyGuide(false);
+    setBreakPromptSlotNo(null);
+    setBreakPromptAnsweredSlots(new Set());
+    setBreakRequiredSlotNo(null);
   }, [selectedFixture?.id, activeEntryTab]);
 
   const fetchRemoteScorecardSignature = async () => {
@@ -1789,6 +1795,22 @@ export default function CaptainResultsPage() {
       setMessage(validationError);
       return;
     }
+    if (!breakPromptAnsweredSlots.has(currentScorecardFrame.slot_no)) {
+      setBreakPromptSlotNo(currentScorecardFrame.slot_no);
+      return;
+    }
+    if (breakRequiredSlotNo === currentScorecardFrame.slot_no) {
+      const breakRows = getValidatedBreakRows();
+      if (breakRows.error) {
+        setMessage(breakRows.error);
+        return;
+      }
+      const frameBreaks = breakRows.rows.filter((row) => row.slot_no === currentScorecardFrame.slot_no);
+      if (frameBreaks.length === 0) {
+        setMessage(`Enter the 30+ break for Frame ${currentScorecardFrame.slot_no} before saving and continuing.`);
+        return;
+      }
+    }
     setFrameAdvancePrompt({
       slotNo: currentScorecardFrame.slot_no,
       isFinalFrame: scorecardCurrentIndex >= orderedScoreSlots.length - 1,
@@ -1814,6 +1836,30 @@ export default function CaptainResultsPage() {
       return;
     }
     setScorecardCurrentIndex((prev) => Math.min(prev + 1, Math.max(orderedScoreSlots.length - 1, 0)));
+  };
+
+  const acknowledgeNoBreakForCurrentFrame = () => {
+    if (!currentScorecardFrame || breakPromptSlotNo === null) return;
+    const slotNo = breakPromptSlotNo;
+    setBreakPromptSlotNo(null);
+    setBreakRequiredSlotNo((current) => (current === slotNo ? null : current));
+    setBreakPromptAnsweredSlots((prev) => new Set(prev).add(slotNo));
+    setInfo({
+      title: `Frame ${slotNo} acknowledged`,
+      description: "No 30+ breaks were recorded for this frame. Press Save and continue to complete the frame result.",
+    });
+  };
+
+  const requireBreakForCurrentFrame = () => {
+    if (breakPromptSlotNo === null) return;
+    const slotNo = breakPromptSlotNo;
+    setBreakPromptSlotNo(null);
+    setBreakRequiredSlotNo(slotNo);
+    setBreakPromptAnsweredSlots((prev) => new Set(prev).add(slotNo));
+    setInfo({
+      title: `Add Frame ${slotNo} break`,
+      description: "Enter the player and break value in Breaks 30+, then press Save and continue again.",
+    });
   };
 
   return (
@@ -2332,6 +2378,29 @@ export default function CaptainResultsPage() {
                               )}
                             </div>
                           </div>
+                          <label className="mt-3 grid gap-1 text-xs font-semibold uppercase tracking-[0.16em] text-cyan-900 sm:max-w-xs">
+                            Frame being played
+                            <select
+                              className="rounded-xl border border-cyan-200 bg-white px-3 py-2 text-sm font-semibold normal-case tracking-normal text-slate-900"
+                              value={scorecardReviewMode ? "review" : String(scorecardCurrentIndex)}
+                              onChange={(event) => {
+                                if (event.target.value === "review") {
+                                  setScorecardReviewMode(true);
+                                  return;
+                                }
+                                setScorecardReviewMode(false);
+                                setScorecardCurrentIndex(Number(event.target.value));
+                              }}
+                              disabled={!homeSideCanManageScorecard}
+                            >
+                              {orderedScoreSlots.map((slot, index) => (
+                                <option key={`frame-select-${slot.id}`} value={index}>
+                                  Frame {slot.slot_no}{isFrameComplete(slot) ? " - completed" : isFrameStarted(slot) ? " - in progress" : ""}
+                                </option>
+                              ))}
+                              <option value="review">Final review</option>
+                            </select>
+                          </label>
                           <div className={`mt-3 grid grid-cols-2 gap-2 lg:grid-cols-3 ${showJourneyGuide ? "" : "hidden lg:grid"}`}>
                             {orderedScoreSlots.map((slot, index) => (
                               <div
@@ -2781,6 +2850,11 @@ export default function CaptainResultsPage() {
                             </span>
                           ) : null}
                         </div>
+                        {breakRequiredSlotNo !== null ? (
+                          <p className="mt-2 rounded-xl border border-violet-200 bg-white px-3 py-2 text-sm font-semibold text-violet-900">
+                            Frame {breakRequiredSlotNo} has been marked as having a 30+ break. Add the break here before continuing.
+                          </p>
+                        ) : null}
                         {currentScorecardFrame && !scorecardReviewMode ? (
                           <p className="mt-1 text-sm font-medium text-violet-900">
                             Add any 30+ breaks for this frame before you save and move on.
@@ -2985,6 +3059,15 @@ export default function CaptainResultsPage() {
               setConfirmSubmitPromptOpen(false);
               void submit();
             }}
+          />
+          <ConfirmModal
+            open={breakPromptSlotNo !== null}
+            title={breakPromptSlotNo === null ? "Any 30+ breaks?" : `Any 30+ breaks in Frame ${breakPromptSlotNo}?`}
+            description="Confirm whether this frame included any break of 30 or more before the frame is saved as complete."
+            confirmLabel="Yes, enter break"
+            cancelLabel="No breaks"
+            onCancel={() => void acknowledgeNoBreakForCurrentFrame()}
+            onConfirm={requireBreakForCurrentFrame}
           />
         </RequireAuth>
       </div>
