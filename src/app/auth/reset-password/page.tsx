@@ -5,14 +5,31 @@ import { FormEvent, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 
+function authErrorMessage(error: unknown, fallback: string) {
+  if (error instanceof Error && error.message) return error.message;
+  if (typeof error === "object" && error && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message) return message;
+  }
+  if (typeof error === "string" && error) return error;
+  return fallback;
+}
+
 function readRecoveryParams() {
   if (typeof window === "undefined") return null;
   const hash = new URLSearchParams(window.location.hash.replace(/^#/, ""));
+  const search = new URLSearchParams(window.location.search);
+  const errorDescription = hash.get("error_description") ?? search.get("error_description");
+  if (errorDescription) return { kind: "error" as const, message: errorDescription };
+  const code = search.get("code");
+  if (code) return { kind: "code" as const, code };
   const accessToken = hash.get("access_token");
   const refreshToken = hash.get("refresh_token");
   const type = hash.get("type");
-  if (!accessToken || !refreshToken || type !== "recovery") return null;
-  return { accessToken, refreshToken };
+  if (accessToken && refreshToken && type === "recovery") {
+    return { kind: "tokens" as const, accessToken, refreshToken };
+  }
+  return null;
 }
 
 export default function ResetPasswordPage() {
@@ -37,20 +54,52 @@ export default function ResetPasswordPage() {
       }
 
       const recovery = readRecoveryParams();
-      if (recovery) {
-        const { error: sessionError } = await client.auth.setSession({
-          access_token: recovery.accessToken,
-          refresh_token: recovery.refreshToken,
-        });
-        if (sessionError) {
+      if (recovery?.kind === "error") {
+        if (!mounted) return;
+        setError(`Reset link could not be validated: ${recovery.message}`);
+        setBusy(false);
+        return;
+      }
+
+      if (recovery?.kind === "code") {
+        try {
+          const { error: codeError } = await client.auth.exchangeCodeForSession(recovery.code);
+          if (codeError) {
+            if (!mounted) return;
+            setError(`Reset link could not be validated: ${codeError.message}`);
+            setBusy(false);
+            return;
+          }
+        } catch (exchangeError) {
           if (!mounted) return;
-          setError(`Reset link could not be validated: ${sessionError.message}`);
+          setError(`Reset link could not be validated: ${authErrorMessage(exchangeError, "The reset code could not be used.")}`);
           setBusy(false);
           return;
         }
-        if (typeof window !== "undefined") {
-          window.history.replaceState({}, document.title, window.location.pathname);
+      }
+
+      if (recovery?.kind === "tokens") {
+        try {
+          const { error: sessionError } = await client.auth.setSession({
+            access_token: recovery.accessToken,
+            refresh_token: recovery.refreshToken,
+          });
+          if (sessionError) {
+            if (!mounted) return;
+            setError(`Reset link could not be validated: ${sessionError.message}`);
+            setBusy(false);
+            return;
+          }
+        } catch (sessionError) {
+          if (!mounted) return;
+          setError(`Reset link could not be validated: ${authErrorMessage(sessionError, "The reset session could not be started.")}`);
+          setBusy(false);
+          return;
         }
+      }
+
+      if (recovery && typeof window !== "undefined") {
+        window.history.replaceState({}, document.title, window.location.pathname);
       }
 
       const { data } = await client.auth.getSession();
@@ -87,10 +136,16 @@ export default function ResetPasswordPage() {
       return;
     }
     setBusy(true);
-    const { error: updateError } = await client.auth.updateUser({ password });
+    let updateError: unknown = null;
+    try {
+      const result = await client.auth.updateUser({ password });
+      updateError = result.error;
+    } catch (error) {
+      updateError = error;
+    }
     setBusy(false);
     if (updateError) {
-      setError(`Could not reset password: ${updateError.message}`);
+      setError(`Could not reset password: ${authErrorMessage(updateError, "The reset session is no longer active.")}`);
       return;
     }
     setMessage("Password updated. Redirecting to sign in...");
