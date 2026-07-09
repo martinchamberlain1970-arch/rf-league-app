@@ -160,20 +160,20 @@ export default function PublicLiveMatchesPage() {
   const generatedAt = useMemo(() => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), [data]);
 
   return (
-    <main className="min-h-screen overflow-y-auto bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_55%)] p-3 text-white md:h-screen md:overflow-hidden xl:p-4">
-      <div className="mx-auto grid min-h-screen max-w-7xl gap-3 md:h-full md:min-h-0 md:grid-rows-[auto_minmax(0,1fr)]">
-        <section className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-2xl backdrop-blur">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.35em] text-cyan-200/80">Live Matches</p>
-              <h1 className="mt-1 text-2xl font-black tracking-tight xl:text-3xl">{data.season?.name ?? "Published League Live Matches"}</h1>
+    <main className="min-h-screen overflow-x-hidden overflow-y-auto bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_55%)] p-2.5 text-white lg:h-screen lg:overflow-hidden sm:p-3 xl:p-4">
+      <div className="mx-auto grid min-h-screen w-full min-w-0 max-w-7xl gap-2.5 sm:gap-3 lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)]">
+        <section className="min-w-0 rounded-2xl border border-white/10 bg-white/5 p-3 shadow-2xl backdrop-blur sm:p-4">
+          <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between lg:gap-4">
+            <div className="min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200/80 sm:text-sm sm:tracking-[0.35em]">Live Matches</p>
+              <h1 className="mt-1 text-xl font-black tracking-tight sm:text-2xl xl:text-3xl">{data.season?.name ?? "Published League Live Matches"}</h1>
             </div>
-            <div className="flex flex-wrap items-center gap-3">
+            <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
               {data.liveMatches.length > 1 ? (
-                <label className="grid gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-cyan-100 md:hidden">
+                <label className="grid w-full min-w-0 gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-cyan-100 lg:hidden">
                   Follow match
                   <select
-                    className="max-w-full rounded-xl border border-white/15 bg-slate-950/80 px-3 py-2 text-sm font-semibold normal-case tracking-normal text-white"
+                    className="h-11 w-full min-w-0 rounded-xl border border-white/15 bg-slate-950/80 px-3 py-2 text-sm font-semibold normal-case tracking-normal text-white"
                     value={selectedMatch?.fixtureId ?? ""}
                     onChange={(event) => setSelectedFixtureId(event.target.value)}
                   >
@@ -185,15 +185,15 @@ export default function PublicLiveMatchesPage() {
                   </select>
                 </label>
               ) : null}
-              <div className="rounded-full border border-rose-200/20 bg-rose-400/10 px-4 py-2 text-sm font-semibold text-rose-100">
+              <div className="rounded-full border border-rose-200/20 bg-rose-400/10 px-3 py-1.5 text-xs font-semibold text-rose-100 sm:px-4 sm:py-2 sm:text-sm">
                 {data.liveMatches.length} match{data.liveMatches.length === 1 ? "" : "es"} live
               </div>
               {totalPages > 1 ? (
-                <div className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100">
+                <div className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-semibold text-cyan-100 sm:px-4 sm:py-2 sm:text-sm">
                   Page {Math.min(pageIndex + 1, totalPages)} of {totalPages}
                 </div>
               ) : null}
-              <div className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-slate-100">
+              <div className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-100 sm:px-4 sm:py-2 sm:text-sm">
                 Updated {generatedAt}
               </div>
             </div>
@@ -213,9 +213,9 @@ export default function PublicLiveMatchesPage() {
         ) : null}
 
         {!loading && !data.error && data.liveMatches.length === 0 ? (
-          <section className="rounded-2xl border border-white/10 bg-white/6 p-8 text-center shadow-2xl backdrop-blur">
+          <section className="rounded-2xl border border-white/10 bg-white/6 p-5 text-center shadow-2xl backdrop-blur sm:p-8">
             <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-300">No Live Matches</p>
-            <h2 className="mt-2 text-3xl font-black">No live matches in progress</h2>
+            <h2 className="mt-2 text-2xl font-black sm:text-3xl">No live matches in progress</h2>
             <p className="mt-3 text-base text-slate-300">
               This screen will populate automatically once both teams have submitted their lineups for an active fixture.
             </p>
@@ -223,22 +223,22 @@ export default function PublicLiveMatchesPage() {
         ) : null}
 
         {!loading && !data.error && selectedMatch ? (
-          <section className="rounded-2xl border border-white/10 bg-white/6 p-3 shadow-2xl backdrop-blur md:hidden">
-            <div className="flex items-start justify-between gap-3">
-              <div>
+          <section className="min-w-0 rounded-2xl border border-white/10 bg-white/6 p-3 shadow-2xl backdrop-blur lg:hidden">
+            <div className="flex min-w-0 items-start justify-between gap-3">
+              <div className="min-w-0">
                 <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-cyan-200">Week {selectedMatch.weekNo ?? "-"}</p>
-                <h2 className="mt-1 text-xl font-black leading-tight">
+                <h2 className="mt-1 break-words text-lg font-black leading-tight sm:text-xl">
                   {selectedMatch.homeTeam} <span className="text-cyan-200">vs.</span> {selectedMatch.awayTeam}
                 </h2>
               </div>
-              <div className="rounded-xl border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-center">
+              <div className="shrink-0 rounded-xl border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-center">
                 <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100">Frames</p>
                 <p className="mt-0.5 text-xl font-black text-white">{selectedMatch.overallScore}</p>
               </div>
             </div>
             <div className="mt-3 grid gap-2">
               {selectedMatch.frameRows.map((frame) => (
-                <div key={frame.id} className="rounded-xl border border-white/10 bg-slate-950/35 px-3 py-2.5">
+                <div key={frame.id} className="min-w-0 rounded-xl border border-white/10 bg-slate-950/35 px-3 py-2.5">
                   {(() => {
                     const homeTone = sideHighlight(frame.frameStatus, "home");
                     const awayTone = sideHighlight(frame.frameStatus, "away");
@@ -250,12 +250,12 @@ export default function PublicLiveMatchesPage() {
                             {frame.scoreLabel}
                           </span>
                         </div>
-                        <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                          <p className={`text-sm font-semibold leading-snug ${homeTone.nameClass}`}>
+                        <div className="mt-2 grid min-w-0 grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2">
+                          <p className={`min-w-0 overflow-hidden break-words text-sm font-semibold leading-snug ${homeTone.nameClass}`}>
                             {stripHandicapSuffix(frame.homeName)}
                           </p>
                           <span className="text-xs font-semibold text-cyan-200">vs</span>
-                          <p className={`text-right text-sm font-semibold leading-snug ${awayTone.nameClass}`}>
+                          <p className={`min-w-0 overflow-hidden break-words text-right text-sm font-semibold leading-snug ${awayTone.nameClass}`}>
                             {stripHandicapSuffix(frame.awayName)}
                           </p>
                         </div>
@@ -277,17 +277,17 @@ export default function PublicLiveMatchesPage() {
         ) : null}
 
         {!loading && !data.error && data.liveMatches.length > 0 ? (
-          <div className="hidden min-h-0 gap-3 md:grid xl:grid-cols-2 xl:grid-rows-2">
+          <div className="hidden min-h-0 gap-3 lg:grid xl:grid-cols-2 xl:grid-rows-2">
             {visibleMatches.map((match) => (
               <section key={match.fixtureId} className="min-h-0 overflow-hidden rounded-2xl border border-white/10 bg-white/6 p-3 shadow-2xl backdrop-blur">
-                <div className="flex items-start justify-between gap-3">
+                <div className="flex min-w-0 items-start justify-between gap-3">
                   <div>
                     <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-cyan-200">Week {match.weekNo ?? "-"}</p>
                     <h2 className="mt-1 text-xl font-black leading-tight xl:text-2xl">
                       {match.homeTeam} <span className="text-cyan-200">vs.</span> {match.awayTeam}
                     </h2>
                   </div>
-                  <div className="rounded-xl border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-center">
+                  <div className="shrink-0 rounded-xl border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-center">
                     <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100">Frames</p>
                     <p className="mt-0.5 text-xl font-black text-white">{match.overallScore}</p>
                   </div>
