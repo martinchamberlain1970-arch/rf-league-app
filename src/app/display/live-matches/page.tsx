@@ -106,6 +106,7 @@ export default function PublicLiveMatchesPage() {
   const [data, setData] = useState<LiveMatchData>(emptyData);
   const [loading, setLoading] = useState(true);
   const [pageIndex, setPageIndex] = useState(0);
+  const [selectedFixtureId, setSelectedFixtureId] = useState("");
 
   useEffect(() => {
     let active = true;
@@ -135,10 +136,18 @@ export default function PublicLiveMatchesPage() {
   const matchPages = useMemo(() => chunkRows(data.liveMatches, MATCHES_PER_PAGE), [data.liveMatches]);
   const totalPages = Math.max(matchPages.length, 1);
   const visibleMatches = matchPages[Math.min(pageIndex, totalPages - 1)] ?? [];
+  const selectedMatch = useMemo(
+    () => data.liveMatches.find((match) => match.fixtureId === selectedFixtureId) ?? data.liveMatches[0] ?? null,
+    [data.liveMatches, selectedFixtureId]
+  );
 
   useEffect(() => {
     setPageIndex(0);
-  }, [data.liveMatches.length]);
+    setSelectedFixtureId((current) => {
+      if (current && data.liveMatches.some((match) => match.fixtureId === current)) return current;
+      return data.liveMatches[0]?.fixtureId ?? "";
+    });
+  }, [data.liveMatches]);
 
   useEffect(() => {
     if (totalPages <= 1) return;
@@ -151,8 +160,8 @@ export default function PublicLiveMatchesPage() {
   const generatedAt = useMemo(() => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), [data]);
 
   return (
-    <main className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_55%)] p-3 text-white xl:p-4">
-      <div className="mx-auto grid h-full max-w-7xl grid-rows-[auto_minmax(0,1fr)] gap-3">
+    <main className="min-h-screen overflow-y-auto bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_55%)] p-3 text-white md:h-screen md:overflow-hidden xl:p-4">
+      <div className="mx-auto grid min-h-screen max-w-7xl gap-3 md:h-full md:min-h-0 md:grid-rows-[auto_minmax(0,1fr)]">
         <section className="rounded-2xl border border-white/10 bg-white/5 p-4 shadow-2xl backdrop-blur">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
@@ -160,6 +169,22 @@ export default function PublicLiveMatchesPage() {
               <h1 className="mt-1 text-2xl font-black tracking-tight xl:text-3xl">{data.season?.name ?? "Published League Live Matches"}</h1>
             </div>
             <div className="flex flex-wrap items-center gap-3">
+              {data.liveMatches.length > 1 ? (
+                <label className="grid gap-1 text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-cyan-100 md:hidden">
+                  Follow match
+                  <select
+                    className="max-w-full rounded-xl border border-white/15 bg-slate-950/80 px-3 py-2 text-sm font-semibold normal-case tracking-normal text-white"
+                    value={selectedMatch?.fixtureId ?? ""}
+                    onChange={(event) => setSelectedFixtureId(event.target.value)}
+                  >
+                    {data.liveMatches.map((match) => (
+                      <option key={match.fixtureId} value={match.fixtureId}>
+                        {match.homeTeam} vs {match.awayTeam}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : null}
               <div className="rounded-full border border-rose-200/20 bg-rose-400/10 px-4 py-2 text-sm font-semibold text-rose-100">
                 {data.liveMatches.length} match{data.liveMatches.length === 1 ? "" : "es"} live
               </div>
@@ -197,8 +222,62 @@ export default function PublicLiveMatchesPage() {
           </section>
         ) : null}
 
+        {!loading && !data.error && selectedMatch ? (
+          <section className="rounded-2xl border border-white/10 bg-white/6 p-3 shadow-2xl backdrop-blur md:hidden">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-cyan-200">Week {selectedMatch.weekNo ?? "-"}</p>
+                <h2 className="mt-1 text-xl font-black leading-tight">
+                  {selectedMatch.homeTeam} <span className="text-cyan-200">vs.</span> {selectedMatch.awayTeam}
+                </h2>
+              </div>
+              <div className="rounded-xl border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-center">
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100">Frames</p>
+                <p className="mt-0.5 text-xl font-black text-white">{selectedMatch.overallScore}</p>
+              </div>
+            </div>
+            <div className="mt-3 grid gap-2">
+              {selectedMatch.frameRows.map((frame) => (
+                <div key={frame.id} className="rounded-xl border border-white/10 bg-slate-950/35 px-3 py-2.5">
+                  {(() => {
+                    const homeTone = sideHighlight(frame.frameStatus, "home");
+                    const awayTone = sideHighlight(frame.frameStatus, "away");
+                    return (
+                      <>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-300">{frame.title}</p>
+                          <span className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-2 py-0.5 text-xs font-black text-cyan-100">
+                            {frame.scoreLabel}
+                          </span>
+                        </div>
+                        <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
+                          <p className={`text-sm font-semibold leading-snug ${homeTone.nameClass}`}>
+                            {stripHandicapSuffix(frame.homeName)}
+                          </p>
+                          <span className="text-xs font-semibold text-cyan-200">vs</span>
+                          <p className={`text-right text-sm font-semibold leading-snug ${awayTone.nameClass}`}>
+                            {stripHandicapSuffix(frame.awayName)}
+                          </p>
+                        </div>
+                        <div className="mt-2 flex flex-wrap items-center justify-between gap-2 text-xs">
+                          <span className="rounded-full border border-white/10 bg-white/5 px-2 py-1 font-semibold text-slate-200">
+                            {frame.frameStatus}
+                          </span>
+                          <span className="text-cyan-100">
+                            {frame.startAmount > 0 ? `${frame.startRecipient} start ${frame.startAmount}` : "Level start"}
+                          </span>
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              ))}
+            </div>
+          </section>
+        ) : null}
+
         {!loading && !data.error && data.liveMatches.length > 0 ? (
-          <div className="grid min-h-0 gap-3 xl:grid-cols-2 xl:grid-rows-2">
+          <div className="hidden min-h-0 gap-3 md:grid xl:grid-cols-2 xl:grid-rows-2">
             {visibleMatches.map((match) => (
               <section key={match.fixtureId} className="min-h-0 overflow-hidden rounded-2xl border border-white/10 bg-white/6 p-3 shadow-2xl backdrop-blur">
                 <div className="flex items-start justify-between gap-3">
