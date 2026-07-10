@@ -33,6 +33,7 @@ type Payload = {
     upset: string;
     overperformance: string;
     star: string;
+    formIndicators: string[];
     breaks: string[];
     lines: string[];
   } | null;
@@ -109,6 +110,20 @@ export default function PublicWeeklyReportPage() {
                   <span className="font-semibold text-white">Standout player:</span>{" "}
                   {data.summary.star}
                 </p>
+                <div>
+                  <span className="font-semibold text-white">Form indicators:</span>
+                  {data.summary.formIndicators.length > 0 ? (
+                    <ul className="mt-2 space-y-2 text-sm text-slate-100">
+                      {data.summary.formIndicators.map((line) => (
+                        <li key={line} className="rounded-2xl border border-violet-300/20 bg-violet-300/10 px-4 py-3">
+                          {line}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : (
+                    <p className="mt-1 text-sm text-slate-300">No extra form indicators stood out this week.</p>
+                  )}
+                </div>
                 <div>
                   <span className="font-semibold text-white">Stand-out 30+ breaks:</span>
                   {data.summary.breaks.length > 0 ? (

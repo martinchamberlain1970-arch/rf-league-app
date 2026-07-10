@@ -21,14 +21,27 @@ type AuditRow = {
   rated_matches_stored: number;
   rating_event_count: number;
   latest_event_at: string | null;
+  form: {
+    recent: string[];
+    streak_label: string | null;
+    wins_last_6: number;
+    losses_last_6: number;
+    high_break: number | null;
+    breaks_30_plus: number;
+    indicators: string[];
+  };
+  form_indicators: string[];
   flags: string[];
 };
 
 type AuditPayload = {
   generated_at: string;
+  season: { id: string; name: string } | null;
+  membership_source: string;
   summary: {
     total_players: number;
     players_with_any_flags: number;
+    players_with_form_indicators: number;
     handicap_aligned: number;
     handicap_misaligned: number;
     rating_aligned: number;
@@ -100,9 +113,9 @@ export default function RatingAuditPage() {
     const rows = data?.rows ?? [];
     const q = query.trim().toLowerCase();
     return rows.filter((row) => {
-      if (showOnlyIssues && row.flags.length === 0) return false;
+      if (showOnlyIssues && row.flags.length === 0 && row.form_indicators.length === 0) return false;
       if (!q) return true;
-      return [row.player_name, ...row.flags].some((value) => value.toLowerCase().includes(q));
+      return [row.player_name, ...row.flags, ...row.form_indicators].some((value) => value.toLowerCase().includes(q));
     });
   }, [data?.rows, query, showOnlyIssues]);
 
@@ -164,6 +177,11 @@ export default function RatingAuditPage() {
                       Count mismatches: {data.summary.rated_match_count_misaligned}
                     </p>
                   </div>
+                  <div className="rounded-2xl border border-violet-200 bg-white p-4 shadow-sm">
+                    <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Form Indicators</p>
+                    <p className="mt-2 text-3xl font-black text-slate-950">{data.summary.players_with_form_indicators}</p>
+                    <p className="mt-1 text-xs text-slate-500">Review signals only, not automatic handicap movement</p>
+                  </div>
                 </section>
               ) : null}
 
@@ -171,7 +189,7 @@ export default function RatingAuditPage() {
                 <div className="mb-3 grid gap-2 lg:grid-cols-[1fr_auto_auto]">
                   <input
                     className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
-                    placeholder="Search player or issue..."
+                    placeholder="Search player, issue, or form indicator..."
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                   />
@@ -180,7 +198,7 @@ export default function RatingAuditPage() {
                     onClick={() => setShowOnlyIssues((value) => !value)}
                     className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
                   >
-                    {showOnlyIssues ? "Show all players" : "Show only issues"}
+                    {showOnlyIssues ? "Show all players" : "Show flags and indicators"}
                   </button>
                   <button
                     type="button"
@@ -205,6 +223,7 @@ export default function RatingAuditPage() {
                           <th className="px-3 py-2 text-left font-semibold text-slate-700">Target Hcp</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-700">Gap</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-700">Rated Frames</th>
+                          <th className="px-3 py-2 text-left font-semibold text-slate-700">Form</th>
                           <th className="px-3 py-2 text-left font-semibold text-slate-700">Flags</th>
                         </tr>
                       </thead>
@@ -235,6 +254,22 @@ export default function RatingAuditPage() {
                             <td className="px-3 py-2 text-slate-700">
                               <span className="font-semibold text-slate-900">{row.rated_matches_stored}</span>
                               <p className="mt-1 text-xs text-slate-500">Events {row.rating_event_count}</p>
+                            </td>
+                            <td className="px-3 py-2 text-xs text-slate-600">
+                              {row.form.recent.length > 0 ? (
+                                <p className="mb-2 font-semibold text-slate-800">Last {row.form.recent.length}: {row.form.recent.join(" ")}</p>
+                              ) : (
+                                <p className="mb-2 text-slate-500">No completed frame form yet</p>
+                              )}
+                              {row.form_indicators.length > 0 ? (
+                                <div className="space-y-1">
+                                  {row.form_indicators.map((indicator) => (
+                                    <p key={`${row.player_id}-${indicator}`} className="whitespace-pre-wrap break-words text-violet-700">
+                                      {indicator}
+                                    </p>
+                                  ))}
+                                </div>
+                              ) : null}
                             </td>
                             <td className="px-3 py-2 text-xs text-slate-600">
                               {row.flags.length > 0 ? (

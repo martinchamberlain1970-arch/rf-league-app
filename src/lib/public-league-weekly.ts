@@ -325,6 +325,7 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
     .filter((row) => weekFixtureIds.has(row.fixture_id))
     .map((row) => ({
       fixtureId: row.fixture_id,
+      playerId: row.player_id,
       playerName: row.player_id ? playerNameMap.get(row.player_id) ?? row.entered_player_name?.trim() ?? "Unknown" : row.entered_player_name?.trim() || "Unknown",
       breakValue: Number(row.break_value ?? 0),
     }))
@@ -442,16 +443,37 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
     .sort((a, b) => b.surprise - a.surprise)[0] ?? null;
 
   const wins = new Map<string, number>();
+  const weekPlayerForm = new Map<string, { played: number; won: number; lost: number; breaks: number; highBreak: number }>();
   const overperformances: Array<{ text: string; gap: number }> = [];
+  for (const row of weekBreaks) {
+    if (!row.playerId) continue;
+    const stats = weekPlayerForm.get(row.playerId) ?? { played: 0, won: 0, lost: 0, breaks: 0, highBreak: 0 };
+    stats.breaks += 1;
+    stats.highBreak = Math.max(stats.highBreak, row.breakValue);
+    weekPlayerForm.set(row.playerId, stats);
+  }
+
   for (const frame of weekFrames) {
     if (!frame.winner_side || frame.home_forfeit || frame.away_forfeit) continue;
-    const ids =
-      frame.winner_side === "home"
-        ? [frame.home_player1_id, frame.home_player2_id]
-        : [frame.away_player1_id, frame.away_player2_id];
+    const homeIds = [frame.home_player1_id, frame.home_player2_id].filter(Boolean) as string[];
+    const awayIds = [frame.away_player1_id, frame.away_player2_id].filter(Boolean) as string[];
+    const ids = frame.winner_side === "home" ? homeIds : awayIds;
     for (const id of ids) {
-      if (!id) continue;
       wins.set(id, (wins.get(id) ?? 0) + 1);
+    }
+    for (const id of homeIds) {
+      const stats = weekPlayerForm.get(id) ?? { played: 0, won: 0, lost: 0, breaks: 0, highBreak: 0 };
+      stats.played += 1;
+      if (frame.winner_side === "home") stats.won += 1;
+      else stats.lost += 1;
+      weekPlayerForm.set(id, stats);
+    }
+    for (const id of awayIds) {
+      const stats = weekPlayerForm.get(id) ?? { played: 0, won: 0, lost: 0, breaks: 0, highBreak: 0 };
+      stats.played += 1;
+      if (frame.winner_side === "away") stats.won += 1;
+      else stats.lost += 1;
+      weekPlayerForm.set(id, stats);
     }
 
     const homeName =
@@ -481,6 +503,22 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
   }
 
   const star = Array.from(wins.entries()).sort((a, b) => b[1] - a[1])[0];
+  const formIndicators = Array.from(weekPlayerForm.entries())
+    .map(([playerId, stats]) => {
+      const name = playerNameMap.get(playerId) ?? "Player";
+      const notes: string[] = [];
+      if (stats.played >= 2 && stats.won === stats.played) notes.push(`won all ${stats.played} frame${stats.played === 1 ? "" : "s"} played`);
+      if (stats.played >= 2 && stats.lost === stats.played) notes.push(`lost all ${stats.played} frame${stats.played === 1 ? "" : "s"} played`);
+      if (stats.breaks >= 2) notes.push(`recorded ${stats.breaks} breaks of 30+`);
+      else if (stats.highBreak >= 50) notes.push(`made a ${stats.highBreak} break`);
+      if (notes.length === 0) return null;
+      const score = stats.won * 3 + stats.breaks * 2 + Math.floor(stats.highBreak / 25) - stats.lost;
+      return { score, text: `${name} ${notes.join(" and ")}.` };
+    })
+    .filter((item): item is { score: number; text: string } => Boolean(item))
+    .sort((a, b) => b.score - a.score || a.text.localeCompare(b.text))
+    .slice(0, 5)
+    .map((item) => item.text);
   const topOverperformance = overperformances.sort((a, b) => b.gap - a.gap)[0] ?? null;
   const standoutBreaks = weekBreaks
     .slice(0, 3)
@@ -504,6 +542,7 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
       star: star
         ? `${playerNameMap.get(star[0]) ?? "Player"} was standout with ${star[1]} frame win${star[1] === 1 ? "" : "s"}.`
         : "No standout player recorded this week yet.",
+      formIndicators,
       breaks: standoutBreaks,
       lines: fixtureRows.map((fixture) => `${fixture.home} ${fixture.score} ${fixture.away}`),
     },
