@@ -16,6 +16,7 @@ const links = [
   { href: "/quick-match", title: "Quick Match", desc: "Optional module: create ad-hoc practice matches." },
   { href: "/events/new", title: "Create Competition", desc: "Optional module: create standalone knockout or league events." },
   { href: "/league", title: "League Manager", desc: "Set up teams, fixtures, and league table." },
+  { href: "/live-matches", title: "Live Matches", desc: "Follow tonight's live league scorecards inside the app." },
   { href: "/handicaps", title: "Handicaps", desc: "See the snooker handicap list and how starts are worked out." },
   { href: "/high-breaks", title: "High Breaks", desc: "View the published league high-break table." },
   { href: "/captain-results", title: "Lineups & Results", desc: "Enter your pre-match lineup first, then submit your fixture result for approval." },
@@ -109,6 +110,7 @@ export default function HomePage() {
     if (admin.isSuper) {
       return [
         "/league",
+        "/live-matches",
         "/handicaps",
         "/players",
         "/signup-requests",
@@ -132,7 +134,7 @@ export default function HomePage() {
       // Admins still see these cards, but they can be disabled per-account.
       return true;
     }
-    return ["/events", "/league", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/signups", "/documents", "/help", "/legal", "/notifications"].includes(href);
+    return ["/events", "/league", "/live-matches", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/signups", "/documents", "/help", "/legal", "/notifications"].includes(href);
   };
 
   const visibleLinks = links.filter((item) => isVisibleLink(item.href));
@@ -149,8 +151,8 @@ export default function HomePage() {
   const primaryHrefs = admin.isSuper
     ? ["/signup-requests", "/players", "/notifications", "/league", "/results", "/reschedule-fixture", "/rating-audit", "/backup", "/signups", "/announcements", "/legal"]
     : admin.isAdmin
-      ? ["/league", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/quick-match", "/events/new", "/signups", "/help", "/legal"]
-      : ["/league", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/notifications", "/signups", "/help", "/legal"];
+      ? ["/league", "/live-matches", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/quick-match", "/events/new", "/signups", "/help", "/legal"]
+      : ["/league", "/live-matches", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/notifications", "/signups", "/help", "/legal"];
   const quickAccessHrefs = admin.isSuper
     ? ["/audit", "/rating-audit", "/usage"]
     : admin.isAdmin
@@ -189,6 +191,7 @@ export default function HomePage() {
   const primaryTileClass = (href: string) => {
     const base = `rounded-2xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${compactSuper ? "p-2.5 min-h-[112px]" : "p-4 min-h-[160px]"}`;
     if (href === "/league") return `${base} border-indigo-200 bg-gradient-to-br from-indigo-50 to-white`;
+    if (href === "/live-matches") return `${base} border-sky-200 bg-gradient-to-br from-sky-50 to-white`;
     if (href === "/captain-results") return `${base} border-emerald-200 bg-gradient-to-br from-emerald-50 to-white`;
     if (href === "/reschedule-fixture") return `${base} border-indigo-200 bg-gradient-to-br from-indigo-50 to-white`;
     if (href === "/results?tab=fixture_changes") return `${base} border-indigo-200 bg-gradient-to-br from-indigo-50 to-white`;
@@ -200,6 +203,7 @@ export default function HomePage() {
   };
   const primaryTileBadgeClass = (href: string) => {
     if (href === "/league") return "border-indigo-300 bg-indigo-100 text-indigo-900";
+    if (href === "/live-matches") return "border-sky-300 bg-sky-100 text-sky-900";
     if (href === "/captain-results") return "border-emerald-300 bg-emerald-100 text-emerald-900";
     if (href === "/reschedule-fixture") return "border-indigo-300 bg-indigo-100 text-indigo-900";
     if (href === "/results?tab=fixture_changes") return "border-indigo-300 bg-indigo-100 text-indigo-900";

@@ -1427,7 +1427,7 @@ export default function CaptainResultsPage() {
     });
   };
 
-  const getValidatedBreakRows = () => {
+  const getValidatedBreakRows = (onlySlotNo?: number) => {
     const participantNameBySlot = new Map<number, Map<string, string>>();
     const pointsByPlayerAndSlot = new Map<string, number>();
     for (const slot of slots) {
@@ -1449,6 +1449,7 @@ export default function CaptainResultsPage() {
 
     const valid: SubmissionBreakEntry[] = [];
     for (const row of fixtureBreaks) {
+      if (onlySlotNo !== undefined && row.slot_no !== onlySlotNo) continue;
       const breakValue = Number(row.break_value || 0);
       const slotNo = row.slot_no ?? null;
       const enteredName = row.entered_player_name.trim();
@@ -1795,21 +1796,22 @@ export default function CaptainResultsPage() {
       setMessage(validationError);
       return;
     }
-    if (!breakPromptAnsweredSlots.has(currentScorecardFrame.slot_no)) {
+    const currentFrameBreaks = getValidatedBreakRows(currentScorecardFrame.slot_no);
+    if (currentFrameBreaks.error) {
+      setMessage(currentFrameBreaks.error);
+      return;
+    }
+    if (!breakPromptAnsweredSlots.has(currentScorecardFrame.slot_no) && currentFrameBreaks.rows.length === 0) {
       setBreakPromptSlotNo(currentScorecardFrame.slot_no);
       return;
     }
-    if (breakRequiredSlotNo === currentScorecardFrame.slot_no) {
-      const breakRows = getValidatedBreakRows();
-      if (breakRows.error) {
-        setMessage(breakRows.error);
-        return;
-      }
-      const frameBreaks = breakRows.rows.filter((row) => row.slot_no === currentScorecardFrame.slot_no);
-      if (frameBreaks.length === 0) {
-        setMessage(`Enter the 30+ break for Frame ${currentScorecardFrame.slot_no} before saving and continuing.`);
-        return;
-      }
+    if (currentFrameBreaks.rows.length > 0) {
+      setBreakPromptAnsweredSlots((prev) => new Set(prev).add(currentScorecardFrame.slot_no));
+      setBreakRequiredSlotNo((current) => (current === currentScorecardFrame.slot_no ? null : current));
+    }
+    if (breakRequiredSlotNo === currentScorecardFrame.slot_no && currentFrameBreaks.rows.length === 0) {
+      setMessage(`Enter the 30+ break for Frame ${currentScorecardFrame.slot_no} before saving and continuing.`);
+      return;
     }
     setFrameAdvancePrompt({
       slotNo: currentScorecardFrame.slot_no,

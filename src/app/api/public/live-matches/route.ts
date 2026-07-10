@@ -203,7 +203,7 @@ export async function GET(req: NextRequest) {
 
   const matchNightCandidates = fixtures.filter((fixture) => {
     if (fixture.pre_match_paper_record) return false;
-    if (fixture.status === "complete") return true;
+    if (fixture.status === "complete") return false;
     return Boolean(fixture.home_lineup_submitted_at) && Boolean(fixture.away_lineup_submitted_at);
   });
 
@@ -215,7 +215,7 @@ export async function GET(req: NextRequest) {
     .filter((fixture) => (currentMatchNightDate ? fixture.fixture_date === currentMatchNightDate : true))
     .sort((a, b) => {
       const statusRank = (status: FixtureRow["status"]) =>
-        status === "in_progress" ? 0 : status === "complete" ? 1 : 2;
+        status === "in_progress" ? 0 : 1;
       const aDate = a.fixture_date ?? "9999-12-31";
       const bDate = b.fixture_date ?? "9999-12-31";
       return (
