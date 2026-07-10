@@ -29,6 +29,42 @@ export async function POST(req: NextRequest) {
   }
 
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
+
+  const seasonsRes = await adminClient
+    .from("league_seasons")
+    .select("id,name,is_published,created_at")
+    .eq("is_published", true)
+    .order("created_at", { ascending: false });
+  if (seasonsRes.error) {
+    return NextResponse.json({ error: seasonsRes.error.message }, { status: 400 });
+  }
+
+  const selectedSeason = (seasonsRes.data ?? [])[0] ?? null;
+  let membershipSource = "league_team_members";
+  let leaguePlayerIds = new Set<string>();
+
+  if (selectedSeason?.id) {
+    const liveMembersRes = await adminClient
+      .from("league_team_members")
+      .select("player_id")
+      .eq("season_id", selectedSeason.id);
+    if (liveMembersRes.error) {
+      return NextResponse.json({ error: liveMembersRes.error.message }, { status: 400 });
+    }
+
+    leaguePlayerIds = new Set((liveMembersRes.data ?? []).map((row) => row.player_id).filter(Boolean));
+  }
+
+  if (leaguePlayerIds.size === 0) {
+    membershipSource = "league_registered_team_members";
+    const registeredMembersRes = await adminClient.from("league_registered_team_members").select("player_id");
+    if (registeredMembersRes.error) {
+      return NextResponse.json({ error: registeredMembersRes.error.message }, { status: 400 });
+    }
+
+    leaguePlayerIds = new Set((registeredMembersRes.data ?? []).map((row) => row.player_id).filter(Boolean));
+  }
+
   const playersRes = await adminClient
     .from("players")
     .select("id,full_name,display_name,is_archived,rating_snooker,snooker_handicap")
@@ -37,16 +73,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: playersRes.error.message }, { status: 400 });
   }
 
-  const teamMembersRes = await adminClient
-    .from("league_registered_team_members")
-    .select("player_id");
-  if (teamMembersRes.error) {
-    return NextResponse.json({ error: teamMembersRes.error.message }, { status: 400 });
-  }
-
-  const leaguePlayerIds = new Set(
-    (teamMembersRes.data ?? []).map((row) => row.player_id).filter(Boolean)
-  );
   const players = (playersRes.data ?? []).filter((row) => leaguePlayerIds.has(row.id));
 
   const changed: Array<{
@@ -111,6 +137,8 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     ok: true,
+    season: selectedSeason ? { id: selectedSeason.id, name: selectedSeason.name } : null,
+    membershipSource,
     reviewed: players.length,
     changed: changed.length,
     changedRows: changed.map((row) => ({
