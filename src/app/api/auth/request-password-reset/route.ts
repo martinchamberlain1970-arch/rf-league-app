@@ -11,21 +11,42 @@ function normaliseOrigin(value: string | null | undefined) {
   return `https://${trimmed}`;
 }
 
-function getPublicOrigin(req: NextRequest) {
-  const configured =
-    normaliseOrigin(process.env.NEXT_PUBLIC_SITE_URL) ||
-    normaliseOrigin(process.env.NEXT_PUBLIC_APP_URL) ||
-    normaliseOrigin(process.env.SITE_URL) ||
-    normaliseOrigin(process.env.APP_URL) ||
-    normaliseOrigin(process.env.VERCEL_PROJECT_PRODUCTION_URL) ||
-    normaliseOrigin(process.env.VERCEL_URL);
-  if (configured) return configured;
+function isLocalOrigin(origin: string) {
+  try {
+    const host = new URL(origin).hostname.toLowerCase();
+    return host === "localhost" || host === "127.0.0.1" || host === "0.0.0.0" || host === "::1";
+  } catch {
+    return false;
+  }
+}
 
+function forwardedOrigin(req: NextRequest) {
   const forwardedProto = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
   const forwardedHost = req.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
-  if (forwardedHost) return `${forwardedProto || "https"}://${forwardedHost}`;
+  if (!forwardedHost) return "";
+  return normaliseOrigin(`${forwardedProto || "https"}://${forwardedHost}`);
+}
 
-  return req.nextUrl.origin;
+function getPublicOrigin(req: NextRequest) {
+  const requestOrigin = forwardedOrigin(req) || normaliseOrigin(req.nextUrl.origin);
+  const requestIsLocal = isLocalOrigin(requestOrigin);
+  const candidates = [
+    process.env.NEXT_PUBLIC_SITE_URL,
+    process.env.NEXT_PUBLIC_APP_URL,
+    process.env.SITE_URL,
+    process.env.APP_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    process.env.VERCEL_URL,
+    requestOrigin,
+  ].map(normaliseOrigin);
+
+  for (const candidate of candidates) {
+    if (!candidate) continue;
+    if (isLocalOrigin(candidate) && !requestIsLocal) continue;
+    return candidate;
+  }
+
+  return requestOrigin || req.nextUrl.origin;
 }
 
 export async function POST(req: NextRequest) {
