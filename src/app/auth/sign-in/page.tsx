@@ -255,137 +255,91 @@ export default function SignInPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(186,230,253,0.55),_transparent_32%),radial-gradient(circle_at_bottom_right,_rgba(253,230,138,0.38),_transparent_28%),#f8fafc] p-4 sm:p-6">
-      <div className="mx-auto max-w-7xl">
-        <div className="grid gap-5 xl:grid-cols-[1.15fr_1.35fr_0.9fr]">
-          <section className="rounded-[2rem] border border-sky-100 bg-white/95 p-6 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] sm:p-8">
-            <span className="inline-flex rounded-full border border-teal-200 bg-teal-50 px-4 py-2 text-xs font-semibold uppercase tracking-[0.28em] text-teal-700">
-              Rack & Frame League
-            </span>
-            <h1 className="mt-5 max-w-md text-5xl font-black leading-[0.95] tracking-tight text-slate-950 sm:text-6xl">
-              Get straight back to your league night.
-            </h1>
-            <p className="mt-5 max-w-lg text-lg leading-8 text-slate-600">
-              Sign in to review fixtures, check results, follow competition draws, and keep your club activity moving.
-            </p>
-            <div className="mt-8 rounded-[1.5rem] border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-5">
-              <p className="text-sm font-semibold text-amber-900">League access note</p>
-              <p className="mt-2 text-sm leading-7 text-amber-800">
-                New accounts can sign in straight away. Your player profile link is reviewed separately by the League Secretary or league administrator, usually within an hour and sometimes up to 24 hours.
-              </p>
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(186,230,253,0.45),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(253,230,138,0.28),_transparent_28%),#f8fafc] px-4 py-6 sm:px-6 lg:py-10">
+      <div className="mx-auto grid w-full max-w-5xl gap-5 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
+        <section className="rounded-2xl border border-sky-100 bg-white/95 p-5 shadow-[0_18px_55px_-38px_rgba(15,23,42,0.5)] sm:p-6 lg:sticky lg:top-8">
+          <div className="flex items-center gap-4">
+            <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 p-2">
+              <img src="/rf-logo.png" alt="Rack & Frame League logo" className="max-h-full w-auto object-contain" />
             </div>
-          </section>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-700">Rack & Frame League</p>
+              <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Sign in</h1>
+            </div>
+          </div>
+          <p className="mt-5 text-sm leading-6 text-slate-600">
+            Access fixtures, league tables, live matches, notifications, and match-night tools from one account.
+          </p>
+          <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
+            New player profile links are reviewed separately by the League Secretary or Super User after account creation.
+          </div>
+          <div className="mt-5 grid gap-2 text-sm text-slate-600">
+            <Link href="/live-matches" className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-800 hover:bg-white">
+              Follow live matches
+            </Link>
+            <Link href="/captain-guide" className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-800 hover:bg-white">
+              Captain / Vice-captain guide
+            </Link>
+          </div>
+        </section>
 
-          <section className="rounded-[2rem] border border-slate-200 bg-white/95 p-4 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] sm:p-6">
-            <div className="rounded-[1.75rem] border border-slate-200 bg-slate-100 p-4">
-              <div className="flex min-h-[24rem] items-center justify-center rounded-[1.5rem] bg-[radial-gradient(circle_at_top,_rgba(56,189,248,0.18),_transparent_38%),linear-gradient(145deg,_#111827,_#1f2937_52%,_#0f172a)] p-6 sm:p-8">
-                <div className="w-full text-center">
-                  <div className="inline-flex items-center gap-3 rounded-full border border-white/15 bg-white/10 px-5 py-2 text-xs font-semibold uppercase tracking-[0.34em] text-slate-100">
-                    Snooker League
-                  </div>
-                  <div className="mt-6 overflow-hidden rounded-[1.5rem] border border-white/10 bg-black/15 p-3 shadow-[0_18px_45px_-24px_rgba(15,23,42,0.8)]">
-                    <img
-                      src="/rf-logo.png"
-                      alt="Rack & Frame League logo"
-                      className="mx-auto max-h-[21rem] w-auto rounded-[1.1rem] object-contain"
-                    />
-                  </div>
-                  <p className="mt-5 text-base leading-7 text-slate-200">
-                    Fixtures, tables, player rankings, competitions, and result submission in one place.
-                  </p>
-                </div>
-              </div>
-              <div className="mt-4 rounded-[1.25rem] border border-slate-200 bg-white p-5">
-                <p className="text-xl font-semibold text-slate-900">Ready to continue?</p>
-                <p className="mt-2 text-base leading-7 text-slate-600">
-                  Use your existing account to open your dashboard, view notifications, and jump straight into league activity.
-                </p>
-              </div>
-            </div>
-          </section>
+        <section className="rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-[0_18px_55px_-38px_rgba(15,23,42,0.5)] sm:p-6">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Welcome back</p>
+          <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">League account</h2>
+          <p className="mt-3 text-sm leading-6 text-slate-600">
+            Captains, vice-captains, and players all sign in here. Team permissions are managed centrally.
+          </p>
 
-          <section className="rounded-[2rem] border border-slate-200 bg-white/95 p-6 shadow-[0_24px_80px_-40px_rgba(15,23,42,0.45)] sm:p-8">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em] text-slate-500">Sign in</p>
-            <h2 className="mt-3 text-5xl font-black tracking-tight text-slate-950">Welcome back</h2>
-            <p className="mt-4 text-lg leading-8 text-slate-600">
-              Captains, vice-captains, and players all sign in here. Team permissions are controlled centrally by the Super User.
-            </p>
-            <p className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
-              Captains and vice-captains: after sign-in, check <span className="font-semibold">Notifications</span>, then open the{" "}
-              <Link href="/captain-guide" className="font-semibold underline underline-offset-2">
-                Captain / Vice-captain Guide
-              </Link>{" "}
-              for the before-match and result-submission steps.
-            </p>
-            <div className="mt-4 rounded-[1.35rem] border border-sky-200 bg-sky-50 px-4 py-4">
-              <p className="text-sm font-semibold text-sky-900">Captain / vice-captain quick start</p>
-              <p className="mt-1 text-sm text-sky-800">
-                Match night? Use these shortcuts so sign-in sends you straight to the right place.
-              </p>
-              <div className="mt-3 flex flex-wrap gap-2">
-                <Link
-                  href="/auth/sign-in?next=%2Fcaptain-results"
-                  className="rounded-xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white"
-                >
-                  Go to lineups & results
-                </Link>
-                <Link
-                  href="/auth/sign-in?next=%2Fcaptain-guide"
-                  className="rounded-xl border border-sky-300 bg-white px-4 py-2 text-sm font-semibold text-sky-900"
-                >
-                  Open captain guide
-                </Link>
-              </div>
+          <form onSubmit={onSignIn} className="mt-6 space-y-4">
+            <div>
+              <label className="mb-2 block text-sm font-medium text-slate-700">Email address</label>
+              <input
+                type="email"
+                required
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base text-slate-900 shadow-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                placeholder="you@example.com"
+              />
             </div>
-            <form onSubmit={onSignIn} className="mt-8 space-y-5">
-              <div>
-                <label className="mb-2 block text-sm font-medium text-slate-700">Email address</label>
-                <input
-                  type="email"
-                  required
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  className="h-16 w-full rounded-[1.35rem] border border-slate-300 bg-white px-5 text-lg text-slate-900 shadow-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                  placeholder="you@example.com"
-                />
-              </div>
-              <div>
-                <div className="mb-2 flex items-center justify-between gap-3">
-                  <label className="block text-sm font-medium text-slate-700">Password</label>
-                  <Link href="/auth/forgot-password" className="text-sm font-semibold text-teal-700 underline underline-offset-4">
-                    Forgot password?
-                  </Link>
-                </div>
-                <input
-                  type="password"
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="h-16 w-full rounded-[1.35rem] border border-slate-300 bg-white px-5 text-lg text-slate-900 shadow-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
-                  placeholder="Enter your password"
-                />
-              </div>
-              <button
-                type="submit"
-                disabled={busy}
-                className="inline-flex h-16 items-center justify-center rounded-[1.35rem] bg-teal-700 px-8 text-xl font-semibold text-white transition hover:bg-teal-800 disabled:opacity-60"
-              >
-                {busy ? "Please wait..." : "Sign in"}
-              </button>
-            </form>
-            <section className="mt-8 rounded-[1.5rem] border border-slate-200 bg-slate-50 p-5">
-              <p className="text-base text-slate-700">
-                Don&apos;t have an account yet?{" "}
-                <Link href="/auth/register" className="font-semibold text-teal-700 underline underline-offset-4">
-                  Create one here
+            <div>
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <label className="block text-sm font-medium text-slate-700">Password</label>
+                <Link href="/auth/forgot-password" className="text-sm font-semibold text-teal-700 underline underline-offset-4">
+                  Forgot password?
                 </Link>
-                .
-              </p>
-            </section>
-            <p className="mt-8 text-sm uppercase tracking-[0.22em] text-slate-400">Designed and developed by Martin Chamberlain</p>
-            <MessageModal message={message} onClose={() => setMessage(null)} />
-          </section>
-        </div>
+              </div>
+              <input
+                type="password"
+                required
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base text-slate-900 shadow-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
+                placeholder="Enter your password"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={busy}
+              className="flex h-12 w-full items-center justify-center rounded-xl bg-teal-700 px-5 text-base font-semibold text-white transition hover:bg-teal-800 disabled:opacity-60 sm:w-auto"
+            >
+              {busy ? "Please wait..." : "Sign in"}
+            </button>
+          </form>
+
+          <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-sm text-slate-700">
+              Don&apos;t have an account yet?{" "}
+              <Link href="/auth/register" className="font-semibold text-teal-700 underline underline-offset-4">
+                Create one here
+              </Link>
+              .
+            </p>
+          </div>
+
+          <p className="mt-6 text-xs uppercase tracking-[0.2em] text-slate-400">Designed and developed by Martin Chamberlain</p>
+          <MessageModal message={message} onClose={() => setMessage(null)} />
+        </section>
       </div>
     </main>
   );
