@@ -274,7 +274,7 @@ export default function SignInPage() {
             New player profile links are reviewed separately by the League Secretary or Super User after account creation.
           </div>
           <div className="mt-5 grid gap-2 text-sm text-slate-600">
-            <Link href="/live-matches" className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-800 hover:bg-white">
+            <Link href="/display/live-matches" className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-800 hover:bg-white">
               Follow live matches
             </Link>
             <Link href="/captain-guide" className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-800 hover:bg-white">

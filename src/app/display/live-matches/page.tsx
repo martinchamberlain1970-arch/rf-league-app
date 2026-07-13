@@ -39,7 +39,7 @@ const emptyData: LiveMatchData = {
   liveMatches: [],
 };
 
-const MATCHES_PER_PAGE = 4;
+const MATCHES_PER_PAGE = 2;
 const PAGE_ROTATION_MS = 15000;
 
 function chunkRows<T>(rows: T[], size: number) {
@@ -277,9 +277,9 @@ export default function PublicLiveMatchesPage() {
         ) : null}
 
         {!loading && !data.error && data.liveMatches.length > 0 ? (
-          <div className="hidden min-h-0 gap-3 lg:grid xl:grid-cols-2 xl:grid-rows-2">
+          <div className="hidden min-h-0 gap-3 lg:grid lg:grid-cols-2">
             {visibleMatches.map((match) => (
-              <section key={match.fixtureId} className="min-h-0 overflow-hidden rounded-2xl border border-white/10 bg-white/6 p-3 shadow-2xl backdrop-blur">
+              <section key={match.fixtureId} className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/6 p-3 shadow-2xl backdrop-blur">
                 <div className="flex min-w-0 items-start justify-between gap-3">
                   <div>
                     <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-cyan-200">Week {match.weekNo ?? "-"}</p>
@@ -293,7 +293,7 @@ export default function PublicLiveMatchesPage() {
                   </div>
                 </div>
 
-                <div className="mt-2 grid gap-1.5">
+                <div className="mt-2 grid min-h-0 flex-1 content-start gap-1.5 overflow-hidden">
                   {match.frameRows.map((frame) => (
                     <div key={frame.id} className="rounded-xl border border-white/10 bg-slate-950/35 px-2.5 py-2">
                       {(() => {
