@@ -130,6 +130,9 @@ function breakRowsContainUnsavedDraft(rows: BreakRow[]) {
   });
 }
 
+const unfinishedBreakMessage =
+  "Finish the 30+ break row or remove it before saving. This prevents a half-entered break from overwriting already recorded breaks.";
+
 function createEmptyBreakRow(slotNo: number | null = null): BreakRow {
   return { slot_no: slotNo, player_id: null, entered_player_name: "", break_value: "" };
 }
@@ -820,6 +823,12 @@ export default function CaptainResultsPage() {
     const breakRows = getValidatedBreakRows();
     if (breakRows.error) {
       setMessage(breakRows.error);
+      return { saved: false, allFramesComplete, hasUnsavedBreakDraft };
+    }
+    if (hasUnsavedBreakDraft) {
+      if (mode === "manual") {
+        setMessage(unfinishedBreakMessage);
+      }
       return { saved: false, allFramesComplete, hasUnsavedBreakDraft };
     }
     const breakRowsBySlot = new Map<number, SubmissionBreakEntry[]>();
@@ -1728,6 +1737,10 @@ export default function CaptainResultsPage() {
     const breakRows = getValidatedBreakRows();
     if (breakRows.error) {
       setMessage(breakRows.error);
+      return;
+    }
+    if (breakRowsContainUnsavedDraft(fixtureBreaks)) {
+      setMessage(unfinishedBreakMessage);
       return;
     }
     const breakRowsBySlot = new Map<number, SubmissionBreakEntry[]>();
