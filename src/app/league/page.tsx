@@ -1460,7 +1460,7 @@ export default function LeaguePage() {
       title: "Handicaps Guide",
       points: [
         "Snooker Elo updates after every valid competitive frame, but handicaps do not move automatically after each win or loss.",
-        "Use Recalculate from Elo when you want to review handicaps for the current week. Each review aligns a player's handicap directly to their current Elo-based target handicap.",
+        "Approving/rechecking results updates Elo only. Use Apply handicap changes from Elo target only when you deliberately want to change live playing handicaps.",
         "Filter by club/team/player to review current values quickly, or use the copy-ready handicap list to send a full update by WhatsApp or email.",
         "Use override controls for league-corrective changes and open history to trace when and why each change was made.",
       ],
@@ -3035,6 +3035,12 @@ export default function LeaguePage() {
       setMessage("Only Super User can recalculate handicaps.");
       return;
     }
+    const confirmed = window.confirm(
+      `This will change actual playing handicaps now by aligning them to each player's current Elo target.
+
+Elo updates do not need this button. Press Cancel if you only want Elo to keep updating in the background.`
+    );
+    if (!confirmed) return;
     const sessionRes = await client.auth.getSession();
     const token = sessionRes.data.session?.access_token ?? null;
     if (!token) {
@@ -7790,7 +7796,7 @@ export default function LeaguePage() {
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <p className="text-xs text-slate-600">
                             {isCurrentFixtureLocked
-                              ? "This fixture is complete. Use this to recheck the saved result, replace any old team-based Elo with frame-based Elo, and close the entry screen."
+                              ? "This fixture is complete. Use these actions to update/rebuild Elo only. They do not change playing handicaps."
                               : "Super User changes save as you edit. Use this to keep partial progress, recompute the fixture status, and close the entry screen."}
                           </p>
                           <div className="flex flex-wrap gap-2">
@@ -7800,7 +7806,7 @@ export default function LeaguePage() {
                                 onClick={() => void rebuildFixtureDateRatings(currentFixture.fixture_date)}
                                 className="rounded-xl border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-700"
                               >
-                                Rebuild ratings for all complete fixtures on this date
+                                Rebuild Elo only for all complete fixtures on this date
                               </button>
                             ) : null}
                             <button
@@ -7812,7 +7818,7 @@ export default function LeaguePage() {
                               className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
                             >
                               {isCurrentFixtureLocked
-                                ? "Recheck result and rating"
+                                ? "Recheck result and update Elo only"
                                 : computeFixtureProgress(currentFixture).status === "complete"
                                   ? "Save and complete fixture"
                                   : "Save progress and close"}
@@ -8083,16 +8089,17 @@ export default function LeaguePage() {
               <section className="rounded-2xl border border-fuchsia-200 bg-gradient-to-br from-white to-fuchsia-50 p-4 shadow-sm">
                 <h2 className="text-lg font-semibold text-fuchsia-900">Handicap Management</h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  View and adjust player handicaps. Elo updates per valid frame; handicaps should then be reviewed from Elo rather than moved by individual wins/losses.
+                  View and adjust player handicaps. Elo can continue updating without changing live playing handicaps.
                 </p>
                 <div className="mt-3 rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-3 text-sm text-fuchsia-950">
                   <p className="font-semibold">How snooker handicaps now work</p>
                   <ul className="mt-2 space-y-1 text-xs leading-6 text-fuchsia-900">
                       <li>Elo rating updates after every valid competitive frame.</li>
                       <li>No-show, nominated-player, and void frames do not affect Elo or handicap.</li>
-                      <li>Handicaps are reviewed from Elo when the Super User runs a review.</li>
+                      <li>Approving results and rechecking ratings updates Elo only; it does not change the live handicap.</li>
+                      <li>Actual playing handicaps change only when the Super User deliberately applies the Elo handicap review.</li>
                       <li>Target handicap now matches the original Elo seed formula: handicap = nearest multiple of 4 to (1000 - Elo) / 5.</li>
-                      <li>Each review now aligns a player directly to that Elo-based target handicap.</li>
+                      <li>Each handicap review aligns a player directly to that Elo-based target handicap.</li>
                       <li>Live match starts are capped at {MAX_SNOOKER_START} so a fixture stays competitive even when the Elo gap is wider.</li>
                       <li>Manual overrides remain available where league rules require correction.</li>
                     </ul>
@@ -8121,21 +8128,21 @@ export default function LeaguePage() {
                     </table>
                   </div>
                 </div>
-                <div className="mt-3 rounded-xl border border-fuchsia-200 bg-white p-3">
+                <div className="mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-slate-900">Weekly Elo review</p>
-                      <p className="text-xs text-slate-600">
-                        Recalculate current handicaps from each league player's snooker Elo. Each review now brings the live handicap directly into line with the current Elo target and records the change in history.
+                      <p className="text-sm font-semibold text-rose-950">Apply handicap changes from Elo target</p>
+                      <p className="text-xs text-rose-800">
+                        This is the only action here that changes actual playing handicaps. Leave this alone if you want Elo to keep updating but handicaps to stay frozen until the end-of-league review.
                       </p>
                     </div>
                     <button
                       type="button"
                       onClick={() => void recalculateSnookerHandicapsFromElo()}
                       disabled={recalculatingHandicaps}
-                      className="rounded-xl bg-fuchsia-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
+                      className="rounded-xl bg-rose-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
                     >
-                      {recalculatingHandicaps ? "Recalculating..." : "Recalculate from Elo"}
+                      {recalculatingHandicaps ? "Applying handicap changes..." : "Apply handicap changes"}
                     </button>
                   </div>
                 </div>
