@@ -48,6 +48,17 @@ const emptyData: LiveMatchData = {
   liveMatches: [],
 };
 
+const MATCHES_PER_PAGE = 2;
+const PAGE_ROTATION_MS = 30000;
+
+function chunkRows<T>(rows: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < rows.length; index += size) {
+    chunks.push(rows.slice(index, index + size));
+  }
+  return chunks;
+}
+
 function statusTone(status: string) {
   if (status === "Home won") return "border-emerald-300/30 bg-emerald-400/10 text-emerald-100";
   if (status === "Away won") return "border-amber-300/30 bg-amber-400/10 text-amber-100";
@@ -132,6 +143,7 @@ function PlayerAvatars({
 export default function MatchNightDisplayPage() {
   const [data, setData] = useState<LiveMatchData>(emptyData);
   const [loading, setLoading] = useState(true);
+  const [pageIndex, setPageIndex] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -140,10 +152,9 @@ export default function MatchNightDisplayPage() {
         const res = await fetch("/api/public/live-matches", { cache: "no-store" });
         const payload = (await res.json().catch(() => emptyData)) as LiveMatchData;
         if (!active) return;
-        const trimmed = (res.ok ? payload.liveMatches : []).slice(0, 4);
         setData(
           res.ok
-            ? { ...payload, liveMatches: trimmed }
+            ? payload
             : { ...emptyData, error: payload.error ?? "Failed to load live matches." }
         );
       } catch {
@@ -156,12 +167,28 @@ export default function MatchNightDisplayPage() {
     void load();
     const timer = window.setInterval(() => {
       void load();
-    }, 30000);
+    }, PAGE_ROTATION_MS);
     return () => {
       active = false;
       window.clearInterval(timer);
     };
   }, []);
+
+  const matchPages = useMemo(() => chunkRows(data.liveMatches, MATCHES_PER_PAGE), [data.liveMatches]);
+  const totalPages = Math.max(matchPages.length, 1);
+  const visibleMatches = matchPages[Math.min(pageIndex, totalPages - 1)] ?? [];
+
+  useEffect(() => {
+    setPageIndex(0);
+  }, [data.liveMatches]);
+
+  useEffect(() => {
+    if (totalPages <= 1) return;
+    const timer = window.setInterval(() => {
+      setPageIndex((current) => (current + 1) % totalPages);
+    }, PAGE_ROTATION_MS);
+    return () => window.clearInterval(timer);
+  }, [totalPages]);
 
   const generatedAt = useMemo(
     () => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
@@ -186,6 +213,11 @@ export default function MatchNightDisplayPage() {
                 {liveCount > 0 ? `${liveCount} live` : "No live matches"}
                 {completedCount > 0 ? ` · ${completedCount} completed` : ""}
               </div>
+              {totalPages > 1 ? (
+                <div className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100">
+                  Page {Math.min(pageIndex + 1, totalPages)} of {totalPages}
+                </div>
+              ) : null}
               <div className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-slate-100">
                 Updated {generatedAt}
               </div>
@@ -218,8 +250,8 @@ export default function MatchNightDisplayPage() {
         ) : null}
 
         {!loading && !data.error && data.liveMatches.length > 0 ? (
-          <div className="grid flex-1 auto-rows-fr grid-cols-2 gap-4">
-            {data.liveMatches.slice(0, 4).map((match) => {
+          <div className="grid flex-1 auto-rows-fr grid-cols-1 gap-4">
+            {visibleMatches.map((match) => {
               return (
                 <section
                   key={match.fixtureId}
