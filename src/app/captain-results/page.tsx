@@ -777,6 +777,16 @@ export default function CaptainResultsPage() {
       savedAt: new Date().toISOString(),
     };
     window.localStorage.setItem(draftStorageKey, JSON.stringify(draft));
+    if (mode === "auto" && activeEntryTab === "scorecard") {
+      // Keep an on-device safety draft, but do not push live scorecard changes
+      // until the captain explicitly saves the frame/progress. This prevents the
+      // current frame result from being committed before any 30+ breaks are entered.
+      return {
+        saved: false,
+        allFramesComplete: false,
+        hasUnsavedBreakDraft: breakRowsContainUnsavedDraft(fixtureBreaks),
+      };
+    }
     if (!homeSideCanManageScorecard || (!lineupsLocked && !preMatchPaperRecord)) {
       if (mode === "manual") {
         setInfo({ title: "Progress saved", description: "Your draft has been saved on this device and can be restored when you return." });
@@ -3149,7 +3159,7 @@ export default function CaptainResultsPage() {
                       <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
                         {homeSideCanManageScorecard ? (
                           <p className="mb-2 text-xs text-emerald-900">
-                            Auto-save is active for live score updates. {lastAutoSavedAt ? `Last auto-saved at ${lastAutoSavedAt}.` : "Waiting for your next change."}
+                            Scorecard safety draft is saved on this device as you work. Use <strong>Save and continue</strong> or <strong>Save progress</strong> to update the live match and keep 30+ breaks with the frame.
                           </p>
                         ) : null}
                         <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">

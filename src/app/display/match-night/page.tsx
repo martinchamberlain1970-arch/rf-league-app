@@ -48,7 +48,7 @@ const emptyData: LiveMatchData = {
   liveMatches: [],
 };
 
-const MATCHES_PER_PAGE = 2;
+const MATCHES_PER_PAGE = 1;
 const PAGE_ROTATION_MS = 30000;
 
 function chunkRows<T>(rows: T[], size: number) {
@@ -198,27 +198,27 @@ export default function MatchNightDisplayPage() {
   const completedCount = data.liveMatches.filter((match) => match.status === "complete").length;
 
   return (
-    <main className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_58%)] p-5 text-white">
-      <div className="mx-auto flex h-full max-w-[1800px] flex-col gap-4">
-        <section className="rounded-[2rem] border border-white/10 bg-white/5 px-6 py-5 shadow-2xl backdrop-blur">
+    <main className="h-screen overflow-hidden bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_58%)] p-6 text-white">
+      <div className="mx-auto flex h-full max-w-[1900px] flex-col gap-5">
+        <section className="rounded-[2rem] border border-white/10 bg-white/5 px-7 py-6 shadow-2xl backdrop-blur">
           <div className="flex items-end justify-between gap-4">
             <div>
-              <p className="text-sm font-semibold uppercase tracking-[0.32em] text-cyan-200/80">Match Night Live</p>
-              <h1 className="mt-2 text-3xl font-black tracking-tight xl:text-4xl">
+              <p className="text-base font-semibold uppercase tracking-[0.32em] text-cyan-200/80">Match Night Live</p>
+              <h1 className="mt-2 text-4xl font-black tracking-tight xl:text-5xl">
                 {data.season?.name ?? "League Match Night"}
               </h1>
             </div>
             <div className="flex items-center gap-3">
-              <div className="rounded-full border border-rose-200/20 bg-rose-400/10 px-4 py-2 text-sm font-semibold text-rose-100">
+              <div className="rounded-full border border-rose-200/20 bg-rose-400/10 px-5 py-2.5 text-base font-semibold text-rose-100">
                 {liveCount > 0 ? `${liveCount} live` : "No live matches"}
                 {completedCount > 0 ? ` · ${completedCount} completed` : ""}
               </div>
               {totalPages > 1 ? (
-                <div className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-4 py-2 text-sm font-semibold text-cyan-100">
+                <div className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-5 py-2.5 text-base font-semibold text-cyan-100">
                   Page {Math.min(pageIndex + 1, totalPages)} of {totalPages}
                 </div>
               ) : null}
-              <div className="rounded-full border border-white/15 bg-white/10 px-4 py-2 text-sm font-semibold text-slate-100">
+              <div className="rounded-full border border-white/15 bg-white/10 px-5 py-2.5 text-base font-semibold text-slate-100">
                 Updated {generatedAt}
               </div>
             </div>
@@ -255,38 +255,38 @@ export default function MatchNightDisplayPage() {
               return (
                 <section
                   key={match.fixtureId}
-                  className="flex min-h-0 flex-col rounded-[2rem] border border-white/10 bg-white/6 p-5 shadow-2xl backdrop-blur"
+                  className="flex min-h-0 flex-col rounded-[2rem] border border-white/10 bg-white/6 p-6 shadow-2xl backdrop-blur"
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.26em] text-cyan-200">
+                      <p className="text-sm font-semibold uppercase tracking-[0.28em] text-cyan-200">
                         Week {match.weekNo ?? "-"}
                       </p>
-                      <h2 className="mt-2 text-2xl font-black leading-tight xl:text-[2rem]">
+                      <h2 className="mt-2 text-[2.6rem] font-black leading-tight xl:text-[3rem]">
                         {match.homeTeam}
                       </h2>
-                      <p className="mt-1 text-lg font-semibold text-cyan-200">vs {match.awayTeam}</p>
+                      <p className="mt-2 text-2xl font-semibold text-cyan-200">vs {match.awayTeam}</p>
                     </div>
                     <div className="flex flex-col items-end gap-2">
                       <span
-                        className={`rounded-full border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] ${fixtureTone(
+                        className={`rounded-full border px-4 py-1.5 text-sm font-semibold uppercase tracking-[0.2em] ${fixtureTone(
                           match.status
                         )}`}
                       >
                         {match.status === "complete" ? "Completed" : match.status === "in_progress" ? "Live" : "Lineups ready"}
                       </span>
-                      <div className="rounded-2xl border border-emerald-200/20 bg-emerald-400/10 px-4 py-3 text-center">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-emerald-100">Frames</p>
-                        <p className="mt-1 text-3xl font-black text-white">{match.overallScore}</p>
+                      <div className="rounded-2xl border border-emerald-200/20 bg-emerald-400/10 px-5 py-4 text-center">
+                        <p className="text-sm font-semibold uppercase tracking-[0.24em] text-emerald-100">Frames</p>
+                        <p className="mt-1 text-5xl font-black text-white">{match.overallScore}</p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-4 grid min-h-0 flex-1 grid-cols-2 gap-2">
+                  <div className="mt-5 grid min-h-0 flex-1 grid-cols-2 gap-3">
                     {match.frameRows.slice(0, 6).map((frame) => (
                       <div
                         key={frame.id}
-                        className="rounded-2xl border border-white/10 bg-slate-950/35 px-3 py-2"
+                        className="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3"
                       >
                         {(() => {
                           const homeTone = sideHighlight(frame.frameStatus, "home");
@@ -294,42 +294,42 @@ export default function MatchNightDisplayPage() {
                           return (
                             <>
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-300">
+                          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
                             {frame.title}
                           </p>
                           <span
-                            className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold ${statusTone(
+                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${statusTone(
                               frame.frameStatus
                             )}`}
                           >
                             {frame.frameStatus}
                           </span>
                         </div>
-                        <div className="mt-2 rounded-xl border border-white/8 bg-white/[0.03] px-2.5 py-2">
-                          <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-cyan-200/80">
+                        <div className="mt-3 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-3">
+                          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-cyan-200/80">
                             {frame.startAmount > 0 ? `${frame.startRecipient} start ${frame.startAmount}` : "Level start"}
                           </p>
-                          <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                            <p className={`text-[13px] font-semibold leading-snug ${homeTone.nameClass}`}>
+                          <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                            <p className={`text-lg font-semibold leading-snug ${homeTone.nameClass}`}>
                               {stripHandicapSuffix(frame.homeName)}
                             </p>
-                            <span className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-3 py-1 text-[13px] font-black text-cyan-100">
+                            <span className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-4 py-1.5 text-lg font-black text-cyan-100">
                               {frame.scoreLabel}
                             </span>
-                            <p className={`text-right text-[13px] font-semibold leading-snug ${awayTone.nameClass}`}>
+                            <p className={`text-right text-lg font-semibold leading-snug ${awayTone.nameClass}`}>
                               {stripHandicapSuffix(frame.awayName)}
                             </p>
                           </div>
                         </div>
-                        <div className="mt-2 grid grid-cols-2 gap-3">
+                        <div className="mt-3 grid grid-cols-2 gap-4">
                           <div className="min-w-0">
-                            <p className={`text-[10px] uppercase tracking-[0.14em] ${homeTone.metaClass}`}>
+                            <p className={`text-xs uppercase tracking-[0.16em] ${homeTone.metaClass}`}>
                               Hcp {frame.homeHandicapLabel}
                             </p>
                             <PlayerAvatars players={frame.homePlayers} tone={homeTone} />
                           </div>
                           <div className="min-w-0 text-right">
-                            <p className={`text-[10px] uppercase tracking-[0.14em] ${awayTone.metaClass}`}>
+                            <p className={`text-xs uppercase tracking-[0.16em] ${awayTone.metaClass}`}>
                               Hcp {frame.awayHandicapLabel}
                             </p>
                             <div className="flex justify-end">
