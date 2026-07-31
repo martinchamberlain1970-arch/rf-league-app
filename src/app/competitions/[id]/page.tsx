@@ -151,17 +151,6 @@ export default function CompetitionPage() {
   const [message, setMessage] = useState<string | null>(null);
   const isSuperManager = admin.isSuper;
 
-  const copyInvitationLink = async () => {
-    if (typeof window === "undefined" || !competition) return;
-    const invitationUrl = `${window.location.origin}/join/${competition.id}`;
-    try {
-      await navigator.clipboard.writeText(invitationUrl);
-      setMessage("Public competition invitation link copied. You can now paste it into WhatsApp.");
-    } catch {
-      setMessage(`Copy and share this link: ${invitationUrl}`);
-    }
-  };
-
   const updateSignupSettings = async (patch: Partial<Competition>) => {
     const client = supabase;
     if (!client || !competition) return;
@@ -828,13 +817,6 @@ export default function CompetitionPage() {
                 ) : null}
                 {isSuperManager ? (
                   <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                    <button
-                      type="button"
-                      onClick={() => void copyInvitationLink()}
-                      className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-semibold text-white"
-                    >
-                      Copy WhatsApp Sign-up Link
-                    </button>
                     <button
                       type="button"
                       onClick={() => void updateSignupSettings({ signup_open: !competition.signup_open })}

@@ -10,7 +10,7 @@ import MessageModal from "@/components/MessageModal";
 function readNextPath(): string {
   if (typeof window === "undefined") return "/";
   const raw = new URLSearchParams(window.location.search).get("next");
-  return raw?.startsWith("/") && !raw.startsWith("//") ? raw : "/";
+  return raw || "/";
 }
 
 function readSignupState(): string | null {
