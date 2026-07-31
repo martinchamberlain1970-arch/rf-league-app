@@ -37,6 +37,11 @@ function mapSignUpError(message: string, code?: string, status?: number) {
 
 export default function SignUpPage() {
   const router = useRouter();
+  const nextPath = useMemo(() => {
+    if (typeof window === "undefined") return "/auth/welcome";
+    const raw = new URLSearchParams(window.location.search).get("next");
+    return raw?.startsWith("/") && !raw.startsWith("//") ? raw : "/auth/welcome";
+  }, []);
   const [step, setStep] = useState<1 | 2>(1);
   const [matchMode, setMatchMode] = useState<"existing" | "new">("existing");
   const [email, setEmail] = useState("");
@@ -391,7 +396,7 @@ export default function SignUpPage() {
       title: "Account created",
       body: "Your account was created successfully. Your profile request will now be reviewed. Once approved, sign in to continue.",
       closeLabel: "Go to sign in",
-      redirectTo: "/auth/sign-in?signup=created&next=%2Fauth%2Fwelcome",
+      redirectTo: `/auth/sign-in?signup=created&next=${encodeURIComponent(nextPath)}`,
     });
   };
 
