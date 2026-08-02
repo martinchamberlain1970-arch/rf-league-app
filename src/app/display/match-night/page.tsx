@@ -121,11 +121,11 @@ function PlayerAvatars({
   };
 }) {
   return (
-    <div className="mt-1 flex items-center gap-1.5">
+    <div className="mt-2 flex items-center gap-2">
       {players.map((player, idx) => (
         <div
           key={`${player.name}-${idx}`}
-          className={`flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border text-[10px] font-bold ${tone.avatarClass}`}
+          className={`flex h-12 w-12 items-center justify-center overflow-hidden rounded-full border text-sm font-bold xl:h-14 xl:w-14 ${tone.avatarClass}`}
           title={player.name}
         >
           {player.avatarUrl ? (
@@ -262,10 +262,10 @@ export default function MatchNightDisplayPage() {
                       <p className="text-sm font-semibold uppercase tracking-[0.28em] text-cyan-200">
                         Week {match.weekNo ?? "-"}
                       </p>
-                      <h2 className="mt-2 text-[2.6rem] font-black leading-tight xl:text-[3rem]">
+                      <h2 className="mt-2 text-[3.25rem] font-black leading-none xl:text-[4rem]">
                         {match.homeTeam}
                       </h2>
-                      <p className="mt-2 text-2xl font-semibold text-cyan-200">vs {match.awayTeam}</p>
+                      <p className="mt-3 text-3xl font-semibold text-cyan-200 xl:text-4xl">vs {match.awayTeam}</p>
                     </div>
                     <div className="flex flex-col items-end gap-2">
                       <span
@@ -277,16 +277,16 @@ export default function MatchNightDisplayPage() {
                       </span>
                       <div className="rounded-2xl border border-emerald-200/20 bg-emerald-400/10 px-5 py-4 text-center">
                         <p className="text-sm font-semibold uppercase tracking-[0.24em] text-emerald-100">Frames</p>
-                        <p className="mt-1 text-5xl font-black text-white">{match.overallScore}</p>
+                        <p className="mt-1 text-6xl font-black text-white xl:text-7xl">{match.overallScore}</p>
                       </div>
                     </div>
                   </div>
 
-                  <div className="mt-5 grid min-h-0 flex-1 grid-cols-2 gap-3">
+                  <div className="mt-5 grid min-h-0 flex-1 grid-cols-2 gap-4">
                     {match.frameRows.slice(0, 6).map((frame) => (
                       <div
                         key={frame.id}
-                        className="rounded-2xl border border-white/10 bg-slate-950/35 px-4 py-3"
+                        className="rounded-2xl border border-white/10 bg-slate-950/35 px-5 py-4"
                       >
                         {(() => {
                           const homeTone = sideHighlight(frame.frameStatus, "home");
@@ -294,11 +294,11 @@ export default function MatchNightDisplayPage() {
                           return (
                             <>
                         <div className="flex items-center justify-between gap-2">
-                          <p className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-300">
+                          <p className="text-base font-semibold uppercase tracking-[0.18em] text-slate-300">
                             {frame.title}
                           </p>
                           <span
-                            className={`rounded-full border px-3 py-1.5 text-xs font-semibold ${statusTone(
+                            className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${statusTone(
                               frame.frameStatus
                             )}`}
                           >
@@ -306,30 +306,30 @@ export default function MatchNightDisplayPage() {
                           </span>
                         </div>
                         <div className="mt-3 rounded-xl border border-white/8 bg-white/[0.03] px-3 py-3">
-                          <p className="text-sm font-semibold uppercase tracking-[0.16em] text-cyan-200/80">
+                          <p className="text-base font-semibold uppercase tracking-[0.16em] text-cyan-200/80">
                             {frame.startAmount > 0 ? `${frame.startRecipient} start ${frame.startAmount}` : "Level start"}
                           </p>
                           <div className="mt-2 grid grid-cols-[1fr_auto_1fr] items-center gap-3">
-                            <p className={`text-lg font-semibold leading-snug ${homeTone.nameClass}`}>
+                            <p className={`text-xl font-semibold leading-snug xl:text-2xl ${homeTone.nameClass}`}>
                               {stripHandicapSuffix(frame.homeName)}
                             </p>
-                            <span className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-4 py-1.5 text-lg font-black text-cyan-100">
+                            <span className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-5 py-2 text-xl font-black text-cyan-100 xl:text-2xl">
                               {frame.scoreLabel}
                             </span>
-                            <p className={`text-right text-lg font-semibold leading-snug ${awayTone.nameClass}`}>
+                            <p className={`text-right text-xl font-semibold leading-snug xl:text-2xl ${awayTone.nameClass}`}>
                               {stripHandicapSuffix(frame.awayName)}
                             </p>
                           </div>
                         </div>
                         <div className="mt-3 grid grid-cols-2 gap-4">
                           <div className="min-w-0">
-                            <p className={`text-xs uppercase tracking-[0.16em] ${homeTone.metaClass}`}>
+                            <p className={`text-sm uppercase tracking-[0.16em] ${homeTone.metaClass}`}>
                               Hcp {frame.homeHandicapLabel}
                             </p>
                             <PlayerAvatars players={frame.homePlayers} tone={homeTone} />
                           </div>
                           <div className="min-w-0 text-right">
-                            <p className={`text-xs uppercase tracking-[0.16em] ${awayTone.metaClass}`}>
+                            <p className={`text-sm uppercase tracking-[0.16em] ${awayTone.metaClass}`}>
                               Hcp {frame.awayHandicapLabel}
                             </p>
                             <div className="flex justify-end">

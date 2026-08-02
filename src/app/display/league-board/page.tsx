@@ -294,34 +294,34 @@ export default function PublicLeagueBoardPage() {
             ) : null}
 
             {activePanel === "players" ? (
-            <section className={`${tableCardClass} h-full border-violet-300/20`}>
+            <section className={`${tableCardClass} h-full overflow-hidden border-violet-300/20`}>
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.3em] text-violet-200">Top 10 Greenhithe Legion Players</p>
-                  <h2 className={`mt-2 text-3xl font-black xl:text-4xl ${headingTextClass}`}>Top 10 Greenhithe Legion Players</h2>
+                  <p className="text-[10px] font-semibold uppercase tracking-[0.3em] text-violet-200">Player standings</p>
+                  <h2 className={`mt-1 text-2xl font-black xl:text-3xl ${headingTextClass}`}>Top 10 Greenhithe Legion Players</h2>
                 </div>
               </div>
-              <div className={`mt-4 ${tableShellClass}`}>
+              <div className={`mt-2 ${tableShellClass}`}>
                 <table className="min-w-full text-sm xl:text-base">
                   <thead className={theadClass}>
                     <tr>
-                      <th className="px-4 py-4">#</th>
-                      <th className="px-4 py-4">Player</th>
-                      <th className="px-4 py-4">Team</th>
-                      <th className="px-4 py-4 text-center">W-L</th>
-                      <th className="px-4 py-4 text-center">Win %</th>
+                      <th className="px-4 py-2.5">#</th>
+                      <th className="px-4 py-2.5">Player</th>
+                      <th className="px-4 py-2.5">Team</th>
+                      <th className="px-4 py-2.5 text-center">W-L</th>
+                      <th className="px-4 py-2.5 text-center">Win %</th>
                     </tr>
                   </thead>
                   <tbody>
                     {data.topPlayers.map((row, index) => (
                       <tr key={row.player_id} className={rowClass(index)}>
-                        <td className="px-4 py-3 text-base font-black text-violet-100 xl:text-lg">{row.rank}</td>
-                        <td className={`px-4 py-3 text-base font-semibold ${headingTextClass} xl:text-lg`}>{row.player_name}</td>
-                        <td className={`px-4 py-3 ${bodyTextClass}`}>{row.team_name}</td>
-                        <td className={`px-4 py-3 text-center ${bodyTextClass}`}>
+                        <td className="px-4 py-2 text-base font-black text-violet-100 xl:text-lg">{row.rank}</td>
+                        <td className={`px-4 py-2 text-base font-semibold ${headingTextClass} xl:text-lg`}>{row.player_name}</td>
+                        <td className={`px-4 py-2 ${bodyTextClass}`}>{row.team_name}</td>
+                        <td className={`px-4 py-2 text-center ${bodyTextClass}`}>
                           {row.won}-{row.lost}
                         </td>
-                        <td className="px-4 py-3 text-center text-base font-black text-violet-100 xl:text-lg">{row.win_pct.toFixed(1)}%</td>
+                        <td className="px-4 py-2 text-center text-base font-black text-violet-100 xl:text-lg">{row.win_pct.toFixed(1)}%</td>
                       </tr>
                     ))}
                   </tbody>
