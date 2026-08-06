@@ -964,13 +964,23 @@ export default function HomePage() {
   const cancelPendingClaim = async () => {
     const client = supabase;
     if (!client || !pendingClaim) return;
-    const { error } = await client
-      .from("player_claim_requests")
-      .update({ status: "rejected" })
-      .eq("id", pendingClaim.id)
-      .eq("status", "pending");
-    if (error) {
-      setProfileMessage(`Failed to cancel claim: ${error.message}`);
+    const { data: sessionRes } = await client.auth.getSession();
+    const token = sessionRes.session?.access_token;
+    if (!token) {
+      setProfileMessage("You must be signed in to cancel this claim.");
+      return;
+    }
+    const response = await fetch("/api/player-claim-requests", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token}`,
+      },
+      body: JSON.stringify({ requestId: pendingClaim.id, action: "cancel" }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setProfileMessage(`Failed to cancel claim: ${result?.error ?? "Unknown error"}`);
       return;
     }
     setPendingClaim(null);
