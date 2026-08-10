@@ -1973,88 +1973,11 @@ export default function CaptainResultsPage() {
       );
     }
 
-    if (activeEntryTab === "scorecard") {
-      if (homeSideCanManageScorecard && currentScorecardFrame && !scorecardReviewMode) {
-        return (
-          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-sky-200 bg-sky-50/95 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-16px_36px_-24px_rgba(15,23,42,0.8)] backdrop-blur sm:hidden">
-            <div className="mx-auto max-w-6xl space-y-2">
-              <div className="flex items-center justify-between gap-3 text-xs">
-                <div>
-                  <p className="font-semibold uppercase tracking-[0.18em] text-sky-700">Scorecard</p>
-                  <p className="mt-0.5 font-semibold text-slate-900">
-                    Frame {currentScorecardFrame.slot_no} of {orderedScoreSlots.length}
-                  </p>
-                </div>
-                <span className="rounded-full border border-sky-200 bg-white px-3 py-1 font-semibold text-sky-800">
-                  {lastAutoSavedAt ? `Saved ${lastAutoSavedAt}` : "Auto-save ready"}
-                </span>
-              </div>
-              <div className="grid grid-cols-[0.8fr_1.2fr] gap-2">
-                <button
-                  type="button"
-                  onClick={() => setScorecardCurrentIndex((prev) => Math.max(prev - 1, 0))}
-                  disabled={scorecardCurrentIndex === 0}
-                  className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60"
-                >
-                  Previous
-                </button>
-                <button
-                  type="button"
-                  onClick={() => void saveAndContinueCurrentFrame()}
-                  className="min-h-11 rounded-xl bg-sky-700 px-3 py-2 text-sm font-semibold text-white shadow-sm"
-                >
-                  {scorecardCurrentIndex >= orderedScoreSlots.length - 1 ? "Save final frame" : "Save & continue"}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      }
-
-      if (homeSideCanManageScorecard && scorecardReviewMode) {
-        return (
-          <div className="fixed inset-x-0 bottom-0 z-40 border-t border-emerald-200 bg-emerald-50/95 px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-[0_-16px_36px_-24px_rgba(15,23,42,0.8)] backdrop-blur sm:hidden">
-            <div className="mx-auto max-w-6xl space-y-2">
-              <div className="flex items-center justify-between gap-3 text-xs">
-                <div>
-                  <p className="font-semibold uppercase tracking-[0.18em] text-emerald-700">Final review</p>
-                  <p className="mt-0.5 font-semibold text-slate-900">Submit when every frame is checked</p>
-                </div>
-                <span className="rounded-full border border-emerald-200 bg-white px-3 py-1 font-semibold text-emerald-800">
-                  {orderedScoreSlots.length} frames
-                </span>
-              </div>
-              <div className="grid grid-cols-[0.8fr_1.2fr] gap-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setScorecardReviewMode(false);
-                    setScorecardCurrentIndex(firstIncompleteScorecardIndex >= 0 ? firstIncompleteScorecardIndex : 0);
-                  }}
-                  className="min-h-11 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700"
-                >
-                  Amend
-                </button>
-                <button
-                  type="button"
-                  onClick={submit}
-                  disabled={submitting}
-                  className="min-h-11 rounded-xl bg-slate-900 px-3 py-2 text-sm font-semibold text-white shadow-sm disabled:opacity-60"
-                >
-                  {submitting ? "Submitting..." : "Submit result"}
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      }
-    }
-
     return null;
   })() : null;
 
   return (
-    <main className="min-h-screen bg-slate-100 px-4 pb-36 pt-4 sm:p-6">
+    <main className={`min-h-screen bg-slate-100 px-4 pt-4 sm:p-6 ${activeEntryTab === "lineup" && selectedFixture ? "pb-36" : "pb-8"}`}>
       <div className="mx-auto max-w-6xl space-y-4">
         <RequireAuth>
           <ScreenHeader title="Captain Lineups & Results" eyebrow="League" subtitle="Enter pre-match lineups first, then submit your team result for Super User approval." />
@@ -3125,7 +3048,7 @@ export default function CaptainResultsPage() {
                       </section>
 
                       {homeSideCanManageScorecard && currentScorecardFrame && !scorecardReviewMode ? (
-                        <div className="hidden rounded-xl border border-sky-200 bg-sky-50/95 p-3 sm:block">
+                        <div className="rounded-xl border border-sky-200 bg-sky-50/95 p-3">
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                               <p className="text-sm font-semibold text-slate-900">
@@ -3135,19 +3058,19 @@ export default function CaptainResultsPage() {
                                 Save the frame score and any 30+ breaks together so nothing gets missed on mobile.
                               </p>
                             </div>
-                            <div className="flex flex-wrap gap-2">
+                            <div className="grid w-full grid-cols-[0.8fr_1.2fr] gap-2 sm:flex sm:w-auto sm:flex-wrap">
                               <button
                                 type="button"
                                 onClick={() => setScorecardCurrentIndex((prev) => Math.max(prev - 1, 0))}
                                 disabled={scorecardCurrentIndex === 0}
-                                className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
+                                className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60"
                               >
                                 Previous frame
                               </button>
                               <button
                                 type="button"
                                 onClick={() => void saveAndContinueCurrentFrame()}
-                                className="rounded-xl bg-sky-700 px-4 py-2 text-sm font-medium text-white shadow-sm"
+                                className="min-h-11 rounded-xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white shadow-sm"
                               >
                                 {scorecardCurrentIndex >= orderedScoreSlots.length - 1 ? "Save final frame" : "Save and continue"}
                               </button>
@@ -3159,10 +3082,12 @@ export default function CaptainResultsPage() {
                       <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
                         {homeSideCanManageScorecard ? (
                           <p className="mb-2 text-xs text-emerald-900">
-                            Scorecard safety draft is saved on this device as you work. Use <strong>Save and continue</strong> or <strong>Save progress</strong> to update the live match and keep 30+ breaks with the frame.
+                            {scorecardReviewMode
+                              ? "Everything is ready for one final check. Submit once the scores and 30+ breaks are correct."
+                              : "A safety draft is saved on this device as you work. Save progress here only if you need to stop and return later."}
                           </p>
                         ) : null}
-                        <div className="grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">
+                        <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
                           <input
                             className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                             placeholder="Optional scorecard photo URL"
@@ -3170,28 +3095,31 @@ export default function CaptainResultsPage() {
                             onChange={(e) => { setScorecardDirty(true); setScorecardPhotoUrl(e.target.value); }}
                             disabled={!homeSideCanManageScorecard}
                           />
-                          <button
-                            type="button"
-                            onClick={() => void saveProgress("manual")}
-                            disabled={!homeSideCanManageScorecard}
-                            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700 disabled:opacity-60"
-                          >
-                            Save progress
-                          </button>
-                          <button
-                            type="button"
-                            onClick={submit}
-                            disabled={submitting || !homeSideCanManageScorecard}
-                            className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-                          >
-                            {!homeSideCanManageScorecard
-                              ? pendingByFixture.has(selectedFixture.id)
-                                ? "Submission pending review"
-                                : "Home team submits scorecard"
-                              : submitting
-                                ? "Submitting..."
-                                : "Complete and submit scorecard"}
-                          </button>
+                          {scorecardReviewMode ? (
+                            <button
+                              type="button"
+                              onClick={submit}
+                              disabled={submitting || !homeSideCanManageScorecard}
+                              className="min-h-11 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                            >
+                              {!homeSideCanManageScorecard
+                                ? pendingByFixture.has(selectedFixture.id)
+                                  ? "Submission pending review"
+                                  : "Home team submits scorecard"
+                                : submitting
+                                  ? "Submitting..."
+                                  : "Complete and submit match result"}
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => void saveProgress("manual")}
+                              disabled={!homeSideCanManageScorecard}
+                              className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60"
+                            >
+                              Save progress and return later
+                            </button>
+                          )}
                         </div>
                       </div>
                     </>
