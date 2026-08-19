@@ -47,6 +47,15 @@ type Season = {
   singles_count?: number | null;
   doubles_count?: number | null;
 };
+type PremierResetPreview = {
+  season: Season;
+  totalPlayers: number;
+  needsReset: number;
+  alreadyAtBaseline: number;
+  fixtureCount: number;
+  startedFixtureCount: number;
+  players: Array<{ id: string; name: string; elo: number; handicap: number; ratedMatches: number }>;
+};
 type Team = {
   id: string;
   season_id: string;
@@ -427,8 +436,33 @@ const scheduleDirectedMatchesIntoRounds = (
 };
 const LEAGUE_BODY_NAME = "Gravesend & District Indoor Games League";
 const LEAGUE_TEMPLATES = {
-  winter: { label: "Winter League", singlesCount: 4, doublesCount: 1 },
-  summer: { label: "Summer League", singlesCount: 6, doublesCount: 0 },
+  premier: {
+    label: "Premier League",
+    singlesCount: 4,
+    doublesCount: 1,
+    handicapEnabled: true,
+    handicapMaxStart: null,
+    fixtureCycles: 3,
+    missRule: "A miss may be called while a player is snookered. After the third attempt, the balls remain where they lie.",
+  },
+  division1: {
+    label: "Division 1",
+    singlesCount: 4,
+    doublesCount: 1,
+    handicapEnabled: false,
+    handicapMaxStart: null,
+    fixtureCycles: 3,
+    missRule: "The miss rule is not used in Division 1.",
+  },
+  summer: {
+    label: "Summer League",
+    singlesCount: 6,
+    doublesCount: 0,
+    handicapEnabled: true,
+    handicapMaxStart: null,
+    fixtureCycles: 2,
+    missRule: null,
+  },
 } as const;
 const LEAGUE_KNOCKOUT_TEMPLATES = [
   { key: "gary_webb", name: "Gary Webb (Singles Scratch)", match_mode: "singles", best_of: 3 },
@@ -458,6 +492,7 @@ const seasonDisplayLabel = (
   season: Pick<Season, "name" | "handicap_enabled"> & Partial<Pick<Season, "is_active">>
 ) =>
   `${season.name}${season.handicap_enabled ? " (Handicap)" : " (Non-handicap)"}${season.is_active === false ? " — Completed" : ""}`;
+const formatSignedNumber = (value: number) => (value > 0 ? `+${value}` : `${value}`);
 const extractSeasonYearLabel = (name: string) => {
   const m = name.match(/(20\d{2}(?:\/20\d{2})?)/);
   return m ? m[1] : name.trim();
@@ -555,9 +590,9 @@ export default function LeaguePage() {
   const [currentUserPlayerId, setCurrentUserPlayerId] = useState<string | null>(null);
   const [seasonId, setSeasonId] = useState("");
 
-  const [seasonName, setSeasonName] = useState("");
-  const [seasonTemplate, setSeasonTemplate] = useState<LeagueTemplateKey>("winter");
-  const [seasonHandicapEnabled, setSeasonHandicapEnabled] = useState(false);
+  const [seasonName, setSeasonName] = useState("2026/2027");
+  const [seasonTemplate, setSeasonTemplate] = useState<LeagueTemplateKey>("premier");
+  const [seasonHandicapEnabled, setSeasonHandicapEnabled] = useState(true);
   const [knockoutTemplateKey, setKnockoutTemplateKey] = useState<"" | (typeof LEAGUE_KNOCKOUT_TEMPLATES)[number]["key"]>("");
   const [knockoutSeasonLabel, setKnockoutSeasonLabel] = useState("");
   const [knockoutRound1Deadline, setKnockoutRound1Deadline] = useState("");
@@ -621,6 +656,9 @@ export default function LeaguePage() {
   const [reviewReason, setReviewReason] = useState("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmCompletionOpen, setConfirmCompletionOpen] = useState(false);
+  const [confirmPremierResetOpen, setConfirmPremierResetOpen] = useState(false);
+  const [premierResetPreview, setPremierResetPreview] = useState<PremierResetPreview | null>(null);
+  const [premierResetBusy, setPremierResetBusy] = useState(false);
   const [genStartDate, setGenStartDate] = useState("");
   const [genFixtureCycles, setGenFixtureCycles] = useState<1 | 2 | 3>(3);
   const [genClearExisting, setGenClearExisting] = useState(true);
@@ -1960,17 +1998,26 @@ export default function LeaguePage() {
     const creatorId = authRes.data.user?.id ?? null;
     const template = LEAGUE_TEMPLATES[seasonTemplate];
     const suffix = seasonName.trim();
+    if ((seasonTemplate === "premier" || seasonTemplate === "division1") && !suffix) {
+      setMessage("Enter the winter season label, for example 2026/2027.");
+      return;
+    }
     const computedSeasonName = `${LEAGUE_BODY_NAME} - ${template.label}${suffix ? ` ${suffix}` : ""}`;
+    if (seasons.some((season) => season.name.trim().toLowerCase() === computedSeasonName.toLowerCase())) {
+      setInfoModal({ title: "League Already Exists", description: `“${computedSeasonName}” has already been created.` });
+      return;
+    }
     let ins = await client.from("league_seasons").insert({
       name: computedSeasonName,
       location_id: fallbackLocation,
       created_by_user_id: creatorId,
       is_published: false,
-      handicap_enabled: seasonHandicapEnabled,
-      handicap_max_start: null,
+      handicap_enabled: seasonTemplate === "summer" ? seasonHandicapEnabled : template.handicapEnabled,
+      handicap_max_start: template.handicapMaxStart,
       handicap_review_interval_weeks: 4,
       rating_tracking_enabled: true,
-      fixture_cycles: 3,
+      fixture_cycles: template.fixtureCycles,
+      miss_rule: template.missRule,
       sport_type: "snooker",
       points_per_frame: 1,
       singles_count: template.singlesCount,
@@ -2000,14 +2047,14 @@ export default function LeaguePage() {
       setMessage(ins.error.message);
       return;
     }
-    setSeasonName("");
-    setSeasonTemplate("winter");
-    setSeasonHandicapEnabled(false);
+    setSeasonName("2026/2027");
+    setSeasonTemplate("premier");
+    setSeasonHandicapEnabled(true);
     setSeasonId(ins.data.id);
     await loadAll();
     setInfoModal({
       title: "League Created",
-      description: seasonHandicapEnabled
+      description: (seasonTemplate === "summer" ? seasonHandicapEnabled : template.handicapEnabled)
         ? "League created successfully. Handicap mode is enabled with no maximum start."
         : "League created successfully. Match handicaps are disabled; Elo ratings can still be recorded in the background.",
     });
@@ -3794,6 +3841,71 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     });
   };
 
+  const previewPremierOpeningReset = async () => {
+    const client = supabase;
+    if (!client || !seasonId) return;
+    if (!canManage) return setMessage("League management access is required to preview the Premier reset.");
+    setPremierResetBusy(true);
+    const sessionRes = await client.auth.getSession();
+    const token = sessionRes.data.session?.access_token ?? null;
+    if (!token) {
+      setPremierResetBusy(false);
+      return setMessage("Session expired. Please sign in again.");
+    }
+    try {
+      const response = await fetch(`/api/league/premier-reset?seasonId=${encodeURIComponent(seasonId)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const payload = (await response.json().catch(() => ({}))) as PremierResetPreview & { error?: string };
+      if (!response.ok) {
+        setPremierResetPreview(null);
+        setMessage(payload.error ?? "Could not preview the Premier opening reset.");
+      } else {
+        setPremierResetPreview(payload);
+      }
+    } catch {
+      setMessage("Network error while previewing the Premier opening reset.");
+    } finally {
+      setPremierResetBusy(false);
+    }
+  };
+
+  const runPremierOpeningReset = async () => {
+    const client = supabase;
+    if (!client || !seasonId) return;
+    if (!canManage) return setMessage("League management access is required to reset Premier players.");
+    setPremierResetBusy(true);
+    const sessionRes = await client.auth.getSession();
+    const token = sessionRes.data.session?.access_token ?? null;
+    if (!token) {
+      setPremierResetBusy(false);
+      return setMessage("Session expired. Please sign in again.");
+    }
+    try {
+      const response = await fetch("/api/league/premier-reset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ seasonId, confirmation: "RESET PREMIER" }),
+      });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; message?: string; reset?: number };
+      if (!response.ok) {
+        setMessage(payload.error ?? "Could not reset the Premier opening ratings.");
+        return;
+      }
+      setConfirmPremierResetOpen(false);
+      setPremierResetPreview(null);
+      await loadAll();
+      setInfoModal({
+        title: "Premier Opening Reset Complete",
+        description: payload.message ?? "Premier players were reset to Elo 1000 and handicap 0. Historic records were retained.",
+      });
+    } catch {
+      setMessage("Network error while resetting the Premier opening ratings.");
+    } finally {
+      setPremierResetBusy(false);
+    }
+  };
+
   const updateCompetitionSignupSettings = async (
     competitionId: string,
     patch: Partial<Pick<LeagueCompetition, "signup_open" | "signup_deadline" | "final_scheduled_at" | "final_venue_location_id">>
@@ -4503,6 +4615,10 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
   useEffect(() => {
     setSelectedTeamResultFixtureId(null);
   }, [selectedTableTeamId]);
+  useEffect(() => {
+    setPremierResetPreview(null);
+    setConfirmPremierResetOpen(false);
+  }, [seasonId]);
   const seasonSummary = useMemo(() => {
     const complete = seasonFixtures.filter((f) => f.status === "complete").length;
     const inProgress = seasonFixtures.filter((f) => f.status === "in_progress").length;
@@ -5041,6 +5157,19 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
             onConfirm={() => void setLeagueCompletion(currentSeason?.is_active !== false)}
             onCancel={() => setConfirmCompletionOpen(false)}
           />
+          <ConfirmModal
+            open={confirmPremierResetOpen}
+            title="Confirm Premier Opening Reset"
+            description={`Reset ${premierResetPreview?.needsReset ?? 0} rostered player${premierResetPreview?.needsReset === 1 ? "" : "s"} in “${currentSeason?.name ?? "the selected Premier League"}” to Elo 1000, handicap 0 and zero rated matches? Historic Elo events and handicap records will be retained. This is blocked after the season has started.`}
+            confirmLabel={premierResetBusy ? "Resetting…" : "Reset Premier Players"}
+            tone="danger"
+            onConfirm={() => {
+              if (!premierResetBusy) void runPremierOpeningReset();
+            }}
+            onCancel={() => {
+              if (!premierResetBusy) setConfirmPremierResetOpen(false);
+            }}
+          />
           {loading ? <section className="rounded-2xl border border-slate-200 bg-white p-4 text-slate-600">Loading league data...</section> : null}
 
           {canViewLeague ? (
@@ -5455,9 +5584,14 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                     <select
                       className="rounded-xl border border-slate-300 bg-white px-3 py-2"
                       value={seasonTemplate}
-                      onChange={(e) => setSeasonTemplate(e.target.value as LeagueTemplateKey)}
+                      onChange={(e) => {
+                        const nextTemplate = e.target.value as LeagueTemplateKey;
+                        setSeasonTemplate(nextTemplate);
+                        setSeasonHandicapEnabled(LEAGUE_TEMPLATES[nextTemplate].handicapEnabled);
+                      }}
                     >
-                      <option value="winter">{LEAGUE_BODY_NAME} - {LEAGUE_TEMPLATES.winter.label} ({formatLabel(LEAGUE_TEMPLATES.winter.singlesCount, LEAGUE_TEMPLATES.winter.doublesCount)})</option>
+                      <option value="premier">{LEAGUE_TEMPLATES.premier.label} 2026/2027 ({formatLabel(LEAGUE_TEMPLATES.premier.singlesCount, LEAGUE_TEMPLATES.premier.doublesCount)})</option>
+                      <option value="division1">{LEAGUE_TEMPLATES.division1.label} 2026/2027 ({formatLabel(LEAGUE_TEMPLATES.division1.singlesCount, LEAGUE_TEMPLATES.division1.doublesCount)})</option>
                       <option value="summer">{LEAGUE_BODY_NAME} - {LEAGUE_TEMPLATES.summer.label} ({formatLabel(LEAGUE_TEMPLATES.summer.singlesCount, LEAGUE_TEMPLATES.summer.doublesCount)})</option>
                     </select>
                     <input
@@ -5486,25 +5620,43 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                         <li>No Show on both sides gives no frame point and no player stats.</li>
                       </ul>
                     </div>
-                  ) : (
+                  ) : seasonTemplate === "premier" ? (
                     <div className={`mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900 ${currentSeason?.is_published ? "opacity-70" : ""}`}>
-                      <p className="font-semibold">Winter League rules applied</p>
+                      <p className="font-semibold">Premier League 2026/2027 rules applied automatically</p>
                       <ul className="mt-1 space-y-1 text-xs text-sky-800">
                         <li>4 singles frames and 1 doubles frame.</li>
-                        <li>Singles players can appear once only per fixture.</li>
-                        <li>Singles frame 3 allows Nominated Player where team points count but player stats do not.</li>
-                        <li>Singles frame 4 allows No Show if a side is short.</li>
+                        <li>Players begin at Elo 1000 and handicap 0; handicaps are reviewed at least every 4 weeks.</li>
+                        <li>Handicap match play is enabled with no maximum start.</li>
+                        <li>On the third miss attempt while snookered, the balls remain where they lie.</li>
+                        <li>Teams play each other three times.</li>
+                      </ul>
+                    </div>
+                  ) : (
+                    <div className={`mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-950 ${currentSeason?.is_published ? "opacity-70" : ""}`}>
+                      <p className="font-semibold">Division 1 2026/2027 rules applied automatically</p>
+                      <ul className="mt-1 space-y-1 text-xs text-violet-900">
+                        <li>4 singles frames and 1 doubles frame.</li>
+                        <li>All matches are played off scratch with no handicap start.</li>
+                        <li>Elo is still recorded in the background for player history.</li>
+                        <li>The miss rule is not used.</li>
+                        <li>Teams play each other three times.</li>
                       </ul>
                     </div>
                   )}
-                  <label className={`mt-2 inline-flex items-center gap-2 text-sm text-slate-700 ${currentSeason?.is_published ? "opacity-70" : ""}`}>
-                    <input
-                      type="checkbox"
-                      checked={seasonHandicapEnabled}
-                      onChange={(e) => setSeasonHandicapEnabled(e.target.checked)}
-                    />
-                    Handicap league (maximum start 40)
-                  </label>
+                  {seasonTemplate === "summer" ? (
+                    <label className={`mt-2 inline-flex items-center gap-2 text-sm text-slate-700 ${currentSeason?.is_published ? "opacity-70" : ""}`}>
+                      <input
+                        type="checkbox"
+                        checked={seasonHandicapEnabled}
+                        onChange={(e) => setSeasonHandicapEnabled(e.target.checked)}
+                      />
+                      Handicap league (no maximum start)
+                    </label>
+                  ) : (
+                    <p className="mt-2 text-xs font-medium text-slate-700">
+                      Handicap mode, Elo tracking, fixture cycles and miss rule are locked to the selected division template.
+                    </p>
+                  )}
                 </div>
                 <div id="guided-publish-league" className={`mt-3 scroll-mt-24 ${guidedSectionClass("publish-league")}`}>
                   <button
@@ -5598,6 +5750,78 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                     ) : null}
                   </div>
                 </div>
+                {currentSeason && /premier league/i.test(currentSeason.name) ? (
+                  <div className="mt-4 rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-white p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div>
+                        <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-800">Premier opening baseline</p>
+                        <h3 className="mt-1 text-base font-bold text-slate-950">Reset rostered Premier players before the season starts</h3>
+                        <p className="mt-1 max-w-3xl text-sm text-slate-700">
+                          Preview first, then reset only players assigned to this Premier season to Elo 1000, handicap 0 and zero rated matches. Historic Elo events and handicap records are retained.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => void previewPremierOpeningReset()}
+                        disabled={premierResetBusy}
+                        className="rounded-xl border border-amber-400 bg-white px-4 py-2 text-sm font-bold text-amber-950 disabled:opacity-50"
+                      >
+                        {premierResetBusy ? "Checking roster…" : "Preview Premier reset"}
+                      </button>
+                    </div>
+                    {premierResetPreview ? (
+                      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+                        <div className="grid gap-2 sm:grid-cols-4">
+                          <div className="rounded-lg bg-slate-50 p-2">
+                            <p className="text-xs text-slate-500">Rostered players</p>
+                            <p className="text-xl font-black text-slate-950">{premierResetPreview.totalPlayers}</p>
+                          </div>
+                          <div className="rounded-lg bg-amber-50 p-2">
+                            <p className="text-xs text-amber-800">Need reset</p>
+                            <p className="text-xl font-black text-amber-950">{premierResetPreview.needsReset}</p>
+                          </div>
+                          <div className="rounded-lg bg-emerald-50 p-2">
+                            <p className="text-xs text-emerald-800">Already at baseline</p>
+                            <p className="text-xl font-black text-emerald-950">{premierResetPreview.alreadyAtBaseline}</p>
+                          </div>
+                          <div className={`rounded-lg p-2 ${premierResetPreview.startedFixtureCount > 0 ? "bg-rose-50" : "bg-sky-50"}`}>
+                            <p className="text-xs text-slate-600">Started fixtures</p>
+                            <p className="text-xl font-black text-slate-950">{premierResetPreview.startedFixtureCount}</p>
+                          </div>
+                        </div>
+                        {premierResetPreview.players.length > 0 ? (
+                          <div className="mt-3 max-h-48 overflow-auto rounded-lg border border-slate-200">
+                            {premierResetPreview.players.map((player) => (
+                              <div key={player.id} className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 text-sm last:border-b-0">
+                                <span className="font-medium text-slate-900">{player.name}</span>
+                                <span className="text-xs text-slate-600">Elo {player.elo} · H {formatSignedNumber(player.handicap)} · {player.ratedMatches} rated</span>
+                              </div>
+                            ))}
+                          </div>
+                        ) : null}
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+                          <p className={`text-sm ${premierResetPreview.startedFixtureCount > 0 ? "font-semibold text-rose-800" : "text-slate-600"}`}>
+                            {premierResetPreview.startedFixtureCount > 0
+                              ? "Reset blocked because this season has already started."
+                              : premierResetPreview.totalPlayers === 0
+                              ? "Add teams and player rosters before running the reset."
+                              : premierResetPreview.needsReset === 0
+                              ? "Every rostered player is already at the opening baseline."
+                              : "Review this list carefully before confirming the one-time opening reset."}
+                          </p>
+                          <button
+                            type="button"
+                            onClick={() => setConfirmPremierResetOpen(true)}
+                            disabled={premierResetBusy || premierResetPreview.needsReset === 0 || premierResetPreview.startedFixtureCount > 0}
+                            className="rounded-xl bg-rose-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Reset {premierResetPreview.needsReset} Premier player{premierResetPreview.needsReset === 1 ? "" : "s"}
+                          </button>
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <div className="mt-4 border-t border-slate-200 pt-4">
                   <h3 className="text-sm font-semibold text-slate-900">Selected League Teams</h3>
                   <p className="mt-1 text-xs text-slate-600">

@@ -39,7 +39,7 @@ const sections = [
     title: "4. During the match",
     bullets: [
       "Open Captain Results and select the relevant fixture.",
-      "Reviewed handicaps are stored in full, but the live match start is capped at 40 points. This keeps frames competitive while still reflecting the longer-term strength gap.",
+      "In the 2026/2027 Premier League, the full reviewed handicap difference applies with no maximum start. Division 1 is played off scratch.",
       "Enter the frame players carefully. Player selectors show current handicaps to help you sense-check the matchup.",
       "For summer leagues, remember the two-singles-per-player rule. For winter leagues, check nominated-player and no-show rules before submitting.",
       "Enter frame points accurately and add any qualifying 30+ breaks.",
@@ -137,10 +137,7 @@ export default function CaptainGuidePage() {
             <div className="rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-4 md:col-span-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-fuchsia-700">Handicap starts</p>
               <p className="mt-1 text-sm text-fuchsia-900">
-                Handicaps are reviewed in full, but the live match start is capped at 40 points. This keeps frames competitive and stops very large starts deciding the frame too early.
-              </p>
-              <p className="mt-2 text-sm text-fuchsia-900">
-                The 40-point cap is used as a balance: it still gives weaker players a real chance, but avoids very large starts turning the opening score into too much of the result. A lower cap such as 30 can leave bigger strength gaps under-compensated.
+                The 2026/2027 Premier League uses the full difference between the two reviewed handicaps with no maximum start. Division 1 frames begin level, although Elo is still recorded in the background.
               </p>
             </div>
           </div>

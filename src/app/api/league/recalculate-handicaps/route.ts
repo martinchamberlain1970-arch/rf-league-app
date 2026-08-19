@@ -119,7 +119,7 @@ export async function POST(req: NextRequest) {
         delta: row.next - row.previous,
         previous_handicap: row.previous,
         new_handicap: row.next,
-        reason: `Weekly Elo review (rating ${Math.round(row.rating)}). ${row.reason}`,
+        reason: `Scheduled Elo review (rating ${Math.round(row.rating)}). ${row.reason}`,
         changed_by_user_id: user.id,
       }))
     );

@@ -11,9 +11,9 @@ const faqs = [
       "Valid approved competitive snooker frames update Elo. Handicap is then reviewed from Elo rather than changing automatically after every win or loss.",
   },
   {
-    question: "Why is there a maximum 40-point start?",
+    question: "Is there a maximum handicap start?",
     answer:
-      "The live match start is capped at 40 so frames stay competitive and do not feel decided before play begins. Elo still tracks the full strength gap in the background.",
+      "Not in the 2026/2027 Premier League: the full reviewed handicap difference applies. Division 1 remains scratch match play while Elo is recorded in the background.",
   },
   {
     question: "Do no-shows or nominated-player frames affect Elo or handicap?",
@@ -23,7 +23,7 @@ const faqs = [
   {
     question: "Where can I see current handicaps?",
     answer:
-      "Use the Handicaps page for the current list, the Elo-to-handicap guide, and the explanation of how the capped start is applied.",
+      "Use the Handicaps page for the current list, the Elo-to-handicap guide, and the rules applied to each division.",
   },
   {
     question: "Who can change a handicap?",
@@ -48,7 +48,7 @@ const guideSections = [
       "Home teams should submit the result by default, with midnight on the following day as the submission deadline.",
       "Open the dedicated Captain / Vice-captain Guide for the full lineup, match-night, and correction workflow.",
       "WhatsApp should be treated as a backup or exception route only, not the normal reporting method.",
-      "In handicapped doubles, team handicap is based on both players and the live start is capped at 40.",
+      "In handicapped doubles, team handicap is based on both players; the selected competition or league determines whether a start limit applies.",
       "Only approved results affect Elo, standings, and player records.",
     ],
   },

@@ -11,7 +11,6 @@ import useAdminStatus from "@/components/useAdminStatus";
 import ConfirmModal from "@/components/ConfirmModal";
 import InfoModal from "@/components/InfoModal";
 import MessageModal from "@/components/MessageModal";
-import { MAX_SNOOKER_START } from "@/lib/snooker-handicap";
 import { countryCodeToFlagEmoji } from "@/lib/country-flags";
 import { targetHandicapFromElo } from "@/lib/snooker-rating";
 
@@ -2051,10 +2050,10 @@ export default function PlayerProfilePage() {
                         Your snooker Elo rating updates after every valid competitive frame. Handicap is then reviewed from Elo by the league, rather than changing automatically after every win or loss.
                       </p>
                       <p className="mt-1">
-                        Target handicap now matches the original Elo seed formula: handicap = nearest multiple of 4 to (1000 - Elo) / 5. Each weekly review brings your handicap directly into line with that target. No-show, nominated-player, and void frames are excluded.
+                        Target handicap matches the original Elo seed formula: handicap = nearest multiple of 4 to (1000 - Elo) / 5. Each formal review brings the handicap directly into line with that target, with reviews taking place at least every four weeks. No-show, nominated-player, and void frames are excluded.
                       </p>
                       <p className="mt-1">
-                        The live match start is capped at {MAX_SNOOKER_START}. That cap keeps frames competitive and stops a large rating gap from making the opening score feel like the whole result.
+                        For the 2026/2027 Premier League, the full difference between the two reviewed handicaps is used with no maximum start. Division 1 remains scratch match play while Elo continues in the background.
                       </p>
                     </div>
                     <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs leading-6 text-slate-700">
@@ -2064,15 +2063,15 @@ export default function PlayerProfilePage() {
                       <p className="mt-1">Current Elo target handicap: <span className="font-semibold text-slate-900">{formatSignedNumber(currentTargetHandicap)}</span>. Gap to current live handicap: <span className="font-semibold text-slate-900">{formatSignedNumber(currentTargetGap)}</span>.</p>
                     </div>
                     <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
-                      <p className="font-semibold text-slate-900">Why the maximum start is capped at {MAX_SNOOKER_START}</p>
+                      <p className="font-semibold text-slate-900">2026/2027 division rules</p>
                       <p className="mt-1">
-                        The reviewed handicap still reflects the longer-term Elo gap, but the live fixture uses a capped start so the frame remains playable, recognisable, and easier for players to trust.
+                        Premier League fixtures use the full reviewed handicap difference with no cap. Division 1 fixtures are played off scratch, although their results still build a private Elo history.
                       </p>
                     </div>
                     <div className="mb-3 rounded-xl border border-slate-200 bg-white p-3">
                       <p className="text-sm font-semibold text-slate-900">Elo to handicap guide</p>
                       <p className="mt-1 text-xs text-slate-600">
-                        Reference points for the current conversion. Higher Elo means a stronger player and therefore a more negative handicap. Live starts are capped at {MAX_SNOOKER_START}.
+                        Reference points for the current conversion. Higher Elo means a stronger player and therefore a more negative handicap. Premier League starts use the full difference between the selected players.
                       </p>
                       <div className="mt-3 overflow-auto rounded-xl border border-slate-200">
                         <table className="min-w-full border-collapse text-sm">

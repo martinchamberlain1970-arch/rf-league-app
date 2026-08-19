@@ -5,7 +5,6 @@ import Link from "next/link";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import { supabase } from "@/lib/supabase";
-import { MAX_SNOOKER_START } from "@/lib/snooker-handicap";
 import { targetHandicapFromElo } from "@/lib/snooker-rating";
 
 type Player = {
@@ -177,7 +176,7 @@ export default function HandicapsPage() {
     <RequireAuth>
       <main className="min-h-screen bg-slate-100 p-4 sm:p-6">
         <div className="mx-auto max-w-6xl space-y-4">
-          <ScreenHeader title="Handicaps" eyebrow="League" subtitle="Current snooker handicaps, Elo guide, and the 40-point start cap." />
+          <ScreenHeader title="Handicaps" eyebrow="League" subtitle="Current snooker handicaps, Elo guide, and 2026/2027 division rules." />
 
           {message ? <section className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-900">{message}</section> : null}
 
@@ -219,17 +218,14 @@ export default function HandicapsPage() {
                 `Gap to target` is calculated as `target from Elo - current handicap`. A value of `0` means the player is aligned. A negative figure means the current handicap needs to move further into giving start. A positive figure means it needs to move further into receiving start.
               </p>
               <p>
-                Handicaps are reviewed in full, but match starts are capped at {MAX_SNOOKER_START}. This keeps frames competitive and stops very large starts deciding the frame too early, while still reflecting player strength over time.
+                Premier League handicaps are reviewed at least every four weeks and matches use the full difference with no maximum start. Division 1 is played off scratch while Elo continues to be recorded in the background.
               </p>
               <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/60 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-fuchsia-900">Why?</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-fuchsia-900">No Premier League cap</p>
                 <p className="mt-1 text-sm text-slate-700">
-                  The 40-point cap is a practical balance. It is high enough to give weaker players a meaningful chance in mixed-strength fixtures, but low enough to stop the opening score deciding too much of the frame before play settles. A lower cap such as 30 can leave bigger ability gaps under-compensated, while no cap at all can make the start feel like too much of the contest has already been decided.
+                  The AGM removed the previous 40-point limit. If two Premier players have a handicap difference greater than 40, the complete difference is now applied at the start of the frame.
                 </p>
               </div>
-              <p>
-                If the assessed handicap gap is larger than {MAX_SNOOKER_START}, the frame still starts at a maximum of {MAX_SNOOKER_START}.
-              </p>
               <p>
                 No-show, nominated-player, and void outcomes are excluded from Elo and handicap review. The Super User can still make manual corrections where league rules require it.
               </p>
@@ -239,7 +235,7 @@ export default function HandicapsPage() {
           <section className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">Elo to handicap guide</h2>
-              <p className="mt-1 text-sm text-slate-600">Reference points for the current conversion model. Live starts are capped at {MAX_SNOOKER_START}.</p>
+              <p className="mt-1 text-sm text-slate-600">Reference points for the current conversion model. Premier League fixtures use the full handicap difference.</p>
               <div className="mt-3 overflow-auto rounded-xl border border-slate-200">
                 <table className="min-w-full border-collapse text-sm">
                   <thead>
