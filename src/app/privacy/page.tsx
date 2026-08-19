@@ -63,6 +63,9 @@ export default function PrivacyPage() {
               <li>Players/Users: access to published fixtures, league tables, player tables, and their own relevant data.</li>
               <li>Phone number visibility follows player consent and may be used only for match scheduling.</li>
             </ul>
+            <p className="mt-3">
+              Team entry packs collect a match-arranging telephone number for every registered player. These numbers are not published publicly. They may be made available only to authorised league officers, the player&apos;s team captain, and a relevant opponent where needed to arrange a league or knockout match. A private entry-pack link must be kept within the relevant team.
+            </p>
           </div>
 
           <div>

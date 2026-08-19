@@ -444,7 +444,7 @@ export default function NotificationsPage() {
         }
       }
       if (admin.canManageLeague) {
-        const [leaguePendingRes, fixtureChangePendingRes, claimRes, updateRes, adminReqRes, locationReqRes, competitionPendingRes] = await Promise.all([
+        const [leaguePendingRes, fixtureChangePendingRes, claimRes, updateRes, adminReqRes, locationReqRes, competitionPendingRes, entryPackRes] = await Promise.all([
           softQuery<LeagueSubmissionRow>(client.from("league_result_submissions").select("id,fixture_id,status,created_at").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<FixtureChangeRequestRow>(client.from("league_fixture_change_requests").select("id,fixture_id,status,created_at,request_type,proposed_fixture_date").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<{ id: string; created_at: string; status: string }>(client.from("player_claim_requests").select("id,created_at,status").eq("status", "pending").order("created_at", { ascending: false })),
@@ -454,9 +454,10 @@ export default function NotificationsPage() {
             : Promise.resolve({ data: [] as { id: string; created_at: string; status: string }[], error: null }),
           softQuery<{ id: string; requester_full_name: string; requested_location_name: string; created_at: string; status: string }>(client.from("location_requests").select("id,requester_full_name,requested_location_name,created_at,status").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<CompetitionEntryNotifyRow>(client.from("competition_entries").select("id,competition_id,requester_user_id,player_id,status,created_at").eq("status", "pending").order("created_at", { ascending: false })),
+          softQuery<{ id: string; team_id: string; contact_name: string | null; status: string; updated_at: string }>(client.from("league_entry_packs").select("id,team_id,contact_name,status,updated_at").eq("status", "submitted").order("updated_at", { ascending: false })),
         ]);
 
-        if (leaguePendingRes.error || fixtureChangePendingRes.error || claimRes.error || updateRes.error || adminReqRes.error || locationReqRes.error || competitionPendingRes.error) {
+        if (leaguePendingRes.error || fixtureChangePendingRes.error || claimRes.error || updateRes.error || adminReqRes.error || locationReqRes.error || competitionPendingRes.error || entryPackRes.error) {
           const firstError =
             leaguePendingRes.error?.message ??
             fixtureChangePendingRes.error?.message ??
@@ -465,6 +466,7 @@ export default function NotificationsPage() {
             adminReqRes.error?.message ??
             locationReqRes.error?.message ??
             competitionPendingRes.error?.message ??
+            entryPackRes.error?.message ??
             "Unknown error";
           setMessage(`Failed to load notifications: ${firstError}`);
           return;
@@ -533,6 +535,22 @@ export default function NotificationsPage() {
             created_at: r.created_at,
             href: "/signup-requests",
             status: r.status,
+          });
+        });
+        const entryPackRows = entryPackRes.data ?? [];
+        const entryPackTeamIds = Array.from(new Set(entryPackRows.map((row) => row.team_id)));
+        const entryPackTeamsRes = entryPackTeamIds.length
+          ? await client.from("league_teams").select("id,name").in("id", entryPackTeamIds)
+          : { data: [] as Array<{ id: string; name: string }> };
+        const entryPackTeamName = new Map(((entryPackTeamsRes.data ?? []) as Array<{ id: string; name: string }>).map((team) => [team.id, team.name]));
+        entryPackRows.forEach((row) => {
+          out.push({
+            key: `entry-pack:${row.id}`,
+            title: "Team entry pack awaiting review",
+            detail: `${entryPackTeamName.get(row.team_id) ?? "Team"}${row.contact_name ? ` · submitted by ${row.contact_name}` : ""}`,
+            created_at: row.updated_at,
+            href: "/entry-packs",
+            status: row.status,
           });
         });
         const pendingCompetitionEntries = (competitionPendingRes.data ?? []) as CompetitionEntryNotifyRow[];

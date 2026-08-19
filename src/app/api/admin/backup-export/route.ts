@@ -9,6 +9,7 @@ const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
 const BACKUP_TABLES = [
   "locations",
   "players",
+  "player_private_contacts",
   "app_users",
   "league_registered_teams",
   "league_registered_team_members",
@@ -21,6 +22,7 @@ const BACKUP_TABLES = [
   "league_result_submissions",
   "league_handicap_history",
   "competition_entries",
+  "league_entry_packs",
   "competitions",
   "player_claim_requests",
   "player_update_requests",

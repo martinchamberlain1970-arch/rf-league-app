@@ -316,16 +316,18 @@ export default function PlayerProfilePage() {
         setCountryFieldsAvailable(false);
       }
       if (loadedPlayer?.id) {
-        const phoneRes = await client
-          .from("players")
-          .select("phone_number,phone_share_consent")
-          .eq("id", loadedPlayer.id)
-          .maybeSingle();
-        if (!phoneRes.error) {
-          loadedPhone = (phoneRes.data as { phone_number?: string | null } | null)?.phone_number ?? null;
-          loadedPhoneConsent = Boolean(
-            (phoneRes.data as { phone_share_consent?: boolean | null } | null)?.phone_share_consent
-          );
+        const sessionRes = await client.auth.getSession();
+        const token = sessionRes.data.session?.access_token;
+        if (token) {
+          const phoneRes = await fetch(`/api/player/contact/${loadedPlayer.id}`, {
+            headers: { Authorization: `Bearer ${token}` },
+            cache: "no-store",
+          });
+          const phoneData = await phoneRes.json().catch(() => ({}));
+          if (phoneRes.ok && phoneData?.allowed) {
+            loadedPhone = typeof phoneData.phoneNumber === "string" ? phoneData.phoneNumber : null;
+            loadedPhoneConsent = Boolean(phoneData.phoneShareConsent);
+          }
         }
       }
       setPlayer(
@@ -662,8 +664,6 @@ export default function PlayerProfilePage() {
       date_of_birth: editDateOfBirth || null,
       age_band: computedAgeBand,
       location_id: editLocationId || null,
-      phone_number: editPhoneNumber.trim() || null,
-      phone_share_consent: Boolean(editPhoneConsent),
       guardian_consent: isMinorBand ? editGuardianConsent : false,
       guardian_name: isMinorBand ? editGuardianName.trim() || null : null,
       guardian_email: isMinorBand ? (editGuardianEmail.trim() || null) : null,
@@ -687,6 +687,17 @@ export default function PlayerProfilePage() {
       setMessage(`Failed to save player: ${error.message}`);
       return;
     }
+    const contactRes = await client.from("player_private_contacts").upsert({
+      player_id: player.id,
+      phone_number: editPhoneNumber.trim() || null,
+      phone_share_consent: Boolean(editPhoneConsent),
+      source: "system_owner_profile_edit",
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "player_id" });
+    if (contactRes.error) {
+      setMessage(`Player details saved, but the private contact number failed to update: ${contactRes.error.message}`);
+      return;
+    }
     setPlayer((prev) =>
       prev
         ? {
@@ -698,8 +709,8 @@ export default function PlayerProfilePage() {
             location_id: (payload.location_id as string | null) ?? null,
             nationality_name: (payload.nationality_name as string | null) ?? null,
             country_code: (payload.country_code as string | null) ?? null,
-            phone_number: (payload.phone_number as string | null) ?? null,
-            phone_share_consent: Boolean(payload.phone_share_consent),
+            phone_number: editPhoneNumber.trim() || null,
+            phone_share_consent: Boolean(editPhoneConsent),
             guardian_consent: Boolean(payload.guardian_consent),
             guardian_name: (payload.guardian_name as string | null) ?? null,
             guardian_email: (payload.guardian_email as string | null) ?? null,
@@ -1023,7 +1034,7 @@ export default function PlayerProfilePage() {
     return players.filter((p) => p.guardian_user_id === currentProfileLinkedUserId);
   }, [players, currentProfileLinkedUserId]);
   const canEditOwnContact = Boolean(userId && (player?.claimed_by === userId || currentProfileLinkedUserId === userId));
-  const visiblePhone = admin.isSuper
+  const visiblePhone = admin.canManageLeague || canEditOwnContact
     ? player?.phone_number?.trim() || null
     : player?.phone_share_consent
       ? player?.phone_number?.trim() || null

@@ -54,6 +54,8 @@ export default function TermsPage() {
               <li>The 2026/2027 Premier League uses the full reviewed handicap difference with no maximum start; Division 1 is played off scratch.</li>
               <li>No-show, void, and nominated-player frames do not affect Elo or handicap.</li>
               <li>The League Secretary or Chairman may apply manual handicap corrections where required by league rules.</li>
+              <li>Teams using a private entry-pack link must provide accurate roster and match-contact details with the knowledge of the people listed.</li>
+              <li>Player telephone numbers supplied for match arrangement must not be published or used for unrelated purposes.</li>
             </ul>
           </div>
 

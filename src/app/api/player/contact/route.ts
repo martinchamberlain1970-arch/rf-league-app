@@ -1,10 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { canManageLeagueRole } from "@/lib/app-roles";
+import { resolveServerRole } from "@/lib/server-role";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
 
 export async function POST(req: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
@@ -26,11 +27,9 @@ export async function POST(req: NextRequest) {
   if (!playerId) return NextResponse.json({ error: "playerId is required." }, { status: 400 });
 
   const requesterId = authData.user.id;
-  const requesterEmail = authData.user.email?.trim().toLowerCase() ?? "";
-  const isSuper = Boolean(superAdminEmail) && requesterEmail === superAdminEmail;
-
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
-  if (!isSuper) {
+  const role = await resolveServerRole(adminClient, authData.user);
+  if (!canManageLeagueRole(role)) {
     const appUserRes = await adminClient
       .from("app_users")
       .select("linked_player_id")
@@ -43,16 +42,17 @@ export async function POST(req: NextRequest) {
   }
 
   const update = await adminClient
-    .from("players")
-    .update({
+    .from("player_private_contacts")
+    .upsert({
+      player_id: playerId,
       phone_number: phoneNumber,
       phone_share_consent: phoneShareConsent,
-    })
-    .eq("id", playerId);
+      source: "player_profile",
+      updated_at: new Date().toISOString(),
+    }, { onConflict: "player_id" });
   if (update.error) {
     return NextResponse.json({ error: update.error.message }, { status: 400 });
   }
 
   return NextResponse.json({ ok: true });
 }
-

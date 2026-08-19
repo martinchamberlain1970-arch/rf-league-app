@@ -59,7 +59,7 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
     router.push("/notifications");
   };
 
-  const leagueManagementRoutes = ["/players", "/signup-requests", "/locations", "/results", "/rating-audit"];
+  const leagueManagementRoutes = ["/players", "/signup-requests", "/entry-packs", "/locations", "/results", "/rating-audit"];
   const ownerManagementRoutes = ["/backup", "/audit", "/usage"];
   const isManagementPage = Boolean(
     pathname &&
@@ -119,12 +119,16 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
         const { data: locationReqRows } = await applyCreatedFilter(
           client.from("location_requests").select("id").eq("status", "pending")
         );
+        const { data: entryPackRows } = await applyCreatedFilter(
+          client.from("league_entry_packs").select("id,created_at").eq("status", "submitted")
+        );
         const ids = [
           ...(resultRows ?? []).map((r: { id: string }) => `result:${r.id}`),
           ...(claimRows ?? []).map((r: { id: string }) => `claim:${r.id}`),
           ...updateRows.map((r: { id: string }) => `update:${r.id}`),
           ...(adminReqRows ?? []).map((r: { id: string }) => `admin:${r.id}`),
           ...(locationReqRows ?? []).map((r: { id: string }) => `location:${r.id}`),
+          ...(entryPackRows ?? []).map((r: { id: string }) => `entry-pack:${r.id}`),
         ];
         setPendingCount(ids.filter((id) => !dismissed.has(id)).length);
       } else if (admin.isAdmin) {
@@ -149,11 +153,15 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
         const { data: locationRows } = admin.canManageLeague
           ? await applyCreatedFilter(client.from("location_requests").select("id").eq("status", "pending"))
           : { data: [] as Array<{ id: string }> };
+        const { data: entryPackRows } = admin.canManageLeague
+          ? await applyCreatedFilter(client.from("league_entry_packs").select("id,created_at").eq("status", "submitted"))
+          : { data: [] as Array<{ id: string }> };
         const ids = [
           ...(resultRows ?? []).map((r: { id: string }) => `result:${r.id}`),
           ...updateRows.map((r: { id: string }) => `update:${r.id}`),
           ...(claimRows ?? []).map((r: { id: string }) => `claim:${r.id}`),
           ...(locationRows ?? []).map((r: { id: string }) => `location:${r.id}`),
+          ...(entryPackRows ?? []).map((r: { id: string }) => `entry-pack:${r.id}`),
         ];
         setPendingCount(ids.filter((id) => !dismissed.has(id)).length);
       } else {

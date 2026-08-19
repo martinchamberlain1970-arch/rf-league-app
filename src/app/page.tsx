@@ -29,6 +29,7 @@ const links = [
   { href: "/audit", title: "Audit Log", desc: "System Owner action trail across the platform." },
   { href: "/rating-audit", title: "Elo Audit", desc: "League-officer review of Elo, handicap alignment, and rated-frame counts." },
   { href: "/signup-requests", title: "Signup Requests", desc: "Review new-account profile and location requests." },
+  { href: "/entry-packs", title: "Team Entry Packs", desc: "Issue private winter registration links and import team rosters and cup entries." },
   { href: "/usage", title: "Usage Analytics", desc: "System Owner page-usage summary." },
   { href: "/results", title: "Results Queue", desc: "Review and approve submitted results." },
   { href: "/notifications", title: "Notifications", desc: "Read and manage your inbox notifications." },
@@ -115,6 +116,7 @@ export default function HomePage() {
         "/handicaps",
         "/players",
         "/signup-requests",
+        "/entry-packs",
         "/high-breaks",
         "/signups",
         "/documents",
@@ -132,6 +134,7 @@ export default function HomePage() {
     }
     if (!admin.isSuper && (href === "/audit" || href === "/usage")) return false;
     if ((href === "/rating-audit" || href === "/signup-requests") && !admin.canManageLeague) return false;
+    if (href === "/entry-packs" && !admin.canManageLeague) return false;
     if (href === "/announcements" && !admin.canManageLeague) return false;
     if (admin.isAdmin) {
       // Admins still see these cards, but they can be disabled per-account.
@@ -152,9 +155,9 @@ export default function HomePage() {
     (href === "/events/new" && pendingFeatureRequests.has("competition_create"));
 
   const primaryHrefs = admin.isSuper
-    ? ["/signup-requests", "/players", "/notifications", "/league", "/results", "/reschedule-fixture", "/rating-audit", "/backup", "/signups", "/announcements", "/legal"]
+      ? ["/entry-packs", "/signup-requests", "/players", "/notifications", "/league", "/results", "/reschedule-fixture", "/rating-audit", "/backup", "/signups", "/announcements", "/legal"]
     : admin.canManageLeague
-      ? ["/league", "/results", "/reschedule-fixture", "/handicaps", "/rating-audit", "/players", "/signup-requests", "/signups", "/documents", "/announcements", "/notifications", "/live-matches", "/high-breaks", "/help", "/legal"]
+      ? ["/league", "/entry-packs", "/results", "/reschedule-fixture", "/handicaps", "/rating-audit", "/players", "/signup-requests", "/signups", "/documents", "/announcements", "/notifications", "/live-matches", "/high-breaks", "/help", "/legal"]
     : admin.isAdmin
       ? ["/league", "/live-matches", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/quick-match", "/events/new", "/signups", "/help", "/legal"]
       : ["/league", "/live-matches", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/notifications", "/signups", "/help", "/legal"];
@@ -268,6 +271,9 @@ export default function HomePage() {
     }
     if (href === "/players") {
       return admin.canManageLeague ? "Review player profiles, claims and requested updates." : "View your own player profile and status.";
+    }
+    if (href === "/entry-packs") {
+      return "Send each team a private no-login link, then review and import its winter roster and cup selections.";
     }
     if (href === "/events/new") {
       return admin.canManageLeague
@@ -730,7 +736,8 @@ export default function HomePage() {
         const counts = await Promise.all(
           tables.map((table) => client.from(table).select("id", { count: "exact", head: true }).eq("status", "pending"))
         );
-        setPendingRequestsCount(counts.reduce((sum, result) => sum + (result.count ?? 0), 0));
+        const entryPackCount = await client.from("league_entry_packs").select("id", { count: "exact", head: true }).eq("status", "submitted");
+        setPendingRequestsCount(counts.reduce((sum, result) => sum + (result.count ?? 0), 0) + (entryPackCount.count ?? 0));
         setPendingResultSubmissionsCount(0);
         return;
       }
