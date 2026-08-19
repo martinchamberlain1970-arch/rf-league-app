@@ -5031,13 +5031,13 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
           />
           <ConfirmModal
             open={confirmCompletionOpen}
-            title={currentSeason?.is_active === false ? "Reopen League" : "Complete League"}
+            title={currentSeason?.is_active === false ? "Reopen League" : "Mark League as Completed"}
             description={
               currentSeason?.is_active === false
                 ? `Reopen “${currentSeason?.name ?? "selected league"}” for league activity and new result submissions?`
                 : `Mark “${currentSeason?.name ?? "selected league"}” as completed? Fixtures, results and tables will remain published as history, but captains will no longer be able to submit new results.`
             }
-            confirmLabel={currentSeason?.is_active === false ? "Reopen League" : "Complete League"}
+            confirmLabel={currentSeason?.is_active === false ? "Reopen League" : "Yes, Complete League"}
             onConfirm={() => void setLeagueCompletion(currentSeason?.is_active !== false)}
             onCancel={() => setConfirmCompletionOpen(false)}
           />
@@ -5104,17 +5104,56 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
               ) : null}
               {canManage ? (
                 currentSeason?.is_published ? (
-                  <section className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-white via-emerald-50 to-sky-50 p-4 shadow-sm">
+                  <section className={`rounded-2xl border p-4 shadow-sm ${
+                    currentSeason.is_active === false
+                      ? "border-slate-300 bg-gradient-to-br from-white via-slate-100 to-slate-50"
+                      : "border-emerald-300 bg-gradient-to-br from-white via-emerald-50 to-sky-50"
+                  }`}>
                     <div className="flex flex-wrap items-start justify-between gap-3">
                       <div>
-                        <h2 className="text-lg font-semibold text-slate-900">League is live</h2>
+                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">League status</p>
+                        <h2 className="mt-1 text-xl font-black text-slate-950">
+                          {currentSeason.is_active === false ? "This league is completed" : "This league is active"}
+                        </h2>
                         <p className="mt-1 text-sm text-slate-600">
-                          This league has already been published. Setup guidance is hidden so the page can focus on maintenance, fixtures, and live administration.
+                          <span className="font-semibold text-slate-800">{currentSeason.name}</span>
+                          {currentSeason.is_active === false
+                            ? " is retained as history. Fixtures, results and tables remain visible, but captains cannot submit new results."
+                            : " is published and open for fixtures, administration and captain result submissions."}
                         </p>
                       </div>
-                      <span className="rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-900">
-                        Published
+                      <span className={`rounded-full border px-4 py-1.5 text-sm font-bold ${
+                        currentSeason.is_active === false
+                          ? "border-slate-400 bg-slate-200 text-slate-900"
+                          : "border-emerald-400 bg-emerald-100 text-emerald-900"
+                      }`}>
+                        {currentSeason.is_active === false ? "Completed" : "Active"}
                       </span>
+                    </div>
+                    <div className={`mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${
+                      currentSeason.is_active === false
+                        ? "border-teal-200 bg-white"
+                        : "border-amber-300 bg-amber-50"
+                    }`}>
+                      <div>
+                        <p className="text-sm font-semibold text-slate-950">
+                          {currentSeason.is_active === false ? "Need to accept more results?" : "Has the league season finished?"}
+                        </p>
+                        <p className="mt-1 text-xs text-slate-600">
+                          {currentSeason.is_active === false
+                            ? "Reopening restores league activity and captain result submissions."
+                            : "Mark it completed to close result submissions without deleting any league history."}
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setConfirmCompletionOpen(true)}
+                        className={`rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-sm ${
+                          currentSeason.is_active === false ? "bg-teal-700 hover:bg-teal-800" : "bg-slate-900 hover:bg-slate-800"
+                        }`}
+                      >
+                        {currentSeason.is_active === false ? "Reopen this league" : "Mark league as completed"}
+                      </button>
                     </div>
                     <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                       <button
@@ -5495,7 +5534,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                           : "border-slate-400 text-slate-800"
                       }`}
                     >
-                      {currentSeason.is_active === false ? "Reopen selected league" : "Complete selected league"}
+                      {currentSeason.is_active === false ? "Reopen this league" : "Mark league as completed"}
                     </button>
                   ) : null}
                 </div>
