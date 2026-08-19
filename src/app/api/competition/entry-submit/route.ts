@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
   const appUser = appUserRes.data as { id: string; role: string | null; linked_player_id: string | null };
   const role = String(appUser.role ?? "").toLowerCase();
   if (role === "owner" || role === "super") {
-    return NextResponse.json({ error: "Super User cannot enter competitions." }, { status: 403 });
+    return NextResponse.json({ error: "The System Owner account cannot enter competitions." }, { status: 403 });
   }
   if (!appUser.linked_player_id) {
     return NextResponse.json({ error: "Complete your player profile link before entering a competition." }, { status: 400 });

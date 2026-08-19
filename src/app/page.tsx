@@ -26,15 +26,15 @@ const links = [
   { href: "/signups", title: "Competition Sign-ups", desc: "Enter open competitions and track entry status." },
   { href: "/documents", title: "Documents", desc: "Upload and read AGM minutes, rules, and captain meeting notes." },
   { href: "/backup", title: "Data Management", desc: "Backup, restore, and controlled data reset." },
-  { href: "/audit", title: "Audit Log", desc: "Super User action trail across the system." },
-  { href: "/rating-audit", title: "Elo Audit", desc: "Super User pulse check for Elo, handicap alignment, and rated-frame counts." },
+  { href: "/audit", title: "Audit Log", desc: "System Owner action trail across the platform." },
+  { href: "/rating-audit", title: "Elo Audit", desc: "League-officer review of Elo, handicap alignment, and rated-frame counts." },
   { href: "/signup-requests", title: "Signup Requests", desc: "Review new-account profile and location requests." },
-  { href: "/usage", title: "Usage Analytics", desc: "Super User page-usage summary." },
+  { href: "/usage", title: "Usage Analytics", desc: "System Owner page-usage summary." },
   { href: "/results", title: "Results Queue", desc: "Review and approve submitted results." },
   { href: "/notifications", title: "Notifications", desc: "Read and manage your inbox notifications." },
   { href: "/live", title: "Live Overview", desc: "In-progress overview of active events." },
   { href: "/stats", title: "Stats", desc: "Player and matchup stats." },
-  { href: "/announcements", title: "Announcements", desc: "Super User control for banner notices." },
+  { href: "/announcements", title: "Announcements", desc: "League-officer control for banner notices." },
   { href: "/help", title: "User Guide", desc: "How to use the app." },
   { href: "/legal", title: "Legal & Credits", desc: "Legal and support information." },
 ];
@@ -130,7 +130,8 @@ export default function HomePage() {
         "/legal",
       ].includes(href);
     }
-    if (!admin.isSuper && (href === "/audit" || href === "/rating-audit" || href === "/usage" || href === "/signup-requests")) return false;
+    if (!admin.isSuper && (href === "/audit" || href === "/usage")) return false;
+    if ((href === "/rating-audit" || href === "/signup-requests") && !admin.canManageLeague) return false;
     if (href === "/announcements" && !admin.canManageLeague) return false;
     if (admin.isAdmin) {
       // Admins still see these cards, but they can be disabled per-account.
@@ -140,8 +141,8 @@ export default function HomePage() {
   };
 
   const visibleLinks = links.filter((item) => isVisibleLink(item.href));
-  const quickMatchAllowed = admin.isSuper || (admin.isAdmin && features.quickMatchEnabled);
-  const createCompetitionAllowed = admin.isSuper || (admin.isAdmin && features.competitionCreateEnabled);
+  const quickMatchAllowed = admin.canManageLeague || (admin.isAdmin && features.quickMatchEnabled);
+  const createCompetitionAllowed = admin.canManageLeague || (admin.isAdmin && features.competitionCreateEnabled);
   const isDisabledAdminFeature = (href: string) =>
     admin.isAdmin &&
     !admin.isSuper &&
@@ -153,7 +154,7 @@ export default function HomePage() {
   const primaryHrefs = admin.isSuper
     ? ["/signup-requests", "/players", "/notifications", "/league", "/results", "/reschedule-fixture", "/rating-audit", "/backup", "/signups", "/announcements", "/legal"]
     : admin.canManageLeague
-      ? ["/league", "/results", "/reschedule-fixture", "/handicaps", "/players", "/signups", "/documents", "/announcements", "/notifications", "/live-matches", "/high-breaks", "/help", "/legal"]
+      ? ["/league", "/results", "/reschedule-fixture", "/handicaps", "/rating-audit", "/players", "/signup-requests", "/signups", "/documents", "/announcements", "/notifications", "/live-matches", "/high-breaks", "/help", "/legal"]
     : admin.isAdmin
       ? ["/league", "/live-matches", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/quick-match", "/events/new", "/signups", "/help", "/legal"]
       : ["/league", "/live-matches", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/notifications", "/signups", "/help", "/legal"];
@@ -166,15 +167,15 @@ export default function HomePage() {
   const quickAccessLinks = visibleLinks.filter((item) => quickAccessHrefs.includes(item.href));
   const moreLinks = visibleLinks.filter((item) => !primaryHrefs.includes(item.href) && !quickAccessHrefs.includes(item.href));
   const mainTabLinks = [...primaryLinks, ...moreLinks];
-  const superGovernanceTile =
-    admin.isSuper && pendingRequestsCount !== null
+  const leagueRequestsTile =
+    admin.canManageLeague && pendingRequestsCount !== null
       ? {
-          href: "/players?tab=requests",
-          title: "Pending Governance Requests",
+          href: "/signup-requests",
+          title: "Pending League Requests",
           desc: `${pendingRequestsCount} request${pendingRequestsCount === 1 ? "" : "s"} awaiting review.`,
         }
       : null;
-  const mainTabLinksWithGovernance = superGovernanceTile ? [superGovernanceTile, ...mainTabLinks] : mainTabLinks;
+  const mainTabLinksWithGovernance = leagueRequestsTile ? [leagueRequestsTile, ...mainTabLinks] : mainTabLinks;
   const compactSuper = admin.isSuper;
   const cardBaseClass = `rounded-2xl border border-slate-200 bg-white shadow-sm ${compactSuper ? "p-2.5" : "p-3 sm:p-4"}`;
   const subtleCardClass = `rounded-2xl border border-slate-200 bg-white shadow-sm ${compactSuper ? "p-3" : "p-3 sm:p-4"}`;
@@ -271,12 +272,12 @@ export default function HomePage() {
     if (href === "/events/new") {
       return admin.canManageLeague
         ? "Create competitions and publish for player sign-up."
-        : "Feature access can be enabled by Super User.";
+        : "Feature access can be enabled by the System Owner.";
     }
     if (href === "/quick-match") {
       return admin.canManageLeague
         ? "Create ad-hoc matches for practice and tracking."
-        : "Feature access can be enabled by Super User.";
+        : "Feature access can be enabled by the System Owner.";
     }
     if (href === "/signups") {
       return admin.isSuper
@@ -318,10 +319,10 @@ export default function HomePage() {
         },
         {
           href: "/signup-requests",
-          title: "Pending Governance Requests",
+          title: "Pending League Requests",
           value: pendingRequestsCount ?? 0,
           tone: "amber",
-          detail: "Profile claims, admin requests, and other queued approvals.",
+          detail: "Profile claims, location requests, and participant updates awaiting review.",
         },
       ];
     }
@@ -446,7 +447,7 @@ export default function HomePage() {
     }
     setPendingFeatureRequests((prev) => new Set([...prev, feature]));
     setProfileMessage(
-      `${feature === "quick_match" ? "Quick Match" : "Create Competition"} access request submitted for Super User approval.`
+      `${feature === "quick_match" ? "Quick Match" : "Create Competition"} access request submitted for System Owner approval.`
     );
   };
 
@@ -723,15 +724,9 @@ export default function HomePage() {
         setResultsQueueCount(null);
       }
 
-      if (admin.isSuper) {
-        const tables = [
-          "player_claim_requests",
-          "player_update_requests",
-          "admin_requests",
-          "location_requests",
-          "profile_merge_requests",
-          "player_deletion_requests",
-        ];
+      if (admin.canManageLeague) {
+        const tables = ["player_claim_requests", "player_update_requests", "location_requests"];
+        if (admin.isSuper) tables.push("admin_requests", "profile_merge_requests", "player_deletion_requests");
         const counts = await Promise.all(
           tables.map((table) => client.from(table).select("id", { count: "exact", head: true }).eq("status", "pending"))
         );
@@ -1002,7 +997,7 @@ export default function HomePage() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Dashboard</p>
                 <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">
                   {admin.isSuper
-                    ? "Rack & Frame - Super User Control Centre"
+                    ? "Rack & Frame - System Owner Control Centre"
                     : "Rack & Frame - League Management Platform"}
                 </h1>
               </div>
@@ -1020,9 +1015,11 @@ export default function HomePage() {
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-lg font-semibold text-slate-900">
                 {admin.isSuper
-                  ? `Super User Account${userName ? ` · ${userName}` : " · Martin Chamberlain"}`
-                  : admin.isAdmin
-                    ? "Administrator account"
+                  ? `System Owner Account${userName ? ` · ${userName}` : " · Martin Chamberlain"}`
+                  : admin.canManageLeague
+                    ? `${appRoleLabel(admin.role)} account`
+                    : admin.isAdmin
+                      ? "Administrator account"
                     : userName
                       ? `Logged in as ${userName}`
                       : "No player profile linked"}
@@ -1042,7 +1039,11 @@ export default function HomePage() {
             {userEmail ? <p className="text-sm text-slate-600">Logged in: {userEmail}</p> : null}
             {admin.isSuper ? (
               <p className="mt-2 text-xs text-slate-700">
-                Focus: league setup, venue/team governance, fixture publication, result approvals, knockout competition control, handicaps, and audit oversight.
+                Platform ownership: backups, protected access, security oversight, audit and destructive system controls. League operations remain available as an owner fallback.
+              </p>
+            ) : admin.canManageLeague ? (
+              <p className="mt-2 text-xs text-slate-700">
+                League operations: seasons, teams, fixtures, results, competitions, handicaps, documents, announcements and participant approvals.
               </p>
             ) : null}
             {!admin.isSuper && userPlayerId ? (

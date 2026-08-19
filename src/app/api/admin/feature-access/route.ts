@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
 
   const requesterEmail = authData.user.email?.trim().toLowerCase() ?? "";
   if (!superAdminEmail || requesterEmail !== superAdminEmail) {
-    return NextResponse.json({ error: "Only Super User can set feature access." }, { status: 403 });
+    return NextResponse.json({ error: "Only the System Owner can set feature access." }, { status: 403 });
   }
 
   const body = await req.json().catch(() => ({}));
@@ -38,4 +38,3 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true });
 }
-

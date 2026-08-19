@@ -570,7 +570,7 @@ export default function ResultsQueuePage() {
                   </button>
                 </div>
               ) : (
-                <p className="mt-3 text-xs text-slate-600">Only the Super User can approve or reject fixture-date requests.</p>
+                <p className="mt-3 text-xs text-slate-600">Only the League Secretary or Chairman can approve or reject fixture-date requests.</p>
               )}
             </article>
           );
@@ -622,7 +622,7 @@ export default function ResultsQueuePage() {
                   </button>
                 </div>
               ) : (
-                <p className="mt-3 text-xs text-slate-600">Awaiting the Super User to set the agreed date.</p>
+                <p className="mt-3 text-xs text-slate-600">Awaiting a league officer to set the agreed date.</p>
               )}
             </article>
           );

@@ -30,7 +30,7 @@ export default function NewEventPage() {
   const router = useRouter();
   const admin = useAdminStatus();
   const features = useFeatureAccess();
-  const competitionCreateAllowed = admin.isSuper || (admin.isAdmin && features.competitionCreateEnabled);
+  const competitionCreateAllowed = admin.canManageLeague || (admin.isAdmin && features.competitionCreateEnabled);
   const [name, setName] = useState("");
   const [venue, setVenue] = useState("");
   const [locationId, setLocationId] = useState("");
@@ -105,7 +105,7 @@ export default function NewEventPage() {
       }
       if (!locRes.error && locRes.data) {
         const allLocations = locRes.data as Location[];
-        if (admin.isSuper) {
+        if (admin.canManageLeague) {
           setLocations(allLocations);
         } else {
           const scoped = adminLocationId ? allLocations.filter((l) => l.id === adminLocationId) : allLocations;
@@ -118,7 +118,7 @@ export default function NewEventPage() {
     return () => {
       active = false;
     };
-  }, [admin.isSuper, adminLocationId]);
+  }, [admin.canManageLeague, adminLocationId]);
 
   const selectedCount = useMemo(() => selected.length, [selected.length]);
   const selectedTeamPlayers = useMemo(
@@ -336,18 +336,18 @@ export default function NewEventPage() {
       return;
     }
     if (!competitionCreateAllowed) {
-      setMessage("Create Competition is disabled for your account. Ask the Super User to enable it.");
+      setMessage("Create Competition is disabled for your account. Ask the System Owner to enable it.");
       return;
     }
     if (!locationId) {
       setMessage("Select a location before creating a competition.");
       return;
     }
-    if (!admin.isSuper && !adminLocationId) {
+    if (!admin.canManageLeague && !adminLocationId) {
       setMessage("Your admin profile must be linked to a location before creating competitions.");
       return;
     }
-    if (!admin.isSuper && adminLocationId && locationId !== adminLocationId) {
+    if (!admin.canManageLeague && adminLocationId && locationId !== adminLocationId) {
       setMessage("Administrators can only create competitions at their own location.");
       return;
     }
@@ -518,7 +518,7 @@ export default function NewEventPage() {
 
           {!admin.loading && admin.isAdmin && !features.loading && !competitionCreateAllowed ? (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
-              Create Competition is disabled for your account. Ask the Super User to enable this feature.
+              Create Competition is disabled for your account. Ask the System Owner to enable this feature.
             </section>
           ) : null}
 

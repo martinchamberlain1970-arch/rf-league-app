@@ -116,7 +116,7 @@ export default function DocumentsPage() {
     const client = supabase;
     if (!client || !admin.userId) return;
     if (!admin.canManageLeague) {
-      setMessage("Only the Super User can upload league documents.");
+      setMessage("League Secretary or Chairman access is required to upload league documents.");
       return;
     }
 
@@ -178,7 +178,7 @@ export default function DocumentsPage() {
     const client = supabase;
     if (!client || !admin.userId) return;
     if (!admin.canManageLeague) {
-      setMessage("Only the Super User can delete league documents.");
+      setMessage("League Secretary or Chairman access is required to delete league documents.");
       return;
     }
     const { data: sessionRes } = await client.auth.getSession();
@@ -223,7 +223,7 @@ export default function DocumentsPage() {
 
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-sm text-slate-600">
-              This area is for league reference documents. Everyone with app access can read the current files here. Super User can upload and replace documents when new versions are available.
+              This area is for league reference documents. Everyone with app access can read the current files here. League officers can upload and replace documents when new versions are available.
             </p>
           </section>
 

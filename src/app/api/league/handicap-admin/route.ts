@@ -84,7 +84,7 @@ export async function POST(req: NextRequest) {
     delta,
     previous_handicap: previous,
     new_handicap: nextHandicap,
-    reason: reason || (mode === "set_base_and_current" ? "Baseline override by Super User" : "Manual adjustment by Super User"),
+    reason: reason || (mode === "set_base_and_current" ? "Baseline override by league officer" : "Manual adjustment by league officer"),
     changed_by_user_id: user.id,
   });
   if (histRes.error) {

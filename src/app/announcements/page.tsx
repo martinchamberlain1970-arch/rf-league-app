@@ -100,7 +100,7 @@ export default function AnnouncementsPage() {
     <main className="min-h-screen bg-slate-100 p-6">
       <div className="mx-auto max-w-5xl space-y-4">
         <RequireAuth>
-          <ScreenHeader title="Announcements" eyebrow="Super User" subtitle="Create or update the important banner shown across the app and live screens." />
+          <ScreenHeader title="Announcements" eyebrow="League Administration" subtitle="Create or update the important banner shown across the app and live screens." />
           <MessageModal message={message} onClose={() => setMessage(null)} />
           {!admin.canManageLeague ? (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm">

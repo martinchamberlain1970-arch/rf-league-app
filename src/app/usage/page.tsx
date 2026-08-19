@@ -118,12 +118,12 @@ export default function UsagePage() {
         <RequireAuth>
           <ScreenHeader
             title="Usage Analytics"
-            eyebrow="Super User"
+            eyebrow="System Owner"
             subtitle="Who is using the system and what pages they are viewing."
           />
           {!admin.loading && !admin.isSuper ? (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
-              Only the Super User can access Usage Analytics.
+              Only the System Owner can access Usage Analytics.
             </section>
           ) : null}
           {admin.isSuper ? (

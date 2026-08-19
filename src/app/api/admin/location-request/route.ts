@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireLeagueManager } from "@/lib/server-role";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase();
 
 export async function POST(req: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
@@ -19,9 +19,11 @@ export async function POST(req: NextRequest) {
   if (authError || !authData.user) {
     return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
   }
-  const requesterEmail = authData.user.email?.trim().toLowerCase() ?? "";
-  if (!superAdminEmail || requesterEmail !== superAdminEmail) {
-    return NextResponse.json({ error: "Only the super user can review location requests." }, { status: 403 });
+  const adminClient = createClient(supabaseUrl, serviceRoleKey);
+  try {
+    await requireLeagueManager(adminClient, authData.user);
+  } catch {
+    return NextResponse.json({ error: "League Secretary or Chairman access is required." }, { status: 403 });
   }
 
   const body = await req.json();
@@ -29,7 +31,6 @@ export async function POST(req: NextRequest) {
   const approve = Boolean(body?.approve);
   if (!requestId) return NextResponse.json({ error: "requestId is required." }, { status: 400 });
 
-  const adminClient = createClient(supabaseUrl, serviceRoleKey);
   const reqRes = await adminClient
     .from("location_requests")
     .select("id,status,requested_location_name")
@@ -83,4 +84,3 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ ok: true, locationId: createdLocationId });
 }
-

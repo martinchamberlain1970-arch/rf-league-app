@@ -315,7 +315,7 @@ export default function SignUpPage() {
       }
       const createOk = await askConfirm(
         "Request a new player profile?",
-        "Your name is not listed for this club. We’ll create a pending player profile request for superuser approval after your account is created.",
+        "Your name is not listed for this club. We’ll create a pending player profile request for league-officer approval after your account is created.",
         "Continue",
         "Cancel"
       );
@@ -419,7 +419,7 @@ export default function SignUpPage() {
           {step === 1 ? (
             <>
               <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                Captains, vice-captains, and players all register here using the same flow. Captain/vice-captain permissions are assigned later by the Super User from team management.
+                Captains, vice-captains, and players all register here using the same flow. Captain/vice-captain permissions are assigned later by the League Secretary or Chairman from team management.
               </p>
               <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
                 Captain or vice-captain? After your role is assigned, the in-app{" "}
@@ -559,7 +559,7 @@ export default function SignUpPage() {
                       <input className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2" placeholder="Surname" value={secondName} onChange={(e) => setSecondName(e.target.value)} />
                     </div>
                     <p className="text-xs text-slate-600">
-                      If you are not listed, submit a new-player request here. The superuser will review it before the profile is linked.
+                      If you are not listed, submit a new-player request here. A league officer will review it before the profile is linked.
                     </p>
                   </div>
                 )}
@@ -578,7 +578,7 @@ export default function SignUpPage() {
                   <>
                     <p>{firstName.trim()} {secondName.trim()}</p>
                     <p>{dateOfBirth ? new Date(`${dateOfBirth}T12:00:00`).toLocaleDateString() : "Date of birth not entered"}</p>
-                    <p>New player request pending superuser approval</p>
+                    <p>New player request pending league-officer approval</p>
                   </>
                 )}
               </div>

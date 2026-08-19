@@ -222,12 +222,12 @@ export default function BackupPage() {
     <main className="min-h-screen bg-slate-100 p-6">
       <div className="mx-auto max-w-4xl space-y-4">
         <RequireAuth>
-          <ScreenHeader title="Data Management" eyebrow="Super User" subtitle="Backup, restore, and reset league data." />
+          <ScreenHeader title="Data Management" eyebrow="System Owner" subtitle="Backup, restore, and reset league data." />
           <MessageModal message={message} onClose={() => setMessage(null)} />
 
           {!admin.loading && !admin.isSuper ? (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
-              Only the Super User can access Data Management.
+              Only the System Owner can access Data Management.
             </section>
           ) : null}
 

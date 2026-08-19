@@ -28,7 +28,7 @@ const faqs = [
   {
     question: "Who can change a handicap?",
     answer:
-      "The Super User can run Elo reviews and apply manual corrections where league rules require it.",
+      "The League Secretary or Chairman can run Elo reviews and apply manual corrections where league rules require it.",
   },
 ];
 
@@ -53,11 +53,13 @@ const guideSections = [
     ],
   },
   {
-    title: "Super User Governance",
+    title: "League Officer Governance",
     bullets: [
+      "League Secretary and League Chairman have the same day-to-day league-management access.",
       "Use League Manager > Handicaps to run the Elo review and export the handicap list.",
       "Manual corrections remain available, but normal movement is driven by the Elo review flow.",
       "Use Signup Requests, Results Queue, and Notifications to manage the live system.",
+      "System Owner is a separate platform role for backups, protected access, security, audit, and destructive controls.",
     ],
   },
 ];

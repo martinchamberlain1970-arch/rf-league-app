@@ -50,14 +50,15 @@ export default function PrivacyPage() {
           <div>
             <h2 className="text-base font-semibold text-slate-900">3. Date of Birth and Age Eligibility</h2>
             <p className="mt-2">
-              Date of birth is collected to validate eligibility for age-restricted competitions (for example Over 50s and Over 60s). Full date of birth is restricted to Super User level and is not displayed publicly.
+              Date of birth is collected to validate eligibility for age-restricted competitions (for example Over 50s and Over 60s). Full date of birth is restricted to System Owner level and is not displayed publicly.
             </p>
           </div>
 
           <div>
             <h2 className="text-base font-semibold text-slate-900">4. Who Can See What</h2>
             <ul className="mt-2 list-disc space-y-1 pl-5">
-              <li>Super User: full governance, approvals, and operational administration.</li>
+              <li>League Secretary / Chairman: league administration, approvals, fixtures, competitions, handicaps and participant management.</li>
+              <li>System Owner: platform ownership, protected access, backups, security and destructive system controls.</li>
               <li>Captains/Vice-captains: team fixture result submissions for assigned teams.</li>
               <li>Players/Users: access to published fixtures, league tables, player tables, and their own relevant data.</li>
               <li>Phone number visibility follows player consent and may be used only for match scheduling.</li>
@@ -95,7 +96,7 @@ export default function PrivacyPage() {
           <div>
             <h2 className="text-base font-semibold text-slate-900">9. Contact</h2>
             <p className="mt-2">
-              Contact the league secretary/chairman or system Super User for privacy requests and data corrections.
+              Contact the League Secretary or Chairman for ordinary privacy requests and data corrections, or the System Owner for security-sensitive requests.
             </p>
           </div>
 

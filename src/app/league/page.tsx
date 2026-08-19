@@ -1410,7 +1410,7 @@ export default function LeaguePage() {
           "Use Fixtures to generate, review, and operate weekly league matches.",
           "Use League Table and Player Table to publish standings and performance.",
           "Use Knockout Cups for competition creation, entry windows, approvals, and draws.",
-          "Use Handicaps to review Elo-driven changes, export the current handicap list, and apply Super User overrides when required.",
+          "Use Handicaps to review Elo-driven changes, export the current handicap list, and apply league-officer overrides when required.",
         ],
       };
     }
@@ -1475,7 +1475,7 @@ export default function LeaguePage() {
         title: "Fixtures Guide",
         points: [
           "Generate fixture list and manage break weeks.",
-          "Open result entry for Super User operation.",
+          "Open result entry for league-officer operation.",
           "Summer League uses 6 singles only, with a maximum of 2 singles per player.",
           "If a side only has 2 players available, use No Show in frames 5 and 6.",
           "Review captain submissions and approve/reject where configured.",
@@ -3622,7 +3622,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client) return;
     if (canManage) {
-      setMessage("Super User updates fixtures directly. No submission is required.");
+      setMessage("League officers update fixtures directly. No submission is required.");
       return;
     }
     if (!currentFixture || !currentUserId) {
@@ -3784,7 +3784,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client) return;
     if (!admin.canManageLeague || !seasonId || !currentSeason || !admin.userId) {
-      setMessage("Only the League Secretary, League Chairman or Super User can publish fixtures.");
+      setMessage("Only the League Secretary or League Chairman can publish fixtures.");
       return;
     }
     const { error } = await client.from("league_fixture_publications").insert({
@@ -4192,7 +4192,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     setMessage(
       canManage
         ? "Competition entries updated."
-        : "Club competition entries submitted. New selections will now wait for Super User approval."
+        : "Club competition entries submitted. New selections will now wait for league-officer approval."
     );
   };
   const createLeagueKnockoutCompetition = async () => {
@@ -6240,7 +6240,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                                   </div>
                                 </div>
                                 <div className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
-                                  <p className="text-xs font-semibold text-slate-700">Final scheduling (Super User)</p>
+                                  <p className="text-xs font-semibold text-slate-700">Final scheduling (League Officers)</p>
                                   <p className="mt-0.5 text-xs text-slate-600">
                                     Set final date and neutral venue after semi-finals are complete.
                                   </p>
@@ -6344,7 +6344,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                             <div className="mt-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3">
                               <p className="text-sm font-semibold text-cyan-900">Captain club entry sheet</p>
                               <p className="mt-1 text-xs text-cyan-900/80">
-                                Tick the players from your club who want to enter this competition, then submit the list for Super User review.
+                                Tick the players from your club who want to enter this competition, then submit the list for league-officer review.
                                 {c.match_mode === "doubles" || isHodgeComp || isAlberyComp
                                   ? " For doubles and triples, this collects interested names first; pairings or team groupings can then be finalised afterwards."
                                   : ""}
@@ -7832,7 +7832,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                     ) : null}
                     {isCurrentFixtureLocked && canManage ? (
                       <p className="mt-2 inline-flex rounded-lg border border-amber-300 bg-amber-100 px-2 py-1 text-xs font-medium text-amber-900">
-                        Super User edit mode: completed fixture can be corrected and rechecked
+                        League-officer edit mode: completed fixture can be corrected and rechecked
                       </p>
                     ) : null}
                     {currentFixtureReschedule ? (
@@ -8088,7 +8088,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                       <h3 className="text-base font-semibold text-slate-900">Breaks 30+</h3>
                       <p className="mt-1 text-xs text-slate-600">
                         Record up to 4 by default. Use More for additional breaks.
-                        {canManage ? " Super User can also correct these after the fixture if needed." : ""}
+                        {canManage ? " League officers can also correct these after the fixture if needed." : ""}
                       </p>
                       {!breaksFeatureAvailable ? (
                         <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
@@ -8161,7 +8161,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                           <p className="text-xs text-slate-600">
                             {isCurrentFixtureLocked
                               ? "This fixture is complete. Use these actions to update/rebuild Elo only. They do not change playing handicaps."
-                              : "Super User changes save as you edit. Use this to keep partial progress, recompute the fixture status, and close the entry screen."}
+                              : "League-officer changes save as you edit. Use this to keep partial progress, recompute the fixture status, and close the entry screen."}
                           </p>
                           <div className="flex flex-wrap gap-2">
                             {isCurrentFixtureLocked && currentFixture.fixture_date ? (
@@ -8210,14 +8210,14 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                           </button>
                         </div>
                         <p className="mt-2 text-xs text-slate-600">
-                          Once submitted, the fixture is locked until Super User review.
+                          Once submitted, the fixture is locked until league-officer review.
                         </p>
                       </section>
                     ) : (
                       <p className="mt-3 text-xs text-slate-600">
                         {isCurrentFixtureLocked
                           ? "This result is finalized and read-only."
-                          : "Changes save automatically for Super User."}
+                          : "Changes save automatically for league officers."}
                       </p>
                     )}
                   </div>
@@ -8461,7 +8461,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                       <li>Elo rating updates after every valid competitive frame.</li>
                       <li>No-show, nominated-player, and void frames do not affect Elo or handicap.</li>
                       <li>Approving results and rechecking ratings updates Elo only; it does not change the live handicap.</li>
-                      <li>Actual playing handicaps change only when the Super User deliberately applies the Elo handicap review.</li>
+                      <li>Actual playing handicaps change only when a league officer deliberately applies the Elo handicap review.</li>
                       <li>Target handicap now matches the original Elo seed formula: handicap = nearest multiple of 4 to (1000 - Elo) / 5.</li>
                       <li>Each handicap review aligns a player directly to that Elo-based target handicap.</li>
                       <li>{currentSeasonHandicapCap === null ? "Premier League starts use the full handicap difference with no cap." : `Live match starts are capped at ${currentSeasonHandicapCap}.`}</li>

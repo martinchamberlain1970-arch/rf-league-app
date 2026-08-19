@@ -113,12 +113,12 @@ export default function AuditPage() {
         <RequireAuth>
           <ScreenHeader
             title="Audit Log"
-            eyebrow="Super User"
+            eyebrow="System Owner"
             subtitle="Who did what and when across the league system."
           />
           {!admin.loading && !admin.isSuper ? (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
-              Only the Super User can access Audit Log.
+              Only the System Owner can access the Audit Log.
             </section>
           ) : null}
 

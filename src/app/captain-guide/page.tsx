@@ -7,7 +7,7 @@ const sections = [
     bullets: [
       "Sign in using your normal league-app account.",
       "If you have been assigned as captain or vice-captain, your dashboard and notifications will reflect that automatically.",
-      "If Captain Results or the relevant fixture permissions are missing, contact the Super User rather than creating a second account.",
+      "If Captain Results or the relevant fixture permissions are missing, contact the League Secretary or Chairman rather than creating a second account.",
     ],
   },
   {
@@ -59,10 +59,10 @@ const sections = [
   {
     title: "6. After the match finishes",
     bullets: [
-      "League rule: the home team should submit the result by default unless the Super User has agreed another arrangement.",
+      "League rule: the home team should submit the result by default unless a league officer has agreed another arrangement.",
       "Check the full card before submitting, especially player assignments, points, and breaks.",
       "After the final frame, do not leave the fixture at saved-progress stage. The card must still be finally submitted.",
-      "Submit the result when complete. The submission then moves into the Super User review queue.",
+      "Submit the result when complete. The submission then moves into the league-officer review queue.",
       "Result deadline: the match result must be entered by midnight on the following day.",
       "WhatsApp results should be treated as an exception or backup route only. The normal expectation is that the result is submitted in the app so the system can update automatically after approval.",
       "Only approved results update the league table, player records, and Elo-driven handicap history.",
@@ -73,8 +73,8 @@ const sections = [
     bullets: [
       "If a fixture needs moving, use the fixture date request process rather than relying only on an informal message.",
       "If you spot an error before submission, correct it immediately in Captain Results.",
-      "If you spot an error after submission, contact the Super User. They can return the result for correction or amend it during review.",
-      "If a 30+ break was missed or a player could not complete a competition sign-up, tell the Super User promptly so it can be fixed cleanly.",
+      "If you spot an error after submission, contact the League Secretary or Chairman. They can return the result for correction or amend it during review.",
+      "If a 30+ break was missed or a player could not complete a competition sign-up, tell a league officer promptly so it can be fixed cleanly.",
     ],
   },
 ];
@@ -115,7 +115,7 @@ export default function CaptainGuidePage() {
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h2 className="text-lg font-semibold text-slate-900">Using the system</h2>
           <p className="mt-1 text-sm text-slate-600">
-            This guide assumes your account is already registered and the Super User has assigned your captain or vice-captain role. It mirrors the current captain SOP and covers both competition-entry support and match-night operation.
+            This guide assumes your account is already registered and a league officer has assigned your captain or vice-captain role. It mirrors the current captain SOP and covers both competition-entry support and match-night operation.
           </p>
           <div className="mt-4 grid gap-3 md:grid-cols-3">
             <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">

@@ -13,7 +13,7 @@ function deriveTitle(message: string) {
   if (/\bclaim|profile|guardian|minor|adult|location\b/.test(text)) return "Profile Update";
   if (/\bsubmission|approve|reject|result\b/.test(text)) return "Submission Review";
   if (/\bis now (league secretary|league chairman|administrator|user)\b/.test(text)) return "Role Updated";
-  if (/\badmin|super user|role\b/.test(text)) return "Access Control";
+  if (/\badmin|super user|system owner|league officer|role\b/.test(text)) return "Access Control";
 
   const successPrefixes = [
     "progress saved.",

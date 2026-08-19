@@ -263,8 +263,8 @@ export default function CompetitionSignupsPage() {
   const reviewEntry = async (entryId: string, status: "approved" | "rejected") => {
     const client = supabase;
     if (!client) return;
-    if (!admin.isSuper || !admin.userId) {
-      setMessage("Only Super User can approve or reject competition entries.");
+    if (!admin.canManageLeague || !admin.userId) {
+      setMessage("League Secretary or Chairman access is required to review competition entries.");
       return;
     }
     setBusyId(entryId);
@@ -299,7 +299,7 @@ export default function CompetitionSignupsPage() {
 
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-sm text-slate-600">
-              Entries are submitted as pending. Super User reviews and approves/rejects competition entry requests.
+              Entries are submitted as pending. The League Secretary or Chairman reviews and approves or rejects each request.
             </p>
           </section>
 
@@ -412,7 +412,7 @@ export default function CompetitionSignupsPage() {
                         {busyId === c.id
                           ? "Submitting..."
                           : admin.isSuper
-                            ? "Super User cannot enter"
+                            ? "System Owner cannot enter"
                             : requiresDobBeforeEntry
                               ? "Enter DOB to continue"
                               : "Enter Competition"}
@@ -435,7 +435,7 @@ export default function CompetitionSignupsPage() {
                     {entrantsRequired === 3 ? <span className="text-xs text-slate-600">Entry requires 3 players.</span> : null}
                   </div>
 
-                  {(admin.isAdmin || admin.isSuper) && allEntries.length > 0 ? (
+                  {admin.isAdmin && allEntries.length > 0 ? (
                     <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <p className="mb-2 text-sm font-semibold text-slate-800">Entries</p>
                       <div className="space-y-1 text-sm">
@@ -454,7 +454,7 @@ export default function CompetitionSignupsPage() {
                             })()}
                             <div className="flex items-center gap-2">
                               <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-xs text-slate-600">{e.status}</span>
-                              {admin.isSuper && e.status === "pending" ? (
+                              {admin.canManageLeague && e.status === "pending" ? (
                                 <>
                                   <button
                                     type="button"

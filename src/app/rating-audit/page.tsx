@@ -76,7 +76,7 @@ export default function RatingAuditPage() {
   useEffect(() => {
     const run = async () => {
       if (admin.loading) return;
-      if (!admin.isSuper) {
+      if (!admin.canManageLeague) {
         setLoading(false);
         return;
       }
@@ -107,7 +107,7 @@ export default function RatingAuditPage() {
       setLoading(false);
     };
     void run();
-  }, [admin.loading, admin.isSuper]);
+  }, [admin.loading, admin.canManageLeague]);
 
   const filteredRows = useMemo(() => {
     const rows = data?.rows ?? [];
@@ -125,16 +125,16 @@ export default function RatingAuditPage() {
         <RequireAuth>
           <ScreenHeader
             title="Elo Audit"
-            eyebrow="Super User"
+            eyebrow="League Administration"
             subtitle="Pulse check of live Elo values, handicap alignment, and rated-frame counts."
           />
-          {!admin.loading && !admin.isSuper ? (
+          {!admin.loading && !admin.canManageLeague ? (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
-              Only the Super User can access Elo Audit.
+              League Secretary or Chairman access is required for the Elo Audit.
             </section>
           ) : null}
 
-          {admin.isSuper ? (
+          {admin.canManageLeague ? (
             <>
               <MessageModal message={message} onClose={() => setMessage(null)} />
 

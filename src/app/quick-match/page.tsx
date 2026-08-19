@@ -46,7 +46,7 @@ export default function QuickMatchPage() {
   const [locationId, setLocationId] = useState<string>("");
   const [createConfirmOpen, setCreateConfirmOpen] = useState(false);
   const [infoModal, setInfoModal] = useState<{ title: string; description: string } | null>(null);
-  const quickMatchAllowed = admin.isSuper || (admin.isAdmin && features.quickMatchEnabled);
+  const quickMatchAllowed = admin.canManageLeague || (admin.isAdmin && features.quickMatchEnabled);
   const hasAdminPower = quickMatchAllowed;
   const hasDraftChanges = !!(
     name.trim() !== "Practice match" ||
@@ -140,7 +140,7 @@ export default function QuickMatchPage() {
       return;
     }
     if (!quickMatchAllowed) {
-      setMessage("Quick Match is disabled for your account. Ask the Super User to enable it.");
+      setMessage("Quick Match is disabled for your account. Ask the System Owner to enable it.");
       return;
     }
     if (!hasAdminPower && !linkedPlayerId) {
@@ -274,7 +274,7 @@ export default function QuickMatchPage() {
 
           {!admin.loading && !features.loading && !quickMatchAllowed ? (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
-              Quick Match is disabled for your account. Ask the Super User to enable this feature.
+              Quick Match is disabled for your account. Ask the System Owner to enable this feature.
             </section>
           ) : null}
 

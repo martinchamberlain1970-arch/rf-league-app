@@ -177,6 +177,7 @@ export default function PlayersPage() {
   const [profileLinkFilter, setProfileLinkFilter] = useState("all");
   const superAdminEmail = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
   const isSuperAdmin = admin.isSuper;
+  const canManageLeague = admin.canManageLeague;
   const isStandardUser = !admin.isAdmin && !isSuperAdmin;
   const adminLimited = isStandardUser;
   const canRegisterPlayers = admin.isAdmin || isSuperAdmin;
@@ -587,10 +588,10 @@ export default function PlayersPage() {
       return;
     }
     setMergePrompt(null);
-    setMessage("Merge request submitted for Super User review.");
+    setMessage("Merge request submitted for System Owner review.");
     setInfoModal({
       title: "Merge Request Submitted",
-      body: `A duplicate profile appears to exist for "${mergePrompt.displayName}". Your merge request has been sent to the Super User for review.`,
+      body: `A duplicate profile appears to exist for "${mergePrompt.displayName}". Your merge request has been sent to the System Owner for review.`,
     });
     await loadMergeRequests();
   };
@@ -683,7 +684,7 @@ export default function PlayersPage() {
       .eq("role", "owner")
       .maybeSingle();
     if (ownerLinked.data?.id || ownerLinkedUser?.id) {
-      return { ok: false, message: "This profile is linked to the Super User account and cannot be deleted." };
+      return { ok: false, message: "This profile is linked to the System Owner account and cannot be deleted." };
     }
 
     const playerRes = await client.from("players").select("claimed_by").eq("id", playerId).maybeSingle();
@@ -744,7 +745,7 @@ export default function PlayersPage() {
   const onReviewDeletionRequest = async (req: PlayerDeletionRequest, approve: boolean) => {
     const client = supabase;
     if (!client || !isSuperAdmin || !userId) {
-      setMessage("Only the Super User can review deletion requests.");
+      setMessage("Only the System Owner can review deletion requests.");
       return;
     }
 
@@ -931,11 +932,11 @@ export default function PlayersPage() {
   const onReviewClaim = async (claim: ClaimRequest, approve: boolean) => {
     const client = supabase;
     if (!client || !userId) return;
-    if (!isSuperAdmin && !admin.isAdmin) {
+    if (!admin.isAdmin) {
       setMessage("Only administrators can review claim requests.");
       return;
     }
-    if (!isSuperAdmin) {
+    if (!canManageLeague) {
       if (!adminLocationId) {
         setMessage("Admin location is not set.");
         return;
@@ -945,6 +946,27 @@ export default function PlayersPage() {
         setMessage("You can only review claim requests for users at your location.");
         return;
       }
+    }
+    if (canManageLeague) {
+      const { data: sessionRes } = await client.auth.getSession();
+      const token = sessionRes.session?.access_token;
+      if (!token) {
+        setMessage("Session expired. Please sign in again.");
+        return;
+      }
+      const response = await fetch("/api/player-claim-requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ requestId: claim.id, action: approve ? "approve" : "reject" }),
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        setMessage(result?.error ?? "Failed to review claim request.");
+        return;
+      }
+      await loadPlayers();
+      await loadClaims();
+      return;
     }
     const { error } = await client
       .from("player_claim_requests")
@@ -979,8 +1001,8 @@ export default function PlayersPage() {
   const onReviewUpdateRequest = async (req: PlayerUpdateRequest, approve: boolean) => {
     const client = supabase;
     if (!client || !userId) return;
-    if (!isSuperAdmin) {
-      setMessage("Only the Super User can review profile update requests.");
+    if (!canManageLeague) {
+      setMessage("League Secretary or Chairman access is required to review profile update requests.");
       return;
     }
     const { data: sessionRes } = await client.auth.getSession();
@@ -1019,15 +1041,15 @@ export default function PlayersPage() {
     return map;
   }, [players]);
   const visibleClaims = useMemo(() => {
-    if (isSuperAdmin || !admin.isAdmin) return pendingClaims;
+    if (canManageLeague || !admin.isAdmin) return pendingClaims;
     if (!adminLocationId) return pendingClaims;
     return pendingClaims.filter((c) => requesterLocationByUser.get(c.requester_user_id) === adminLocationId);
-  }, [pendingClaims, isSuperAdmin, admin.isAdmin, adminLocationId, requesterLocationByUser]);
+  }, [pendingClaims, canManageLeague, admin.isAdmin, adminLocationId, requesterLocationByUser]);
   const visibleUpdates = useMemo(() => {
-    if (isSuperAdmin || !admin.isAdmin) return pendingUpdateRequests;
+    if (canManageLeague || !admin.isAdmin) return pendingUpdateRequests;
     if (!adminLocationId) return pendingUpdateRequests;
     return pendingUpdateRequests.filter((r) => requesterLocationByUser.get(r.requester_user_id) === adminLocationId);
-  }, [pendingUpdateRequests, isSuperAdmin, admin.isAdmin, adminLocationId, requesterLocationByUser]);
+  }, [pendingUpdateRequests, canManageLeague, admin.isAdmin, adminLocationId, requesterLocationByUser]);
   const visiblePhotoUpdates = useMemo(
     () => visibleUpdates.filter((r) => Boolean(r.requested_avatar_url)),
     [visibleUpdates]
@@ -1038,8 +1060,8 @@ export default function PlayersPage() {
     [featureAccessRequests, isSuperAdmin]
   );
   const visibleLocationRequests = useMemo(
-    () => (isSuperAdmin ? locationRequests.filter((r) => r.status === "pending") : []),
-    [locationRequests, isSuperAdmin]
+    () => (canManageLeague ? locationRequests.filter((r) => r.status === "pending") : []),
+    [locationRequests, canManageLeague]
   );
   const visibleMergeRequests = useMemo(
     () => (isSuperAdmin ? mergeRequests.filter((r) => r.status === "pending") : []),
@@ -1054,7 +1076,7 @@ export default function PlayersPage() {
     const client = supabase;
     if (!client) return;
     if (!isSuperAdmin) {
-      setMessage("Only the Super User can restore archived players.");
+      setMessage("Only the System Owner can restore archived players.");
       return;
     }
     const { error } = await client.from("players").update({ is_archived: false }).eq("id", player.id);
@@ -1069,7 +1091,7 @@ export default function PlayersPage() {
     const client = supabase;
     if (!client) return;
     if (!isSuperAdmin) {
-      setMessage("Only the Super User can link registered users to player profiles.");
+      setMessage("Only the System Owner can manually link registered users to player profiles.");
       return;
     }
     if (!assignUserId || !assignPlayerId) {
@@ -1216,7 +1238,7 @@ export default function PlayersPage() {
     const client = supabase;
     if (!client) return;
     if (!isSuperAdmin) {
-      setMessage("Only the super user can approve admin access.");
+      setMessage("Only the System Owner can approve administrator access.");
       return;
     }
     const { data: sessionRes } = await client.auth.getSession();
@@ -1251,7 +1273,7 @@ export default function PlayersPage() {
     const client = supabase;
     if (!client) return;
     if (!isSuperAdmin) {
-      setMessage("Only the super user can review feature access requests.");
+      setMessage("Only the System Owner can review feature access requests.");
       return;
     }
     const { data: sessionRes } = await client.auth.getSession();
@@ -1284,8 +1306,8 @@ export default function PlayersPage() {
   const onReviewLocationRequest = async (req: LocationRequest, approve: boolean) => {
     const client = supabase;
     if (!client) return;
-    if (!isSuperAdmin) {
-      setMessage("Only the super user can review location requests.");
+    if (!canManageLeague) {
+      setMessage("League Secretary or Chairman access is required to review location requests.");
       return;
     }
     const { data: sessionRes } = await client.auth.getSession();
@@ -1326,7 +1348,7 @@ export default function PlayersPage() {
             title="Registered Players"
             subtitle="Manage player profiles, linking, and approvals."
           />
-          {isSuperAdmin ? (
+          {canManageLeague ? (
             <section className={sectionCardTintClass}>
               <p className="text-sm font-semibold text-slate-900">Admin tools</p>
               <div className="mt-2 flex flex-wrap gap-2">
@@ -1337,12 +1359,12 @@ export default function PlayersPage() {
             </section>
           ) : null}
 
-          {isSuperAdmin ? (
+          {canManageLeague ? (
             <section id="photo-approvals" className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50 p-5 shadow-sm">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">Pending photo approvals</h2>
-                  <p className="mt-1 text-sm text-slate-600">Profile photos awaiting superuser approval appear here directly.</p>
+                  <p className="mt-1 text-sm text-slate-600">Profile photos awaiting league-officer approval appear here directly.</p>
                 </div>
                 <div className="rounded-xl border border-emerald-200 bg-white px-3 py-2 text-right shadow-sm">
                   <p className="text-xs uppercase tracking-wide text-emerald-700">Awaiting approval</p>
@@ -1451,7 +1473,7 @@ export default function PlayersPage() {
             <section className={`${sectionCardTintClass} space-y-3`}>
               <div>
                 <p className="text-sm font-semibold text-slate-900">Claim or create your player profile</p>
-                <p className="text-sm text-slate-600">Create your profile request for Super User approval.</p>
+                <p className="text-sm text-slate-600">Create your profile request for League Secretary or Chairman approval.</p>
               </div>
               <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
                 <input
@@ -1554,7 +1576,7 @@ export default function PlayersPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                   <p className="text-sm font-semibold text-slate-900">Role Management ({filteredRoleUsers.length} users)</p>
-                  <p className="text-sm text-slate-600">Only the Super User can assign League Secretary, League Chairman, Administrator or User access.</p>
+                  <p className="text-sm text-slate-600">Only the System Owner can assign League Secretary, League Chairman, Administrator or User access.</p>
                   </div>
                   <div className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700">
                     <span className="group-open:hidden">Expand</span>
@@ -1577,7 +1599,7 @@ export default function PlayersPage() {
                   className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
                 >
                   <option value="all">All roles</option>
-                  <option value="super">Super User</option>
+                  <option value="super">System Owner</option>
                   <option value="league_secretary">League Secretary</option>
                   <option value="league_chairman">League Chairman</option>
                   <option value="admin">Admin</option>
@@ -1592,7 +1614,7 @@ export default function PlayersPage() {
                   const clubName = linked?.location_id ? locationById.get(linked.location_id) ?? "No club registered" : "No club registered";
                   const displayLabel = linkedName ?? u.email ?? u.id;
                   const isRowSuperUser = Boolean(u.email && u.email.toLowerCase() === superAdminEmail) || isSuperRole(u.role);
-                  const roleLabel = isRowSuperUser ? "Super User" : appRoleLabel(u.role);
+                  const roleLabel = isRowSuperUser ? "System Owner" : appRoleLabel(u.role);
                   return (
                     <div key={u.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm shadow-sm">
                       <div className="min-w-0 flex-1">
@@ -1622,7 +1644,7 @@ export default function PlayersPage() {
                           className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 disabled:bg-slate-100"
                           aria-label={`Role for ${displayLabel}`}
                         >
-                          {isRowSuperUser ? <option value="super">Super User</option> : null}
+                          {isRowSuperUser ? <option value="super">System Owner</option> : null}
                           <option value="league_secretary">League Secretary</option>
                           <option value="league_chairman">League Chairman</option>
                           <option value="admin">Administrator</option>
@@ -2063,7 +2085,7 @@ export default function PlayersPage() {
               </div>
               {admin.isAdmin && !isSuperAdmin ? (
                 <p className="mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
-                  Administrator access includes profile list and claim review for your location. Archived player controls remain Super User only.
+                  Administrator access includes profile registration and claim review for your location. League officers can review all league requests; archived-player controls remain System Owner only.
                 </p>
               ) : null}
             </section>
@@ -2183,7 +2205,7 @@ export default function PlayersPage() {
                       </Link>
                       {isSuperAdmin ? (
                         <div className="flex flex-wrap items-center gap-2 rounded-lg border border-teal-200 bg-teal-50 px-2 py-1">
-                          <label className="text-xs font-semibold text-teal-800">Super User DOB</label>
+                          <label className="text-xs font-semibold text-teal-800">System Owner DOB</label>
                           <span className="text-[11px] text-slate-600">
                             Current: {p.date_of_birth ? new Date(`${p.date_of_birth}T12:00:00`).toLocaleDateString() : "Not set"}
                           </span>
@@ -2513,7 +2535,7 @@ export default function PlayersPage() {
           title="Duplicate Profile Found"
           description={
             mergePrompt
-              ? `A player profile named "${mergePrompt.displayName}" already exists. Submit a merge request to the Super User for review?`
+              ? `A player profile named "${mergePrompt.displayName}" already exists. Submit a merge request to the System Owner for review?`
               : ""
           }
           confirmLabel="Submit Request"

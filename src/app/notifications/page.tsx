@@ -334,7 +334,7 @@ export default function NotificationsPage() {
       if (!roundDeadlineRes.error) {
         const deadlineRows = roundDeadlineRes.data ?? [];
         let relevantCompetitionIds = new Set<string>();
-        if (admin.isSuper) {
+        if (admin.canManageLeague) {
           relevantCompetitionIds = new Set(deadlineRows.map((r) => r.competition_id));
         } else {
           const [myByUserRes, myByPlayerRes] = await Promise.all([
@@ -403,7 +403,7 @@ export default function NotificationsPage() {
         .select("id,created_at,season_id,location_id,note")
         .order("created_at", { ascending: false })
         .limit(100);
-      if (!admin.isSuper && userLocationId) publicationQuery.eq("location_id", userLocationId);
+      if (!admin.canManageLeague && userLocationId) publicationQuery.eq("location_id", userLocationId);
       const publicationRes = await publicationQuery;
       if (!publicationRes.error) {
         const publicationRows = (publicationRes.data ?? []) as LeaguePublicationRow[];
@@ -443,13 +443,15 @@ export default function NotificationsPage() {
           });
         }
       }
-      if (admin.isSuper) {
+      if (admin.canManageLeague) {
         const [leaguePendingRes, fixtureChangePendingRes, claimRes, updateRes, adminReqRes, locationReqRes, competitionPendingRes] = await Promise.all([
           softQuery<LeagueSubmissionRow>(client.from("league_result_submissions").select("id,fixture_id,status,created_at").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<FixtureChangeRequestRow>(client.from("league_fixture_change_requests").select("id,fixture_id,status,created_at,request_type,proposed_fixture_date").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<{ id: string; created_at: string; status: string }>(client.from("player_claim_requests").select("id,created_at,status").eq("status", "pending").order("created_at", { ascending: false })),
           loadPlayerUpdateNotificationRows(client, { pendingOnly: true, useAdminRoute: true }),
-          softQuery<{ id: string; created_at: string; status: string }>(client.from("admin_requests").select("id,created_at,status").eq("status", "pending").order("created_at", { ascending: false })),
+          admin.isSuper
+            ? softQuery<{ id: string; created_at: string; status: string }>(client.from("admin_requests").select("id,created_at,status").eq("status", "pending").order("created_at", { ascending: false }))
+            : Promise.resolve({ data: [] as { id: string; created_at: string; status: string }[], error: null }),
           softQuery<{ id: string; requester_full_name: string; requested_location_name: string; created_at: string; status: string }>(client.from("location_requests").select("id,requester_full_name,requested_location_name,created_at,status").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<CompetitionEntryNotifyRow>(client.from("competition_entries").select("id,competition_id,requester_user_id,player_id,status,created_at").eq("status", "pending").order("created_at", { ascending: false })),
         ]);
@@ -897,7 +899,7 @@ export default function NotificationsPage() {
           }
         }
       }
-      if (!admin.isSuper && captainTeamIds.size > 0) {
+      if (!admin.canManageLeague && captainTeamIds.size > 0) {
         const reportRes = await softQuery<LeagueReportRow>(
           client
             .from("league_reports")
@@ -936,7 +938,7 @@ export default function NotificationsPage() {
       setItems(unique);
     };
     load();
-  }, [admin.loading, admin.isAdmin, admin.isSuper, admin.userId]);
+  }, [admin.loading, admin.isAdmin, admin.isSuper, admin.canManageLeague, admin.userId]);
 
   const visible = useMemo(
     () => items.filter((n) => !dismissed.has(n.key) && !serverRead.has(n.key)),
@@ -959,8 +961,10 @@ export default function NotificationsPage() {
           <section className={`${sectionCardClass} ${sectionCardTintClass}`}>
             <p className="text-sm text-slate-700">
               {admin.isSuper
-                ? "System and operational notifications."
-                : admin.isAdmin
+                ? "System-owner and league-operation notifications."
+                : admin.canManageLeague
+                  ? "League-operation notifications."
+                  : admin.isAdmin
                   ? "Operational notifications."
                   : "Your notifications."}
             </p>

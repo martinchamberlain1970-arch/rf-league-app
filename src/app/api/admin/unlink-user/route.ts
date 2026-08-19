@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
 
   const requesterEmail = authData.user.email?.trim().toLowerCase() ?? "";
   if (!superAdminEmail || requesterEmail !== superAdminEmail) {
-    return NextResponse.json({ error: "Only Super User can de-link users." }, { status: 403 });
+    return NextResponse.json({ error: "Only the System Owner can de-link users." }, { status: 403 });
   }
 
   const body = await req.json().catch(() => ({}));
@@ -38,7 +38,7 @@ export async function POST(req: NextRequest) {
 
   const role = String(userRes.data.role ?? "").toLowerCase();
   if (role === "owner" || role === "super") {
-    return NextResponse.json({ error: "Cannot de-link the Super User account." }, { status: 400 });
+    return NextResponse.json({ error: "Cannot de-link the System Owner account." }, { status: 400 });
   }
 
   const linkedPlayerId = (userRes.data.linked_player_id as string | null) ?? null;

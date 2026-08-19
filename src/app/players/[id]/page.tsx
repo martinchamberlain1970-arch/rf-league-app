@@ -828,7 +828,7 @@ export default function PlayerProfilePage() {
     }
     setInfoModal({
       title: "Nationality update sent",
-      description: "Your nationality / country update has been sent for Super User approval.",
+      description: "Your nationality / country update has been sent for league-officer approval.",
     });
   };
 
@@ -870,7 +870,7 @@ export default function PlayerProfilePage() {
       setDeleteChoiceOpen(false);
       setInfoModal({
         title: "Cannot Delete",
-        description: "This profile is linked to the Super User account and cannot be deleted.",
+        description: "This profile is linked to the System Owner account and cannot be deleted.",
       });
       return;
     }
@@ -981,8 +981,8 @@ export default function PlayerProfilePage() {
     setInfoModal({
       title: "Deletion Request Submitted",
       description: deleteAllData
-        ? "Your profile deletion request has been sent to the Super User for review, with personal-data deletion requested."
-        : "Your profile deletion request has been sent to the Super User for review.",
+        ? "Your profile deletion request has been sent to the System Owner for review, with personal-data deletion requested."
+        : "Your profile deletion request has been sent to the System Owner for review.",
     });
   };
 
@@ -1696,7 +1696,7 @@ export default function PlayerProfilePage() {
           <MessageModal message={message} onClose={() => setMessage(null)} />
           {pendingDeleteRequest ? (
             <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
-              Profile deletion request pending Super User approval (submitted {new Date(pendingDeleteRequest.created_at).toLocaleString()}).
+              Profile deletion request pending System Owner approval (submitted {new Date(pendingDeleteRequest.created_at).toLocaleString()}).
             </p>
           ) : null}
 
@@ -2244,7 +2244,7 @@ export default function PlayerProfilePage() {
                 </div>
                 {admin.isSuper ? (
                   <div className="mb-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-sm font-semibold text-slate-900">Date of birth (Super User)</p>
+                    <p className="text-sm font-semibold text-slate-900">Date of birth (System Owner)</p>
                     <p className="mt-1 text-xs text-slate-600">
                       Current: {player?.date_of_birth ? new Date(`${player.date_of_birth}T12:00:00`).toLocaleDateString() : "Not set"}
                     </p>
@@ -2268,7 +2268,7 @@ export default function PlayerProfilePage() {
                 ) : null}
                 {admin.isSuper && editingPlayer ? (
                   <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-sm font-semibold text-slate-900">Super User: Edit Player</p>
+                    <p className="text-sm font-semibold text-slate-900">System Owner: Edit Player</p>
                     <p className="mt-1 text-xs text-slate-600">Date of birth is managed in the dedicated DOB editor above.</p>
                     <div className="mt-2 grid gap-2 sm:grid-cols-1">
                       <input
@@ -2446,7 +2446,7 @@ export default function PlayerProfilePage() {
                   <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <p className="text-sm font-semibold text-slate-900">Nationality / Flag</p>
                     <p className="mt-1 text-xs text-slate-600">
-                      Submit a nationality update for Super User approval. This can then appear on your player profile and live match screens.
+                      Submit a nationality update for league-officer approval. This can then appear on your player profile and live match screens.
                     </p>
                     <div className="mt-2 grid gap-2 sm:grid-cols-2">
                       <input
@@ -2480,7 +2480,7 @@ export default function PlayerProfilePage() {
                   </div>
                 ) : null}
                 <p className="text-xs text-slate-500">
-                  Super User can now assign or change the club here in Edit Player.
+                  The System Owner can assign or change the club here in Edit Player.
                 </p>
                 {!admin.isSuper && player?.claimed_by === userId ? (
                   <div className="mt-3">
@@ -2490,7 +2490,7 @@ export default function PlayerProfilePage() {
                         setConfirmModal({
                           title: "Request Profile Deletion",
                           description:
-                            "Submit a request to the Super User to delete your player profile? If match history exists, the profile may be archived instead.",
+                            "Submit a request to the System Owner to delete your player profile? If match history exists, the profile may be archived instead.",
                           confirmLabel: "Submit Request",
                           tone: "danger",
                           onConfirm: async () => {

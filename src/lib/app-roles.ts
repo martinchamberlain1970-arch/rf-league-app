@@ -12,6 +12,10 @@ export function isSuperRole(value?: string | null) {
   return role === "owner" || role === "super";
 }
 
+// "Super" remains a stored legacy role value. In the interface this level is
+// described as System Owner so it is not confused with league administration.
+export const isSystemOwnerRole = isSuperRole;
+
 export function canManageLeagueRole(value?: string | null) {
   const role = normalizeAppRole(value);
   return isSuperRole(role) || role === "league_secretary" || role === "league_chairman";
@@ -25,7 +29,7 @@ export function appRoleLabel(value?: string | null) {
   const role = normalizeAppRole(value);
   if (role === "league_secretary") return "League Secretary";
   if (role === "league_chairman") return "League Chairman";
-  if (role === "super" || role === "owner") return "Super User";
+  if (role === "super" || role === "owner") return "System Owner";
   if (role === "admin") return "Administrator";
   return "User";
 }

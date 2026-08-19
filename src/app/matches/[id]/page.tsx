@@ -162,7 +162,7 @@ export default function MatchPage() {
       ),
     [match]
   );
-  const canSubmit = Boolean(admin.isSuper || (linkedPlayerId && participants.has(linkedPlayerId)));
+  const canSubmit = Boolean(admin.canManageLeague || (linkedPlayerId && participants.has(linkedPlayerId)));
   const homeLabel =
     match?.team1_player1_id || match?.team1_player2_id
       ? `${named(playerById.get(match?.team1_player1_id ?? ""))} & ${named(playerById.get(match?.team1_player2_id ?? ""))}`
@@ -223,7 +223,7 @@ export default function MatchPage() {
     e.preventDefault();
     if (!match) return;
     if (!canSubmit) {
-      setMessage("Only match participants can submit this result.");
+      setMessage("Only match participants or league officers can submit this result.");
       return;
     }
     if (isHamilton) {
@@ -274,7 +274,7 @@ export default function MatchPage() {
   const submitAlbery = async (e: FormEvent) => {
     e.preventDefault();
     if (!canSubmit) {
-      setMessage("Only match participants can submit this result.");
+      setMessage("Only match participants or league officers can submit this result.");
       return;
     }
     const vals = [leg1Home, leg1Away, leg2Home, leg2Away, leg3Home, leg3Away].map((v) => Number(v));
@@ -333,7 +333,7 @@ export default function MatchPage() {
       setSaving(false);
       setInfo({
         title: "Result Submitted",
-        description: "Your result has been sent to Super User for approval.",
+        description: "Your result has been sent to the League Secretary or Chairman for approval.",
       });
       setLatestSubmission({ id: "latest", status: "pending", created_at: new Date().toISOString(), rejection_reason: null });
     } catch {
@@ -346,7 +346,7 @@ export default function MatchPage() {
     <main className="min-h-screen bg-slate-100 p-6">
       <div className="mx-auto max-w-4xl space-y-4">
         <RequireAuth>
-          <ScreenHeader title="Match Result Entry" eyebrow="Competition Match" subtitle="Submit result for Super User approval." />
+          <ScreenHeader title="Match Result Entry" eyebrow="Competition Match" subtitle="Submit the result for league-officer approval." />
           <MessageModal message={message} onClose={() => setMessage(null)} />
           <InfoModal open={Boolean(info)} title={info?.title ?? ""} description={info?.description ?? ""} onClose={() => setInfo(null)} />
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

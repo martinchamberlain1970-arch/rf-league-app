@@ -854,7 +854,7 @@ export default function CompetitionPage() {
                 ) : null}
                 {isSuperManager ? (
                   <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-sm font-semibold text-slate-900">Final scheduling (Super User)</p>
+                    <p className="text-sm font-semibold text-slate-900">Final scheduling (League Officers)</p>
                     <p className="text-xs text-slate-600">Set final date and neutral venue after semi-finals are complete.</p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <input
@@ -947,7 +947,7 @@ export default function CompetitionPage() {
                 )}
                 {isSuperManager ? (
                   <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-sm font-semibold text-slate-900">Add Offline Entry (Super User)</p>
+                    <p className="text-sm font-semibold text-slate-900">Add Offline Entry (League Officers)</p>
                     <p className="text-xs text-slate-600">
                       Use this for WhatsApp, email, or paper entries from players not registered online.
                     </p>

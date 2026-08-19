@@ -308,7 +308,7 @@ export default function CaptainResultsPage() {
   const [scorecardDirty, setScorecardDirty] = useState(false);
   const [remoteScorecardChanged, setRemoteScorecardChanged] = useState(false);
 
-  const canSubmit = !admin.isSuper;
+  const canSubmit = !admin.canManageLeague;
   const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t])), [teams]);
   const playerById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
 
@@ -1714,7 +1714,7 @@ export default function CaptainResultsPage() {
       return;
     }
     if (!canSubmit) {
-      setMessage("Super User does not submit from this page.");
+      setMessage("League officers manage results from League Manager rather than the captain submission screen.");
       return;
     }
     if (!captainTeamIds.has(selectedFixture.home_team_id) && !captainTeamIds.has(selectedFixture.away_team_id)) {
@@ -1806,9 +1806,9 @@ export default function CaptainResultsPage() {
     }
 
     if (proxyEntryEnabled) {
-      setInfo({ title: "Proxy Result Submitted", description: "Your agreed proxy entry has been submitted for Super User approval with both teams entered from the app." });
+      setInfo({ title: "Proxy Result Submitted", description: "Your agreed proxy entry has been submitted for league-officer approval with both teams entered from the app." });
     } else {
-      setInfo({ title: "Result Submitted", description: "Your result has been submitted for Super User approval." });
+      setInfo({ title: "Result Submitted", description: "Your result has been submitted for league-officer approval." });
     }
     if (typeof window !== "undefined") {
       window.localStorage.removeItem(`rf_league_captain_draft_${selectedFixture.id}`);
@@ -1985,7 +1985,7 @@ export default function CaptainResultsPage() {
     <main className={`min-h-screen bg-slate-100 px-4 pt-4 sm:p-6 ${activeEntryTab === "lineup" && selectedFixture ? "pb-36" : "pb-8"}`}>
       <div className="mx-auto max-w-6xl space-y-4">
         <RequireAuth>
-          <ScreenHeader title="Captain Lineups & Results" eyebrow="League" subtitle="Enter pre-match lineups first, then submit your team result for Super User approval." />
+          <ScreenHeader title="Captain Lineups & Results" eyebrow="League" subtitle="Enter pre-match lineups first, then submit your team result for league-officer approval." />
           {loading ? <section className={`${sectionCardClass} text-slate-600`}>Loading...</section> : null}
 
           {!linkedPlayerId && !loading ? (
@@ -2080,7 +2080,7 @@ export default function CaptainResultsPage() {
                     </div>
                   ) : selectedFixtureSide === "away" ? (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-                      <strong>Away team fallback:</strong> the home team is expected to submit this result. Only submit it yourself if the home team cannot do so or the Super User has asked you to step in.
+                      <strong>Away team fallback:</strong> the home team is expected to submit this result. Only submit it yourself if the home team cannot do so or a league officer has asked you to step in.
                     </div>
                   ) : null}
                   <div className="grid gap-3 lg:grid-cols-4">
@@ -2121,7 +2121,7 @@ export default function CaptainResultsPage() {
                       </p>
                       <p className="mt-1 text-sm text-slate-700">
                         {pendingByFixture.has(selectedFixture.id)
-                          ? "Read-only until Super User review is completed."
+                          ? "Read-only until league-officer review is completed."
                           : "Save progress after each frame and only submit once all frame scores are complete."}
                       </p>
                     </div>
@@ -2404,7 +2404,7 @@ export default function CaptainResultsPage() {
                   ) : null}
                   {activeEntryTab === "scorecard" && pendingByFixture.has(selectedFixture.id) ? (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                      This fixture has been submitted and is pending Super User review. Your submitted details are shown below in read-only mode.
+                      This fixture has been submitted and is pending league-officer review. Your submitted details are shown below in read-only mode.
                     </div>
                   ) : null}
                   {activeEntryTab === "scorecard" ? (
@@ -2952,7 +2952,7 @@ export default function CaptainResultsPage() {
                       {!homeSideCanManageScorecard ? (
                         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                           {pendingByFixture.has(selectedFixture.id)
-                            ? "This scorecard is read-only while the submitted result is pending Super User review."
+                            ? "This scorecard is read-only while the submitted result is pending league-officer review."
                             : selectedFixtureSide === "away"
                               ? "Away captain view: the home team is responsible for entering and submitting the scorecard."
                               : "This scorecard is read-only."}
@@ -3170,8 +3170,8 @@ export default function CaptainResultsPage() {
             title={submitPromptMode === "final_frame" ? "Final frame saved" : "Match card ready to submit"}
             description={
               submitPromptMode === "final_frame"
-                ? "The final frame has been saved. You now need to either submit this match for Super User approval, or go back and amend the final frame score."
-                : "All frame scores and recorded breaks have been saved. Do you want to submit this scorecard now for Super User approval?"
+                ? "The final frame has been saved. You now need to either submit this match for league-officer approval, or go back and amend the final frame score."
+                : "All frame scores and recorded breaks have been saved. Do you want to submit this scorecard now for league-officer approval?"
             }
             confirmLabel="Submit now"
             cancelLabel={submitPromptMode === "final_frame" ? "Amend final frame" : "Review first"}

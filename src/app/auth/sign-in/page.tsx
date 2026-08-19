@@ -152,7 +152,7 @@ export default function SignInPage() {
         const validLocationId = requestedLocation?.id ?? null;
         if (!validLocationId) {
           setMessage(
-            "Your account was created, but no club was saved with the signup request. Please contact the League Secretary or Super User so your club can be assigned before your profile is linked."
+            "Your account was created, but no club was saved with the signup request. Please contact the League Secretary or Chairman so your club can be assigned before your profile is linked."
           );
           window.localStorage.removeItem("pending_claim");
           router.replace(nextPath);
@@ -271,7 +271,7 @@ export default function SignInPage() {
             Access fixtures, league tables, live matches, notifications, and match-night tools from one account.
           </p>
           <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-            New player profile links are reviewed separately by the League Secretary or Super User after account creation.
+            New player profile links are reviewed separately by the League Secretary or Chairman after account creation.
           </div>
           <div className="mt-5 grid gap-2 text-sm text-slate-600">
             <Link href="/display/live-matches" className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-800 hover:bg-white">

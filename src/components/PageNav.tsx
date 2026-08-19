@@ -59,8 +59,13 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
     router.push("/notifications");
   };
 
-  const superManagementRoutes = ["/players", "/signup-requests", "/backup", "/audit", "/usage", "/locations", "/results"];
-  const isSuperManagementPage = Boolean(admin.isSuper && pathname && superManagementRoutes.includes(pathname));
+  const leagueManagementRoutes = ["/players", "/signup-requests", "/locations", "/results", "/rating-audit"];
+  const ownerManagementRoutes = ["/backup", "/audit", "/usage"];
+  const isManagementPage = Boolean(
+    pathname &&
+      ((admin.canManageLeague && leagueManagementRoutes.includes(pathname)) ||
+        (admin.isSuper && ownerManagementRoutes.includes(pathname)))
+  );
 
   const showBack = true;
 
@@ -138,9 +143,17 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
             updateRows = (data?.requests ?? []) as Array<{ id: string }>;
           }
         }
+        const { data: claimRows } = admin.canManageLeague
+          ? await applyCreatedFilter(client.from("player_claim_requests").select("id").eq("status", "pending"))
+          : { data: [] as Array<{ id: string }> };
+        const { data: locationRows } = admin.canManageLeague
+          ? await applyCreatedFilter(client.from("location_requests").select("id").eq("status", "pending"))
+          : { data: [] as Array<{ id: string }> };
         const ids = [
           ...(resultRows ?? []).map((r: { id: string }) => `result:${r.id}`),
           ...updateRows.map((r: { id: string }) => `update:${r.id}`),
+          ...(claimRows ?? []).map((r: { id: string }) => `claim:${r.id}`),
+          ...(locationRows ?? []).map((r: { id: string }) => `location:${r.id}`),
         ];
         setPendingCount(ids.filter((id) => !dismissed.has(id)).length);
       } else {
@@ -177,11 +190,11 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
       }
     };
     load();
-  }, [admin.loading, admin.isAdmin, admin.isSuper, admin.userId, storageKey, dismissedKey]);
+  }, [admin.loading, admin.isAdmin, admin.isSuper, admin.canManageLeague, admin.userId, storageKey, dismissedKey]);
 
   return (
     <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-      {isSuperManagementPage ? (
+      {isManagementPage ? (
         <>
           <button
             type="button"
@@ -197,13 +210,15 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
           >
             Results
           </button>
-          <button
-            type="button"
-            onClick={() => router.push("/audit")}
-            className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-          >
-            Audit
-          </button>
+          {admin.isSuper ? (
+            <button
+              type="button"
+              onClick={() => router.push("/audit")}
+              className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+            >
+              Audit
+            </button>
+          ) : null}
         </>
       ) : null}
       <button

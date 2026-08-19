@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { logServerAudit } from "@/lib/server-audit";
+import { canManageLeagueRole } from "@/lib/app-roles";
+import { resolveServerRole } from "@/lib/server-role";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
 
 type SubmissionBreakEntry = {
   slot_no?: number | null;
@@ -45,8 +46,10 @@ export async function POST(req: NextRequest) {
 
   const userId = authData.user.id;
   const userEmail = authData.user.email?.trim().toLowerCase() ?? "";
-  if (superAdminEmail && userEmail === superAdminEmail) {
-    return NextResponse.json({ error: "Super User should submit via League Manager." }, { status: 400 });
+  const adminClient = createClient(supabaseUrl, serviceRoleKey);
+  const appRole = await resolveServerRole(adminClient, authData.user);
+  if (canManageLeagueRole(appRole)) {
+    return NextResponse.json({ error: "League officers should manage results via League Manager." }, { status: 400 });
   }
 
   const body = await req.json();
@@ -57,7 +60,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const adminClient = createClient(supabaseUrl, serviceRoleKey);
   const appUserRes = await adminClient.from("app_users").select("linked_player_id").eq("id", userId).maybeSingle();
   const linkedPlayerId = (appUserRes.data?.linked_player_id as string | null) ?? null;
   if (!linkedPlayerId) return NextResponse.json({ error: "Your account is not linked to a player profile." }, { status: 400 });

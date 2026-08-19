@@ -49,7 +49,7 @@ async function assertSuperUser(req: NextRequest) {
   const { data, error } = await authClient.auth.getUser(token);
   if (error || !data.user) return { error: "Unauthorized.", status: 401 as const };
   const email = data.user.email?.trim().toLowerCase() ?? "";
-  if (!superAdminEmail || email !== superAdminEmail) return { error: "Only Super User can export backups.", status: 403 as const };
+  if (!superAdminEmail || email !== superAdminEmail) return { error: "Only the System Owner can export backups.", status: 403 as const };
   return { userId: data.user.id, email };
 }
 

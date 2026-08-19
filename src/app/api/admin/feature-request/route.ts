@@ -60,7 +60,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Invalid feature." }, { status: 400 });
     }
     if (auth.isSuper) {
-      return NextResponse.json({ error: "Super User does not need to request access." }, { status: 400 });
+      return NextResponse.json({ error: "The System Owner does not need to request access." }, { status: 400 });
     }
 
     const appUser = await adminClient.from("app_users").select("id,role").eq("id", auth.userId).maybeSingle();
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === "review") {
-    if (!auth.isSuper) return NextResponse.json({ error: "Only Super User can review requests." }, { status: 403 });
+    if (!auth.isSuper) return NextResponse.json({ error: "Only the System Owner can review requests." }, { status: 403 });
     const requestId = String(body?.requestId ?? "").trim();
     const approve = Boolean(body?.approve);
     if (!requestId) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
@@ -134,4 +134,3 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({ error: "Invalid action." }, { status: 400 });
 }
-

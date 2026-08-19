@@ -47,7 +47,7 @@ export default function SignupRequestsPage() {
   const [infoModal, setInfoModal] = useState<{ title: string; body: string } | null>(null);
 
   const superAdminEmail = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
-  const isSuperAdmin = Boolean(superAdminEmail && admin.email && admin.email.toLowerCase() === superAdminEmail);
+  const canManageRequests = admin.canManageLeague;
 
   const load = async () => {
     const client = supabase;
@@ -94,30 +94,25 @@ export default function SignupRequestsPage() {
   const onReviewClaim = async (claim: ClaimRequest, approve: boolean) => {
     const client = supabase;
     if (!client) return;
-    if (!isSuperAdmin || !admin.userId) {
-      setMessage("Only the super user can review signup claims.");
+    if (!canManageRequests || !admin.userId) {
+      setMessage("League Secretary or Chairman access is required to review signup claims.");
       return;
     }
-    const update = await client
-      .from("player_claim_requests")
-      .update({
-        status: approve ? "approved" : "rejected",
-        reviewed_by_user_id: admin.userId,
-        reviewed_at: new Date().toISOString(),
-      })
-      .eq("id", claim.id)
-      .eq("status", "pending");
-    if (update.error) {
-      setMessage(update.error.message);
+    const { data: sessionRes } = await client.auth.getSession();
+    const token = sessionRes.session?.access_token;
+    if (!token) {
+      setMessage("You must be signed in.");
       return;
     }
-    if (approve) {
-      const p = players.find((x) => x.id === claim.player_id);
-      await client
-        .from("players")
-        .update({ claimed_by: claim.requester_user_id, full_name: claim.requested_full_name || p?.full_name })
-        .eq("id", claim.player_id);
-      await client.from("app_users").update({ linked_player_id: claim.player_id }).eq("id", claim.requester_user_id);
+    const response = await fetch("/api/player-claim-requests", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ requestId: claim.id, action: approve ? "approve" : "reject" }),
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      setMessage(result?.error ?? "Failed to review signup claim.");
+      return;
     }
     setInfoModal({
       title: approve ? "Claim approved" : "Claim rejected",
@@ -207,11 +202,11 @@ export default function SignupRequestsPage() {
     <main className="min-h-screen bg-slate-100 p-6">
       <div className="mx-auto max-w-5xl space-y-4">
         <RequireAuth>
-          <ScreenHeader title="Signup Requests" eyebrow="Super User" subtitle="Review new-user profile links and location requests." />
-          {!admin.loading && !isSuperAdmin ? (
-            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">Only the Super User can access this page.</section>
+          <ScreenHeader title="Signup Requests" eyebrow="League Administration" subtitle="Review new-user profile links and location requests." />
+          {!admin.loading && !canManageRequests ? (
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">League Secretary or Chairman access is required.</section>
           ) : null}
-          {!admin.loading && isSuperAdmin ? (
+          {!admin.loading && canManageRequests ? (
             <>
               <MessageModal message={message} onClose={() => setMessage(null)} />
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

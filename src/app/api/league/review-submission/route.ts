@@ -284,8 +284,8 @@ export async function POST(req: NextRequest) {
     entityId: submission.fixture_id,
     summary:
       decision === "approved"
-        ? "Fixture submission approved by Super User."
-        : `Fixture submission rejected by Super User${rejectionReason ? `: ${rejectionReason}` : "."}`,
+        ? "Fixture submission approved by a league officer."
+        : `Fixture submission rejected by a league officer${rejectionReason ? `: ${rejectionReason}` : "."}`,
     meta: {
       fixture_id: submission.fixture_id,
       submission_id: submission.id,

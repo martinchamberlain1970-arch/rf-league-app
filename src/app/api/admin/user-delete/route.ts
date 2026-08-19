@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
 
   const requesterEmail = authData.user.email?.trim().toLowerCase() ?? "";
   if (!superAdminEmail || requesterEmail !== superAdminEmail) {
-    return NextResponse.json({ error: "Only Super User can delete users." }, { status: 403 });
+    return NextResponse.json({ error: "Only the System Owner can delete users." }, { status: 403 });
   }
 
   const body = await req.json().catch(() => ({}));
@@ -39,7 +39,7 @@ export async function POST(req: NextRequest) {
 
   const role = String(appUserRes.data.role ?? "").toLowerCase();
   if (role === "owner" || role === "super") {
-    return NextResponse.json({ error: "Cannot delete the Super User account." }, { status: 400 });
+    return NextResponse.json({ error: "Cannot delete the System Owner account." }, { status: 400 });
   }
 
   // Ensure profile claim is cleared if this user is linked to a player.
