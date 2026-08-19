@@ -1126,7 +1126,10 @@ export default function PlayersPage() {
       setMessage(data?.error ?? "Failed to update role.");
       return;
     }
-    setMessage(`Role updated to ${role}.`);
+    const targetUser = appUsers.find((user) => user.id === targetUserId);
+    const linkedPlayer = targetUser?.linked_player_id ? players.find((player) => player.id === targetUser.linked_player_id) : null;
+    const personName = linkedPlayer?.full_name?.trim() || linkedPlayer?.display_name || targetUser?.email || "This user";
+    setMessage(`${personName} is now ${appRoleLabel(role)}.`);
     await loadUsers();
   };
 

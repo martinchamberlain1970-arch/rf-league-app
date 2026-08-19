@@ -454,8 +454,10 @@ const isHamiltonCompetitionName = (name: string) =>
 const isAlberyCompetitionName = (name: string) =>
   name === "Albery Cup (Billiards 3-Man Team)" || name.startsWith("Albery Cup (Billiards 3-Man Team) - ");
 type LeagueTemplateKey = keyof typeof LEAGUE_TEMPLATES;
-const seasonDisplayLabel = (season: Pick<Season, "name" | "handicap_enabled">) =>
-  `${season.name}${season.handicap_enabled ? " (Handicap)" : " (Non-handicap)"}`;
+const seasonDisplayLabel = (
+  season: Pick<Season, "name" | "handicap_enabled"> & Partial<Pick<Season, "is_active">>
+) =>
+  `${season.name}${season.handicap_enabled ? " (Handicap)" : " (Non-handicap)"}${season.is_active === false ? " — Completed" : ""}`;
 const extractSeasonYearLabel = (name: string) => {
   const m = name.match(/(20\d{2}(?:\/20\d{2})?)/);
   return m ? m[1] : name.trim();
@@ -618,6 +620,7 @@ export default function LeaguePage() {
   const [scorecardPhotoUrl, setScorecardPhotoUrl] = useState("");
   const [reviewReason, setReviewReason] = useState("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [confirmCompletionOpen, setConfirmCompletionOpen] = useState(false);
   const [genStartDate, setGenStartDate] = useState("");
   const [genFixtureCycles, setGenFixtureCycles] = useState<1 | 2 | 3>(3);
   const [genClearExisting, setGenClearExisting] = useState(true);
@@ -3769,6 +3772,28 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     await loadAll();
   };
 
+  const setLeagueCompletion = async (completed: boolean) => {
+    const client = supabase;
+    if (!client) return;
+    if (!canManage || !seasonId || !currentSeason) {
+      setMessage("League management access is required to change the league status.");
+      return;
+    }
+    const { error } = await client.from("league_seasons").update({ is_active: !completed }).eq("id", seasonId);
+    if (error) {
+      setMessage(error.message);
+      return;
+    }
+    setConfirmCompletionOpen(false);
+    await loadAll();
+    setInfoModal({
+      title: completed ? "League Completed" : "League Reopened",
+      description: completed
+        ? `“${currentSeason.name}” is now marked as completed. Its fixtures, results and tables remain available as league history.`
+        : `“${currentSeason.name}” is open again for league activity and result submissions.`,
+    });
+  };
+
   const updateCompetitionSignupSettings = async (
     competitionId: string,
     patch: Partial<Pick<LeagueCompetition, "signup_open" | "signup_deadline" | "final_scheduled_at" | "final_venue_location_id">>
@@ -5004,6 +5029,18 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
             onConfirm={() => void confirmDeleteSeason()}
             onCancel={() => setConfirmDeleteOpen(false)}
           />
+          <ConfirmModal
+            open={confirmCompletionOpen}
+            title={currentSeason?.is_active === false ? "Reopen League" : "Complete League"}
+            description={
+              currentSeason?.is_active === false
+                ? `Reopen “${currentSeason?.name ?? "selected league"}” for league activity and new result submissions?`
+                : `Mark “${currentSeason?.name ?? "selected league"}” as completed? Fixtures, results and tables will remain published as history, but captains will no longer be able to submit new results.`
+            }
+            confirmLabel={currentSeason?.is_active === false ? "Reopen League" : "Complete League"}
+            onConfirm={() => void setLeagueCompletion(currentSeason?.is_active !== false)}
+            onCancel={() => setConfirmCompletionOpen(false)}
+          />
           {loading ? <section className="rounded-2xl border border-slate-200 bg-white p-4 text-slate-600">Loading league data...</section> : null}
 
           {canViewLeague ? (
@@ -5226,8 +5263,17 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                     <div>
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">League Snapshot</p>
                       <h2 className="mt-1 text-xl font-black text-slate-950">{seasonDisplayLabel(currentSeason ?? { name: "League", handicap_enabled: false })}</h2>
-                      <p className="mt-1 text-sm text-slate-600">Use this as the operating summary for setup progress, fixture completion, and review workload.</p>
+                      <p className="mt-1 text-sm text-slate-600">
+                        {currentSeason?.is_active === false
+                          ? "This league has finished. Its fixtures, results and tables are retained as league history."
+                          : "Use this as the operating summary for setup progress, fixture completion, and review workload."}
+                      </p>
                     </div>
+                    {currentSeason?.is_active === false ? (
+                      <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-800">
+                        League completed
+                      </span>
+                    ) : null}
                     <div
                       className={`rounded-full px-3 py-1 text-xs font-semibold ${
                         seasonSummary.pendingApprovals > 0 ? "border border-amber-300 bg-amber-100 text-amber-900" : "border border-emerald-300 bg-emerald-100 text-emerald-900"
@@ -5317,8 +5363,12 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                       </p>
                     </div>
                     {currentSeason?.is_published ? (
-                      <span className="rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-900">
-                        League published
+                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${
+                        currentSeason.is_active === false
+                          ? "border-slate-300 bg-slate-100 text-slate-800"
+                          : "border-emerald-300 bg-emerald-100 text-emerald-900"
+                      }`}>
+                        {currentSeason.is_active === false ? "League completed" : "League published"}
                       </span>
                     ) : nextGuidedStep ? (
                       <button
@@ -5434,6 +5484,20 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                   >
                     {currentSeason?.is_published ? "League published" : "Publish selected league"}
                   </button>
+                  {currentSeason?.is_published ? (
+                    <button
+                      type="button"
+                      onClick={() => setConfirmCompletionOpen(true)}
+                      disabled={!seasonId}
+                      className={`ml-2 rounded-xl border bg-white px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
+                        currentSeason.is_active === false
+                          ? "border-teal-300 text-teal-800"
+                          : "border-slate-400 text-slate-800"
+                      }`}
+                    >
+                      {currentSeason.is_active === false ? "Reopen selected league" : "Complete selected league"}
+                    </button>
+                  ) : null}
                 </div>
                 {!currentSeason?.is_published && publishBlockers.length > 0 ? (
                   <p className="mt-2 text-xs text-slate-600">
@@ -5478,10 +5542,14 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                             </span>
                             <span
                               className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                                league.is_published ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
+                                league.is_active === false
+                                  ? "bg-slate-200 text-slate-800"
+                                  : league.is_published
+                                  ? "bg-emerald-100 text-emerald-800"
+                                  : "bg-amber-100 text-amber-800"
                               }`}
                             >
-                              {league.is_published ? "Published" : "Draft"}
+                              {league.is_active === false ? "Completed" : league.is_published ? "Published" : "Draft"}
                             </span>
                           </span>
                         </button>

@@ -12,6 +12,7 @@ function deriveTitle(message: string) {
   if (/\bquick match|player 1|player 2|doubles team|best of\b/.test(text)) return "Match Validation";
   if (/\bclaim|profile|guardian|minor|adult|location\b/.test(text)) return "Profile Update";
   if (/\bsubmission|approve|reject|result\b/.test(text)) return "Submission Review";
+  if (/\bis now (league secretary|league chairman|administrator|user)\b/.test(text)) return "Role Updated";
   if (/\badmin|super user|role\b/.test(text)) return "Access Control";
 
   const successPrefixes = [

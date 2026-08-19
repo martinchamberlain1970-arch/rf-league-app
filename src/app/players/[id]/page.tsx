@@ -77,7 +77,13 @@ type LeagueFixtureLite = {
 };
 type LeagueTeamLite = { id: string; name: string };
 type LeagueTeamMemberLite = { season_id: string; team_id: string; player_id: string };
-type LeagueSeasonLite = { id: string; is_published?: boolean | null };
+type LeagueSeasonLite = {
+  id: string;
+  name: string;
+  is_active?: boolean | null;
+  is_published?: boolean | null;
+  created_at?: string | null;
+};
 type LeagueFrameLite = {
   fixture_id: string;
   slot_no: number;
@@ -125,6 +131,7 @@ type RecentHistoryItem = {
   label: string;
   result: "W" | "L";
   sublabel: string;
+  seasonId?: string | null;
 };
 
 const LIVE_ACTIVITY_WINDOW_MS = 180 * 24 * 60 * 60 * 1000;
@@ -220,8 +227,11 @@ export default function PlayerProfilePage() {
   const [pendingDeleteRequest, setPendingDeleteRequest] = useState<{ id: string; created_at: string; delete_all_data?: boolean | null } | null>(null);
   const [showPerformance, setShowPerformance] = useState(true);
   const [showHandicap, setShowHandicap] = useState(true);
-  const [showOpponents, setShowOpponents] = useState(true);
-  const [showHistory, setShowHistory] = useState(true);
+  const [showOpponents, setShowOpponents] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
+  const [activeProfileView, setActiveProfileView] = useState<"overview" | "ratings" | "history" | "settings">("overview");
+  const [ratingSeasonFilter, setRatingSeasonFilter] = useState("current");
+  const [historySeasonFilter, setHistorySeasonFilter] = useState("current");
   const [savingContact, setSavingContact] = useState(false);
   const [savingNationalityRequest, setSavingNationalityRequest] = useState(false);
   const [countryFieldsAvailable, setCountryFieldsAvailable] = useState(false);
@@ -274,7 +284,7 @@ export default function PlayerProfilePage() {
         client.from("league_fixtures").select("id,season_id,fixture_date,week_no,home_team_id,away_team_id,home_points,away_points,status"),
         client.from("league_teams").select("id,name"),
         client.from("league_team_members").select("season_id,team_id,player_id"),
-        client.from("league_seasons").select("id,is_published"),
+        client.from("league_seasons").select("id,name,is_active,is_published,created_at").order("created_at", { ascending: false }),
         client
           .from("league_fixture_frames")
           .select("fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,winner_side,home_forfeit,away_forfeit,home_points_scored,away_points_scored"),
@@ -372,7 +382,7 @@ export default function PlayerProfilePage() {
         .select("id,player_id,fixture_id,season_id,change_type,delta,previous_handicap,new_handicap,reason,created_at")
         .eq("player_id", id)
         .order("created_at", { ascending: false })
-        .limit(100);
+        .limit(500);
       if (!handicapRes.error) {
         setHandicapHistory((handicapRes.data ?? []) as HandicapHistoryEntry[]);
       } else if (!handicapRes.error.message.toLowerCase().includes("league_handicap_history")) {
@@ -383,7 +393,7 @@ export default function PlayerProfilePage() {
         .select("id,player_id,opponent_player_id,source_app,source_result_id,event_type,rating_before,rating_after,rating_delta,notes,created_at")
         .eq("player_id", id)
         .order("created_at", { ascending: false })
-        .limit(150);
+        .limit(1000);
       if (!ratingRes.error) {
         setRatingHistory((ratingRes.data ?? []) as RatingHistoryEntry[]);
       } else if (!ratingRes.error.message.toLowerCase().includes("rating_events")) {
@@ -1159,6 +1169,10 @@ export default function PlayerProfilePage() {
   };
   const leagueFixtureById = useMemo(() => new Map(leagueFixtures.map((f) => [f.id, f])), [leagueFixtures]);
   const leagueTeamById = useMemo(() => new Map(leagueTeams.map((t) => [t.id, t.name])), [leagueTeams]);
+  const currentLeagueSeason = useMemo(
+    () => leagueSeasons.find((season) => season.is_active) ?? leagueSeasons[0] ?? null,
+    [leagueSeasons]
+  );
   const playerNameById = useMemo(
     () => new Map(players.map((entry) => [entry.id, displayPlayerName(entry)])),
     [players]
@@ -1181,6 +1195,7 @@ export default function PlayerProfilePage() {
               : "-";
         return {
           ...entry,
+          seasonId: fixture?.season_id ?? null,
           opponentName,
           fixtureLabel,
           sublabel,
@@ -1189,8 +1204,31 @@ export default function PlayerProfilePage() {
       }),
     [leagueFixtureById, leagueTeamById, playerNameById, ratingHistory]
   );
+  const ratingSeasonOptions = useMemo(() => {
+    const seasonIdsWithHistory = new Set(ratingTimeline.map((entry) => entry.seasonId).filter(Boolean));
+    return leagueSeasons.filter((season) => seasonIdsWithHistory.has(season.id));
+  }, [leagueSeasons, ratingTimeline]);
+  const displayedRatingTimeline = useMemo(() => {
+    if (ratingSeasonFilter === "career") return ratingTimeline;
+    const selectedSeasonId = ratingSeasonFilter === "current" ? currentLeagueSeason?.id : ratingSeasonFilter;
+    if (!selectedSeasonId) return ratingTimeline;
+    return ratingTimeline.filter((entry) => entry.seasonId === selectedSeasonId);
+  }, [currentLeagueSeason?.id, ratingSeasonFilter, ratingTimeline]);
+  const displayedHandicapHistory = useMemo(() => {
+    if (ratingSeasonFilter === "career") return handicapHistory;
+    const selectedSeasonId = ratingSeasonFilter === "current" ? currentLeagueSeason?.id : ratingSeasonFilter;
+    if (!selectedSeasonId) return handicapHistory;
+    return handicapHistory.filter((entry) => entry.season_id === selectedSeasonId);
+  }, [currentLeagueSeason?.id, handicapHistory, ratingSeasonFilter]);
+  const selectedRatingPeriodLabel = useMemo(() => {
+    if (ratingSeasonFilter === "career") return "Complete career archive";
+    const selectedSeason = ratingSeasonFilter === "current"
+      ? currentLeagueSeason
+      : leagueSeasons.find((season) => season.id === ratingSeasonFilter) ?? null;
+    return selectedSeason?.name ?? "Current season";
+  }, [currentLeagueSeason, leagueSeasons, ratingSeasonFilter]);
   const ratingTrendPoints = useMemo(() => {
-    const points = [...ratingTimeline]
+    const points = [...displayedRatingTimeline]
       .slice()
       .reverse()
       .map((entry, index) => ({
@@ -1200,7 +1238,7 @@ export default function PlayerProfilePage() {
         resultLabel: entry.resultLabel,
       }));
     return points;
-  }, [ratingTimeline]);
+  }, [displayedRatingTimeline]);
   const ratingTrendChart = useMemo(() => {
     if (ratingTrendPoints.length === 0) return null;
     const width = 520;
@@ -1310,6 +1348,31 @@ export default function PlayerProfilePage() {
     };
   }, [leagueRelevant, id]);
   const effectiveSummary = summary.played > 0 ? summary : leagueSummary;
+  const currentSeasonLeagueRelevant = useMemo(
+    () =>
+      currentLeagueSeason
+        ? leagueRelevant.filter((frame) => leagueFixtureById.get(frame.fixture_id)?.season_id === currentLeagueSeason.id)
+        : leagueRelevant,
+    [currentLeagueSeason, leagueFixtureById, leagueRelevant]
+  );
+  const currentSeasonSummary = useMemo(() => {
+    let won = 0;
+    for (const frame of currentSeasonLeagueRelevant) {
+      const inHome = frame.home_player1_id === id || frame.home_player2_id === id;
+      if ((inHome && frame.winner_side === "home") || (!inHome && frame.winner_side === "away")) won += 1;
+    }
+    const played = currentSeasonLeagueRelevant.length;
+    return {
+      played,
+      won,
+      lost: played - won,
+      framesFor: won,
+      framesAgainst: played - won,
+      snookerPlayed: played,
+      snookerWon: won,
+    };
+  }, [currentSeasonLeagueRelevant, id]);
+  const overviewSummary = currentLeagueSeason ? currentSeasonSummary : effectiveSummary;
 
   const formGuide = useMemo(() => {
     const chars: string[] = [];
@@ -1351,15 +1414,31 @@ export default function PlayerProfilePage() {
     return chars.length ? chars.join("") : "-";
   }, [leagueRelevant, leagueFixtureById, id]);
   const effectiveFormGuide = formGuide !== "-" ? formGuide : leagueFormGuide;
+  const currentSeasonFormGuide = useMemo(() => {
+    const chars = [...currentSeasonLeagueRelevant]
+      .sort((a, b) => {
+        const aDate = Date.parse(leagueFixtureById.get(a.fixture_id)?.fixture_date ?? "0");
+        const bDate = Date.parse(leagueFixtureById.get(b.fixture_id)?.fixture_date ?? "0");
+        return bDate - aDate;
+      })
+      .slice(0, 10)
+      .map((frame) => {
+        const inHome = frame.home_player1_id === id || frame.home_player2_id === id;
+        return (inHome && frame.winner_side === "home") || (!inHome && frame.winner_side === "away") ? "W" : "L";
+      });
+    return chars.length ? chars.join("") : "-";
+  }, [currentSeasonLeagueRelevant, id, leagueFixtureById]);
+  const overviewFormGuide = currentLeagueSeason ? currentSeasonFormGuide : effectiveFormGuide;
   const currentLeagueTeams = useMemo(() => {
     const names = new Set<string>();
     for (const member of leagueMembers) {
       if (member.player_id !== id) continue;
+      if (currentLeagueSeason && member.season_id !== currentLeagueSeason.id) continue;
       const teamName = leagueTeamById.get(member.team_id);
       if (teamName) names.add(teamName);
     }
     return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [leagueMembers, leagueTeamById, id]);
+  }, [currentLeagueSeason, leagueMembers, leagueTeamById, id]);
   const profileSummaryLine = useMemo(() => {
     const teamText = currentLeagueTeams.length ? currentLeagueTeams.join(", ") : "No active team linked yet";
     return `${locationName} · ${teamText}`;
@@ -1407,6 +1486,7 @@ export default function PlayerProfilePage() {
         fixtureId: string;
         date: string | null;
         label: string;
+        seasonId: string | null;
         wonFrames: number;
         lostFrames: number;
       }
@@ -1422,6 +1502,7 @@ export default function PlayerProfilePage() {
         fixtureId: s.fixture_id,
         date: fixture.fixture_date,
         label: `Week ${fixture.week_no ?? "?"} · ${homeTeam} vs ${awayTeam}`,
+        seasonId: fixture.season_id ?? null,
         wonFrames: 0,
         lostFrames: 0,
       };
@@ -1435,10 +1516,10 @@ export default function PlayerProfilePage() {
         fixtureId: r.fixtureId,
         date: r.date,
         label: r.label,
+        seasonId: r.seasonId,
         result: r.wonFrames >= r.lostFrames ? "W" as const : "L" as const,
       }))
-      .sort((a, b) => Date.parse(b.date ?? "0") - Date.parse(a.date ?? "0"))
-      .slice(0, 20);
+      .sort((a, b) => Date.parse(b.date ?? "0") - Date.parse(a.date ?? "0"));
   }, [leagueRelevant, leagueFixtureById, leagueTeamById, id]);
   const competitionHistory = useMemo<RecentHistoryItem[]>(() => {
     return relevant
@@ -1482,11 +1563,15 @@ export default function PlayerProfilePage() {
           sublabel: "League fixture",
         })),
         ...competitionHistory,
-      ]
-        .sort((a, b) => Date.parse(b.date ?? "0") - Date.parse(a.date ?? "0"))
-        .slice(0, 20),
+      ].sort((a, b) => Date.parse(b.date ?? "0") - Date.parse(a.date ?? "0")),
     [competitionHistory, leagueHistory]
   );
+  const displayedRecentHistory = useMemo(() => {
+    if (historySeasonFilter === "career") return recentHistory;
+    const selectedSeasonId = historySeasonFilter === "current" ? currentLeagueSeason?.id : historySeasonFilter;
+    if (!selectedSeasonId) return recentHistory;
+    return recentHistory.filter((entry) => entry.seasonId === selectedSeasonId);
+  }, [currentLeagueSeason?.id, historySeasonFilter, recentHistory]);
   const opponentFrameDetails = useMemo(() => {
     if (!opponentDetail) return [];
     return leagueRelevant
@@ -1725,7 +1810,32 @@ export default function PlayerProfilePage() {
                   </div>
                 </section>
               ) : null}
-              {player && rankingCard ? (
+              {player ? (
+                <nav className="sticky top-2 z-20 rounded-2xl border border-slate-200 bg-white/95 p-2 shadow-sm backdrop-blur" aria-label="Player profile sections">
+                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+                    {([
+                      ["overview", "Overview"],
+                      ["ratings", "Ratings & Handicap"],
+                      ["history", "Match History"],
+                      ["settings", "Profile Settings"],
+                    ] as const).map(([view, label]) => (
+                      <button
+                        key={view}
+                        type="button"
+                        onClick={() => setActiveProfileView(view)}
+                        className={`rounded-xl px-3 py-2 text-sm font-semibold transition ${
+                          activeProfileView === view
+                            ? "bg-slate-900 text-white shadow-sm"
+                            : "bg-slate-50 text-slate-700 hover:bg-slate-100"
+                        }`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </nav>
+              ) : null}
+              {activeProfileView === "overview" && player && rankingCard ? (
                 <section className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
                   <div className="rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-white p-4 shadow-sm">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-700">Current Elo</p>
@@ -1751,25 +1861,46 @@ export default function PlayerProfilePage() {
                   </div>
                   <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4 shadow-sm">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Frames Won %</p>
-                    <p className="mt-2 text-3xl font-black text-slate-950">{pct(effectiveSummary.won, effectiveSummary.played)}%</p>
-                    <p className="mt-1 text-sm font-medium text-slate-900">{effectiveSummary.won} wins from {effectiveSummary.played} recorded frames.</p>
-                    <p className="mt-2 text-xs text-slate-600">Recent form: {effectiveFormGuide}</p>
+                    <p className="mt-2 text-3xl font-black text-slate-950">{pct(overviewSummary.won, overviewSummary.played)}%</p>
+                    <p className="mt-1 text-sm font-medium text-slate-900">{overviewSummary.won} wins from {overviewSummary.played} recorded frames.</p>
+                    <p className="mt-2 text-xs text-slate-600">Current season form: {overviewFormGuide}</p>
                   </div>
                 </section>
               ) : null}
-              {rankingCard ? (
+              {activeProfileView === "ratings" && rankingCard ? (
                 <section className="rounded-[2rem] border border-slate-200 bg-gradient-to-br from-white via-cyan-50/40 to-white p-5 shadow-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h2 className="text-lg font-semibold text-slate-900">Ranking Card</h2>
-                    <button
-                      type="button"
-                      onClick={() => window.open(`/display/ranking/${id}`, "_blank", "noopener,noreferrer,width=900,height=600")}
-                      className="rounded-full border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-slate-50"
-                    >
-                      Pop-out Card
-                    </button>
+                    <div>
+                      <h2 className="text-lg font-semibold text-slate-900">Ratings & Handicap</h2>
+                      <p className="mt-1 text-sm text-slate-600">The current season stays clean while every previous trend remains available in the archive.</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={ratingSeasonFilter}
+                        onChange={(event) => setRatingSeasonFilter(event.target.value)}
+                        className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-800"
+                        aria-label="Rating history period"
+                      >
+                        <option value="current">Current season</option>
+                        {ratingSeasonOptions
+                          .filter((season) => season.id !== currentLeagueSeason?.id)
+                          .map((season) => (
+                            <option key={season.id} value={season.id}>{season.name} (archive)</option>
+                          ))}
+                        <option value="career">Complete career archive</option>
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => window.open(`/display/ranking/${id}`, "_blank", "noopener,noreferrer,width=900,height=600")}
+                        className="rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50"
+                      >
+                        Pop-out Card
+                      </button>
+                    </div>
                   </div>
-                  <p className="mt-1 text-sm text-slate-600">Current ratings and rank positions across all active players.</p>
+                  <div className="mt-3 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-sm text-indigo-950">
+                    Viewing: <span className="font-semibold">{selectedRatingPeriodLabel}</span>. Resetting the live Elo or handicap does not delete these recorded movements.
+                  </div>
                   <div className="mt-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-700">
                     <p className="font-semibold text-slate-900">How ranking is calculated</p>
                     <p className="mt-1">
@@ -1863,6 +1994,7 @@ export default function PlayerProfilePage() {
                   </div>
                 </section>
               ) : null}
+              {activeProfileView === "overview" ? (
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <button
                   type="button"
@@ -1877,29 +2009,31 @@ export default function PlayerProfilePage() {
                     <div className="mt-3 grid gap-2 sm:grid-cols-5">
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                         <p className="text-xs text-slate-500">Frames Played</p>
-                        <p className="text-xl font-semibold text-slate-900">{effectiveSummary.played}</p>
+                        <p className="text-xl font-semibold text-slate-900">{overviewSummary.played}</p>
                       </div>
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                         <p className="text-xs text-slate-500">Win %</p>
-                        <p className="text-xl font-semibold text-slate-900">{pct(effectiveSummary.won, effectiveSummary.played)}%</p>
+                        <p className="text-xl font-semibold text-slate-900">{pct(overviewSummary.won, overviewSummary.played)}%</p>
                       </div>
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                         <p className="text-xs text-slate-500">Frames For</p>
-                        <p className="text-xl font-semibold text-slate-900">{effectiveSummary.framesFor}</p>
+                        <p className="text-xl font-semibold text-slate-900">{overviewSummary.framesFor}</p>
                       </div>
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                         <p className="text-xs text-slate-500">Frames Against</p>
-                        <p className="text-xl font-semibold text-slate-900">{effectiveSummary.framesAgainst}</p>
+                        <p className="text-xl font-semibold text-slate-900">{overviewSummary.framesAgainst}</p>
                       </div>
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                         <p className="text-xs text-slate-500">Snooker Match Wins</p>
-                        <p className="text-xl font-semibold text-slate-900">{effectiveSummary.snookerWon}/{effectiveSummary.snookerPlayed}</p>
+                        <p className="text-xl font-semibold text-slate-900">{overviewSummary.snookerWon}/{overviewSummary.snookerPlayed}</p>
                       </div>
                     </div>
-                    <p className="mt-2 text-sm text-slate-700">Recent form (last 10): {effectiveFormGuide}</p>
+                    <p className="mt-2 text-sm text-slate-700">{currentLeagueSeason?.name ?? "Current season"} · Recent form (last 10): {overviewFormGuide}</p>
                   </>
                 ) : null}
               </section>
+              ) : null}
+              {activeProfileView === "ratings" ? (
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <button
                   type="button"
@@ -1966,7 +2100,7 @@ export default function PlayerProfilePage() {
                           <p className="mt-1 text-xs text-slate-600">Frame-by-frame Elo movements, with opponent and the rating shift recorded for each rated result.</p>
                         </div>
                       </div>
-                      {ratingTimeline.length === 0 ? (
+                      {displayedRatingTimeline.length === 0 ? (
                         <p className="mt-3 text-sm text-slate-600">No Elo changes recorded yet.</p>
                       ) : (
                         <div className="mt-3 max-h-64 overflow-auto rounded-xl border border-slate-200">
@@ -1977,7 +2111,7 @@ export default function PlayerProfilePage() {
                             <span className="col-span-2">Delta</span>
                             <span className="col-span-4">Fixture / Opponent</span>
                           </div>
-                          {ratingTimeline.map((entry) => (
+                          {displayedRatingTimeline.map((entry) => (
                             <div key={entry.id} className="grid grid-cols-12 border-b border-slate-100 px-3 py-2 text-xs text-slate-700 last:border-b-0">
                               <span className="col-span-2">{new Date(entry.created_at).toLocaleDateString()}</span>
                               <span className={`col-span-2 font-semibold ${entry.event_type === "result_win" ? "text-emerald-700" : entry.event_type === "result_loss" ? "text-rose-700" : "text-amber-700"}`}>
@@ -1996,7 +2130,7 @@ export default function PlayerProfilePage() {
                         </div>
                       )}
                     </div>
-                    {handicapHistory.length === 0 ? (
+                    {displayedHandicapHistory.length === 0 ? (
                       <p className="text-sm text-slate-600">No handicap changes recorded yet.</p>
                     ) : (
                       <div className="max-h-56 overflow-auto rounded-xl border border-slate-200">
@@ -2006,7 +2140,7 @@ export default function PlayerProfilePage() {
                           <span className="col-span-2">Handicap</span>
                           <span className="col-span-6">Fixture / Reason</span>
                         </div>
-                        {handicapHistory.map((h) => {
+                        {displayedHandicapHistory.map((h) => {
                           const fixture = h.fixture_id ? leagueFixtures.find((f) => f.id === h.fixture_id) : null;
                           const homeTeam = fixture ? leagueTeams.find((t) => t.id === fixture.home_team_id)?.name ?? "Home" : null;
                           const awayTeam = fixture ? leagueTeams.find((t) => t.id === fixture.away_team_id)?.name ?? "Away" : null;
@@ -2029,6 +2163,8 @@ export default function PlayerProfilePage() {
                   </div>
                 ) : null}
               </section>
+              ) : null}
+              {activeProfileView === "settings" ? (
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h2 className="text-lg font-semibold text-slate-900">Account & Profile Actions</h2>
                 <div className="mb-3 mt-2 flex items-center justify-between gap-3">
@@ -2371,7 +2507,33 @@ export default function PlayerProfilePage() {
                   </div>
                 ) : null}
               </section>
+              ) : null}
 
+              {activeProfileView === "history" ? (
+                <section className="rounded-2xl border border-indigo-200 bg-gradient-to-r from-indigo-50 to-white p-4 shadow-sm">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div>
+                      <h2 className="text-lg font-semibold text-slate-950">Match archive</h2>
+                      <p className="mt-1 text-sm text-slate-600">Older seasons stay stored without making the everyday profile longer.</p>
+                    </div>
+                    <select
+                      value={historySeasonFilter}
+                      onChange={(event) => setHistorySeasonFilter(event.target.value)}
+                      className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800"
+                      aria-label="Match history season"
+                    >
+                      <option value="current">Current season</option>
+                      {leagueSeasons
+                        .filter((season) => season.id !== currentLeagueSeason?.id)
+                        .map((season) => (
+                          <option key={season.id} value={season.id}>{season.name} (archive)</option>
+                        ))}
+                      <option value="career">Complete career archive</option>
+                    </select>
+                  </div>
+                </section>
+              ) : null}
+              {activeProfileView === "history" ? (
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <button
                   type="button"
@@ -2401,22 +2563,24 @@ export default function PlayerProfilePage() {
                   </>
                 ) : null}
               </section>
+              ) : null}
+              {activeProfileView === "history" ? (
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <button
                   type="button"
                   onClick={() => setShowHistory((v) => !v)}
                   className="flex w-full items-center justify-between text-left"
                 >
-                  <h2 className="text-xl font-semibold text-slate-900">Recent History</h2>
+                  <h2 className="text-xl font-semibold text-slate-900">Results Archive</h2>
                   <span className="text-sm text-slate-600">{showHistory ? "Hide" : "Show"}</span>
                 </button>
                 {showHistory ? (
                   <>
-                    {recentHistory.length === 0 ? (
+                    {displayedRecentHistory.length === 0 ? (
                       <p className="mt-2 text-slate-600">No completed history yet.</p>
                     ) : (
-                      <div className="mt-2 space-y-2">
-                        {recentHistory.map((h) => (
+                      <div className="mt-2 max-h-[36rem] space-y-2 overflow-auto pr-1">
+                        {displayedRecentHistory.map((h) => (
                           <button
                             key={h.key}
                             type="button"
@@ -2438,6 +2602,7 @@ export default function PlayerProfilePage() {
                   </>
                 ) : null}
               </section>
+              ) : null}
             </>
           ) : null}
         </RequireAuth>

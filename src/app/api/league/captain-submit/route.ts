@@ -91,12 +91,15 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "This fixture is already complete." }, { status: 400 });
   }
 
-  const seasonRes = await adminClient.from("league_seasons").select("id,is_published").eq("id", fixture.season_id).maybeSingle();
+  const seasonRes = await adminClient.from("league_seasons").select("id,is_published,is_active").eq("id", fixture.season_id).maybeSingle();
   if (seasonRes.error || !seasonRes.data) {
     return NextResponse.json({ error: "League season not found." }, { status: 404 });
   }
   if (!seasonRes.data.is_published) {
     return NextResponse.json({ error: "Only published league fixtures can be submitted." }, { status: 400 });
+  }
+  if (!seasonRes.data.is_active) {
+    return NextResponse.json({ error: "This league has been completed and is closed to new result submissions." }, { status: 400 });
   }
 
   if (!fixture.fixture_date) {
