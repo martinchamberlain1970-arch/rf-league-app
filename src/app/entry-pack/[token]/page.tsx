@@ -7,7 +7,7 @@ import type { LeagueEntryPackPayload, LeagueEntryPackPlayer } from "@/lib/league
 type Competition = { id: string; name: string; match_mode: string; sport_type: string; signup_deadline?: string | null };
 type PackResponse = {
   pack: LeagueEntryPackPayload & { status: "draft" | "submitted" | "approved" | "rejected"; submittedAt?: string | null; reviewNotes?: string | null; updatedAt?: string | null };
-  season: { id: string; name: string; is_completed?: boolean | null };
+  season: { id: string; name: string; is_active?: boolean | null };
   team: { id: string; name: string; location_id?: string | null; locationName: string };
   competitions: Competition[];
   error?: string;

@@ -25,7 +25,7 @@ type PackRow = {
   review_notes?: string | null;
   updated_at: string;
 };
-type Season = { id: string; name: string; is_published?: boolean | null; is_completed?: boolean | null };
+type Season = { id: string; name: string; is_published?: boolean | null; is_active?: boolean | null };
 type Team = { id: string; season_id: string; location_id?: string | null; name: string; is_active?: boolean | null };
 type Location = { id: string; name: string };
 type Competition = { id: string; name: string; match_mode: string };
@@ -68,7 +68,7 @@ export default function EntryPacksPage() {
       setTeams((result.teams ?? []) as Team[]);
       setLocations((result.locations ?? []) as Location[]);
       setCompetitions((result.competitions ?? []) as Competition[]);
-      const firstSeason = seasonId || result.seasons?.find((season: Season) => !season.is_completed)?.id || result.seasons?.[0]?.id || "";
+      const firstSeason = seasonId || result.seasons?.find((season: Season) => season.is_active !== false)?.id || result.seasons?.[0]?.id || "";
       setSeasonId(firstSeason);
       setMessage(null);
     } catch (error) {
@@ -160,7 +160,7 @@ export default function EntryPacksPage() {
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-bold text-slate-950">Generate a team link</h2>
               <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-                <select value={seasonId} onChange={(event) => setSeasonId(event.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">Select season</option>{seasons.map((season) => <option key={season.id} value={season.id}>{season.name}{season.is_completed ? " (completed)" : ""}</option>)}</select>
+                <select value={seasonId} onChange={(event) => setSeasonId(event.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">Select season</option>{seasons.map((season) => <option key={season.id} value={season.id}>{season.name}{season.is_active === false ? " (completed)" : ""}</option>)}</select>
                 <select value={teamId} onChange={(event) => setTeamId(event.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">Select team</option>{availableTeams.map((team) => <option key={team.id} value={team.id}>{team.name}{team.location_id ? ` · ${locationName.get(team.location_id) ?? "Club"}` : ""}</option>)}</select>
                 <button type="button" disabled={busyId === "create"} onClick={() => void generate()} className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{busyId === "create" ? "Generating…" : "Generate private link"}</button>
               </div>

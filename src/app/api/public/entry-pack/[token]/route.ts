@@ -35,7 +35,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ token:
   const pack = loaded.pack;
 
   const [seasonRes, teamRes, competitionsRes] = await Promise.all([
-    client.from("league_seasons").select("id,name,is_completed").eq("id", pack.season_id).maybeSingle(),
+    client.from("league_seasons").select("id,name,is_active").eq("id", pack.season_id).maybeSingle(),
     client.from("league_teams").select("id,name,location_id").eq("id", pack.team_id).maybeSingle(),
     client
       .from("competitions")

@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
         .from("league_entry_packs")
         .select("id,public_token,season_id,team_id,status,contact_name,contact_email,contact_phone,players,competition_notes,general_notes,submitted_at,reviewed_at,review_notes,created_at,updated_at")
         .order("updated_at", { ascending: false }),
-      adminClient.from("league_seasons").select("id,name,is_published,is_completed,created_at").order("created_at", { ascending: false }),
+      adminClient.from("league_seasons").select("id,name,is_published,is_active,created_at").order("created_at", { ascending: false }),
       adminClient.from("league_teams").select("id,season_id,location_id,name,is_active").order("name"),
       adminClient.from("locations").select("id,name").order("name"),
       adminClient.from("competitions").select("id,name,match_mode").eq("competition_format", "knockout").eq("is_archived", false).eq("is_completed", false).order("name"),
