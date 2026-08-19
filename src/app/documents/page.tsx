@@ -115,7 +115,7 @@ export default function DocumentsPage() {
   const uploadDocument = async (category: DocumentCategory) => {
     const client = supabase;
     if (!client || !admin.userId) return;
-    if (!admin.isSuper) {
+    if (!admin.canManageLeague) {
       setMessage("Only the Super User can upload league documents.");
       return;
     }
@@ -177,7 +177,7 @@ export default function DocumentsPage() {
   const deleteDocument = async (doc: LeagueDocument) => {
     const client = supabase;
     if (!client || !admin.userId) return;
-    if (!admin.isSuper) {
+    if (!admin.canManageLeague) {
       setMessage("Only the Super User can delete league documents.");
       return;
     }
@@ -238,7 +238,7 @@ export default function DocumentsPage() {
                     <p className="mt-1 text-sm text-slate-600">{category.description}</p>
                   </div>
 
-                  {admin.isSuper ? (
+                  {admin.canManageLeague ? (
                     <div className="mb-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
                       <p className="text-sm font-semibold text-slate-900">Upload new document</p>
                       <div className="mt-3 space-y-2">
@@ -308,7 +308,7 @@ export default function DocumentsPage() {
                             >
                               Download
                             </a>
-                            {admin.isSuper ? (
+                            {admin.canManageLeague ? (
                               <button
                                 type="button"
                                 onClick={() => void deleteDocument(doc)}

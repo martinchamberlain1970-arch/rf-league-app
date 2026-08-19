@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireLeagueManager } from "@/lib/server-role";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
 
 type CompetitionSubmissionPayload = {
   winnerSide?: "home" | "away";
@@ -22,10 +22,8 @@ export async function POST(req: NextRequest) {
   const authClient = createClient(supabaseUrl, supabaseAnonKey);
   const { data: authData, error: authError } = await authClient.auth.getUser(token);
   if (authError || !authData.user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-  const userEmail = authData.user.email?.trim().toLowerCase() ?? "";
-  if (!superAdminEmail || userEmail !== superAdminEmail) {
-    return NextResponse.json({ error: "Only Super User can review competition submissions." }, { status: 403 });
-  }
+  const adminClient = createClient(supabaseUrl, serviceRoleKey);
+  try { await requireLeagueManager(adminClient, authData.user); } catch { return NextResponse.json({ error: "League management access is required." }, { status: 403 }); }
 
   const body = await req.json().catch(() => ({}));
   const submissionId = typeof body?.submissionId === "string" ? body.submissionId : "";
@@ -33,7 +31,6 @@ export async function POST(req: NextRequest) {
   const rejectionReason = typeof body?.rejectionReason === "string" ? body.rejectionReason.trim() : "";
   if (!submissionId || !decision) return NextResponse.json({ error: "Invalid request." }, { status: 400 });
 
-  const adminClient = createClient(supabaseUrl, serviceRoleKey);
   const subRes = await adminClient
     .from("competition_result_submissions")
     .select("id,match_id,competition_id,status,payload")

@@ -472,7 +472,7 @@ export default function EventsPage() {
         }
       };
 
-      if (!admin.isSuper) {
+      if (!admin.canManageLeague) {
         // In league-user mode, Events is a team fixture summary (last/next/following).
         setLeagueMode(true);
         await loadLeagueSummary();
@@ -510,7 +510,7 @@ export default function EventsPage() {
     return () => {
       active = false;
     };
-  }, [admin.isSuper]);
+  }, [admin.canManageLeague]);
 
   const leagueFixtureLabel = (f: LeagueFixture | null) => {
     if (!f) return "No fixture";
@@ -1371,8 +1371,8 @@ export default function EventsPage() {
   const notifyCaptains = async (rows: LeagueReportInsert[], summary: string) => {
     const client = supabase;
     if (!client) return;
-    if (!admin.isSuper) {
-      setMessage("Only Super User can send captain notifications.");
+    if (!admin.canManageLeague) {
+      setMessage("League management access is required to send captain notifications.");
       return;
     }
     if (!rows.length) {
@@ -1890,7 +1890,7 @@ export default function EventsPage() {
                     >
                       Copy report
                     </button>
-                    {admin.isSuper ? (
+                    {admin.canManageLeague ? (
                       <button
                         type="button"
                         onClick={() => void sendMatchReportToCaptains()}
@@ -1976,7 +1976,7 @@ export default function EventsPage() {
                       >
                         Copy round-up
                       </button>
-                      {admin.isSuper ? (
+                      {admin.canManageLeague ? (
                         <button
                           type="button"
                           onClick={() => void sendWeeklyRoundupToCaptains()}

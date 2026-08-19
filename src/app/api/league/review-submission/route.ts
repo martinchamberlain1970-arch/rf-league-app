@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { rebuildLeagueFixtureSnookerRatings } from "@/lib/snooker-rating";
 import { logServerAudit } from "@/lib/server-audit";
+import { requireLeagueManager } from "@/lib/server-role";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
 
 type SubmissionBreakEntry = {
   slot_no?: number | null;
@@ -80,10 +80,9 @@ export async function POST(req: NextRequest) {
   if (authError || !authData.user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
 
   const userId = authData.user.id;
-  const userEmail = authData.user.email?.trim().toLowerCase() ?? "";
-  if (!superAdminEmail || userEmail !== superAdminEmail) {
-    return NextResponse.json({ error: "Only Super User can review submissions." }, { status: 403 });
-  }
+  const adminClient = createClient(supabaseUrl, serviceRoleKey);
+  let actorRole: string;
+  try { actorRole = await requireLeagueManager(adminClient, authData.user); } catch { return NextResponse.json({ error: "League management access is required." }, { status: 403 }); }
 
   const body = await req.json().catch(() => ({}));
   const submissionId = typeof body?.submissionId === "string" ? body.submissionId : "";
@@ -94,7 +93,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid request." }, { status: 400 });
   }
 
-  const adminClient = createClient(supabaseUrl, serviceRoleKey);
   const submissionRes = await adminClient
     .from("league_result_submissions")
     .select("id,fixture_id,status,frame_results")
@@ -279,8 +277,8 @@ export async function POST(req: NextRequest) {
 
   await logServerAudit(adminClient, {
     actorUserId: userId,
-    actorEmail: userEmail,
-    actorRole: "super_user",
+    actorEmail: authData.user.email ?? null,
+    actorRole,
     action: decision === "approved" ? "league_submission_approved" : "league_submission_rejected",
     entityType: "league_fixture",
     entityId: submission.fixture_id,

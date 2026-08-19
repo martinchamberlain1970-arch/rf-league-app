@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { rebuildLeagueFixtureSnookerRatings } from "@/lib/snooker-rating";
+import { requireLeagueManager } from "@/lib/server-role";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
 
 type FixtureRow = {
   id: string;
@@ -80,10 +80,8 @@ export async function POST(req: NextRequest) {
   const { data: authData, error: authError } = await authClient.auth.getUser(token);
   if (authError || !authData.user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
 
-  const userEmail = authData.user.email?.trim().toLowerCase() ?? "";
-  if (!superAdminEmail || userEmail !== superAdminEmail) {
-    return NextResponse.json({ error: "Only Super User can recompute direct fixture results." }, { status: 403 });
-  }
+  const adminClient = createClient(supabaseUrl, serviceRoleKey);
+  try { await requireLeagueManager(adminClient, authData.user); } catch { return NextResponse.json({ error: "League management access is required." }, { status: 403 }); }
 
   const body = await req.json().catch(() => ({}));
   const fixtureId = typeof body?.fixtureId === "string" ? body.fixtureId : "";
@@ -91,7 +89,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Fixture id is required." }, { status: 400 });
   }
 
-  const adminClient = createClient(supabaseUrl, serviceRoleKey);
   const fixtureRes = await adminClient
     .from("league_fixtures")
     .select("id,season_id,location_id,week_no,fixture_date,home_team_id,away_team_id,status,home_points,away_points")

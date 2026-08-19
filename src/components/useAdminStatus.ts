@@ -2,26 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
+import { canManageLeagueRole, isAdministratorRole, isSuperRole, normalizeAppRole, type AppRole } from "@/lib/app-roles";
 
-type AdminState = { loading: boolean; isAdmin: boolean; userId: string | null; email: string | null; isSuper: boolean };
-
-function parseRole(value?: string | null): boolean {
-  if (!value) return false;
-  return value.toLowerCase() === "admin" || value.toLowerCase() === "owner";
-}
-
-function parseSuperRole(value?: string | null): boolean {
-  if (!value) return false;
-  const role = value.toLowerCase();
-  return role === "owner" || role === "super";
-}
+type AdminState = { loading: boolean; isAdmin: boolean; userId: string | null; email: string | null; isSuper: boolean; canManageLeague: boolean; role: AppRole };
 
 export default function useAdminStatus(): AdminState {
-  const [state, setState] = useState<AdminState>({ loading: true, isAdmin: false, userId: null, email: null, isSuper: false });
+  const [state, setState] = useState<AdminState>({ loading: true, isAdmin: false, userId: null, email: null, isSuper: false, canManageLeague: false, role: "user" });
   useEffect(() => {
     const client = supabase;
     if (!client) {
-      setState({ loading: false, isAdmin: false, userId: null, email: null, isSuper: false });
+      setState({ loading: false, isAdmin: false, userId: null, email: null, isSuper: false, canManageLeague: false, role: "user" });
       return;
     }
     const ownerEmail = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? process.env.NEXT_PUBLIC_OWNER_EMAIL?.trim().toLowerCase() ?? "";
@@ -34,7 +24,7 @@ export default function useAdminStatus(): AdminState {
       } catch (error) {
         console.warn("Auth user check failed", error);
         if (active) {
-          setState({ loading: false, isAdmin: false, userId: null, email: null, isSuper: false });
+          setState({ loading: false, isAdmin: false, userId: null, email: null, isSuper: false, canManageLeague: false, role: "user" });
         }
         return;
       }
@@ -47,12 +37,15 @@ export default function useAdminStatus(): AdminState {
         const { data: appUser } = await client.from("app_users").select("role").eq("id", data.user.id).maybeSingle();
         appRole = (appUser?.role as string | null) ?? null;
       }
+      const role: AppRole = isOwner ? "owner" : normalizeAppRole(appRole ?? metadataRole);
       setState({
         loading: false,
-        isAdmin: isOwner || parseRole(metadataRole) || parseRole(appRole),
+        isAdmin: isAdministratorRole(role),
         userId: data.user?.id ?? null,
         email: data.user?.email ?? null,
-        isSuper: isOwner || parseSuperRole(metadataRole) || parseSuperRole(appRole),
+        isSuper: isSuperRole(role),
+        canManageLeague: canManageLeagueRole(role),
+        role,
       });
     };
     run();

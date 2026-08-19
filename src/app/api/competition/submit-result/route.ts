@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { canManageLeagueRole } from "@/lib/app-roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -89,7 +90,7 @@ export async function POST(req: NextRequest) {
   if (appUserRes.error) return NextResponse.json({ error: appUserRes.error.message }, { status: 400 });
   const linkedPlayerId = (appUserRes.data?.linked_player_id as string | null) ?? null;
   const role = String(appUserRes.data?.role ?? "").toLowerCase();
-  const isSuper = role === "owner" || role === "super";
+  const isSuper = canManageLeagueRole(role);
   const participants = new Set(
     [
       match.player1_id,

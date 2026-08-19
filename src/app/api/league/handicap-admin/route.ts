@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireLeagueManager } from "@/lib/server-role";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
 
 type Mode = "set_current" | "set_base_and_current" | "adjust_current";
 
@@ -21,10 +21,8 @@ export async function POST(req: NextRequest) {
   const user = authRes.data.user;
   if (authRes.error || !user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
 
-  const email = user.email?.trim().toLowerCase() ?? "";
-  if (!superAdminEmail || email !== superAdminEmail) {
-    return NextResponse.json({ error: "Only Super User can change handicaps." }, { status: 403 });
-  }
+  const adminClient = createClient(supabaseUrl, serviceRoleKey);
+  try { await requireLeagueManager(adminClient, user); } catch { return NextResponse.json({ error: "League management access is required." }, { status: 403 }); }
 
   const body = (await req.json().catch(() => ({}))) as {
     playerId?: string;
@@ -44,7 +42,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Handicap value must be between -200 and +200." }, { status: 400 });
   }
 
-  const adminClient = createClient(supabaseUrl, serviceRoleKey);
   const playerRes = await adminClient
     .from("players")
     .select("id,snooker_handicap,snooker_handicap_base,is_archived")

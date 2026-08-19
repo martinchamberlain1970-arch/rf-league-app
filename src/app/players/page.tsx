@@ -9,6 +9,7 @@ import useAdminStatus from "@/components/useAdminStatus";
 import ConfirmModal from "@/components/ConfirmModal";
 import InfoModal from "@/components/InfoModal";
 import MessageModal from "@/components/MessageModal";
+import { appRoleLabel, isSuperRole, normalizeAppRole, type AppRole } from "@/lib/app-roles";
 
 type Player = {
   id: string;
@@ -171,7 +172,7 @@ export default function PlayersPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [roleSearch, setRoleSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState<"all" | "super" | "admin" | "user">("all");
+  const [roleFilter, setRoleFilter] = useState<"all" | "super" | "league_secretary" | "league_chairman" | "admin" | "user">("all");
   const [profileLocationFilter, setProfileLocationFilter] = useState("all");
   const [profileLinkFilter, setProfileLinkFilter] = useState("all");
   const superAdminEmail = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
@@ -223,13 +224,15 @@ export default function PlayersPage() {
   const filteredRoleUsers = useMemo(() => {
     const q = roleSearch.trim().toLowerCase();
     return appUsers.filter((u) => {
-      const isSuper = Boolean(u.email && u.email.toLowerCase() === superAdminEmail);
+      const isSuper = Boolean(u.email && u.email.toLowerCase() === superAdminEmail) || isSuperRole(u.role);
       const role = (u.role ?? "user").toLowerCase();
       const rolePass =
         roleFilter === "all" ||
         (roleFilter === "super" && isSuper) ||
+        (roleFilter === "league_secretary" && role === "league_secretary") ||
+        (roleFilter === "league_chairman" && role === "league_chairman") ||
         (roleFilter === "admin" && !isSuper && role === "admin") ||
-        (roleFilter === "user" && !isSuper && role !== "admin");
+        (roleFilter === "user" && !isSuper && role === "user");
       if (!rolePass) return false;
       if (!q) return true;
       const linked = players.find((p) => p.id === u.linked_player_id);
@@ -1101,7 +1104,7 @@ export default function PlayersPage() {
     await loadUsers();
   };
 
-  const onSetRole = async (targetUserId: string, role: "admin" | "user") => {
+  const onSetRole = async (targetUserId: string, role: Exclude<AppRole, "owner" | "super">) => {
     const client = supabase;
     if (!client) return;
     const { data: sessionRes } = await client.auth.getSession();
@@ -1548,7 +1551,7 @@ export default function PlayersPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                   <p className="text-sm font-semibold text-slate-900">Role Management ({filteredRoleUsers.length} users)</p>
-                  <p className="text-sm text-slate-600">Roles and feature flags are locked in this league build.</p>
+                  <p className="text-sm text-slate-600">Only the Super User can assign League Secretary, League Chairman, Administrator or User access.</p>
                   </div>
                   <div className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700">
                     <span className="group-open:hidden">Expand</span>
@@ -1567,11 +1570,13 @@ export default function PlayersPage() {
                 />
                 <select
                   value={roleFilter}
-                  onChange={(e) => setRoleFilter(e.target.value as "all" | "super" | "admin" | "user")}
+                  onChange={(e) => setRoleFilter(e.target.value as typeof roleFilter)}
                   className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
                 >
                   <option value="all">All roles</option>
                   <option value="super">Super User</option>
+                  <option value="league_secretary">League Secretary</option>
+                  <option value="league_chairman">League Chairman</option>
                   <option value="admin">Admin</option>
                   <option value="user">User</option>
                 </select>
@@ -1583,8 +1588,8 @@ export default function PlayersPage() {
                   const linkedName = linked?.full_name?.trim() ? linked.full_name : linked?.display_name;
                   const clubName = linked?.location_id ? locationById.get(linked.location_id) ?? "No club registered" : "No club registered";
                   const displayLabel = linkedName ?? u.email ?? u.id;
-                  const isRowSuperUser = Boolean(u.email && u.email.toLowerCase() === superAdminEmail);
-                  const roleLabel = isRowSuperUser ? "Super User" : u.role === "admin" ? "Admin" : "User";
+                  const isRowSuperUser = Boolean(u.email && u.email.toLowerCase() === superAdminEmail) || isSuperRole(u.role);
+                  const roleLabel = isRowSuperUser ? "Super User" : appRoleLabel(u.role);
                   return (
                     <div key={u.id} className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 text-sm shadow-sm">
                       <div className="min-w-0 flex-1">
@@ -1606,7 +1611,20 @@ export default function PlayersPage() {
                           <p className="mt-1 text-xs text-slate-500">No linked player profile yet.</p>
                         )}
                       </div>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap gap-2">
+                        <select
+                          value={isRowSuperUser ? "super" : normalizeAppRole(u.role)}
+                          disabled={isRowSuperUser}
+                          onChange={(event) => void onSetRole(u.id, event.target.value as Exclude<AppRole, "owner" | "super">)}
+                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-800 disabled:bg-slate-100"
+                          aria-label={`Role for ${displayLabel}`}
+                        >
+                          {isRowSuperUser ? <option value="super">Super User</option> : null}
+                          <option value="league_secretary">League Secretary</option>
+                          <option value="league_chairman">League Chairman</option>
+                          <option value="admin">Administrator</option>
+                          <option value="user">User</option>
+                        </select>
                         <button
                           type="button"
                           disabled={isRowSuperUser || !u.linked_player_id}

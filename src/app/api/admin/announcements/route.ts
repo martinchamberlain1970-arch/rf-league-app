@@ -1,13 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireLeagueManager } from "@/lib/server-role";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const superAdminEmail =
-  process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() ??
-  process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL?.trim().toLowerCase() ??
-  "";
 
 function isMissingTableError(message?: string | null) {
   const lower = (message ?? "").toLowerCase();
@@ -28,10 +25,8 @@ async function authenticate(req: NextRequest) {
   if (authRes.error || !user) {
     return { error: NextResponse.json({ error: "Unauthorized." }, { status: 401 }) };
   }
-  const email = user.email?.trim().toLowerCase() ?? "";
-  if (!superAdminEmail || email !== superAdminEmail) {
-    return { error: NextResponse.json({ error: "Only Super User can manage announcements." }, { status: 403 }) };
-  }
+  const adminClient = createClient(supabaseUrl, serviceRoleKey);
+  try { await requireLeagueManager(adminClient, user); } catch { return { error: NextResponse.json({ error: "League management access is required." }, { status: 403 }) }; }
   return { user };
 }
 

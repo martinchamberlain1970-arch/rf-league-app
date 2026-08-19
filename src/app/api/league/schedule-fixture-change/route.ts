@@ -1,10 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { requireLeagueManager } from "@/lib/server-role";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const superAdminEmail = process.env.SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
 
 function isMissingTableError(message?: string | null) {
   const m = (message ?? "").toLowerCase();
@@ -22,10 +22,8 @@ export async function POST(req: NextRequest) {
   const { data: authData, error: authError } = await authClient.auth.getUser(token);
   if (authError || !authData.user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
 
-  const userEmail = authData.user.email?.trim().toLowerCase() ?? "";
-  if (!superAdminEmail || userEmail !== superAdminEmail) {
-    return NextResponse.json({ error: "Only Super User can set the agreed fixture date." }, { status: 403 });
-  }
+  const adminClient = createClient(supabaseUrl, serviceRoleKey);
+  try { await requireLeagueManager(adminClient, authData.user); } catch { return NextResponse.json({ error: "League management access is required." }, { status: 403 }); }
 
   const body = await req.json().catch(() => ({}));
   const requestId = typeof body?.requestId === "string" ? body.requestId : "";
@@ -36,7 +34,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Missing request details." }, { status: 400 });
   }
 
-  const adminClient = createClient(supabaseUrl, serviceRoleKey);
   const requestRes = await adminClient
     .from("league_fixture_change_requests")
     .select("id,fixture_id,status")

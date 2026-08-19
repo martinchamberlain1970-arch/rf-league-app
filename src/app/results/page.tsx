@@ -544,7 +544,7 @@ export default function ResultsQueuePage() {
               <p className="text-xs text-slate-600">Original date: {r.original_fixture_date ? new Date(`${r.original_fixture_date}T12:00:00`).toLocaleDateString() : "Not set"}</p>
               <p className="mt-2 text-sm text-slate-700">{r.reason}</p>
               <p className="mt-1 text-xs text-slate-600">Opposing team agreed: {r.opposing_team_agreed ? "Yes" : "No"}</p>
-              {admin.isSuper ? (
+              {admin.canManageLeague ? (
                 <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">
                   <input
                     className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
@@ -598,7 +598,7 @@ export default function ResultsQueuePage() {
               <p className="text-xs text-slate-600">Original date: {r.original_fixture_date ? new Date(`${r.original_fixture_date}T12:00:00`).toLocaleDateString() : "Not set"}</p>
               <p className="mt-2 text-sm text-slate-700">{r.reason}</p>
               <p className="mt-1 text-xs text-slate-600">If the fixture is not played by the agreed date, the home team will receive a 5-0 walkover victory.</p>
-              {admin.isSuper ? (
+              {admin.canManageLeague ? (
                 <div className="mt-3 grid gap-2 sm:grid-cols-[180px_1fr_auto] sm:items-center">
                   <input
                     type="date"
@@ -901,7 +901,7 @@ export default function ResultsQueuePage() {
                           </div>
                         ) : null}
 
-                        {admin.isSuper ? (
+                        {admin.canManageLeague ? (
                           <div className="mt-3 grid gap-2 sm:grid-cols-[1fr_auto_auto] sm:items-center">
                             <input
                               className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"

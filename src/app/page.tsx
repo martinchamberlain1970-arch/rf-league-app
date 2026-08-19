@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import PageNav from "@/components/PageNav";
 import useAdminStatus from "@/components/useAdminStatus";
+import { appRoleLabel } from "@/lib/app-roles";
 import { supabase } from "@/lib/supabase";
 import ConfirmModal from "@/components/ConfirmModal";
 import useFeatureAccess from "@/components/useFeatureAccess";
@@ -129,7 +130,8 @@ export default function HomePage() {
         "/legal",
       ].includes(href);
     }
-    if (!admin.isSuper && (href === "/audit" || href === "/rating-audit" || href === "/usage" || href === "/signup-requests" || href === "/announcements")) return false;
+    if (!admin.isSuper && (href === "/audit" || href === "/rating-audit" || href === "/usage" || href === "/signup-requests")) return false;
+    if (href === "/announcements" && !admin.canManageLeague) return false;
     if (admin.isAdmin) {
       // Admins still see these cards, but they can be disabled per-account.
       return true;
@@ -150,6 +152,8 @@ export default function HomePage() {
 
   const primaryHrefs = admin.isSuper
     ? ["/signup-requests", "/players", "/notifications", "/league", "/results", "/reschedule-fixture", "/rating-audit", "/backup", "/signups", "/announcements", "/legal"]
+    : admin.canManageLeague
+      ? ["/league", "/results", "/reschedule-fixture", "/handicaps", "/players", "/signups", "/documents", "/announcements", "/notifications", "/live-matches", "/high-breaks", "/help", "/legal"]
     : admin.isAdmin
       ? ["/league", "/live-matches", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/quick-match", "/events/new", "/signups", "/help", "/legal"]
       : ["/league", "/live-matches", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/notifications", "/signups", "/help", "/legal"];
@@ -214,10 +218,10 @@ export default function HomePage() {
     return "border-slate-300 bg-slate-100 text-slate-800";
   };
   const primaryTileBadgeText = (href: string) => {
-    if (href === "/results?tab=fixture_changes" && admin.isSuper) {
+    if (href === "/results?tab=fixture_changes" && admin.canManageLeague) {
       return fixtureChangeActionCount > 0 ? `${fixtureChangeActionCount} to review` : "Open";
     }
-    if (href === "/reschedule-fixture" && !admin.isSuper) {
+    if (href === "/reschedule-fixture" && !admin.canManageLeague) {
       return outstandingFixtureCount > 0 ? `${outstandingFixtureCount} outstanding` : "Open";
     }
     return "Open";
@@ -226,7 +230,7 @@ export default function HomePage() {
     () =>
       mainTabLinksWithGovernance.map((item) => {
         if (item.href !== "/reschedule-fixture") return item;
-        if (admin.isSuper) {
+        if (admin.canManageLeague) {
           return {
             ...item,
             href: "/results?tab=fixture_changes",
@@ -243,16 +247,16 @@ export default function HomePage() {
               : "Request early play or track fixtures waiting for a new agreed date.",
         };
       }),
-    [mainTabLinksWithGovernance, admin.isSuper, fixtureChangeActionCount, outstandingFixtureCount]
+    [mainTabLinksWithGovernance, admin.canManageLeague, fixtureChangeActionCount, outstandingFixtureCount]
   );
   const cardDescription = (href: string, fallback: string) => {
     if (href === "/league") {
-      if (admin.isSuper) return "Set up leagues, teams, venues, fixtures, and approvals.";
+      if (admin.canManageLeague) return "Set up leagues, teams, venues, fixtures, and approvals.";
       if (admin.isAdmin) return "View published fixtures/tables and review your team's submission progress.";
       return "View published fixtures, league table, and player table.";
     }
     if (href === "/captain-results") {
-      if (admin.isSuper) return "Review what captains submit and confirm final results.";
+      if (admin.canManageLeague) return "Review what captains submit and confirm final results.";
       return "If you're captain or vice-captain, enter your lineup on match day and submit the result after the fixture.";
     }
     if (href === "/reschedule-fixture") {
@@ -262,15 +266,15 @@ export default function HomePage() {
       return "Review fixture-date requests and set agreed dates for approved outstanding fixtures.";
     }
     if (href === "/players") {
-      return admin.isSuper ? "Full player governance, linking, and approvals." : "View your own player profile and status.";
+      return admin.canManageLeague ? "Review player profiles, claims and requested updates." : "View your own player profile and status.";
     }
     if (href === "/events/new") {
-      return admin.isSuper
+      return admin.canManageLeague
         ? "Create competitions and publish for player sign-up."
         : "Feature access can be enabled by Super User.";
     }
     if (href === "/quick-match") {
-      return admin.isSuper
+      return admin.canManageLeague
         ? "Create ad-hoc matches for practice and tracking."
         : "Feature access can be enabled by Super User.";
     }
@@ -296,7 +300,7 @@ export default function HomePage() {
         : "Vice-captain"
     : "Player";
   const priorityCards = useMemo<PriorityCard[]>(() => {
-    if (admin.isSuper) {
+    if (admin.canManageLeague) {
       return [
         {
           href: "/results",
@@ -380,7 +384,7 @@ export default function HomePage() {
       },
     ];
   }, [
-    admin.isSuper,
+    admin.canManageLeague,
     fixtureChangeActionCount,
     hasCaptainRole,
     openEventsCount,
@@ -791,7 +795,7 @@ export default function HomePage() {
         setOutstandingFixtureCount(0);
         return;
       }
-      const scope = admin.isSuper ? "admin" : "mine";
+      const scope = admin.canManageLeague ? "admin" : "mine";
       const resp = await fetch(`/api/league/fixture-change-requests?scope=${scope}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -804,7 +808,7 @@ export default function HomePage() {
         rows?: Array<{ status?: string }>;
       };
       const rows = data.rows ?? [];
-      if (admin.isSuper) {
+      if (admin.canManageLeague) {
         setFixtureChangeActionCount(
           rows.filter((row) => row.status === "pending" || row.status === "approved_outstanding").length
         );
@@ -817,7 +821,7 @@ export default function HomePage() {
       setFixtureChangeActionCount(0);
     };
     void run();
-  }, [admin.loading, admin.isSuper, admin.userId]);
+  }, [admin.loading, admin.canManageLeague, admin.userId]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -1032,7 +1036,7 @@ export default function HomePage() {
                       : "bg-slate-100 text-slate-600"
                 }`}
               >
-                {admin.isSuper ? "Super User" : admin.isAdmin ? "Administrator" : "User"}
+                {appRoleLabel(admin.role)}
               </span>
             </div>
             {userEmail ? <p className="text-sm text-slate-600">Logged in: {userEmail}</p> : null}
@@ -1172,7 +1176,7 @@ export default function HomePage() {
                 </p>
               </div>
               <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
-                {admin.isSuper ? "League Secretary view" : hasCaptainRole ? "Captain workflow view" : "Player view"}
+                {admin.canManageLeague ? `${appRoleLabel(admin.role)} view` : hasCaptainRole ? "Captain workflow view" : "Player view"}
               </div>
             </div>
             <div className="mt-4 grid gap-3 lg:grid-cols-3">

@@ -26,7 +26,7 @@ export default function AnnouncementsPage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!admin.isSuper) return;
+    if (!admin.canManageLeague) return;
     let active = true;
     const load = async () => {
       const client = supabase;
@@ -58,11 +58,11 @@ export default function AnnouncementsPage() {
     return () => {
       active = false;
     };
-  }, [admin.isSuper]);
+  }, [admin.canManageLeague]);
 
   const saveAnnouncement = async () => {
     const client = supabase;
-    if (!client || !admin.isSuper) return;
+    if (!client || !admin.canManageLeague) return;
     const sessionRes = await client.auth.getSession();
     const token = sessionRes.data.session?.access_token;
     if (!token) {
@@ -102,9 +102,9 @@ export default function AnnouncementsPage() {
         <RequireAuth>
           <ScreenHeader title="Announcements" eyebrow="Super User" subtitle="Create or update the important banner shown across the app and live screens." />
           <MessageModal message={message} onClose={() => setMessage(null)} />
-          {!admin.isSuper ? (
+          {!admin.canManageLeague ? (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm">
-              Only Super User can manage announcements.
+              League management access is required to manage announcements.
             </section>
           ) : (
             <>

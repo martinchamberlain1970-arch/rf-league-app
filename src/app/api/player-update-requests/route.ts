@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { canManageLeagueRole } from "@/lib/app-roles";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -51,8 +52,9 @@ async function loadActor(serviceClient: any, requesterId: string, requesterEmail
   const appUser = appUserRes.data as AppUserRow;
   const role = String(appUser.role ?? "").toLowerCase();
   const isSuper = Boolean(superAdminEmail && requesterEmail === superAdminEmail) || role === "owner" || role === "super";
-  const isAdmin = isSuper || role === "admin";
-  return { appUser, role, isSuper, isAdmin } as const;
+  const canManageLeague = isSuper || canManageLeagueRole(role);
+  const isAdmin = canManageLeague || role === "admin";
+  return { appUser, role, isSuper, canManageLeague, isAdmin } as const;
 }
 
 async function loadRequestForAction(serviceClient: any, requestId: string) {
@@ -113,7 +115,7 @@ export async function GET(req: NextRequest) {
   if ("error" in actor) {
     return NextResponse.json({ error: actor.error }, { status: 400 });
   }
-  const { appUser, isSuper, isAdmin } = actor;
+  const { appUser, canManageLeague, isAdmin } = actor;
 
   if (mode === "approvals" && !isAdmin) {
     return NextResponse.json({ error: "Administrator access required." }, { status: 403 });
@@ -160,7 +162,7 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: fullRes.error.message }, { status: 400 });
   }
 
-  if (mode === "approvals" && !isSuper) {
+  if (mode === "approvals" && !canManageLeague) {
     const linkedPlayerId = appUser.linked_player_id;
     if (!linkedPlayerId) {
       return NextResponse.json({ requests: rows, count: rows.length }, { headers: { "Cache-Control": "no-store" } });
@@ -254,9 +256,9 @@ export async function POST(req: NextRequest) {
   if ("error" in actor) {
     return NextResponse.json({ error: actor.error }, { status: 400 });
   }
-  const { isSuper } = actor;
-  if (!isSuper) {
-    return NextResponse.json({ error: "Only the Super User can review profile/photo updates." }, { status: 403 });
+  const { canManageLeague } = actor;
+  if (!canManageLeague) {
+    return NextResponse.json({ error: "League management access is required to review profile/photo updates." }, { status: 403 });
   }
 
   const requestLoad = await loadRequestForAction(serviceClient, requestId);

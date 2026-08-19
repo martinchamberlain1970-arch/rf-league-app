@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { canManageLeagueRole } from "@/lib/app-roles";
+import { resolveServerRole } from "@/lib/server-role";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -70,9 +72,8 @@ export async function GET(req: NextRequest) {
   if (fixtureId) query = query.eq("fixture_id", fixtureId);
 
   if (scope === "admin") {
-    const appUserRes = await adminClient.from("app_users").select("is_admin").eq("id", userId).maybeSingle();
-    const isAdmin = Boolean(appUserRes.data?.is_admin);
-    if (!isSuper && !isAdmin) {
+    const role = await resolveServerRole(adminClient, auth.user);
+    if (!isSuper && !canManageLeagueRole(role)) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
   } else if (scope === "published") {

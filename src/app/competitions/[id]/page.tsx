@@ -149,13 +149,13 @@ export default function CompetitionPage() {
   const [offlineExtraNames, setOfflineExtraNames] = useState("");
   const [view, setView] = useState<View>("fixtures");
   const [message, setMessage] = useState<string | null>(null);
-  const isSuperManager = admin.isSuper;
+  const isSuperManager = admin.canManageLeague;
 
   const updateSignupSettings = async (patch: Partial<Competition>) => {
     const client = supabase;
     if (!client || !competition) return;
     if (!isSuperManager) {
-      setMessage("Only Super User can manage sign-up settings.");
+      setMessage("League management access is required to manage sign-up settings.");
       return;
     }
     const res = await client.from("competitions").update(patch).eq("id", competition.id);
@@ -170,7 +170,7 @@ export default function CompetitionPage() {
     const client = supabase;
     if (!client || !admin.userId) return;
     if (!isSuperManager) {
-      setMessage("Only Super User can approve or reject entries.");
+      setMessage("League management access is required to approve or reject entries.");
       return;
     }
     const res = await client
@@ -188,7 +188,7 @@ export default function CompetitionPage() {
     const client = supabase;
     if (!client || !competition || !admin.userId) return;
     if (!isSuperManager) {
-      setMessage("Only Super User can add offline entries.");
+      setMessage("League management access is required to add offline entries.");
       return;
     }
     const pid = offlinePlayerId.trim();
@@ -240,7 +240,7 @@ export default function CompetitionPage() {
     const client = supabase;
     if (!client || !competition) return;
     if (!isSuperManager) {
-      setMessage("Only Super User can generate the draw.");
+      setMessage("League management access is required to generate the draw.");
       return;
     }
     if (competition.competition_format !== "knockout") {

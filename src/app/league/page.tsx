@@ -645,7 +645,7 @@ export default function LeaguePage() {
   const [refreshingLeagueHandicapList, setRefreshingLeagueHandicapList] = useState(false);
   const [leagueHandicapListRefreshedAt, setLeagueHandicapListRefreshedAt] = useState<string | null>(null);
 
-  const canManage = admin.isSuper;
+  const canManage = admin.canManageLeague;
   const canViewLeague = !admin.loading;
 
   const currentSeason = useMemo(() => seasons.find((s) => s.id === seasonId) ?? null, [seasons, seasonId]);
@@ -1543,7 +1543,7 @@ export default function LeaguePage() {
     const userId = authRes.data.user?.id ?? null;
     setCurrentUserId(userId);
 
-    if (!admin.isSuper) {
+    if (!admin.canManageLeague) {
       if (userId) {
         const appUserRes = await client.from("app_users").select("linked_player_id").eq("id", userId).maybeSingle();
         const linkedPlayerId = (appUserRes.data?.linked_player_id as string | null) ?? null;
@@ -1945,7 +1945,7 @@ export default function LeaguePage() {
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can manage league setup.");
+      setMessage("League management access is required to manage league setup.");
       return;
     }
     const fallbackLocation = venueLocations[0]?.id ?? locations[0]?.id ?? null;
@@ -2017,7 +2017,7 @@ export default function LeaguePage() {
   ): Promise<string | null> => {
     const client = supabase;
     if (!client) return "Supabase is not configured.";
-    if (!canManage) return "Only Super User can modify league teams.";
+    if (!canManage) return "League management access is required to modify league teams.";
     const registeredTeam = registeredTeams.find((t) => t.name.toLowerCase() === teamName.toLowerCase());
     if (!registeredTeam) return null;
     const roster = registeredMembers.filter((m) => m.team_id === registeredTeam.id);
@@ -2062,7 +2062,7 @@ export default function LeaguePage() {
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can manage league teams.");
+      setMessage("League management access is required to manage league teams.");
       return;
     }
     if (!seasonId) {
@@ -2142,7 +2142,7 @@ export default function LeaguePage() {
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can delete registered teams.");
+      setMessage("League management access is required to delete registered teams.");
       return;
     }
     const team = registeredTeams.find((t) => t.id === teamId);
@@ -2173,7 +2173,7 @@ export default function LeaguePage() {
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can register players here.");
+      setMessage("League management access is required to register players here.");
       return;
     }
     const locationId = newPlayerLocationId;
@@ -2271,7 +2271,7 @@ export default function LeaguePage() {
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can create teams.");
+      setMessage("League management access is required to create teams.");
       return;
     }
     if (!registryVenueId) {
@@ -2299,7 +2299,7 @@ export default function LeaguePage() {
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can create venues.");
+      setMessage("League management access is required to create venues.");
       return;
     }
     const name = newVenueName.trim();
@@ -2330,7 +2330,7 @@ export default function LeaguePage() {
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can update venue details.");
+      setMessage("League management access is required to update venue details.");
       return;
     }
     if (!manageVenueId) {
@@ -2376,7 +2376,7 @@ export default function LeaguePage() {
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can remove team players.");
+      setMessage("League management access is required to remove team players.");
       return;
     }
     const { error } = await client.from("league_registered_team_members").delete().eq("id", memberId);
@@ -2391,7 +2391,7 @@ export default function LeaguePage() {
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can register players.");
+      setMessage("League management access is required to register players.");
       return;
     }
     const first = newPlayerFirstName.trim();
@@ -2476,7 +2476,7 @@ export default function LeaguePage() {
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can transfer players.");
+      setMessage("League management access is required to transfer players.");
       return;
     }
     if (!transferFromVenueId) {
@@ -2542,7 +2542,7 @@ export default function LeaguePage() {
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can manage fixtures.");
+      setMessage("League management access is required to manage fixtures.");
       return;
     }
     if (!seasonId || !fixtureHome || !fixtureAway) {
@@ -2588,7 +2588,7 @@ export default function LeaguePage() {
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can generate fixtures.");
+      setMessage("League management access is required to generate fixtures.");
       return;
     }
     if (!seasonId) {
@@ -2774,7 +2774,7 @@ export default function LeaguePage() {
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can update fixture dates.");
+      setMessage("League management access is required to update fixture dates.");
       return;
     }
     if (!seasonId) {
@@ -3055,7 +3055,7 @@ export default function LeaguePage() {
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can recalculate handicaps.");
+      setMessage("League management access is required to recalculate handicaps.");
       return;
     }
     const confirmed = window.confirm(
@@ -3327,7 +3327,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can set captain roles.");
+      setMessage("League management access is required to set captain roles.");
       return;
     }
     if (next) {
@@ -3361,7 +3361,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can set vice-captain roles.");
+      setMessage("League management access is required to set vice-captain roles.");
       return;
     }
     if (next) {
@@ -3395,7 +3395,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can edit season rosters.");
+      setMessage("League management access is required to edit season rosters.");
       return;
     }
     if (!seasonId || !seasonRosterTeamId) {
@@ -3459,7 +3459,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can update team contact details.");
+      setMessage("League management access is required to update team contact details.");
       return;
     }
     if (!selectedSeasonRosterTeam) {
@@ -3490,7 +3490,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can edit season rosters.");
+      setMessage("League management access is required to edit season rosters.");
       return;
     }
     const { error } = await client.from("league_team_members").delete().eq("id", memberId);
@@ -3509,7 +3509,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can set season roster roles.");
+      setMessage("League management access is required to set season roster roles.");
       return;
     }
     if (clearField) {
@@ -3530,7 +3530,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
   const updateHandicap = async (mode: "set_current" | "set_base_and_current" | "adjust_current", explicitValue?: number) => {
     const client = supabase;
     if (!client) return;
-    if (!canManage) return setMessage("Only Super User can update handicaps.");
+    if (!canManage) return setMessage("League management access is required to update handicaps.");
     if (!handicapPlayerId) return setMessage("Select a player first.");
     const numeric = Number.isFinite(explicitValue ?? Number.NaN) ? Number(explicitValue) : Number(handicapTargetValue);
     if (!Number.isFinite(numeric)) return setMessage("Enter a valid handicap value.");
@@ -3643,7 +3643,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client) return;
     if (!admin.isAdmin) {
-      setMessage("Only Super User can review submissions.");
+      setMessage("League management access is required to review submissions.");
       return;
     }
     const submission = submissions.find((s) => s.id === submissionId);
@@ -3733,8 +3733,8 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
   const publishFixtures = async () => {
     const client = supabase;
     if (!client) return;
-    if (!admin.isSuper || !seasonId || !currentSeason || !admin.userId) {
-      setMessage("Only Super User can publish fixtures.");
+    if (!admin.canManageLeague || !seasonId || !currentSeason || !admin.userId) {
+      setMessage("Only the League Secretary, League Chairman or Super User can publish fixtures.");
       return;
     }
     const { error } = await client.from("league_fixture_publications").insert({
@@ -3754,7 +3754,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client) return;
     if (!canManage || !seasonId) {
-      setMessage("Only Super User can publish a league.");
+      setMessage("League management access is required to publish a league.");
       return;
     }
     const { error } = await client
@@ -3776,7 +3776,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can manage knockout competitions.");
+      setMessage("League management access is required to manage knockout competitions.");
       return;
     }
     const res = await client.from("competitions").update(patch).eq("id", competitionId);
@@ -3791,7 +3791,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can manage knockout competitions.");
+      setMessage("League management access is required to manage knockout competitions.");
       return;
     }
     const parsed = Number.parseInt(bestOfInput, 10);
@@ -3819,7 +3819,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can manage knockout competitions.");
+      setMessage("League management access is required to manage knockout competitions.");
       return;
     }
     const round1 = Number.parseInt(draft.round1, 10);
@@ -3874,7 +3874,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can delete knockout competitions.");
+      setMessage("League management access is required to delete knockout competitions.");
       return;
     }
     if (!window.confirm(`Delete "${competitionName}"? This will remove it from active competitions.`)) return;
@@ -3894,7 +3894,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can delete knockout competitions.");
+      setMessage("League management access is required to delete knockout competitions.");
       return;
     }
     if (!knockoutCompetitions.length) {
@@ -3919,7 +3919,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client || !admin.userId) return;
     if (!canManage) {
-      setMessage("Only Super User can review entries.");
+      setMessage("League management access is required to review entries.");
       return;
     }
     const res = await client
@@ -4062,7 +4062,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can create knockout competitions.");
+      setMessage("League management access is required to create knockout competitions.");
       return;
     }
     const tpl = LEAGUE_KNOCKOUT_TEMPLATES.find((t) => t.key === knockoutTemplateKey);
@@ -4151,7 +4151,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client) return;
     if (!canManage) {
-      setMessage("Only Super User can delete leagues.");
+      setMessage("League management access is required to delete leagues.");
       return;
     }
     if (!seasonId) {
@@ -4165,7 +4165,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
     const client = supabase;
     if (!client || !seasonId) return;
     if (!canManage) {
-      setMessage("Only Super User can delete leagues.");
+      setMessage("League management access is required to delete leagues.");
       return;
     }
     const { error } = await client.from("league_seasons").delete().eq("id", seasonId);
@@ -7254,7 +7254,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                       </div>
                     </>
                   ) : (
-                    <p className="text-sm text-slate-600">Fixture generation is managed by the Super User.</p>
+                    <p className="text-sm text-slate-600">Fixture generation requires league management access.</p>
                   )}
                 </div>
                 {canManage ? (
