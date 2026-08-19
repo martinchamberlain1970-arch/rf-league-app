@@ -39,6 +39,11 @@ type Season = {
   published_at?: string | null;
   created_at: string;
   handicap_enabled?: boolean | null;
+  handicap_max_start?: number | null;
+  handicap_review_interval_weeks?: number | null;
+  rating_tracking_enabled?: boolean | null;
+  fixture_cycles?: number | null;
+  miss_rule?: string | null;
   singles_count?: number | null;
   doubles_count?: number | null;
 };
@@ -614,7 +619,7 @@ export default function LeaguePage() {
   const [reviewReason, setReviewReason] = useState("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [genStartDate, setGenStartDate] = useState("");
-  const [genDoubleRound, setGenDoubleRound] = useState(true);
+  const [genFixtureCycles, setGenFixtureCycles] = useState<1 | 2 | 3>(3);
   const [genClearExisting, setGenClearExisting] = useState(true);
   const [breakDateInput, setBreakDateInput] = useState("");
   const [breakDates, setBreakDates] = useState<string[]>([]);
@@ -652,6 +657,7 @@ export default function LeaguePage() {
   const currentSeasonSinglesCount = Math.max(1, Math.min(10, currentSeason?.singles_count ?? 4));
   const currentSeasonDoublesCount = Math.max(0, Math.min(4, currentSeason?.doubles_count ?? 1));
   const currentSeasonTotalFrames = currentSeasonSinglesCount + currentSeasonDoublesCount;
+  const currentSeasonHandicapCap = currentSeason?.handicap_max_start === null ? null : currentSeason?.handicap_max_start ?? MAX_SNOOKER_START;
   const isWinterFormat = currentSeasonSinglesCount === 4 && currentSeasonDoublesCount === 1;
   const isSummerFormat = currentSeasonSinglesCount === 6 && currentSeasonDoublesCount === 0;
   const isHodgeTriplesFormat =
@@ -1499,7 +1505,7 @@ export default function LeaguePage() {
         .eq("is_archived", false),
       client
         .from("league_seasons")
-        .select("id,name,location_id,is_active,is_published,published_at,created_at,handicap_enabled,singles_count,doubles_count")
+        .select("id,name,location_id,is_active,is_published,published_at,created_at,handicap_enabled,handicap_max_start,handicap_review_interval_weeks,rating_tracking_enabled,fixture_cycles,miss_rule,singles_count,doubles_count")
         .order("created_at", { ascending: false }),
       client
         .from("league_teams")
@@ -1616,6 +1622,11 @@ export default function LeaguePage() {
     if (
       seasonsRes.error &&
       (seasonsRes.error.message.toLowerCase().includes("handicap_enabled") ||
+        seasonsRes.error.message.toLowerCase().includes("handicap_max_start") ||
+        seasonsRes.error.message.toLowerCase().includes("handicap_review_interval_weeks") ||
+        seasonsRes.error.message.toLowerCase().includes("rating_tracking_enabled") ||
+        seasonsRes.error.message.toLowerCase().includes("fixture_cycles") ||
+        seasonsRes.error.message.toLowerCase().includes("miss_rule") ||
         seasonsRes.error.message.toLowerCase().includes("singles_count") ||
         seasonsRes.error.message.toLowerCase().includes("doubles_count"))
     ) {
@@ -1629,6 +1640,11 @@ export default function LeaguePage() {
           is_published: true,
           published_at: null,
           handicap_enabled: false,
+          handicap_max_start: MAX_SNOOKER_START,
+          handicap_review_interval_weeks: 4,
+          rating_tracking_enabled: true,
+          fixture_cycles: 2,
+          miss_rule: null,
           singles_count: 5,
           doubles_count: 1,
         }));
@@ -1948,6 +1964,10 @@ export default function LeaguePage() {
       created_by_user_id: creatorId,
       is_published: false,
       handicap_enabled: seasonHandicapEnabled,
+      handicap_max_start: null,
+      handicap_review_interval_weeks: 4,
+      rating_tracking_enabled: true,
+      fixture_cycles: 3,
       sport_type: "snooker",
       points_per_frame: 1,
       singles_count: template.singlesCount,
@@ -1985,8 +2005,8 @@ export default function LeaguePage() {
     setInfoModal({
       title: "League Created",
       description: seasonHandicapEnabled
-        ? `League created successfully. Handicap mode is enabled with a maximum start of ${MAX_SNOOKER_START}.`
-        : "League created successfully. Handicap mode is disabled.",
+        ? "League created successfully. Handicap mode is enabled with no maximum start."
+        : "League created successfully. Match handicaps are disabled; Elo ratings can still be recorded in the background.",
     });
   };
 
@@ -2639,7 +2659,7 @@ export default function LeaguePage() {
       return;
     }
     const allRounds: DirectedMatch[][] = [...firstLegRounds];
-    if (genDoubleRound) {
+    if (genFixtureCycles >= 2) {
       const secondLegMatches = firstLegRounds.flatMap((round) =>
         round.map((match) => ({ homeTeamId: match.awayTeamId, awayTeamId: match.homeTeamId }))
       );
@@ -2656,6 +2676,9 @@ export default function LeaguePage() {
         return;
       }
       allRounds.push(...secondLegRounds);
+      if (genFixtureCycles === 3) {
+        allRounds.push(...firstLegRounds.map((round) => round.map((match) => ({ ...match }))));
+      }
     }
     const breakWeeks = getBreakWeeksFromDates();
     const breakWeekSet = new Set(breakWeeks);
@@ -2827,7 +2850,7 @@ export default function LeaguePage() {
         const playerHcp = (playerId: string | null | undefined) => Number(playerById.get(playerId ?? "")?.snooker_handicap ?? 0);
         const homeHandicap = (playerHcp(row.home_player1_id) + playerHcp(row.home_player2_id)) / 2;
         const awayHandicap = (playerHcp(row.away_player1_id) + playerHcp(row.away_player2_id)) / 2;
-        const adjusted = calculateAdjustedScoresWithCap(homePts, awayPts, homeHandicap, awayHandicap);
+        const adjusted = calculateAdjustedScoresWithCap(homePts, awayPts, homeHandicap, awayHandicap, currentSeasonHandicapCap);
         if (adjusted.homeAdjusted > adjusted.awayAdjusted) return "home";
         if (adjusted.awayAdjusted > adjusted.homeAdjusted) return "away";
         return null;
@@ -2842,7 +2865,7 @@ export default function LeaguePage() {
     const playerHcp = (playerId: string | null | undefined) => Number(playerById.get(playerId ?? "")?.snooker_handicap ?? 0);
     const home = (playerHcp(slot.home_player1_id) + playerHcp(slot.home_player2_id)) / 2;
     const away = (playerHcp(slot.away_player1_id) + playerHcp(slot.away_player2_id)) / 2;
-    const starts = calculateAdjustedScoresWithCap(0, 0, home, away);
+    const starts = calculateAdjustedScoresWithCap(0, 0, home, away, currentSeasonHandicapCap);
     if (starts.homeStart > 0) return `Doubles handicap: Home receives ${starts.homeStart} start`;
     if (starts.awayStart > 0) return `Doubles handicap: Away receives ${starts.awayStart} start`;
     return "Doubles handicap: Level start";
@@ -4398,7 +4421,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
         const playerHcp = (playerId: string | null | undefined) => Number(playerById.get(playerId ?? "")?.snooker_handicap ?? 0);
         const homeHcp = (playerHcp(slot.home_player1_id) + playerHcp(slot.home_player2_id)) / 2;
         const awayHcp = (playerHcp(slot.away_player1_id) + playerHcp(slot.away_player2_id)) / 2;
-        const adjusted = calculateAdjustedScoresWithCap(homePoints, awayPoints, homeHcp, awayHcp);
+        const adjusted = calculateAdjustedScoresWithCap(homePoints, awayPoints, homeHcp, awayHcp, currentSeasonHandicapCap);
         handicapNote =
           adjusted.homeStart > 0
             ? `HCP Home receives ${adjusted.homeStart} · Adjusted ${adjusted.homeAdjusted}-${adjusted.awayAdjusted}`
@@ -7110,7 +7133,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                           : "bg-slate-200 text-slate-700"
                       }`}
                     >
-                      {currentSeason.handicap_enabled ? `Handicap ON (max ${MAX_SNOOKER_START})` : "Handicap OFF"}
+                      {currentSeason.handicap_enabled ? currentSeasonHandicapCap === null ? "Handicap ON (no cap)" : `Handicap ON (max ${currentSeasonHandicapCap})` : "Scratch match play · Elo tracked"}
                     </span>
                   ) : null}
                   {currentSeason ? (
@@ -7119,6 +7142,13 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                     </span>
                   ) : null}
                 </div>
+                {currentSeason?.miss_rule ? (
+                  <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-950">
+                    <p className="text-xs font-bold uppercase tracking-wide text-violet-700">Division miss rule</p>
+                    <p className="mt-1 font-medium">{currentSeason.miss_rule}</p>
+                    <p className="mt-1 text-xs">The referee&apos;s decision is final.</p>
+                  </div>
+                ) : null}
                 <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   {isSummerFormat ? (
                     <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
@@ -7174,8 +7204,11 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                           Add break
                         </button>
                         <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
-                          <input type="checkbox" checked={genDoubleRound} onChange={(e) => setGenDoubleRound(e.target.checked)} />
-                          Home & away legs
+                          <select value={genFixtureCycles} onChange={(e) => setGenFixtureCycles(Number(e.target.value) as 1 | 2 | 3)} className="w-full bg-transparent font-medium outline-none">
+                            <option value={1}>Play each team once</option>
+                            <option value={2}>Home and away</option>
+                            <option value={3}>Three cycles (repeat first half)</option>
+                          </select>
                         </label>
                         <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
                           <input type="checkbox" checked={genClearExisting} onChange={(e) => setGenClearExisting(e.target.checked)} />
@@ -8100,7 +8133,9 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                       <li>Actual playing handicaps change only when the Super User deliberately applies the Elo handicap review.</li>
                       <li>Target handicap now matches the original Elo seed formula: handicap = nearest multiple of 4 to (1000 - Elo) / 5.</li>
                       <li>Each handicap review aligns a player directly to that Elo-based target handicap.</li>
-                      <li>Live match starts are capped at {MAX_SNOOKER_START} so a fixture stays competitive even when the Elo gap is wider.</li>
+                      <li>{currentSeasonHandicapCap === null ? "Premier League starts use the full handicap difference with no cap." : `Live match starts are capped at ${currentSeasonHandicapCap}.`}</li>
+                      <li>Scratch divisions still record Elo results in the background, but every frame begins level.</li>
+                      <li>Handicaps should be formally reviewed at least every {currentSeason?.handicap_review_interval_weeks ?? 4} weeks.</li>
                       <li>Manual overrides remain available where league rules require correction.</li>
                     </ul>
                   </div>

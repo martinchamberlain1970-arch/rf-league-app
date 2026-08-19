@@ -10,6 +10,8 @@ type SeasonRow = {
   name: string;
   is_published?: boolean | null;
   created_at?: string | null;
+  handicap_enabled?: boolean | null;
+  handicap_max_start?: number | null;
 };
 
 type TeamRow = {
@@ -131,7 +133,7 @@ export async function GET(req: NextRequest) {
 
   const seasonsRes = await adminClient
     .from("league_seasons")
-    .select("id,name,is_published,created_at")
+    .select("id,name,is_published,created_at,handicap_enabled,handicap_max_start")
     .eq("is_published", true)
     .order("created_at", { ascending: false });
 
@@ -263,7 +265,10 @@ export async function GET(req: NextRequest) {
         frame.slot_type === "doubles"
           ? (playerHandicap(awayPrimary) + playerHandicap(awaySecondary)) / 2
           : playerHandicap(awayPrimary);
-      const starts = calculateAdjustedScoresWithCap(0, 0, homeHandicap, awayHandicap);
+      const handicapCap = selectedSeason.handicap_max_start === null ? null : selectedSeason.handicap_max_start ?? MAX_SNOOKER_START;
+      const starts = selectedSeason.handicap_enabled
+        ? calculateAdjustedScoresWithCap(0, 0, homeHandicap, awayHandicap, handicapCap)
+        : { homeStart: 0, awayStart: 0 };
       const startDetail = formatStartDetail(starts.homeStart, starts.awayStart);
 
       const homeScore = typeof frame.home_points_scored === "number" ? frame.home_points_scored : null;
@@ -313,7 +318,9 @@ export async function GET(req: NextRequest) {
               ],
         scoreLabel,
         frameStatus,
-        startLabel: `Max start ${MAX_SNOOKER_START} · ${startDetail.label}`,
+        startLabel: selectedSeason.handicap_enabled
+          ? `${handicapCap === null ? "No maximum start" : `Max start ${handicapCap}`} · ${startDetail.label}`
+          : "Scratch frame · level start",
         startRecipient: startDetail.recipient,
         startAmount: startDetail.amount,
       };

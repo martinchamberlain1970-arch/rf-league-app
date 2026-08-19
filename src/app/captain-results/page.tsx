@@ -15,6 +15,10 @@ type Season = {
   name: string;
   is_published?: boolean | null;
   handicap_enabled?: boolean | null;
+  handicap_max_start?: number | null;
+  handicap_review_interval_weeks?: number | null;
+  rating_tracking_enabled?: boolean | null;
+  miss_rule?: string | null;
   singles_count?: number | null;
   doubles_count?: number | null;
 };
@@ -370,7 +374,7 @@ export default function CaptainResultsPage() {
     const [seasonRes, teamRes, memberRes, initialFixtureRes, slotRes, pendingRes, playerRes] = await Promise.all([
       client
         .from("league_seasons")
-        .select("id,name,is_published,handicap_enabled,singles_count,doubles_count")
+        .select("id,name,is_published,handicap_enabled,handicap_max_start,handicap_review_interval_weeks,rating_tracking_enabled,miss_rule,singles_count,doubles_count")
         .eq("is_published", true)
         .order("created_at", { ascending: false }),
       client.from("league_teams").select("id,season_id,name"),
@@ -575,6 +579,7 @@ export default function CaptainResultsPage() {
   );
 
   const isWinterFormat = (selectedSeason?.singles_count ?? 4) === 4 && (selectedSeason?.doubles_count ?? 1) === 1;
+  const selectedSeasonHandicapCap = selectedSeason?.handicap_max_start === null ? null : selectedSeason?.handicap_max_start ?? MAX_SNOOKER_START;
   const singlesMaxPerPlayer = (selectedSeason?.singles_count ?? 5) === 6 && (selectedSeason?.doubles_count ?? 1) === 0 ? 2 : 1;
 
   useEffect(() => {
@@ -1111,7 +1116,7 @@ export default function CaptainResultsPage() {
   const singlesHandicapLabel = (slot: FrameSlot) => {
     const home = playerHandicap(slot.home_player1_id);
     const away = playerHandicap(slot.away_player1_id);
-    const starts = calculateAdjustedScoresWithCap(0, 0, home, away);
+    const starts = calculateAdjustedScoresWithCap(0, 0, home, away, selectedSeasonHandicapCap);
     if (starts.homeStart > 0) return `Singles handicap: Home receives ${starts.homeStart} start`;
     if (starts.awayStart > 0) return `Singles handicap: Away receives ${starts.awayStart} start`;
     return "Singles handicap: Level start";
@@ -1120,7 +1125,7 @@ export default function CaptainResultsPage() {
   const doublesHandicapLabel = (slot: FrameSlot) => {
     const home = (playerHandicap(slot.home_player1_id) + playerHandicap(slot.home_player2_id)) / 2;
     const away = (playerHandicap(slot.away_player1_id) + playerHandicap(slot.away_player2_id)) / 2;
-    const starts = calculateAdjustedScoresWithCap(0, 0, home, away);
+    const starts = calculateAdjustedScoresWithCap(0, 0, home, away, selectedSeasonHandicapCap);
     if (starts.homeStart > 0) return `Doubles handicap: Home receives ${starts.homeStart} start`;
     if (starts.awayStart > 0) return `Doubles handicap: Away receives ${starts.awayStart} start`;
     return "Doubles handicap: Level start";
@@ -1170,7 +1175,7 @@ export default function CaptainResultsPage() {
           ? (playerHandicap(slot.away_player1_id) + playerHandicap(slot.away_player2_id)) / 2
           : playerHandicap(slot.away_player1_id);
       const starts = selectedSeason.handicap_enabled
-        ? calculateAdjustedScoresWithCap(0, 0, homeHandicap, awayHandicap)
+        ? calculateAdjustedScoresWithCap(0, 0, homeHandicap, awayHandicap, selectedSeasonHandicapCap)
         : { homeStart: 0, awayStart: 0, homeAdjusted: 0, awayAdjusted: 0 };
       const homeRatingBase =
         slot.slot_type === "doubles"
@@ -1234,7 +1239,7 @@ export default function CaptainResultsPage() {
     if (row.slot_type === "doubles" && selectedSeason?.handicap_enabled) {
       const home = (playerHandicap(row.home_player1_id) + playerHandicap(row.home_player2_id)) / 2;
       const away = (playerHandicap(row.away_player1_id) + playerHandicap(row.away_player2_id)) / 2;
-      const adjusted = calculateAdjustedScoresWithCap(homePts, awayPts, home, away);
+      const adjusted = calculateAdjustedScoresWithCap(homePts, awayPts, home, away, selectedSeasonHandicapCap);
       if (adjusted.homeAdjusted > adjusted.awayAdjusted) return "home";
       if (adjusted.awayAdjusted > adjusted.homeAdjusted) return "away";
       return null;
@@ -2151,9 +2156,10 @@ export default function CaptainResultsPage() {
                         </p>
                         {selectedSeason?.handicap_enabled ? (
                           <p>
-                            Handicap starts: <strong>reviewed in full, but capped at {MAX_SNOOKER_START} points for the live match start</strong>
+                            Handicap starts: <strong>{selectedSeasonHandicapCap === null ? "the full difference applies with no cap" : `capped at ${selectedSeasonHandicapCap} points`}</strong>
                           </p>
-                        ) : null}
+                        ) : <p>Match format: <strong>scratch (level starts); Elo is still recorded</strong></p>}
+                        {selectedSeason?.miss_rule ? <p>Miss rule: <strong>{selectedSeason.miss_rule}</strong> The referee&apos;s decision is final.</p> : null}
                         <p>
                           Home lineup: <strong>{homeLineupSubmitted ? "Submitted" : "Pending"}</strong>
                         </p>
@@ -2415,9 +2421,9 @@ export default function CaptainResultsPage() {
                         )}
                         {selectedSeason?.handicap_enabled ? (
                           <div className="mt-1 space-y-1">
-                            <p>In doubles, team handicap = (player 1 handicap + player 2 handicap) ÷ 2, with the live start capped at {MAX_SNOOKER_START}.</p>
+                            <p>In doubles, team handicap = (player 1 handicap + player 2 handicap) ÷ 2. {selectedSeasonHandicapCap === null ? "The full difference applies with no cap." : `The live start is capped at ${selectedSeasonHandicapCap}.`}</p>
                             <p>Reviewed handicaps still show the full assessed gap, but the frame start is capped to keep matches competitive.</p>
-                            <p>The {MAX_SNOOKER_START}-point cap is a balance: it gives weaker players a meaningful chance without making the opening score decide too much too early. A lower cap such as 30 can leave bigger strength gaps under-compensated.</p>
+                            <p>{selectedSeasonHandicapCap === null ? "Premier League starts are uncapped under the current league rules." : `This league limits the live start to ${selectedSeasonHandicapCap} points.`}</p>
                           </div>
                         ) : null}
                       </div>
@@ -2439,7 +2445,7 @@ export default function CaptainResultsPage() {
                                 {showPreviewGuide ? "Hide preview" : "Show preview"}
                               </button>
                               <span className="rounded-full border border-violet-200 bg-white px-3 py-1 text-xs font-semibold text-violet-800">
-                                Max start {MAX_SNOOKER_START}
+                                {selectedSeasonHandicapCap === null ? "No maximum start" : `Max start ${selectedSeasonHandicapCap}`}
                               </span>
                             </div>
                           </div>
