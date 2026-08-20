@@ -30,25 +30,46 @@ function responseForError(error: unknown) {
   return NextResponse.json({ error: message }, { status: 400 });
 }
 
+async function assertEntryPacksOpen(adminClient: SupabaseClient, seasonId: string) {
+  const [seasonRes, startedFixturesRes] = await Promise.all([
+    adminClient.from("league_seasons").select("id,is_active").eq("id", seasonId).maybeSingle(),
+    adminClient
+      .from("league_fixtures")
+      .select("id")
+      .eq("season_id", seasonId)
+      .in("status", ["in_progress", "complete"])
+      .limit(1),
+  ]);
+  if (seasonRes.error || startedFixturesRes.error) throw new Error(seasonRes.error?.message ?? startedFixturesRes.error?.message ?? "Failed to check league status.");
+  if (!seasonRes.data) throw new Error("League season not found.");
+  if (seasonRes.data.is_active === false || (startedFixturesRes.data?.length ?? 0) > 0) {
+    throw new Error("Team entry packs are only available for open leagues that have not started.");
+  }
+}
+
 export async function GET(req: NextRequest) {
   try {
     const { adminClient } = await authorize(req);
-    const [packsRes, seasonsRes, teamsRes, locationsRes, competitionsRes] = await Promise.all([
+    const [packsRes, seasonsRes, teamsRes, locationsRes, competitionsRes, startedFixturesRes] = await Promise.all([
       adminClient
         .from("league_entry_packs")
         .select("id,public_token,season_id,team_id,status,contact_name,contact_email,contact_phone,players,competition_notes,general_notes,submitted_at,reviewed_at,review_notes,created_at,updated_at")
         .order("updated_at", { ascending: false }),
-      adminClient.from("league_seasons").select("id,name,is_published,is_active,created_at").order("created_at", { ascending: false }),
+      adminClient.from("league_seasons").select("id,name,is_published,is_active,created_at").eq("is_active", true).order("created_at", { ascending: false }),
       adminClient.from("league_teams").select("id,season_id,location_id,name,is_active").order("name"),
       adminClient.from("locations").select("id,name").order("name"),
       adminClient.from("competitions").select("id,name,match_mode").eq("competition_format", "knockout").eq("is_archived", false).eq("is_completed", false).order("name"),
+      adminClient.from("league_fixtures").select("season_id").in("status", ["in_progress", "complete"]),
     ]);
-    const firstError = packsRes.error?.message || seasonsRes.error?.message || teamsRes.error?.message || locationsRes.error?.message || competitionsRes.error?.message;
+    const firstError = packsRes.error?.message || seasonsRes.error?.message || teamsRes.error?.message || locationsRes.error?.message || competitionsRes.error?.message || startedFixturesRes.error?.message;
     if (firstError) throw new Error(firstError);
+    const startedSeasonIds = new Set((startedFixturesRes.data ?? []).map((fixture) => fixture.season_id));
+    const openSeasons = (seasonsRes.data ?? []).filter((season) => !startedSeasonIds.has(season.id));
+    const openSeasonIds = new Set(openSeasons.map((season) => season.id));
     return NextResponse.json({
-      packs: packsRes.data ?? [],
-      seasons: seasonsRes.data ?? [],
-      teams: teamsRes.data ?? [],
+      packs: (packsRes.data ?? []).filter((pack) => openSeasonIds.has(pack.season_id)),
+      seasons: openSeasons,
+      teams: (teamsRes.data ?? []).filter((team) => openSeasonIds.has(team.season_id)),
       locations: locationsRes.data ?? [],
       competitions: competitionsRes.data ?? [],
     });
@@ -58,6 +79,7 @@ export async function GET(req: NextRequest) {
 }
 
 async function createOrReturnPack(adminClient: SupabaseClient, user: User, seasonId: string, teamId: string) {
+  await assertEntryPacksOpen(adminClient, seasonId);
   const teamRes = await adminClient.from("league_teams").select("id,season_id,captain_email,captain_phone").eq("id", teamId).maybeSingle();
   if (teamRes.error) throw new Error(teamRes.error.message);
   if (!teamRes.data || teamRes.data.season_id !== seasonId) throw new Error("Select a team belonging to the chosen season.");
@@ -151,6 +173,7 @@ async function approveAndImport(adminClient: SupabaseClient, officerClient: Supa
   if (packRes.error) throw new Error(packRes.error.message);
   if (!packRes.data) throw new Error("Entry pack not found.");
   if (packRes.data.status !== "submitted") throw new Error("Only submitted entry packs can be approved.");
+  await assertEntryPacksOpen(adminClient, packRes.data.season_id);
 
   const payload = normalizeEntryPackPayload({
     contactName: "Reviewed pack",
@@ -325,6 +348,10 @@ export async function POST(req: NextRequest) {
 
     const packId = String(body?.packId ?? "").trim();
     if (!packId) throw new Error("packId is required.");
+    const packScopeRes = await adminClient.from("league_entry_packs").select("season_id").eq("id", packId).maybeSingle();
+    if (packScopeRes.error) throw new Error(packScopeRes.error.message);
+    if (!packScopeRes.data) throw new Error("Entry pack not found.");
+    await assertEntryPacksOpen(adminClient, packScopeRes.data.season_id);
     if (action === "rotate") {
       const token = Array.from(crypto.getRandomValues(new Uint8Array(24)), (byte) => byte.toString(16).padStart(2, "0")).join("");
       const rotateRes = await adminClient.from("league_entry_packs").update({ public_token: token, updated_at: new Date().toISOString() }).eq("id", packId).select("public_token").single();

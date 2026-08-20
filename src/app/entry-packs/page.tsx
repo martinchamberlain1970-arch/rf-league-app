@@ -68,7 +68,7 @@ export default function EntryPacksPage() {
       setTeams((result.teams ?? []) as Team[]);
       setLocations((result.locations ?? []) as Location[]);
       setCompetitions((result.competitions ?? []) as Competition[]);
-      const firstSeason = seasonId || result.seasons?.find((season: Season) => season.is_active !== false)?.id || result.seasons?.[0]?.id || "";
+      const firstSeason = seasonId && result.seasons?.some((season: Season) => season.id === seasonId) ? seasonId : result.seasons?.[0]?.id || "";
       setSeasonId(firstSeason);
       setMessage(null);
     } catch (error) {
@@ -160,11 +160,13 @@ export default function EntryPacksPage() {
             <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-bold text-slate-950">Generate a team link</h2>
               <div className="mt-3 grid gap-3 md:grid-cols-[1fr_1fr_auto]">
-                <select value={seasonId} onChange={(event) => setSeasonId(event.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">Select season</option>{seasons.map((season) => <option key={season.id} value={season.id}>{season.name}{season.is_active === false ? " (completed)" : ""}</option>)}</select>
+                <select value={seasonId} onChange={(event) => setSeasonId(event.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">Select open league</option>{seasons.map((season) => <option key={season.id} value={season.id}>{season.name}</option>)}</select>
                 <select value={teamId} onChange={(event) => setTeamId(event.target.value)} className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"><option value="">Select team</option>{availableTeams.map((team) => <option key={team.id} value={team.id}>{team.name}{team.location_id ? ` · ${locationName.get(team.location_id) ?? "Club"}` : ""}</option>)}</select>
-                <button type="button" disabled={busyId === "create"} onClick={() => void generate()} className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{busyId === "create" ? "Generating…" : "Generate private link"}</button>
+                <button type="button" disabled={busyId === "create" || !seasonId || !teamId} onClick={() => void generate()} className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">{busyId === "create" ? "Generating…" : "Generate private link"}</button>
               </div>
             </section>
+
+            {seasons.length === 0 ? <section className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900">There are no open leagues available for team entry packs. Create the new league first; completed leagues and leagues with fixtures already in progress or complete are excluded.</section> : null}
 
             <section className="space-y-3">
               <div className="flex items-center justify-between gap-3"><h2 className="text-xl font-bold text-slate-950">Issued packs</h2><span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-bold text-slate-700">{packs.length}</span></div>

@@ -34,7 +34,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ token:
   if ("error" in loaded) return NextResponse.json({ error: loaded.error }, { status: loaded.status, headers: noStore });
   const pack = loaded.pack;
 
-  const [seasonRes, teamRes, competitionsRes] = await Promise.all([
+  const [seasonRes, teamRes, competitionsRes, startedFixturesRes] = await Promise.all([
     client.from("league_seasons").select("id,name,is_active").eq("id", pack.season_id).maybeSingle(),
     client.from("league_teams").select("id,name,location_id").eq("id", pack.team_id).maybeSingle(),
     client
@@ -44,10 +44,14 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ token:
       .eq("is_archived", false)
       .eq("is_completed", false)
       .order("name"),
+    client.from("league_fixtures").select("id").eq("season_id", pack.season_id).in("status", ["in_progress", "complete"]).limit(1),
   ]);
-  const firstError = seasonRes.error?.message || teamRes.error?.message || competitionsRes.error?.message;
+  const firstError = seasonRes.error?.message || teamRes.error?.message || competitionsRes.error?.message || startedFixturesRes.error?.message;
   if (firstError) return NextResponse.json({ error: firstError }, { status: 400, headers: noStore });
   if (!seasonRes.data || !teamRes.data) return NextResponse.json({ error: "The linked league team is no longer available." }, { status: 404, headers: noStore });
+  if (seasonRes.data.is_active === false || (startedFixturesRes.data?.length ?? 0) > 0) {
+    return NextResponse.json({ error: "This league entry period has closed because the league is completed or already in progress." }, { status: 410, headers: noStore });
+  }
 
   const normalizedPack = normalizeEntryPackPayload({
     contactName: pack.contact_name,
@@ -93,6 +97,15 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
   const client = createClient(supabaseUrl, serviceRoleKey);
   const loaded = await loadPack(client, token);
   if ("error" in loaded) return NextResponse.json({ error: loaded.error }, { status: loaded.status, headers: noStore });
+  const [seasonStatusRes, startedFixturesRes] = await Promise.all([
+    client.from("league_seasons").select("is_active").eq("id", loaded.pack.season_id).maybeSingle(),
+    client.from("league_fixtures").select("id").eq("season_id", loaded.pack.season_id).in("status", ["in_progress", "complete"]).limit(1),
+  ]);
+  const statusError = seasonStatusRes.error?.message || startedFixturesRes.error?.message;
+  if (statusError) return NextResponse.json({ error: statusError }, { status: 400, headers: noStore });
+  if (!seasonStatusRes.data || seasonStatusRes.data.is_active === false || (startedFixturesRes.data?.length ?? 0) > 0) {
+    return NextResponse.json({ error: "This league entry period has closed because the league is completed or already in progress." }, { status: 410, headers: noStore });
+  }
   if (loaded.pack.status === "approved") {
     return NextResponse.json({ error: "This entry pack has been approved and is now read-only. Contact a league officer for changes." }, { status: 409, headers: noStore });
   }
