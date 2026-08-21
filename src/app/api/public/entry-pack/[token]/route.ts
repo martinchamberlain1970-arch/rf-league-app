@@ -34,19 +34,12 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ token:
   if ("error" in loaded) return NextResponse.json({ error: loaded.error }, { status: loaded.status, headers: noStore });
   const pack = loaded.pack;
 
-  const [seasonRes, teamRes, competitionsRes, startedFixturesRes] = await Promise.all([
+  const [seasonRes, teamRes, startedFixturesRes] = await Promise.all([
     client.from("league_seasons").select("id,name,is_active").eq("id", pack.season_id).maybeSingle(),
     client.from("league_teams").select("id,name,location_id").eq("id", pack.team_id).maybeSingle(),
-    client
-      .from("competitions")
-      .select("id,name,match_mode,sport_type,signup_deadline,is_archived,is_completed")
-      .eq("competition_format", "knockout")
-      .eq("is_archived", false)
-      .eq("is_completed", false)
-      .order("name"),
     client.from("league_fixtures").select("id").eq("season_id", pack.season_id).in("status", ["in_progress", "complete"]).limit(1),
   ]);
-  const firstError = seasonRes.error?.message || teamRes.error?.message || competitionsRes.error?.message || startedFixturesRes.error?.message;
+  const firstError = seasonRes.error?.message || teamRes.error?.message || startedFixturesRes.error?.message;
   if (firstError) return NextResponse.json({ error: firstError }, { status: 400, headers: noStore });
   if (!seasonRes.data || !teamRes.data) return NextResponse.json({ error: "The linked league team is no longer available." }, { status: 404, headers: noStore });
   if (seasonRes.data.is_active === false || (startedFixturesRes.data?.length ?? 0) > 0) {
@@ -82,7 +75,6 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ token:
       },
       season: seasonRes.data,
       team: { ...teamRes.data, locationName },
-      competitions: competitionsRes.data ?? [],
     },
     { headers: noStore }
   );
@@ -116,15 +108,8 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
   const validationError = validateEntryPackPayload(payload, action === "submit");
   if (validationError) return NextResponse.json({ error: validationError }, { status: 400, headers: noStore });
 
-  const competitionIds = Array.from(new Set(payload.players.flatMap((player) => player.competitionIds)));
-  if (competitionIds.length > 0) {
-    const competitionRes = await client.from("competitions").select("id").in("id", competitionIds).eq("competition_format", "knockout").eq("is_archived", false).eq("is_completed", false);
-    if (competitionRes.error) return NextResponse.json({ error: competitionRes.error.message }, { status: 400, headers: noStore });
-    const allowed = new Set((competitionRes.data ?? []).map((row) => row.id));
-    if (competitionIds.some((id) => !allowed.has(id))) {
-      return NextResponse.json({ error: "One or more selected competitions are no longer available." }, { status: 400, headers: noStore });
-    }
-  }
+  payload.players = payload.players.map((player) => ({ ...player, competitionIds: [] }));
+  payload.competitionNotes = "";
 
   const now = new Date().toISOString();
   const updateRes = await client

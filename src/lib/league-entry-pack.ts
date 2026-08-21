@@ -106,6 +106,6 @@ export function validateEntryPackPayload(payload: LeagueEntryPackPayload, forSub
   if (captainCount !== 1) return "Select exactly one team captain.";
   if (viceCount > 1) return "Select no more than one vice-captain.";
   if (!payload.phoneSharingConfirmed) return "Confirm the match-arranging telephone-number declaration.";
-  if (!payload.accuracyConfirmed) return "Confirm that the roster and competition selections are accurate.";
+  if (!payload.accuracyConfirmed) return "Confirm that the league roster and captain roles are accurate.";
   return null;
 }

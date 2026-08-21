@@ -1,15 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import type { LeagueEntryPackPayload, LeagueEntryPackPlayer } from "@/lib/league-entry-pack";
 
-type Competition = { id: string; name: string; match_mode: string; sport_type: string; signup_deadline?: string | null };
 type PackResponse = {
   pack: LeagueEntryPackPayload & { status: "draft" | "submitted" | "approved" | "rejected"; submittedAt?: string | null; reviewNotes?: string | null; updatedAt?: string | null };
   season: { id: string; name: string; is_active?: boolean | null };
   team: { id: string; name: string; location_id?: string | null; locationName: string };
-  competitions: Competition[];
   error?: string;
 };
 
@@ -62,8 +60,8 @@ export default function PublicEntryPackPage() {
       contactName: result.pack.contactName ?? "",
       contactEmail: result.pack.contactEmail ?? "",
       contactPhone: result.pack.contactPhone ?? "",
-      players: result.pack.players?.length ? result.pack.players : [emptyPlayer()],
-      competitionNotes: result.pack.competitionNotes ?? "",
+      players: result.pack.players?.length ? result.pack.players.map((player) => ({ ...player, competitionIds: [] })) : [emptyPlayer()],
+      competitionNotes: "",
       generalNotes: result.pack.generalNotes ?? "",
       phoneSharingConfirmed: Boolean(result.pack.phoneSharingConfirmed),
       accuracyConfirmed: Boolean(result.pack.accuracyConfirmed),
@@ -78,8 +76,6 @@ export default function PublicEntryPackPage() {
   }, [token]);
 
   const locked = data?.pack.status === "approved";
-  const selectedCount = useMemo(() => pack.players.reduce((sum, player) => sum + player.competitionIds.length, 0), [pack.players]);
-
   const updatePlayer = (rowId: string, patch: Partial<LeagueEntryPackPlayer>) => {
     setPack((current) => ({
       ...current,
@@ -93,15 +89,6 @@ export default function PublicEntryPackPage() {
       }),
     }));
     setMessage(null);
-  };
-
-  const toggleCompetition = (rowId: string, competitionId: string, checked: boolean) => {
-    const player = pack.players.find((row) => row.rowId === rowId);
-    if (!player) return;
-    const ids = new Set(player.competitionIds);
-    if (checked) ids.add(competitionId);
-    else ids.delete(competitionId);
-    updatePlayer(rowId, { competitionIds: Array.from(ids) });
   };
 
   const save = async (action: "save" | "submit") => {
@@ -157,8 +144,8 @@ export default function PublicEntryPackPage() {
             <li>Add every player who will be registered for this team in the winter league. Adults need their full first and second name; use only a first name or recognised playing name for a junior.</li>
             <li>Enter a working match-arranging telephone number for every player. For a junior, use the appropriate parent or guardian contact.</li>
             <li>Select exactly one captain and, if applicable, one vice-captain.</li>
-            <li>Tick every knockout cup each player wants to enter. Use the pairing notes for doubles or triples combinations.</li>
             <li>Use <strong>Save draft</strong> while collecting details. Send the pack only when the roster is complete.</li>
+            <li>Knockout competition entry forms will be sent separately and are not part of this league pack.</li>
             <li>After submission, the League Secretary or Chairman will check historic profiles before creating new players.</li>
           </ol>
           <p className="mt-3 rounded-xl bg-white p-3 text-xs text-slate-600">Keep this link within your team. Anyone holding it can amend the pack until it has been approved.</p>
@@ -194,24 +181,22 @@ export default function PublicEntryPackPage() {
                     <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2"><input type="checkbox" checked={player.isJunior} onChange={(event) => updatePlayer(player.rowId, { isJunior: event.target.checked })} /> Under 18</label>
                   </div>
                   {player.isJunior ? <div className="mt-3 grid gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 md:grid-cols-3"><label className="text-xs font-bold text-amber-900">Age band *<select value={player.juniorAgeBand} onChange={(event) => updatePlayer(player.rowId, { juniorAgeBand: event.target.value as LeagueEntryPackPlayer["juniorAgeBand"] })} className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-normal"><option value="">Select age band</option><option value="under_13">Under 13</option><option value="13_15">Age 13–15</option><option value="16_17">Age 16–17</option></select></label><label className="text-xs font-bold text-amber-900">Parent / guardian name *<input value={player.guardianName} onChange={(event) => updatePlayer(player.rowId, { guardianName: event.target.value })} className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-normal" /></label><label className="text-xs font-bold text-amber-900">Parent / guardian telephone *<input type="tel" value={player.guardianPhone} onChange={(event) => updatePlayer(player.rowId, { guardianPhone: event.target.value })} className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-normal" /></label></div> : null}
-                  <div className="mt-4"><p className="text-xs font-bold uppercase tracking-wide text-slate-600">Knockout competitions</p>{data.competitions.length === 0 ? <p className="mt-2 text-sm text-slate-500">No competitions are currently available for selection.</p> : <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">{data.competitions.map((competition) => <label key={`${player.rowId}:${competition.id}`} className="flex items-start gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm"><input type="checkbox" className="mt-0.5" checked={player.competitionIds.includes(competition.id)} onChange={(event) => toggleCompetition(player.rowId, competition.id, event.target.checked)} /><span><strong>{competition.name}</strong><span className="block text-xs capitalize text-slate-500">{competition.match_mode}</span></span></label>)}</div>}</div>
                 </article>
               ))}
             </div>
           </section>
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="text-xl font-bold text-slate-950">3. Pairings, teams and notes</h2>
-            <p className="mt-1 text-sm text-slate-600">You have made {selectedCount} player/competition selection{selectedCount === 1 ? "" : "s"}. List doubles pairings, triples teams or special competition instructions below.</p>
-            <textarea value={pack.competitionNotes} onChange={(event) => setPack({ ...pack, competitionNotes: event.target.value })} rows={4} placeholder="Example: Joe Bloggs / Sam Smith – Pairs; A. Player, B. Player and C. Player – Triples" className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
-            <label className="mt-3 block text-sm font-semibold text-slate-700">Other team information<textarea value={pack.generalNotes} onChange={(event) => setPack({ ...pack, generalNotes: event.target.value })} rows={3} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 font-normal" /></label>
+            <h2 className="text-xl font-bold text-slate-950">3. Other team information</h2>
+            <p className="mt-1 text-sm text-slate-600">Add any league-registration information the League Secretary or Chairman should know.</p>
+            <textarea value={pack.generalNotes} onChange={(event) => setPack({ ...pack, generalNotes: event.target.value })} rows={3} className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
           </section>
 
           <section className="rounded-2xl border border-teal-200 bg-teal-50 p-5 shadow-sm">
             <h2 className="text-xl font-bold text-slate-950">4. Declaration and submission</h2>
             <div className="mt-3 space-y-3 text-sm text-slate-800">
               <label className="flex items-start gap-3 rounded-xl bg-white p-3"><input type="checkbox" className="mt-1" checked={pack.phoneSharingConfirmed} onChange={(event) => setPack({ ...pack, phoneSharingConfirmed: event.target.checked })} /><span>I confirm that the telephone numbers supplied may be used by league officers, the player’s team captain and relevant opponents for league administration and arranging matches. They must not be published publicly.</span></label>
-              <label className="flex items-start gap-3 rounded-xl bg-white p-3"><input type="checkbox" className="mt-1" checked={pack.accuracyConfirmed} onChange={(event) => setPack({ ...pack, accuracyConfirmed: event.target.checked })} /><span>I confirm that the roster, captain roles and knockout competition selections are accurate and that the people listed know their details are being supplied.</span></label>
+              <label className="flex items-start gap-3 rounded-xl bg-white p-3"><input type="checkbox" className="mt-1" checked={pack.accuracyConfirmed} onChange={(event) => setPack({ ...pack, accuracyConfirmed: event.target.checked })} /><span>I confirm that the roster and captain roles are accurate and that the people listed know their details are being supplied.</span></label>
             </div>
             {!locked ? <div className="mt-4 flex flex-wrap gap-3"><button type="button" disabled={Boolean(busy)} onClick={() => void save("save")} className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-bold text-slate-800 disabled:opacity-50">{busy === "save" ? "Saving…" : "Save draft"}</button><button type="button" disabled={Boolean(busy)} onClick={() => void save("submit")} className="rounded-xl bg-teal-700 px-5 py-3 font-bold text-white disabled:opacity-50">{busy === "submit" ? "Submitting…" : data.pack.status === "submitted" ? "Resubmit updated pack" : "Submit completed pack"}</button></div> : null}
           </section>

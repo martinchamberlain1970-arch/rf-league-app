@@ -50,7 +50,7 @@ async function assertEntryPacksOpen(adminClient: SupabaseClient, seasonId: strin
 export async function GET(req: NextRequest) {
   try {
     const { adminClient } = await authorize(req);
-    const [packsRes, seasonsRes, teamsRes, locationsRes, competitionsRes, startedFixturesRes] = await Promise.all([
+    const [packsRes, seasonsRes, teamsRes, locationsRes, startedFixturesRes] = await Promise.all([
       adminClient
         .from("league_entry_packs")
         .select("id,public_token,season_id,team_id,status,contact_name,contact_email,contact_phone,players,competition_notes,general_notes,submitted_at,reviewed_at,review_notes,created_at,updated_at")
@@ -58,10 +58,9 @@ export async function GET(req: NextRequest) {
       adminClient.from("league_seasons").select("id,name,is_published,is_active,created_at").eq("is_active", true).order("created_at", { ascending: false }),
       adminClient.from("league_teams").select("id,season_id,location_id,name,is_active").order("name"),
       adminClient.from("locations").select("id,name").order("name"),
-      adminClient.from("competitions").select("id,name,match_mode").eq("competition_format", "knockout").eq("is_archived", false).eq("is_completed", false).order("name"),
       adminClient.from("league_fixtures").select("season_id").in("status", ["in_progress", "complete"]),
     ]);
-    const firstError = packsRes.error?.message || seasonsRes.error?.message || teamsRes.error?.message || locationsRes.error?.message || competitionsRes.error?.message || startedFixturesRes.error?.message;
+    const firstError = packsRes.error?.message || seasonsRes.error?.message || teamsRes.error?.message || locationsRes.error?.message || startedFixturesRes.error?.message;
     if (firstError) throw new Error(firstError);
     const startedSeasonIds = new Set((startedFixturesRes.data ?? []).map((fixture) => fixture.season_id));
     const openSeasons = (seasonsRes.data ?? []).filter((season) => !startedSeasonIds.has(season.id));
@@ -71,7 +70,6 @@ export async function GET(req: NextRequest) {
       seasons: openSeasons,
       teams: (teamsRes.data ?? []).filter((team) => openSeasonIds.has(team.season_id)),
       locations: locationsRes.data ?? [],
-      competitions: competitionsRes.data ?? [],
     });
   } catch (error) {
     return responseForError(error);
@@ -101,18 +99,13 @@ async function createOrReturnPack(adminClient: SupabaseClient, user: User, seaso
   const playerIds = memberRows.map((member) => member.player_id).filter(Boolean);
   let seededPlayers: LeagueEntryPackPlayer[] = [];
   if (playerIds.length > 0) {
-    const [playersRes, contactsRes, entriesRes, competitionsRes] = await Promise.all([
+    const [playersRes, contactsRes] = await Promise.all([
       adminClient.from("players").select("id,full_name,display_name,age_band,guardian_name").in("id", playerIds),
       adminClient.from("player_private_contacts").select("player_id,phone_number,guardian_phone").in("player_id", playerIds),
-      adminClient.from("competition_entries").select("player_id,competition_id,status").in("player_id", playerIds).in("status", ["pending", "approved"]),
-      adminClient.from("competitions").select("id").eq("competition_format", "knockout").eq("is_archived", false).eq("is_completed", false),
     ]);
-    if (playersRes.error || contactsRes.error || entriesRes.error || competitionsRes.error) throw new Error(playersRes.error?.message ?? contactsRes.error?.message ?? entriesRes.error?.message ?? competitionsRes.error?.message ?? "Failed to pre-populate the entry pack.");
+    if (playersRes.error || contactsRes.error) throw new Error(playersRes.error?.message ?? contactsRes.error?.message ?? "Failed to pre-populate the entry pack.");
     const playerById = new Map((playersRes.data ?? []).map((player) => [player.id, player]));
     const contactByPlayerId = new Map((contactsRes.data ?? []).map((contact) => [contact.player_id, contact]));
-    const activeCompetitionIds = new Set((competitionsRes.data ?? []).map((competition) => competition.id));
-    const competitionIdsByPlayer = new Map<string, string[]>();
-    (entriesRes.data ?? []).filter((entry) => activeCompetitionIds.has(entry.competition_id)).forEach((entry) => competitionIdsByPlayer.set(entry.player_id, [...(competitionIdsByPlayer.get(entry.player_id) ?? []), entry.competition_id]));
     seededPlayers = memberRows.flatMap((member) => {
       const player = playerById.get(member.player_id);
       if (!player) return [];
@@ -131,7 +124,7 @@ async function createOrReturnPack(adminClient: SupabaseClient, user: User, seaso
         juniorAgeBand,
         guardianName: player.guardian_name ?? "",
         guardianPhone: isJunior ? privateContact?.guardian_phone ?? privateContact?.phone_number ?? "" : "",
-        competitionIds: Array.from(new Set(competitionIdsByPlayer.get(player.id) ?? [])),
+        competitionIds: [],
       }];
     });
   }
@@ -164,10 +157,10 @@ function roleContacts(players: LeagueEntryPackPlayer[], fallbackEmail: string, f
   };
 }
 
-async function approveAndImport(adminClient: SupabaseClient, officerClient: SupabaseClient, user: User, packId: string, reviewNotes: string) {
+async function approveAndImport(adminClient: SupabaseClient, user: User, packId: string, reviewNotes: string) {
   const packRes = await adminClient
     .from("league_entry_packs")
-    .select("id,season_id,team_id,status,contact_email,contact_phone,players,competition_notes")
+    .select("id,season_id,team_id,status,contact_email,contact_phone,players")
     .eq("id", packId)
     .maybeSingle();
   if (packRes.error) throw new Error(packRes.error.message);
@@ -180,7 +173,7 @@ async function approveAndImport(adminClient: SupabaseClient, officerClient: Supa
     contactEmail: packRes.data.contact_email,
     contactPhone: packRes.data.contact_phone,
     players: packRes.data.players,
-    competitionNotes: packRes.data.competition_notes,
+    competitionNotes: "",
     phoneSharingConfirmed: true,
     accuracyConfirmed: true,
   });
@@ -287,32 +280,6 @@ async function approveAndImport(adminClient: SupabaseClient, officerClient: Supa
   const teamUpdateRes = await adminClient.from("league_teams").update(contacts).eq("id", packRes.data.team_id);
   if (teamUpdateRes.error) throw new Error(teamUpdateRes.error.message);
 
-  for (const player of payload.players) {
-    const playerId = resolved.get(player.rowId)!;
-    for (const competitionId of player.competitionIds) {
-      const existingRes = await adminClient
-        .from("competition_entries")
-        .select("id,status")
-        .eq("competition_id", competitionId)
-        .eq("player_id", playerId)
-        .in("status", ["pending", "approved"])
-        .limit(1)
-        .maybeSingle();
-      if (existingRes.error) throw new Error(existingRes.error.message);
-      if (existingRes.data) continue;
-      const entryRes = await officerClient.from("competition_entries").insert({
-        competition_id: competitionId,
-        requester_user_id: user.id,
-        player_id: playerId,
-        status: "pending",
-        reviewed_by_user_id: null,
-        reviewed_at: null,
-        note: JSON.stringify({ source: "public_league_entry_pack", packId, competitionNotes: payload.competitionNotes || null }),
-      });
-      if (entryRes.error) throw new Error(entryRes.error.message);
-    }
-  }
-
   const now = new Date().toISOString();
   const approvalRes = await adminClient
     .from("league_entry_packs")
@@ -335,7 +302,7 @@ async function approveAndImport(adminClient: SupabaseClient, officerClient: Supa
 
 export async function POST(req: NextRequest) {
   try {
-    const { adminClient, officerClient, user } = await authorize(req);
+    const { adminClient, user } = await authorize(req);
     const body = await req.json().catch(() => ({}));
     const action = String(body?.action ?? "create");
     if (action === "create") {
@@ -370,7 +337,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
     if (action === "approve") {
-      const result = await approveAndImport(adminClient, officerClient, user, packId, String(body?.reviewNotes ?? "").trim().slice(0, 2000));
+      const result = await approveAndImport(adminClient, user, packId, String(body?.reviewNotes ?? "").trim().slice(0, 2000));
       return NextResponse.json({ ok: true, ...result });
     }
     throw new Error("Unsupported action.");

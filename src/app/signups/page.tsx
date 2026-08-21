@@ -189,7 +189,7 @@ export default function CompetitionSignupsPage() {
       setMessage("Sign-ups are closed for this competition.");
       return;
     }
-    if (target.signup_deadline && Date.parse(target.signup_deadline) < Date.now()) {
+    if (target.signup_deadline && target.signup_deadline < new Date().toISOString().slice(0, 10)) {
       setMessage("Sign-up deadline has passed for this competition.");
       return;
     }
@@ -288,8 +288,6 @@ export default function CompetitionSignupsPage() {
     await reload();
   };
 
-  const now = Date.now();
-
   return (
     <main className="min-h-screen bg-slate-100 p-6">
       <div className="mx-auto max-w-5xl space-y-4">
@@ -309,7 +307,7 @@ export default function CompetitionSignupsPage() {
               const allEntries = entries.filter((e) => e.competition_id === c.id && e.status !== "withdrawn");
               const approvedCount = allEntries.filter((e) => e.status === "approved").length;
               const pendingCount = allEntries.filter((e) => e.status === "pending").length;
-              const deadlinePassed = c.signup_deadline ? Date.parse(c.signup_deadline) < now : false;
+              const deadlinePassed = c.signup_deadline ? c.signup_deadline < new Date().toISOString().slice(0, 10) : false;
               const full = c.max_entries ? approvedCount >= c.max_entries : false;
               const canEnter = !deadlinePassed && !full && (!userEntry || userEntry.status === "rejected" || userEntry.status === "withdrawn");
               const isAlreadyEntered = userEntry?.status === "approved";

@@ -237,6 +237,12 @@ const statusLabel = (s: Fixture["status"]) =>
   s === "in_progress" ? "in progress" : s === "pending" ? "scheduled" : "complete";
 type UndirectedMatch = { teamAId: string; teamBId: string };
 type DirectedMatch = { homeTeamId: string; awayTeamId: string };
+type HomeGroupLimit = { teamIds: Set<string>; maxHomes: number };
+type FixtureSchedulingConstraints = {
+  roundOffset?: number;
+  reservedVenueHomesByRound?: Array<Map<string, number>>;
+  homeGroupLimits?: HomeGroupLimit[];
+};
 const shuffleArray = <T,>(items: T[]) => {
   const copy = [...items];
   for (let i = copy.length - 1; i > 0; i -= 1) {
@@ -302,7 +308,8 @@ const getLastSideBeforeRound = (teamId: string, rounds: DirectedMatch[][], round
 const assignHomeAwayForRounds = (
   rounds: UndirectedMatch[][],
   teamVenueById: Map<string, string>,
-  venueCapacityById: Map<string, number>
+  venueCapacityById: Map<string, number>,
+  constraints: FixtureSchedulingConstraints = {}
 ) => {
   const matchCountByTeam = new Map<string, number>();
   rounds.forEach((round) => {
@@ -351,7 +358,15 @@ const assignHomeAwayForRounds = (
       const venueId = teamVenueById.get(candidate.homeTeamId);
       if (!venueId) continue;
       const venueCapacity = Math.max(1, venueCapacityById.get(venueId) ?? 1);
-      if ((venueHomeCount.get(venueId) ?? 0) >= venueCapacity) continue;
+      const globalRoundIndex = (constraints.roundOffset ?? 0) + roundIndex;
+      const reservedVenueHomes = constraints.reservedVenueHomesByRound?.[globalRoundIndex]?.get(venueId) ?? 0;
+      if ((venueHomeCount.get(venueId) ?? 0) + reservedVenueHomes >= venueCapacity) continue;
+      const breaksHomeGroupLimit = (constraints.homeGroupLimits ?? []).some(
+        (group) =>
+          group.teamIds.has(candidate.homeTeamId) &&
+          assigned[roundIndex].filter((item) => group.teamIds.has(item.homeTeamId)).length >= group.maxHomes
+      );
+      if (breaksHomeGroupLimit) continue;
       assigned[roundIndex].push(candidate);
       homeCountByTeam.set(candidate.homeTeamId, (homeCountByTeam.get(candidate.homeTeamId) ?? 0) + 1);
       if (backtrack(roundIndex, matchIndex + 1)) return true;
@@ -370,7 +385,8 @@ const scheduleDirectedMatchesIntoRounds = (
   matchesPerRound: number,
   teamVenueById: Map<string, string>,
   venueCapacityById: Map<string, number>,
-  priorRounds: DirectedMatch[][] = []
+  priorRounds: DirectedMatch[][] = [],
+  constraints: FixtureSchedulingConstraints = {}
 ) => {
   const rounds: DirectedMatch[][] = Array.from({ length: roundCount }, () => []);
   const roundTeams = Array.from({ length: roundCount }, () => new Set<string>());
@@ -393,7 +409,15 @@ const scheduleDirectedMatchesIntoRounds = (
       for (let roundIndex = 0; roundIndex < roundCount; roundIndex += 1) {
         if (rounds[roundIndex].length >= matchesPerRound) continue;
         if (roundTeams[roundIndex].has(match.homeTeamId) || roundTeams[roundIndex].has(match.awayTeamId)) continue;
-        if ((roundVenueHomes[roundIndex].get(venueId) ?? 0) >= capacity) continue;
+        const globalRoundIndex = (constraints.roundOffset ?? 0) + roundIndex;
+        const reservedVenueHomes = constraints.reservedVenueHomesByRound?.[globalRoundIndex]?.get(venueId) ?? 0;
+        if ((roundVenueHomes[roundIndex].get(venueId) ?? 0) + reservedVenueHomes >= capacity) continue;
+        const breaksHomeGroupLimit = (constraints.homeGroupLimits ?? []).some(
+          (group) =>
+            group.teamIds.has(match.homeTeamId) &&
+            rounds[roundIndex].filter((item) => group.teamIds.has(item.homeTeamId)).length >= group.maxHomes
+        );
+        if (breaksHomeGroupLimit) continue;
         options.push(roundIndex);
       }
       if (options.length === 0) return false;
@@ -2695,17 +2719,60 @@ export default function LeaguePage() {
     }
     const firstLegRoundsCount = seasonTeams.length % 2 === 0 ? seasonTeams.length - 1 : seasonTeams.length;
     const matchesPerRound = Math.floor(seasonTeams.length / 2);
+    const breakWeeks = getBreakWeeksFromDates();
+    const breakWeekSet = new Set(breakWeeks);
+    const totalRoundCount = firstLegRoundsCount * genFixtureCycles;
+    let slotWeekNo = 0;
+    const roundSlots = Array.from({ length: totalRoundCount }, () => {
+      slotWeekNo += 1;
+      while (breakWeekSet.has(slotWeekNo)) slotWeekNo += 1;
+      return {
+        weekNo: slotWeekNo,
+        fixtureDate: genStartDate ? addDays(genStartDate, (slotWeekNo - 1) * 7) : null,
+      };
+    });
+    const seasonYearLabel = currentSeason?.name.match(/\b\d{4}\/\d{4}\b/)?.[0] ?? null;
+    const otherScheduledFixtures = fixtures.filter((fixture) => {
+      if (fixture.season_id === seasonId) return !genClearExisting;
+      const otherSeason = seasonById.get(fixture.season_id);
+      if (!otherSeason || otherSeason.is_active === false) return false;
+      return seasonYearLabel ? otherSeason.name.includes(seasonYearLabel) : true;
+    });
+    const reservedVenueHomesByRound = roundSlots.map((slot) => {
+      const reserved = new Map<string, number>();
+      otherScheduledFixtures.forEach((fixture) => {
+        if (!fixture.location_id) return;
+        const existingDate = fixture.fixture_date?.slice(0, 10) ?? null;
+        const occupiesSameSlot =
+          slot.fixtureDate && existingDate
+            ? slot.fixtureDate === existingDate
+            : Number(fixture.week_no ?? 0) === slot.weekNo;
+        if (!occupiesSameSlot) return;
+        reserved.set(fixture.location_id, (reserved.get(fixture.location_id) ?? 0) + 1);
+      });
+      return reserved;
+    });
+    const perryStreetD = seasonTeams.find((team) => team.name.trim().toLowerCase() === "perry street d");
+    const perryStreetE = seasonTeams.find((team) => team.name.trim().toLowerCase() === "perry street e");
+    const homeGroupLimits: HomeGroupLimit[] =
+      perryStreetD && perryStreetE
+        ? [{ teamIds: new Set([perryStreetD.id, perryStreetE.id]), maxHomes: 1 }]
+        : [];
     const tryBuildFirstLeg = () => {
       for (let attempt = 0; attempt < 200; attempt += 1) {
         const rounds = buildRoundRobinRounds(shuffleArray(seasonTeams.map((team) => team.id)));
-        const assigned = assignHomeAwayForRounds(rounds, teamVenueById, venueCapacityById);
+        const assigned = assignHomeAwayForRounds(rounds, teamVenueById, venueCapacityById, {
+          roundOffset: 0,
+          reservedVenueHomesByRound,
+          homeGroupLimits,
+        });
         if (assigned) return assigned;
       }
       return null;
     };
     const firstLegRounds = tryBuildFirstLeg();
     if (!firstLegRounds) {
-      setMessage("We couldn't generate a valid first-half fixture list with the current venue table limits. Try reducing teams at one-table venues or adjusting venue capacities.");
+      setMessage("We couldn't generate a valid first-half fixture list with the current shared venue table limits. Check the other division's fixture dates, reserved weeks, and venue capacities.");
       return;
     }
     const allRounds: DirectedMatch[][] = [...firstLegRounds];
@@ -2719,29 +2786,47 @@ export default function LeaguePage() {
         matchesPerRound,
         teamVenueById,
         venueCapacityById,
-        firstLegRounds
+        firstLegRounds,
+        {
+          roundOffset: firstLegRoundsCount,
+          reservedVenueHomesByRound,
+          homeGroupLimits,
+        }
       );
       if (!secondLegRounds) {
-        setMessage("The return fixtures could not be arranged without breaking venue table limits. Try increasing table counts or reducing teams at the busiest venues.");
+        setMessage("The return fixtures could not be arranged without breaking shared venue table limits. Check the other division's fixture dates or reserved weeks.");
         return;
       }
       allRounds.push(...secondLegRounds);
       if (genFixtureCycles === 3) {
-        allRounds.push(...firstLegRounds.map((round) => round.map((match) => ({ ...match }))));
+        const thirdLegMatches = firstLegRounds.flatMap((round) => round.map((match) => ({ ...match })));
+        const thirdLegRounds = scheduleDirectedMatchesIntoRounds(
+          thirdLegMatches,
+          firstLegRoundsCount,
+          matchesPerRound,
+          teamVenueById,
+          venueCapacityById,
+          allRounds,
+          {
+            roundOffset: firstLegRoundsCount * 2,
+            reservedVenueHomesByRound,
+            homeGroupLimits,
+          }
+        );
+        if (!thirdLegRounds) {
+          setMessage("The third cycle could not be arranged without breaking shared venue table limits. Check the other division's fixture dates or reserved weeks.");
+          return;
+        }
+        allRounds.push(...thirdLegRounds);
       }
     }
-    const breakWeeks = getBreakWeeksFromDates();
-    const breakWeekSet = new Set(breakWeeks);
-    let currentWeekNo = 0;
-    const fixturePayload = allRounds.flatMap((round) => {
-      currentWeekNo += 1;
-      while (breakWeekSet.has(currentWeekNo)) currentWeekNo += 1;
-      const fixtureDate = genStartDate ? addDays(genStartDate, (currentWeekNo - 1) * 7) : null;
+    const fixturePayload = allRounds.flatMap((round, roundIndex) => {
+      const slot = roundSlots[roundIndex];
       return round.map((match) => ({
         season_id: seasonId,
         location_id: teamVenueById.get(match.homeTeamId) ?? currentSeason?.location_id ?? null,
-        week_no: currentWeekNo,
-        fixture_date: fixtureDate,
+        week_no: slot.weekNo,
+        fixture_date: slot.fixtureDate,
         home_team_id: match.homeTeamId,
         away_team_id: match.awayTeamId,
       }));
@@ -2816,7 +2901,7 @@ export default function LeaguePage() {
     await loadAll();
     setInfoModal({
       title: "Fixtures Generated",
-      description: `Generated ${fixturePayload.length} fixtures for the selected league with venue table limits applied.`,
+      description: `Generated ${fixturePayload.length} fixtures with shared venue table limits applied across both divisions. Captain and vice-captain assignments can be completed afterwards.`,
     });
   };
 
@@ -4684,24 +4769,24 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
         target: "add-league-teams" as const,
       },
       {
-        key: "players",
-        title: "3. Assign players and roles",
-        done: setupStepState.playersAssigned,
-        detail: setupStepState.playersAssigned
-          ? "Every league team has players plus captain/vice-captain coverage."
-          : "Use Team Management to add players and assign captain or vice-captain roles for every league team.",
-        actionLabel: "Open Team Management",
-        view: "teamManagement" as const,
-        target: "assign-players" as const,
-      },
-      {
         key: "fixtures",
-        title: "4. Generate fixtures",
+        title: "3. Generate fixtures",
         done: setupStepState.fixturesGenerated,
-        detail: `${seasonFixtures.length} fixture${seasonFixtures.length === 1 ? "" : "s"} generated.`,
+        detail: `${seasonFixtures.length} fixture${seasonFixtures.length === 1 ? "" : "s"} generated. Captain and vice-captain roles are not required at this stage.`,
         actionLabel: "Open Fixtures",
         view: "fixtures" as const,
         target: "generate-fixtures" as const,
+      },
+      {
+        key: "players",
+        title: "4. Assign players and roles",
+        done: setupStepState.playersAssigned,
+        detail: setupStepState.playersAssigned
+          ? "Every league team has players plus captain/vice-captain coverage."
+          : "Complete the entry packs, then assign players and captain or vice-captain roles before publishing.",
+        actionLabel: "Open Team Management",
+        view: "teamManagement" as const,
+        target: "assign-players" as const,
       },
       {
         key: "publish",
@@ -7506,7 +7591,7 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
                     <>
                       <p className="text-sm font-semibold text-slate-900">Auto-generate full league fixtures</p>
                       <p className="mt-1 text-xs text-slate-600">
-                        Choose a season start date, then add any reserved Thursdays as break weeks (no league fixtures).
+                        Choose a season start date, then add any reserved Thursdays as break weeks (no league fixtures). Captain and vice-captain roles can be assigned after fixtures are generated.
                       </p>
                       <div className="mt-2 grid items-end gap-2 sm:grid-cols-6">
                         <label className="space-y-1">

@@ -99,7 +99,7 @@ export async function POST(req: NextRequest) {
   if (competition.is_archived || competition.is_completed || !competition.signup_open) {
     return NextResponse.json({ error: "Sign-ups are closed for this competition." }, { status: 400 });
   }
-  if (competition.signup_deadline && Date.parse(competition.signup_deadline) < Date.now()) {
+  if (competition.signup_deadline && competition.signup_deadline < new Date().toISOString().slice(0, 10)) {
     return NextResponse.json({ error: "Sign-up deadline has passed for this competition." }, { status: 400 });
   }
   if (competition.max_entries) {
