@@ -7,7 +7,7 @@ import { logServerAudit } from "@/lib/server-audit";
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-const ASSIGNABLE_ROLES = new Set<AppRole>(["user", "admin", "league_secretary", "league_chairman"]);
+const ASSIGNABLE_ROLES = new Set<AppRole>(["user", "admin", "league_secretary", "league_chairman", "league_treasurer"]);
 
 export async function POST(req: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) return NextResponse.json({ error: "Server is not configured." }, { status: 500 });

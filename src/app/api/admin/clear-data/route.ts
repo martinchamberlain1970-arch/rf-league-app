@@ -24,6 +24,8 @@ const BACKUP_TABLES = [
   "competitions",
   "competition_entries",
   "league_entry_packs",
+  "league_invoice_batches",
+  "league_invoices",
   "player_claim_requests",
   "player_update_requests",
   "player_deletion_requests",
@@ -39,6 +41,8 @@ const BACKUP_TABLES = [
 ] as const;
 
 const DELETE_ORDER = [
+  "league_invoices",
+  "league_invoice_batches",
   "league_entry_packs",
   "player_private_contacts",
   "league_result_submissions",

@@ -31,7 +31,7 @@ export default function TermsPage() {
             <ul className="mt-2 list-disc space-y-1 pl-5">
               <li>You must provide accurate sign-up information.</li>
               <li>You are responsible for keeping your login credentials secure.</li>
-              <li>League roles are managed by the League Secretary or Chairman; protected system roles remain controlled by the System Owner.</li>
+              <li>League roles are managed by the League Secretary, Chairman or Treasurer; protected system roles remain controlled by the System Owner.</li>
             </ul>
           </div>
 
@@ -40,7 +40,7 @@ export default function TermsPage() {
             <ul className="mt-2 list-disc space-y-1 pl-5">
               <li>The platform is for league administration, player records, fixtures, and competition management.</li>
               <li>Users must not submit false results, impersonate others, or bypass approval controls.</li>
-              <li>Submitted captain/vice-captain results may be reviewed, approved, rejected, or corrected by the League Secretary or Chairman.</li>
+              <li>Submitted captain/vice-captain results may be reviewed, approved, rejected, or corrected by the League Secretary, Chairman or Treasurer.</li>
               <li>If you share a phone number, it is for match scheduling communications only.</li>
             </ul>
           </div>
@@ -53,7 +53,7 @@ export default function TermsPage() {
               <li>Snooker handicaps are reviewed from Elo and updated to the current Elo-based target when the league review is run.</li>
               <li>The 2026/2027 Premier League uses the full reviewed handicap difference with no maximum start; Division 1 is played off scratch.</li>
               <li>No-show, void, and nominated-player frames do not affect Elo or handicap.</li>
-              <li>The League Secretary or Chairman may apply manual handicap corrections where required by league rules.</li>
+              <li>The League Secretary, Chairman or Treasurer may apply manual handicap corrections where required by league rules.</li>
               <li>Teams using a private entry-pack link must provide accurate roster and match-contact details with the knowledge of the people listed.</li>
               <li>Player telephone numbers supplied for match arrangement must not be published or used for unrelated purposes.</li>
             </ul>
@@ -92,7 +92,7 @@ export default function TermsPage() {
           <div>
             <h2 className="text-base font-semibold text-slate-900">8. Contact</h2>
             <p className="mt-2">
-              For league, account, or governance queries, contact the League Secretary or Chairman. System-security and platform-ownership queries can be escalated to the System Owner.
+              For league, account, or governance queries, contact the League Secretary, Chairman or Treasurer. System-security and platform-ownership queries can be escalated to the System Owner.
             </p>
           </div>
 

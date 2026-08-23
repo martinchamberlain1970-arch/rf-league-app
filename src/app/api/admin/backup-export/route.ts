@@ -23,6 +23,8 @@ const BACKUP_TABLES = [
   "league_handicap_history",
   "competition_entries",
   "league_entry_packs",
+  "league_invoice_batches",
+  "league_invoices",
   "competitions",
   "player_claim_requests",
   "player_update_requests",

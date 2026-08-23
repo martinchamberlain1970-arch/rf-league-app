@@ -1,4 +1,4 @@
-export const APP_ROLES = ["user", "admin", "league_secretary", "league_chairman", "super", "owner"] as const;
+export const APP_ROLES = ["user", "admin", "league_secretary", "league_chairman", "league_treasurer", "super", "owner"] as const;
 
 export type AppRole = (typeof APP_ROLES)[number];
 
@@ -18,7 +18,7 @@ export const isSystemOwnerRole = isSuperRole;
 
 export function canManageLeagueRole(value?: string | null) {
   const role = normalizeAppRole(value);
-  return isSuperRole(role) || role === "league_secretary" || role === "league_chairman";
+  return isSuperRole(role) || role === "league_secretary" || role === "league_chairman" || role === "league_treasurer";
 }
 
 export function isAdministratorRole(value?: string | null) {
@@ -29,6 +29,7 @@ export function appRoleLabel(value?: string | null) {
   const role = normalizeAppRole(value);
   if (role === "league_secretary") return "League Secretary";
   if (role === "league_chairman") return "League Chairman";
+  if (role === "league_treasurer") return "League Treasurer";
   if (role === "super" || role === "owner") return "System Owner";
   if (role === "admin") return "Administrator";
   return "User";

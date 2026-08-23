@@ -146,7 +146,7 @@ export default function PublicEntryPackPage() {
       return;
     }
     if (action === "submit" && emailCopyRequested) setReceiptStatus(result.receiptStatus === "sent" ? "sent" : "failed");
-    setMessage(action === "submit" ? "Team registration submitted successfully. The League Secretary or Chairman will review it." : "Draft saved. Return through the shared league-registration page on this browser to continue.");
+    setMessage(action === "submit" ? "Team registration submitted successfully. A league officer will review it." : "Draft saved. Return through the shared league-registration page on this browser to continue.");
     await load();
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -196,13 +196,13 @@ export default function PublicEntryPackPage() {
             <p className="mt-2 text-slate-700">
               {approved
                 ? "The submitted roster has been checked and imported into Rack & Frame."
-                : "The League Secretary or Chairman will now check the player names and roles before importing the roster."}
+                : "A league officer will now check the player names and roles before importing the roster."}
             </p>
 
             {receiptStatus === "sent" ? (
               <p className="mt-5 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-semibold text-emerald-900">A copy of the submitted roster has been emailed to {receiptEmail.trim()}.</p>
             ) : receiptStatus === "failed" ? (
-              <p className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">The registration was submitted successfully, but the optional email copy could not be sent. The League Secretary or Chairman can still review the submission.</p>
+              <p className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950">The registration was submitted successfully, but the optional email copy could not be sent. A league officer can still review the submission.</p>
             ) : null}
 
             <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-700">
@@ -210,7 +210,7 @@ export default function PublicEntryPackPage() {
               <ul className="mt-2 list-disc space-y-1 pl-5">
                 {!approved ? <li>You do not need to submit this form again.</li> : null}
                 <li>This registration is now closed for editing.</li>
-                <li>Contact the League Secretary or Chairman if anything needs changing.</li>
+                <li>Contact a league officer if anything needs changing.</li>
                 <li>Captain and vice-captain access instructions will be supplied separately.</li>
               </ul>
             </div>
@@ -255,7 +255,7 @@ export default function PublicEntryPackPage() {
             <li>Choose an existing player from the club list where possible, or enter a full name for a new player.</li>
             <li>Use <strong>Save draft</strong> while collecting details. Submit only when the roster is complete.</li>
             <li>Knockout competition entry forms will be sent separately and are not part of this league registration.</li>
-            <li>After submission, the League Secretary or Chairman will check historic profiles before creating new players.</li>
+            <li>After submission, a league officer will check historic profiles before creating new players.</li>
             <li>The captain and vice-captain will later receive account-based team access for line-ups, fixture completion and results. A separate guide will be supplied before the season.</li>
           </ol>
           <p className="mt-3 rounded-xl bg-white p-3 text-xs text-slate-600">This registration does not collect private match-arranging telephone numbers or emails. Competition contact details are collected separately.</p>
@@ -282,7 +282,7 @@ export default function PublicEntryPackPage() {
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-xl font-bold text-slate-950">2. Other team information</h2>
-            <p className="mt-1 text-sm text-slate-600">Add any league-registration information the League Secretary or Chairman should know.</p>
+            <p className="mt-1 text-sm text-slate-600">Add any league-registration information the league officers should know.</p>
             <textarea value={pack.generalNotes} onChange={(event) => setPack({ ...pack, generalNotes: event.target.value })} rows={3} className="mt-3 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm" />
           </section>
 

@@ -30,6 +30,8 @@ const links = [
   { href: "/rating-audit", title: "Elo Audit", desc: "League-officer review of Elo, handicap alignment, and rated-frame counts." },
   { href: "/signup-requests", title: "Signup Requests", desc: "Review new-account profile and location requests." },
   { href: "/entry-packs", title: "League Team Registrations", desc: "Share one public registration form, track team progress and import submitted rosters." },
+  { href: "/league-invoices", title: "Club Invoices", desc: "Preview and generate combined club invoices for league teams and competition entries." },
+  { href: "/league-officer-guide", title: "League Officer Guides", desc: "Secretary, Chairman and Treasurer responsibilities, approvals and finance workflows." },
   { href: "/usage", title: "Usage Analytics", desc: "System Owner page-usage summary." },
   { href: "/results", title: "Results Queue", desc: "Review and approve submitted results." },
   { href: "/notifications", title: "Notifications", desc: "Read and manage your inbox notifications." },
@@ -117,6 +119,8 @@ export default function HomePage() {
         "/players",
         "/signup-requests",
         "/entry-packs",
+        "/league-invoices",
+        "/league-officer-guide",
         "/high-breaks",
         "/signups",
         "/documents",
@@ -135,6 +139,8 @@ export default function HomePage() {
     if (!admin.isSuper && (href === "/audit" || href === "/usage")) return false;
     if ((href === "/rating-audit" || href === "/signup-requests") && !admin.canManageLeague) return false;
     if (href === "/entry-packs" && !admin.canManageLeague) return false;
+    if (href === "/league-invoices" && !admin.canManageLeague) return false;
+    if (href === "/league-officer-guide" && !admin.canManageLeague) return false;
     if (href === "/announcements" && !admin.canManageLeague) return false;
     if (admin.isAdmin) {
       // Admins still see these cards, but they can be disabled per-account.
@@ -155,9 +161,9 @@ export default function HomePage() {
     (href === "/events/new" && pendingFeatureRequests.has("competition_create"));
 
   const primaryHrefs = admin.isSuper
-      ? ["/entry-packs", "/signup-requests", "/players", "/notifications", "/league", "/results", "/reschedule-fixture", "/rating-audit", "/backup", "/signups", "/announcements", "/legal"]
+      ? ["/entry-packs", "/league-invoices", "/signup-requests", "/players", "/notifications", "/league", "/results", "/reschedule-fixture", "/rating-audit", "/backup", "/signups", "/announcements", "/legal"]
     : admin.canManageLeague
-      ? ["/league", "/entry-packs", "/results", "/reschedule-fixture", "/handicaps", "/rating-audit", "/players", "/signup-requests", "/signups", "/documents", "/announcements", "/notifications", "/live-matches", "/high-breaks", "/help", "/legal"]
+      ? ["/league", "/entry-packs", "/league-invoices", "/results", "/league-officer-guide", "/reschedule-fixture", "/handicaps", "/rating-audit", "/players", "/signup-requests", "/signups", "/documents", "/announcements", "/notifications", "/live-matches", "/high-breaks", "/help", "/legal"]
     : admin.isAdmin
       ? ["/league", "/live-matches", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/quick-match", "/events/new", "/signups", "/help", "/legal"]
       : ["/league", "/live-matches", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/notifications", "/signups", "/help", "/legal"];
@@ -274,6 +280,9 @@ export default function HomePage() {
     }
     if (href === "/entry-packs") {
       return "Share one no-login league-registration URL, then track, review and import each team’s players and captain roles.";
+    }
+    if (href === "/league-invoices") {
+      return "Combine league team fees and approved competition entries into one previewable invoice per club.";
     }
     if (href === "/events/new") {
       return admin.canManageLeague

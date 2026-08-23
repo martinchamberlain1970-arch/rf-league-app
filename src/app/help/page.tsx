@@ -28,7 +28,7 @@ const faqs = [
   {
     question: "Who can change a handicap?",
     answer:
-      "The League Secretary or Chairman can run Elo reviews and apply manual corrections where league rules require it.",
+      "The League Secretary, Chairman or Treasurer can run Elo reviews and apply manual corrections where league rules require it.",
   },
 ];
 
@@ -55,11 +55,12 @@ const guideSections = [
   {
     title: "League Officer Governance",
     bullets: [
-      "League Secretary and League Chairman have the same day-to-day league-management access.",
+      "League Secretary, League Chairman and League Treasurer share day-to-day league-management, result-approval and invoicing access.",
       "Use League Manager > Handicaps to run the Elo review and export the handicap list.",
       "Manual corrections remain available, but normal movement is driven by the Elo review flow.",
       "Use Signup Requests, Results Queue, and Notifications to manage the live system.",
       "Use League Team Registrations to share one no-login URL, track every team, and import submitted player rosters and captain roles. Private competition contacts are collected separately.",
+      "Use Club Invoices after competition entries close and all entries are approved. Preview the club totals first, then generate one combined invoice naming every league team and competition entrant.",
       "System Owner is a separate platform role for backups, protected access, security, audit, and destructive controls.",
     ],
   },
@@ -82,6 +83,17 @@ export default function HelpPage() {
                 </div>
                 <Link href="/captain-guide" className="rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-100">
                   Open captain guide
+                </Link>
+              </div>
+            </div>
+            <div className="mt-3 rounded-xl border border-teal-200 bg-teal-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-teal-900">League Officer Guides</p>
+                  <p className="mt-1 text-sm text-teal-800">Responsibilities and workflows for the League Secretary, Chairman and Treasurer, including result approvals and club invoices.</p>
+                </div>
+                <Link href="/league-officer-guide" className="rounded-xl border border-teal-300 bg-white px-4 py-2 text-sm font-medium text-teal-900 hover:bg-teal-100">
+                  Open officer guides
                 </Link>
               </div>
             </div>

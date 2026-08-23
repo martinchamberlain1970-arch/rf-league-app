@@ -174,7 +174,7 @@ export default function PlayersPage() {
   const [userId, setUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [roleSearch, setRoleSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState<"all" | "super" | "league_secretary" | "league_chairman" | "admin" | "user">("all");
+  const [roleFilter, setRoleFilter] = useState<"all" | "super" | "league_secretary" | "league_chairman" | "league_treasurer" | "admin" | "user">("all");
   const [profileLocationFilter, setProfileLocationFilter] = useState("all");
   const [profileLinkFilter, setProfileLinkFilter] = useState("all");
   const superAdminEmail = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
@@ -234,6 +234,7 @@ export default function PlayersPage() {
         (roleFilter === "super" && isSuper) ||
         (roleFilter === "league_secretary" && role === "league_secretary") ||
         (roleFilter === "league_chairman" && role === "league_chairman") ||
+        (roleFilter === "league_treasurer" && role === "league_treasurer") ||
         (roleFilter === "admin" && !isSuper && role === "admin") ||
         (roleFilter === "user" && !isSuper && role === "user");
       if (!rolePass) return false;
@@ -1011,7 +1012,7 @@ export default function PlayersPage() {
     const client = supabase;
     if (!client || !userId) return;
     if (!canManageLeague) {
-      setMessage("League Secretary or Chairman access is required to review profile update requests.");
+      setMessage("League Secretary, Chairman or Treasurer access is required to review profile update requests.");
       return;
     }
     const { data: sessionRes } = await client.auth.getSession();
@@ -1316,7 +1317,7 @@ export default function PlayersPage() {
     const client = supabase;
     if (!client) return;
     if (!canManageLeague) {
-      setMessage("League Secretary or Chairman access is required to review location requests.");
+      setMessage("League Secretary, Chairman or Treasurer access is required to review location requests.");
       return;
     }
     const { data: sessionRes } = await client.auth.getSession();
@@ -1482,7 +1483,7 @@ export default function PlayersPage() {
             <section className={`${sectionCardTintClass} space-y-3`}>
               <div>
                 <p className="text-sm font-semibold text-slate-900">Claim or create your player profile</p>
-                <p className="text-sm text-slate-600">Create your profile request for League Secretary or Chairman approval.</p>
+                <p className="text-sm text-slate-600">Create your profile request for league-officer approval.</p>
               </div>
               <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
                 <input
@@ -1585,7 +1586,7 @@ export default function PlayersPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                   <p className="text-sm font-semibold text-slate-900">Role Management ({filteredRoleUsers.length} users)</p>
-                  <p className="text-sm text-slate-600">Only the System Owner can assign League Secretary, League Chairman, Administrator or User access.</p>
+                  <p className="text-sm text-slate-600">Only the System Owner can assign League Secretary, League Chairman, League Treasurer, Administrator or User access.</p>
                   </div>
                   <div className="inline-flex items-center gap-2 rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-medium text-slate-700">
                     <span className="group-open:hidden">Expand</span>
@@ -1611,6 +1612,7 @@ export default function PlayersPage() {
                   <option value="super">System Owner</option>
                   <option value="league_secretary">League Secretary</option>
                   <option value="league_chairman">League Chairman</option>
+                  <option value="league_treasurer">League Treasurer</option>
                   <option value="admin">Admin</option>
                   <option value="user">User</option>
                 </select>
@@ -1656,6 +1658,7 @@ export default function PlayersPage() {
                           {isRowSuperUser ? <option value="super">System Owner</option> : null}
                           <option value="league_secretary">League Secretary</option>
                           <option value="league_chairman">League Chairman</option>
+                          <option value="league_treasurer">League Treasurer</option>
                           <option value="admin">Administrator</option>
                           <option value="user">User</option>
                         </select>

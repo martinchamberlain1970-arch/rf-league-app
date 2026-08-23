@@ -570,7 +570,7 @@ export default function ResultsQueuePage() {
                   </button>
                 </div>
               ) : (
-                <p className="mt-3 text-xs text-slate-600">Only the League Secretary or Chairman can approve or reject fixture-date requests.</p>
+                <p className="mt-3 text-xs text-slate-600">The League Secretary, Chairman or Treasurer can approve or reject fixture-date requests.</p>
               )}
             </article>
           );

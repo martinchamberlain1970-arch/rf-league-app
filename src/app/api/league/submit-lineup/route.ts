@@ -22,6 +22,7 @@ type FramePatch = {
 
 type FixtureFrameRow = {
   id: string;
+  slot_no: number;
   slot_type: "singles" | "doubles";
 };
 
@@ -153,7 +154,7 @@ export async function POST(req: NextRequest) {
 
   const frameRes = await adminClient
     .from("league_fixture_frames")
-    .select("id,slot_type")
+    .select("id,slot_no,slot_type")
     .eq("fixture_id", fixture.id);
 
   if (frameRes.error) {
@@ -161,6 +162,42 @@ export async function POST(req: NextRequest) {
   }
 
   const frameById = new Map(((frameRes.data ?? []) as FixtureFrameRow[]).map((frame) => [frame.id, frame]));
+  const frameRows = (frameRes.data ?? []) as FixtureFrameRow[];
+  const isWinterFormat =
+    frameRows.filter((frame) => frame.slot_type === "singles").length === 4 &&
+    frameRows.filter((frame) => frame.slot_type === "doubles").length === 1;
+  const patchForSlot = (slotNo: number) => {
+    const frameId = frameRows.find((frame) => frame.slot_no === slotNo)?.id;
+    return sideFields.find((patch) => patch.id === frameId);
+  };
+
+  if (isWinterFormat) {
+    const first = patchForSlot(1);
+    const second = patchForSlot(2);
+    const third = patchForSlot(3);
+    const fourth = patchForSlot(4);
+    const doubles = sideFields.find((patch) => frameById.get(patch.id)?.slot_type === "doubles");
+    const firstId = side === "home" ? first?.home_player1_id : first?.away_player1_id;
+    const secondId = side === "home" ? second?.home_player1_id : second?.away_player1_id;
+    const frameThreeForfeit = side === "home" ? Boolean(third?.home_forfeit) : Boolean(third?.away_forfeit);
+    const frameFourNominated = side === "home" ? Boolean(fourth?.home_nominated) : Boolean(fourth?.away_nominated);
+    const frameFourName = side === "home" ? fourth?.home_nominated_name?.trim() : fourth?.away_nominated_name?.trim();
+    const doublesFirstId = side === "home" ? doubles?.home_player1_id : doubles?.away_player1_id;
+    const doublesSecondId = side === "home" ? doubles?.home_player2_id : doubles?.away_player2_id;
+    if (frameThreeForfeit) {
+      if (!firstId || !secondId || firstId === secondId) {
+        return NextResponse.json({ error: "Frames 1 and 2 must contain two different players before frame 3 can be recorded as No Show." }, { status: 400 });
+      }
+      if (!frameFourNominated || !frameFourName) {
+        return NextResponse.json({ error: "Frame 4 must contain the player nominated automatically from frames 1 and 2." }, { status: 400 });
+      }
+      if (new Set([doublesFirstId, doublesSecondId]).size !== 2 || ![doublesFirstId, doublesSecondId].every((id) => id === firstId || id === secondId)) {
+        return NextResponse.json({ error: "The players from frames 1 and 2 must play together in the doubles frame." }, { status: 400 });
+      }
+    } else if (frameFourNominated) {
+      return NextResponse.json({ error: "Frame 4 can only use the system-nominated player when frame 3 is recorded as No Show." }, { status: 400 });
+    }
+  }
 
   for (const patch of sideFields) {
     if (!patch?.id) {

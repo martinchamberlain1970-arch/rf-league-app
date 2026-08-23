@@ -333,7 +333,7 @@ export default function MatchPage() {
       setSaving(false);
       setInfo({
         title: "Result Submitted",
-        description: "Your result has been sent to the League Secretary or Chairman for approval.",
+        description: "Your result has been sent to the league officers for approval.",
       });
       setLatestSubmission({ id: "latest", status: "pending", created_at: new Date().toISOString(), rejection_reason: null });
     } catch {

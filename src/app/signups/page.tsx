@@ -264,7 +264,7 @@ export default function CompetitionSignupsPage() {
     const client = supabase;
     if (!client) return;
     if (!admin.canManageLeague || !admin.userId) {
-      setMessage("League Secretary or Chairman access is required to review competition entries.");
+      setMessage("League Secretary, Chairman or Treasurer access is required to review competition entries.");
       return;
     }
     setBusyId(entryId);
@@ -297,7 +297,7 @@ export default function CompetitionSignupsPage() {
 
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-sm text-slate-600">
-              Entries are submitted as pending. The League Secretary or Chairman reviews and approves or rejects each request.
+              Entries are submitted as pending. The League Secretary, Chairman or Treasurer reviews and approves or rejects each request.
             </p>
           </section>
 

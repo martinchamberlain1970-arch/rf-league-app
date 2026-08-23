@@ -419,7 +419,7 @@ export default function SignUpPage() {
           {step === 1 ? (
             <>
               <p className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs text-slate-700">
-                Captains, vice-captains, and players all register here using the same flow. Captain/vice-captain permissions are assigned later by the League Secretary or Chairman from team management.
+                Captains, vice-captains, and players all register here using the same flow. Captain/vice-captain permissions are assigned later by a league officer from team management.
               </p>
               <p className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-900">
                 Captain or vice-captain? After your role is assigned, the in-app{" "}

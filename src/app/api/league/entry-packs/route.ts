@@ -27,7 +27,7 @@ function responseForError(error: unknown) {
   const message = error instanceof Error ? error.message : "Unknown error";
   if (message === "SERVER_NOT_CONFIGURED") return NextResponse.json({ error: "Server is not configured." }, { status: 500 });
   if (message === "UNAUTHORIZED") return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
-  if (message === "FORBIDDEN_LEAGUE_MANAGER") return NextResponse.json({ error: "League Secretary or Chairman access is required." }, { status: 403 });
+  if (message === "FORBIDDEN_LEAGUE_MANAGER") return NextResponse.json({ error: "League Secretary, Chairman or Treasurer access is required." }, { status: 403 });
   return NextResponse.json({ error: message }, { status: 400 });
 }
 

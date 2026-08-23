@@ -59,7 +59,7 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
     router.push("/notifications");
   };
 
-  const leagueManagementRoutes = ["/players", "/signup-requests", "/entry-packs", "/locations", "/results", "/rating-audit"];
+  const leagueManagementRoutes = ["/players", "/signup-requests", "/entry-packs", "/league-invoices", "/league-officer-guide", "/locations", "/results", "/rating-audit"];
   const ownerManagementRoutes = ["/backup", "/audit", "/usage"];
   const isManagementPage = Boolean(
     pathname &&
@@ -217,6 +217,13 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
             className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
           >
             Results
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push("/league-officer-guide")}
+            className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+          >
+            Officer Guide
           </button>
           {admin.isSuper ? (
             <button

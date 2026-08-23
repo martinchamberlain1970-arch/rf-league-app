@@ -43,7 +43,7 @@ export async function POST(req: NextRequest) {
     try {
       await requireLeagueManager(serviceClient, authData.user);
     } catch {
-      return NextResponse.json({ error: "League Secretary or Chairman access is required." }, { status: 403 });
+      return NextResponse.json({ error: "League Secretary, Chairman or Treasurer access is required." }, { status: 403 });
     }
 
     const approve = action === "approve";

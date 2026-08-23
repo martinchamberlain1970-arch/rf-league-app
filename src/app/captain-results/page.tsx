@@ -269,7 +269,6 @@ export default function CaptainResultsPage() {
   const admin = useAdminStatus();
   const [message, setMessage] = useState<string | null>(null);
   const [info, setInfo] = useState<{ title: string; description: string } | null>(null);
-  const [confirmSubmitPromptOpen, setConfirmSubmitPromptOpen] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -298,8 +297,6 @@ export default function CaptainResultsPage() {
   const autoSaveNoticeShownRef = useRef(false);
   const [scorecardCurrentIndex, setScorecardCurrentIndex] = useState(0);
   const [scorecardReviewMode, setScorecardReviewMode] = useState(false);
-  const [submitPromptMode, setSubmitPromptMode] = useState<"general" | "final_frame">("general");
-  const [frameAdvancePrompt, setFrameAdvancePrompt] = useState<{ slotNo: number; isFinalFrame: boolean } | null>(null);
   const [showPreviewGuide, setShowPreviewGuide] = useState(false);
   const [showJourneyGuide, setShowJourneyGuide] = useState(false);
   const [breakPromptSlotNo, setBreakPromptSlotNo] = useState<number | null>(null);
@@ -768,10 +765,7 @@ export default function CaptainResultsPage() {
   const saveProgress = async (
     mode: "manual" | "auto" = "manual",
     options?: {
-      successTitle?: string;
-      successDescription?: string;
-      suppressSubmitPrompt?: boolean;
-      submitPromptMode?: "general" | "final_frame";
+      quiet?: boolean;
     }
   ): Promise<{ saved: boolean; allFramesComplete: boolean; hasUnsavedBreakDraft: boolean }> => {
     if (!selectedFixture || !draftStorageKey || typeof window === "undefined") {
@@ -795,7 +789,7 @@ export default function CaptainResultsPage() {
       };
     }
     if (!homeSideCanManageScorecard || (!lineupsLocked && !preMatchPaperRecord)) {
-      if (mode === "manual") {
+      if (mode === "manual" && !options?.quiet) {
         setInfo({ title: "Progress saved", description: "Your draft has been saved on this device and can be restored when you return." });
       }
       return { saved: false, allFramesComplete: false, hasUnsavedBreakDraft: false };
@@ -809,7 +803,7 @@ export default function CaptainResultsPage() {
 
     const client = supabase;
     if (!client) {
-      if (mode === "manual") {
+      if (mode === "manual" && !options?.quiet) {
         setInfo({ title: "Progress saved", description: "Your draft has been saved on this device and can be restored when you return." });
       }
       return { saved: false, allFramesComplete: false, hasUnsavedBreakDraft };
@@ -906,27 +900,13 @@ export default function CaptainResultsPage() {
       setScorecardDirty(hasUnsavedBreakDraft);
       setRemoteScorecardChanged(false);
       setLastAutoSavedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
-      if (mode === "manual") {
-        if (
-          !options?.suppressSubmitPrompt &&
-          allFramesComplete &&
-          !hasUnsavedBreakDraft &&
-          !pendingByFixture.has(selectedFixture.id)
-        ) {
-          setSubmitPromptMode(options?.submitPromptMode ?? "general");
-          setConfirmSubmitPromptOpen(true);
-        } else {
-          setInfo({
-            title: options?.successTitle ?? "Progress saved",
-            description:
-              options?.successDescription ??
-              (hasUnsavedBreakDraft
-                ? "Scores have been saved and your partial break entry has been kept on this device so you can finish it."
-                : allFramesComplete
-                  ? "All frames are now complete. Record any 30+ breaks if needed, then press Complete and submit scorecard."
-                  : "Your draft has been saved on this device and the live match board has been updated."),
-          });
-        }
+      if (mode === "manual" && !options?.quiet) {
+        setInfo({
+          title: "Progress saved",
+          description: hasUnsavedBreakDraft
+            ? "Scores have been saved and your partial break entry has been kept on this device so you can finish it."
+            : "Your progress has been saved and the live match board has been updated.",
+        });
       }
       return { saved: true, allFramesComplete, hasUnsavedBreakDraft };
     } catch (error) {
@@ -1077,8 +1057,8 @@ export default function CaptainResultsPage() {
       .sort((a, b) => sortLabelByFirstName(named(playerById.get(a)), named(playerById.get(b))));
   const winterDoublesEligibleIds = (side: "home" | "away") => {
     if (!isWinterFormat) return sortRosterIds(side === "home" ? homeRosterIds : awayRosterIds);
-    const frameFour = slots.find((slot) => slot.slot_type === "singles" && slot.slot_no === 4);
-    const sideForfeit = side === "home" ? frameFour?.home_forfeit : frameFour?.away_forfeit;
+    const frameThree = slots.find((slot) => slot.slot_type === "singles" && slot.slot_no === 3);
+    const sideForfeit = side === "home" ? frameThree?.home_forfeit : frameThree?.away_forfeit;
     if (!sideForfeit) return sortRosterIds(side === "home" ? homeRosterIds : awayRosterIds);
     const eligible = new Set<string>();
     for (const slotNo of [1, 2]) {
@@ -1090,19 +1070,6 @@ export default function CaptainResultsPage() {
   };
   const homeDoublesOptions = useMemo(() => winterDoublesEligibleIds("home"), [slots, isWinterFormat, homeRosterIds, playerById]);
   const awayDoublesOptions = useMemo(() => winterDoublesEligibleIds("away"), [slots, isWinterFormat, awayRosterIds, playerById]);
-  const winterNominatedEligibleIds = (side: "home" | "away") => {
-    if (!isWinterFormat) return [] as string[];
-    const eligible = new Set<string>();
-    for (const slotNo of [1, 2]) {
-      const slot = slots.find((row) => row.slot_type === "singles" && row.slot_no === slotNo);
-      const playerId = side === "home" ? slot?.home_player1_id : slot?.away_player1_id;
-      if (playerId) eligible.add(playerId);
-    }
-    return sortRosterIds(Array.from(eligible));
-  };
-  const homeNominatedOptions = useMemo(() => winterNominatedEligibleIds("home"), [slots, isWinterFormat, homeRosterIds, playerById]);
-  const awayNominatedOptions = useMemo(() => winterNominatedEligibleIds("away"), [slots, isWinterFormat, awayRosterIds, playerById]);
-
   const playerHandicap = (playerId: string | null | undefined) =>
     Number(playerById.get(playerId ?? "")?.snooker_handicap ?? 0);
   const playerRating = (playerId: string | null | undefined) =>
@@ -1327,58 +1294,18 @@ export default function CaptainResultsPage() {
 
   const validateFrameCompletion = (row: FrameSlot) => {
     if (!isFrameLineupReady(row)) {
-      return `Frame ${row.slot_no} is not ready yet. Confirm both players before saving and continuing.`;
+      return `Frame ${row.slot_no} is not ready yet. Confirm both players before saving it.`;
     }
     const homePts = typeof row.home_points_scored === "number" ? row.home_points_scored : null;
     const awayPts = typeof row.away_points_scored === "number" ? row.away_points_scored : null;
     if (homePts === null || awayPts === null) {
-      return `Frame ${row.slot_no} needs both scores before you continue.`;
+      return `Frame ${row.slot_no} needs both scores before it can be saved.`;
     }
     if (!deriveWinnerFromFrame(row)) {
-      return `Frame ${row.slot_no} needs a clear result before you continue.`;
+      return `Frame ${row.slot_no} needs a clear result before it can be saved.`;
     }
     return null;
   };
-
-  const currentFrameBreakSummary = useMemo(() => {
-    if (!currentScorecardFrame) {
-      return { recorded: [] as string[], hasPartial: false };
-    }
-    const participantIds = new Set(
-      [
-        currentScorecardFrame.home_player1_id,
-        currentScorecardFrame.home_player2_id,
-        currentScorecardFrame.away_player1_id,
-        currentScorecardFrame.away_player2_id,
-      ].filter((value): value is string => Boolean(value))
-    );
-    const recorded = fixtureBreaks
-      .map((row) => {
-        if (row.slot_no !== currentScorecardFrame.slot_no) return null;
-        const breakValue = Number(row.break_value || 0);
-        if (!Number.isFinite(breakValue) || breakValue < 30) return null;
-        const label = row.player_id
-          ? named(playerById.get(row.player_id) ?? null)
-          : row.entered_player_name.trim();
-        if (!label) return null;
-        if (row.player_id && !participantIds.has(row.player_id)) return null;
-        return `${label} ${breakValue}`;
-      })
-      .filter((value): value is string => Boolean(value));
-    const hasPartial = fixtureBreaks.some((row) => {
-      if (row.slot_no !== currentScorecardFrame.slot_no) return false;
-      if (!breakRowHasAnyContent(row)) return false;
-      if (row.player_id && !participantIds.has(row.player_id)) return false;
-      if (!row.player_id) {
-        const entered = row.entered_player_name.trim().toLowerCase();
-        const currentLabels = Array.from(participantIds).map((id) => named(playerById.get(id) ?? null).trim().toLowerCase());
-        if (entered && !currentLabels.includes(entered)) return false;
-      }
-      const breakValue = Number(row.break_value || 0);
-      return !(Number.isFinite(breakValue) && breakValue >= 30 && (row.player_id || row.entered_player_name.trim()));
-    });
-    return { recorded, hasPartial };
-  }, [currentScorecardFrame, fixtureBreaks, playerById]);
 
   const getSinglesSelectionValue = (slot: FrameSlot, side: "home" | "away") => {
     const playerId = side === "home" ? slot.home_player1_id : slot.away_player1_id;
@@ -1393,6 +1320,36 @@ export default function CaptainResultsPage() {
     const sidePrefix = side === "home" ? "home" : "away";
     const nameKey = side === "home" ? "home_nominated_name" : "away_nominated_name";
     if (selection === "__NO_SHOW__") {
+      if (isWinterFormat && slot.slot_no === 3) {
+        const firstTwoPlayerIds = [1, 2]
+          .map((slotNo) => slots.find((row) => row.slot_type === "singles" && row.slot_no === slotNo))
+          .map((row) => (side === "home" ? row?.home_player1_id : row?.away_player1_id))
+          .filter((id): id is string => Boolean(id));
+        if (new Set(firstTwoPlayerIds).size !== 2) {
+          setMessage(`Select two different ${side} players in frames 1 and 2 before recording frame 3 as No Show.`);
+          return;
+        }
+        const frameFour = slots.find((row) => row.slot_type === "singles" && row.slot_no === 4);
+        const doublesFrame = slots.find((row) => row.slot_type === "doubles");
+        if (!frameFour || !doublesFrame) {
+          setMessage("The winter scorecard is incomplete. It must contain four singles frames and one doubles frame.");
+          return;
+        }
+        const nominatedId = firstTwoPlayerIds[Math.floor(Math.random() * firstTwoPlayerIds.length)];
+        const nominatedName = named(playerById.get(nominatedId));
+        setNominatedNames((prev) => ({ ...prev, [`${frameFour.id}:${side}`]: nominatedName }));
+        updateSlotLocal(frameFour.id, {
+          [`${sidePrefix}_player1_id`]: null,
+          [`${sidePrefix}_nominated`]: true,
+          [`${sidePrefix}_forfeit`]: false,
+          [nameKey]: nominatedName,
+        } as Partial<FrameSlot>);
+        updateSlotLocal(doublesFrame.id, {
+          [`${sidePrefix}_player1_id`]: firstTwoPlayerIds[0],
+          [`${sidePrefix}_player2_id`]: firstTwoPlayerIds[1],
+          [`${sidePrefix}_forfeit`]: false,
+        } as Partial<FrameSlot>);
+      }
       setNominatedNames((prev) => ({ ...prev, [`${slot.id}:${side}`]: "" }));
       updateSlotLocal(slot.id, {
         [`${sidePrefix}_player1_id`]: null,
@@ -1405,12 +1362,28 @@ export default function CaptainResultsPage() {
       return;
     }
     if (selection === "__NOMINATED__") {
+      if (isWinterFormat && slot.slot_no === 4) {
+        setMessage("Frame 4 is nominated automatically when frame 3 is recorded as No Show.");
+        return;
+      }
       updateSlotLocal(slot.id, {
         [`${sidePrefix}_player1_id`]: null,
         [`${sidePrefix}_nominated`]: true,
         [`${sidePrefix}_forfeit`]: false,
       } as Partial<FrameSlot>);
       return;
+    }
+    if (isWinterFormat && slot.slot_no === 3) {
+      const frameFour = slots.find((row) => row.slot_type === "singles" && row.slot_no === 4);
+      if (frameFour && (side === "home" ? frameFour.home_nominated : frameFour.away_nominated)) {
+        setNominatedNames((prev) => ({ ...prev, [`${frameFour.id}:${side}`]: "" }));
+        updateSlotLocal(frameFour.id, {
+          [`${sidePrefix}_player1_id`]: null,
+          [`${sidePrefix}_nominated`]: false,
+          [`${sidePrefix}_forfeit`]: false,
+          [nameKey]: null,
+        } as Partial<FrameSlot>);
+      }
     }
     setNominatedNames((prev) => ({ ...prev, [`${slot.id}:${side}`]: "" }));
     updateSlotLocal(slot.id, {
@@ -1819,7 +1792,7 @@ export default function CaptainResultsPage() {
     await loadAll();
   };
 
-  const saveAndContinueCurrentFrame = async () => {
+  const saveAndContinueCurrentFrame = async (skipBreakPrompt = false) => {
     if (!currentScorecardFrame) return;
     const validationError = validateFrameCompletion(currentScorecardFrame);
     if (validationError) {
@@ -1831,7 +1804,7 @@ export default function CaptainResultsPage() {
       setMessage(currentFrameBreaks.error);
       return;
     }
-    if (!breakPromptAnsweredSlots.has(currentScorecardFrame.slot_no) && currentFrameBreaks.rows.length === 0) {
+    if (!skipBreakPrompt && !breakPromptAnsweredSlots.has(currentScorecardFrame.slot_no) && currentFrameBreaks.rows.length === 0) {
       setBreakPromptSlotNo(currentScorecardFrame.slot_no);
       return;
     }
@@ -1840,29 +1813,14 @@ export default function CaptainResultsPage() {
       setBreakRequiredSlotNo((current) => (current === currentScorecardFrame.slot_no ? null : current));
     }
     if (breakRequiredSlotNo === currentScorecardFrame.slot_no && currentFrameBreaks.rows.length === 0) {
-      setMessage(`Enter the 30+ break for Frame ${currentScorecardFrame.slot_no} before saving and continuing.`);
-      return;
-    }
-    setFrameAdvancePrompt({
-      slotNo: currentScorecardFrame.slot_no,
-      isFinalFrame: scorecardCurrentIndex >= orderedScoreSlots.length - 1,
-    });
-  };
-
-  const confirmSaveAndContinueCurrentFrame = async () => {
-    if (!currentScorecardFrame) return;
-    const validationError = validateFrameCompletion(currentScorecardFrame);
-    if (validationError) {
-      setMessage(validationError);
+      setMessage(`Enter the 30+ break for Frame ${currentScorecardFrame.slot_no} before saving the frame.`);
       return;
     }
     const isFinalFrame = scorecardCurrentIndex >= orderedScoreSlots.length - 1;
-    const saveResult = await saveProgress("manual", {
-      submitPromptMode: isFinalFrame ? "final_frame" : "general",
-    });
+    const saveResult = await saveProgress("manual", { quiet: true });
     if (!saveResult.saved) return;
     if (isFinalFrame) {
-      if (saveResult.allFramesComplete && saveResult.hasUnsavedBreakDraft) {
+      if (saveResult.allFramesComplete && !saveResult.hasUnsavedBreakDraft) {
         setScorecardReviewMode(true);
       }
       return;
@@ -1876,10 +1834,7 @@ export default function CaptainResultsPage() {
     setBreakPromptSlotNo(null);
     setBreakRequiredSlotNo((current) => (current === slotNo ? null : current));
     setBreakPromptAnsweredSlots((prev) => new Set(prev).add(slotNo));
-    setInfo({
-      title: `Frame ${slotNo} acknowledged`,
-      description: "No 30+ breaks were recorded for this frame. Press Save and continue to complete the frame result.",
-    });
+    void saveAndContinueCurrentFrame(true);
   };
 
   const requireBreakForCurrentFrame = () => {
@@ -1889,8 +1844,8 @@ export default function CaptainResultsPage() {
     setBreakRequiredSlotNo(slotNo);
     setBreakPromptAnsweredSlots((prev) => new Set(prev).add(slotNo));
     setInfo({
-      title: `Add Frame ${slotNo} break`,
-      description: "Enter the player and break value in Breaks 30+, then press Save and continue again.",
+      title: `Record the Frame ${slotNo} break`,
+      description: "Enter the player and break value in Breaks 30+, then press Save frame & next.",
     });
   };
 
@@ -2122,7 +2077,7 @@ export default function CaptainResultsPage() {
                       <p className="mt-1 text-sm text-slate-700">
                         {pendingByFixture.has(selectedFixture.id)
                           ? "Read-only until league-officer review is completed."
-                          : "Save progress after each frame and only submit once all frame scores are complete."}
+                          : "Save each frame as it finishes. Submit the match only after the final review."}
                       </p>
                     </div>
                     <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 shadow-sm">
@@ -2350,8 +2305,8 @@ export default function CaptainResultsPage() {
                                   ) : (
                                     <select className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={homeSelection} onChange={(e) => applySinglesSelection(slot, "home", e.target.value)} disabled={homeSelectionLocked}>
                                       <option value="">Home player</option>
-                                      {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
-                                      {isWinterFormat && slot.slot_no === 3 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                      {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                      {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">System-nominated player</option> : null}
                                       {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                       {sortRosterIds(homeRosterIds).map((id) => (
                                         <option key={id} value={id} disabled={(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id}>
@@ -2378,8 +2333,8 @@ export default function CaptainResultsPage() {
                                   ) : (
                                     <select className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={awaySelection} onChange={(e) => applySinglesSelection(slot, "away", e.target.value)} disabled={awaySelectionLocked}>
                                       <option value="">Away player</option>
-                                      {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
-                                      {isWinterFormat && slot.slot_no === 3 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                      {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                      {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">System-nominated player</option> : null}
                                       {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                       {sortRosterIds(awayRosterIds).map((id) => (
                                         <option key={id} value={id} disabled={(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id}>
@@ -2412,7 +2367,7 @@ export default function CaptainResultsPage() {
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                         {isWinterFormat ? (
                           <p>
-                            Winter format: 4 singles + 1 doubles. Singles 3 supports <span className="font-medium">Nominated Player</span>. Singles 4 supports <span className="font-medium">No Show</span>.
+                            Winter format: 4 singles + 1 doubles, with a minimum of 2 players. With only 2 players, frame 3 is forfeited, the system nominates one of them at random for frame 4, and both play the doubles.
                           </p>
                         ) : (
                           <p>
@@ -2518,7 +2473,9 @@ export default function CaptainResultsPage() {
                                   Frame {slot.slot_no}{isFrameComplete(slot) ? " - completed" : isFrameStarted(slot) ? " - in progress" : ""}
                                 </option>
                               ))}
-                              <option value="review">Final review</option>
+                              <option value="review" disabled={firstIncompleteScorecardIndex >= 0}>
+                                {firstIncompleteScorecardIndex >= 0 ? "Final review - complete all frames first" : "Final review"}
+                              </option>
                             </select>
                           </label>
                           <div className={`mt-3 grid grid-cols-2 gap-2 lg:grid-cols-3 ${showJourneyGuide ? "" : "hidden lg:grid"}`}>
@@ -2656,8 +2613,8 @@ export default function CaptainResultsPage() {
                                     disabled={homeSelectionLocked}
                                   >
                                     <option value="">Home player</option>
-                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
-                                    {isWinterFormat && slot.slot_no === 3 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                    {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">System-nominated player</option> : null}
                                     {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                     {sortRosterIds(homeRosterIds).map((id) => (
                                       <option key={id} value={id} disabled={(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id}>
@@ -2721,8 +2678,8 @@ export default function CaptainResultsPage() {
                                     disabled={awaySelectionLocked}
                                   >
                                     <option value="">Away player</option>
-                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
-                                    {isWinterFormat && slot.slot_no === 3 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                    {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">System-nominated player</option> : null}
                                     {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                     {sortRosterIds(awayRosterIds).map((id) => (
                                       <option key={id} value={id} disabled={(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id}>
@@ -2792,8 +2749,8 @@ export default function CaptainResultsPage() {
                                 disabled={homeSelectionLocked}
                               >
                                 <option value="">Home player</option>
-                                {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
-                                {isWinterFormat && slot.slot_no === 3 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">System-nominated player</option> : null}
                                 {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                 {sortRosterIds(homeRosterIds).map((id) => (
                                   <option key={id} value={id} disabled={(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id}>
@@ -2855,8 +2812,8 @@ export default function CaptainResultsPage() {
                                 disabled={awaySelectionLocked}
                               >
                                 <option value="">Away player</option>
-                                {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
-                                {isWinterFormat && slot.slot_no === 3 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">System-nominated player</option> : null}
                                 {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                 {sortRosterIds(awayRosterIds).map((id) => (
                                   <option key={id} value={id} disabled={(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id}>
@@ -2884,35 +2841,17 @@ export default function CaptainResultsPage() {
                           />
                         </div>
 
-                        {slot.slot_type === "singles" && isWinterFormat && slot.slot_no === 3 ? (
+                        {slot.slot_type === "singles" && isWinterFormat && slot.slot_no === 4 ? (
                           <div className="mt-2 grid gap-2 sm:grid-cols-2">
                             {slot.home_nominated ? (
-                              <select
-                                className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1"
-                                value={nominatedNames[`${slot.id}:home`] ?? ""}
-                                onChange={(e) => {
-                                  setNominatedNames((prev) => ({ ...prev, [`${slot.id}:home`]: e.target.value }));
-                                  updateSlotLocal(slot.id, { home_nominated_name: e.target.value || null });
-                                }}
-                                disabled={homeSelectionLocked}
-                              >
-                                <option value="">Home nominated player (info)</option>
-                                {homeNominatedOptions.map((id) => <option key={id} value={named(playerById.get(id))}>{namedWithHandicap(playerById.get(id))}</option>)}
-                              </select>
+                              <div className="min-h-11 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm font-medium text-sky-900">
+                                System selected: {nominatedNames[`${slot.id}:home`] || slot.home_nominated_name || "Awaiting frame 3 selection"}
+                              </div>
                             ) : <div />}
                             {slot.away_nominated ? (
-                              <select
-                                className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1"
-                                value={nominatedNames[`${slot.id}:away`] ?? ""}
-                                onChange={(e) => {
-                                  setNominatedNames((prev) => ({ ...prev, [`${slot.id}:away`]: e.target.value }));
-                                  updateSlotLocal(slot.id, { away_nominated_name: e.target.value || null });
-                                }}
-                                disabled={awaySelectionLocked}
-                              >
-                                <option value="">Away nominated player (info)</option>
-                                {awayNominatedOptions.map((id) => <option key={id} value={named(playerById.get(id))}>{namedWithHandicap(playerById.get(id))}</option>)}
-                              </select>
+                              <div className="min-h-11 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2.5 text-sm font-medium text-sky-900">
+                                System selected: {nominatedNames[`${slot.id}:away`] || slot.away_nominated_name || "Awaiting frame 3 selection"}
+                              </div>
                             ) : <div />}
                           </div>
                         ) : null}
@@ -3058,10 +2997,10 @@ export default function CaptainResultsPage() {
                           <div className="flex flex-wrap items-center justify-between gap-2">
                             <div>
                               <p className="text-sm font-semibold text-slate-900">
-                                Step 3 - save Frame {currentScorecardFrame.slot_no} and continue
+                                Step 3 - finish Frame {currentScorecardFrame.slot_no}
                               </p>
                               <p className="mt-1 text-xs text-slate-700">
-                                Save the frame score and any 30+ breaks together so nothing gets missed on mobile.
+                                This saves the score and any 30+ breaks together. Your work is also kept safely on this device while you enter it.
                               </p>
                             </div>
                             <div className="grid w-full grid-cols-[0.8fr_1.2fr] gap-2 sm:flex sm:w-auto sm:flex-wrap">
@@ -3078,22 +3017,19 @@ export default function CaptainResultsPage() {
                                 onClick={() => void saveAndContinueCurrentFrame()}
                                 className="min-h-11 rounded-xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white shadow-sm"
                               >
-                                {scorecardCurrentIndex >= orderedScoreSlots.length - 1 ? "Save final frame" : "Save and continue"}
+                                {scorecardCurrentIndex >= orderedScoreSlots.length - 1 ? "Save final frame & review" : "Save frame & next"}
                               </button>
                             </div>
                           </div>
                         </div>
                       ) : null}
 
-                      <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
-                        {homeSideCanManageScorecard ? (
+                      {scorecardReviewMode ? (
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
                           <p className="mb-2 text-xs text-emerald-900">
-                            {scorecardReviewMode
-                              ? "Everything is ready for one final check. Submit once the scores and 30+ breaks are correct."
-                              : "A safety draft is saved on this device as you work. Save progress here only if you need to stop and return later."}
+                            Check the final scores and 30+ breaks, then use the single submission button below.
                           </p>
-                        ) : null}
-                        <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
+                          <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
                           <input
                             className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                             placeholder="Optional scorecard photo URL"
@@ -3101,33 +3037,23 @@ export default function CaptainResultsPage() {
                             onChange={(e) => { setScorecardDirty(true); setScorecardPhotoUrl(e.target.value); }}
                             disabled={!homeSideCanManageScorecard}
                           />
-                          {scorecardReviewMode ? (
-                            <button
-                              type="button"
-                              onClick={submit}
-                              disabled={submitting || !homeSideCanManageScorecard}
-                              className="min-h-11 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
-                            >
-                              {!homeSideCanManageScorecard
-                                ? pendingByFixture.has(selectedFixture.id)
-                                  ? "Submission pending review"
-                                  : "Home team submits scorecard"
-                                : submitting
-                                  ? "Submitting..."
-                                  : "Complete and submit match result"}
-                            </button>
-                          ) : (
-                            <button
-                              type="button"
-                              onClick={() => void saveProgress("manual")}
-                              disabled={!homeSideCanManageScorecard}
-                              className="min-h-11 rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 disabled:opacity-60"
-                            >
-                              Save progress and return later
-                            </button>
-                          )}
+                          <button
+                            type="button"
+                            onClick={submit}
+                            disabled={submitting || !homeSideCanManageScorecard}
+                            className="min-h-11 rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white disabled:opacity-60"
+                          >
+                            {!homeSideCanManageScorecard
+                              ? pendingByFixture.has(selectedFixture.id)
+                                ? "Submission pending review"
+                                : "Home team submits scorecard"
+                              : submitting
+                                ? "Submitting..."
+                                : "Submit match result"}
+                          </button>
+                          </div>
                         </div>
-                      </div>
+                      ) : null}
                     </>
                   ) : null}
                 </div>
@@ -3139,54 +3065,6 @@ export default function CaptainResultsPage() {
 
           <MessageModal message={message} onClose={() => setMessage(null)} />
           <InfoModal open={Boolean(info)} title={info?.title ?? ""} description={info?.description ?? ""} onClose={() => setInfo(null)} />
-          <ConfirmModal
-            open={Boolean(frameAdvancePrompt)}
-            title={frameAdvancePrompt?.isFinalFrame ? `Frame ${frameAdvancePrompt.slotNo} final check` : `Frame ${frameAdvancePrompt?.slotNo ?? ""} ready to save?`}
-            description={
-              currentScorecardFrame
-                ? [
-                    `Score entered: ${currentScorecardFrame.home_points_scored ?? 0}-${currentScorecardFrame.away_points_scored ?? 0}.`,
-                    currentFrameBreakSummary.recorded.length > 0
-                      ? `Recorded 30+ breaks: ${currentFrameBreakSummary.recorded.join(", ")}.`
-                      : "No 30+ breaks recorded for this frame.",
-                    currentFrameBreakSummary.hasPartial
-                      ? "There is also an unfinished break row on the card. That draft will stay on this device until you complete it."
-                      : frameAdvancePrompt?.isFinalFrame
-                        ? "Saving this frame will open the final submit/amend prompt."
-                        : "If everything looks right, save this frame and move on to the next one.",
-                  ].join(" ")
-                : ""
-            }
-            confirmLabel={frameAdvancePrompt?.isFinalFrame ? "Save final frame" : "Save and continue"}
-            cancelLabel="Go back"
-            onCancel={() => setFrameAdvancePrompt(null)}
-            onConfirm={() => {
-              setFrameAdvancePrompt(null);
-              void confirmSaveAndContinueCurrentFrame();
-            }}
-          />
-          <ConfirmModal
-            open={confirmSubmitPromptOpen}
-            title={submitPromptMode === "final_frame" ? "Final frame saved" : "Match card ready to submit"}
-            description={
-              submitPromptMode === "final_frame"
-                ? "The final frame has been saved. You now need to either submit this match for league-officer approval, or go back and amend the final frame score."
-                : "All frame scores and recorded breaks have been saved. Do you want to submit this scorecard now for league-officer approval?"
-            }
-            confirmLabel="Submit now"
-            cancelLabel={submitPromptMode === "final_frame" ? "Amend final frame" : "Review first"}
-            onCancel={() => {
-              setConfirmSubmitPromptOpen(false);
-              if (submitPromptMode === "final_frame") {
-                setScorecardReviewMode(false);
-                setScorecardCurrentIndex(Math.max(orderedScoreSlots.length - 1, 0));
-              }
-            }}
-            onConfirm={() => {
-              setConfirmSubmitPromptOpen(false);
-              void submit();
-            }}
-          />
           <ConfirmModal
             open={breakPromptSlotNo !== null}
             title={breakPromptSlotNo === null ? "Any 30+ breaks?" : `Any 30+ breaks in Frame ${breakPromptSlotNo}?`}

@@ -244,6 +244,12 @@ type FixtureSchedulingConstraints = {
   reservedVenueHomesByRound?: Array<Map<string, number>>;
   homeGroupLimits?: HomeGroupLimit[];
 };
+type HomeAwayFairness = {
+  score: number;
+  consecutivePairs: number;
+  longestRun: number;
+  affectedTeamIds: string[];
+};
 const shuffleArray = <T,>(items: T[]) => {
   const copy = [...items];
   for (let i = copy.length - 1; i > 0; i -= 1) {
@@ -298,13 +304,56 @@ const buildRoundRobinRounds = (teamIds: string[]) => {
   return rounds;
 };
 const getLastSideBeforeRound = (teamId: string, rounds: DirectedMatch[][], roundExclusive: number): "home" | "away" | null => {
-  for (let roundIndex = roundExclusive - 1; roundIndex >= 0; roundIndex -= 1) {
-    for (const match of rounds[roundIndex] ?? []) {
-      if (match.homeTeamId === teamId) return "home";
-      if (match.awayTeamId === teamId) return "away";
-    }
+  const previousRound = rounds[roundExclusive - 1] ?? [];
+  for (const match of previousRound) {
+    if (match.homeTeamId === teamId) return "home";
+    if (match.awayTeamId === teamId) return "away";
   }
   return null;
+};
+const evaluateHomeAwayFairness = (
+  rounds: DirectedMatch[][],
+  teamIds: string[],
+  scheduledWeekNos?: number[]
+): HomeAwayFairness => {
+  let score = 0;
+  let consecutivePairs = 0;
+  let longestRun = 1;
+  const affectedTeamIds = new Set<string>();
+  for (const teamId of teamIds) {
+    let previousSide: "home" | "away" | null = null;
+    let runLength = 0;
+    rounds.forEach((round, roundIndex) => {
+      const weekGap =
+        roundIndex > 0 && scheduledWeekNos
+          ? (scheduledWeekNos[roundIndex] ?? roundIndex + 1) - (scheduledWeekNos[roundIndex - 1] ?? roundIndex)
+          : 1;
+      const match = round.find((item) => item.homeTeamId === teamId || item.awayTeamId === teamId);
+      const side = match ? (match.homeTeamId === teamId ? "home" : "away") : null;
+      if (!side || weekGap > 1) {
+        previousSide = side;
+        runLength = side ? 1 : 0;
+        return;
+      }
+      if (side === previousSide) {
+        runLength += 1;
+        consecutivePairs += 1;
+        affectedTeamIds.add(teamId);
+        // Longer runs are substantially less fair than isolated back-to-back fixtures.
+        score += runLength * runLength;
+      } else {
+        runLength = 1;
+      }
+      previousSide = side;
+      longestRun = Math.max(longestRun, runLength);
+    });
+  }
+  return {
+    score,
+    consecutivePairs,
+    longestRun: rounds.length === 0 ? 0 : longestRun,
+    affectedTeamIds: Array.from(affectedTeamIds),
+  };
 };
 const assignHomeAwayForRounds = (
   rounds: UndirectedMatch[][],
@@ -1502,8 +1551,16 @@ export default function LeaguePage() {
         points: [
           "Generate fixture list and manage break weeks.",
           "Open result entry for league-officer operation.",
-          "Summer League uses 6 singles only, with a maximum of 2 singles per player.",
-          "If a side only has 2 players available, use No Show in frames 5 and 6.",
+          ...(isSummerFormat
+            ? [
+                "Summer League uses 6 singles only, with a maximum of 2 singles per player.",
+                "If a side only has 2 players available, use No Show in frames 5 and 6.",
+              ]
+            : [
+                "Winter League uses 4 singles followed by 1 doubles frame, with a minimum of 2 players per team.",
+                "If a side only has 2 players, frame 3 is forfeited and the system randomly nominates one of those players for frame 4.",
+                "The same 2 players then play together in the doubles frame.",
+              ]),
           "Review captain submissions and approve/reject where configured.",
           "Track fixture status: pending, in-progress, and complete.",
         ],
@@ -2765,7 +2822,18 @@ export default function LeaguePage() {
       perryStreetD && perryStreetE
         ? [{ teamIds: new Set([perryStreetD.id, perryStreetE.id]), maxHomes: 1 }]
         : [];
+    const seasonTeamIds = seasonTeams.map((team) => team.id);
+    const scheduledWeekNos = roundSlots.map((slot) => slot.weekNo);
+    const isFairerSchedule = (candidate: HomeAwayFairness, current: HomeAwayFairness | null) =>
+      !current ||
+      candidate.score < current.score ||
+      (candidate.score === current.score && candidate.longestRun < current.longestRun) ||
+      (candidate.score === current.score &&
+        candidate.longestRun === current.longestRun &&
+        candidate.consecutivePairs < current.consecutivePairs);
     const tryBuildFirstLeg = () => {
+      let bestRounds: DirectedMatch[][] | null = null;
+      let bestFairness: HomeAwayFairness | null = null;
       for (let attempt = 0; attempt < 200; attempt += 1) {
         const rounds = buildRoundRobinRounds(shuffleArray(seasonTeams.map((team) => team.id)));
         const assigned = assignHomeAwayForRounds(rounds, teamVenueById, venueCapacityById, {
@@ -2773,9 +2841,19 @@ export default function LeaguePage() {
           reservedVenueHomesByRound,
           homeGroupLimits,
         });
-        if (assigned) return assigned;
+        if (!assigned) continue;
+        const fairness = evaluateHomeAwayFairness(
+          assigned,
+          seasonTeamIds,
+          scheduledWeekNos.slice(0, assigned.length)
+        );
+        if (isFairerSchedule(fairness, bestFairness)) {
+          bestRounds = assigned;
+          bestFairness = fairness;
+        }
+        if (fairness.score === 0) break;
       }
-      return null;
+      return bestRounds;
     };
     const firstLegRounds = tryBuildFirstLeg();
     if (!firstLegRounds) {
@@ -2783,22 +2861,46 @@ export default function LeaguePage() {
       return;
     }
     const allRounds: DirectedMatch[][] = [...firstLegRounds];
+    const tryScheduleLeg = (matches: DirectedMatch[], priorRounds: DirectedMatch[][], roundOffset: number) => {
+      let bestRounds: DirectedMatch[][] | null = null;
+      let bestFairness: HomeAwayFairness | null = null;
+      for (let attempt = 0; attempt < 80; attempt += 1) {
+        const scheduled = scheduleDirectedMatchesIntoRounds(
+          shuffleArray(matches),
+          firstLegRoundsCount,
+          matchesPerRound,
+          teamVenueById,
+          venueCapacityById,
+          priorRounds,
+          {
+            roundOffset,
+            reservedVenueHomesByRound,
+            homeGroupLimits,
+          }
+        );
+        if (!scheduled) continue;
+        const completeCandidate = [...priorRounds, ...scheduled];
+        const fairness = evaluateHomeAwayFairness(
+          completeCandidate,
+          seasonTeamIds,
+          scheduledWeekNos.slice(0, completeCandidate.length)
+        );
+        if (isFairerSchedule(fairness, bestFairness)) {
+          bestRounds = scheduled;
+          bestFairness = fairness;
+        }
+        if (fairness.score === 0) break;
+      }
+      return bestRounds;
+    };
     if (genFixtureCycles >= 2) {
       const secondLegMatches = firstLegRounds.flatMap((round) =>
         round.map((match) => ({ homeTeamId: match.awayTeamId, awayTeamId: match.homeTeamId }))
       );
-      const secondLegRounds = scheduleDirectedMatchesIntoRounds(
+      const secondLegRounds = tryScheduleLeg(
         secondLegMatches,
-        firstLegRoundsCount,
-        matchesPerRound,
-        teamVenueById,
-        venueCapacityById,
         firstLegRounds,
-        {
-          roundOffset: firstLegRoundsCount,
-          reservedVenueHomesByRound,
-          homeGroupLimits,
-        }
+        firstLegRoundsCount
       );
       if (!secondLegRounds) {
         setMessage("The return fixtures could not be arranged without breaking shared venue table limits. Check the other division's fixture dates or reserved weeks.");
@@ -2807,18 +2909,10 @@ export default function LeaguePage() {
       allRounds.push(...secondLegRounds);
       if (genFixtureCycles === 3) {
         const thirdLegMatches = firstLegRounds.flatMap((round) => round.map((match) => ({ ...match })));
-        const thirdLegRounds = scheduleDirectedMatchesIntoRounds(
+        const thirdLegRounds = tryScheduleLeg(
           thirdLegMatches,
-          firstLegRoundsCount,
-          matchesPerRound,
-          teamVenueById,
-          venueCapacityById,
           allRounds,
-          {
-            roundOffset: firstLegRoundsCount * 2,
-            reservedVenueHomesByRound,
-            homeGroupLimits,
-          }
+          firstLegRoundsCount * 2
         );
         if (!thirdLegRounds) {
           setMessage("The third cycle could not be arranged without breaking shared venue table limits. Check the other division's fixture dates or reserved weeks.");
@@ -2827,6 +2921,7 @@ export default function LeaguePage() {
         allRounds.push(...thirdLegRounds);
       }
     }
+    const homeAwayFairness = evaluateHomeAwayFairness(allRounds, seasonTeamIds, scheduledWeekNos);
     const fixturePayload = allRounds.flatMap((round, roundIndex) => {
       const slot = roundSlots[roundIndex];
       return round.map((match) => ({
@@ -2906,9 +3001,16 @@ export default function LeaguePage() {
       }
     }
     await loadAll();
+    const affectedTeamNames = homeAwayFairness.affectedTeamIds
+      .map((teamId) => seasonTeams.find((team) => team.id === teamId)?.name)
+      .filter((name): name is string => Boolean(name));
+    const fairnessSummary =
+      homeAwayFairness.consecutivePairs === 0
+        ? "Every team alternates home and away throughout the schedule."
+        : `Home and away runs were minimised around the venue constraints. ${homeAwayFairness.consecutivePairs} unavoidable back-to-back pairing${homeAwayFairness.consecutivePairs === 1 ? " remains" : "s remain"}${affectedTeamNames.length > 0 ? ` across: ${affectedTeamNames.join(", ")}` : ""}.`;
     setInfoModal({
       title: "Fixtures Generated",
-      description: `Generated ${fixturePayload.length} fixtures with shared venue table limits applied across both divisions. Captain and vice-captain assignments can be completed afterwards.`,
+      description: `Generated ${fixturePayload.length} fixtures with shared venue table limits applied across both divisions. ${fairnessSummary} Captain and vice-captain assignments can be completed afterwards.`,
     });
   };
 
@@ -3043,6 +3145,36 @@ export default function LeaguePage() {
     const sidePrefix = side === "home" ? "home" : "away";
     const nameKey = side === "home" ? "home_nominated_name" : "away_nominated_name";
     if (selection === "__NO_SHOW__") {
+      if (isWinterFormat && slot.slot_no === 3) {
+        const firstTwoPlayerIds = [1, 2]
+          .map((slotNo) => fixtureSlots.find((row) => row.slot_type === "singles" && row.slot_no === slotNo))
+          .map((row) => (side === "home" ? row?.home_player1_id : row?.away_player1_id))
+          .filter((id): id is string => Boolean(id));
+        if (new Set(firstTwoPlayerIds).size !== 2) {
+          setMessage(`Select two different ${side} players in frames 1 and 2 before recording frame 3 as No Show.`);
+          return;
+        }
+        const frameFour = fixtureSlots.find((row) => row.slot_type === "singles" && row.slot_no === 4);
+        const doublesFrame = fixtureSlots.find((row) => row.slot_type === "doubles");
+        if (!frameFour || !doublesFrame) {
+          setMessage("The winter scorecard is incomplete. It must contain four singles frames and one doubles frame.");
+          return;
+        }
+        const nominatedId = firstTwoPlayerIds[Math.floor(Math.random() * firstTwoPlayerIds.length)];
+        const nominatedName = named(playerById.get(nominatedId));
+        setNominatedNames((prev) => ({ ...prev, [`${frameFour.id}:${side}`]: nominatedName }));
+        await updateFrameWithDerivedWinner(frameFour, {
+          [`${sidePrefix}_player1_id`]: null,
+          [`${sidePrefix}_nominated`]: true,
+          [`${sidePrefix}_forfeit`]: false,
+          [nameKey]: nominatedName,
+        } as Partial<FrameSlot>);
+        await updateFrameWithDerivedWinner(doublesFrame, {
+          [`${sidePrefix}_player1_id`]: firstTwoPlayerIds[0],
+          [`${sidePrefix}_player2_id`]: firstTwoPlayerIds[1],
+          [`${sidePrefix}_forfeit`]: false,
+        } as Partial<FrameSlot>);
+      }
       setNominatedNames((prev) => ({ ...prev, [`${slot.id}:${side}`]: "" }));
       await updateFrameWithDerivedWinner(slot, {
         [`${sidePrefix}_player1_id`]: null,
@@ -3055,12 +3187,28 @@ export default function LeaguePage() {
       return;
     }
     if (selection === "__NOMINATED__") {
+      if (isWinterFormat && slot.slot_no === 4) {
+        setMessage("Frame 4 is nominated automatically when frame 3 is recorded as No Show.");
+        return;
+      }
       await updateFrameWithDerivedWinner(slot, {
         [`${sidePrefix}_player1_id`]: null,
         [`${sidePrefix}_nominated`]: true,
         [`${sidePrefix}_forfeit`]: false,
       } as Partial<FrameSlot>);
       return;
+    }
+    if (isWinterFormat && slot.slot_no === 3) {
+      const frameFour = fixtureSlots.find((row) => row.slot_type === "singles" && row.slot_no === 4);
+      if (frameFour && (side === "home" ? frameFour.home_nominated : frameFour.away_nominated)) {
+        setNominatedNames((prev) => ({ ...prev, [`${frameFour.id}:${side}`]: "" }));
+        await updateFrameWithDerivedWinner(frameFour, {
+          [`${sidePrefix}_player1_id`]: null,
+          [`${sidePrefix}_nominated`]: false,
+          [`${sidePrefix}_forfeit`]: false,
+          [nameKey]: null,
+        } as Partial<FrameSlot>);
+      }
     }
     setNominatedNames((prev) => ({ ...prev, [`${slot.id}:${side}`]: "" }));
     await updateFrameWithDerivedWinner(slot, {
@@ -3076,29 +3224,6 @@ export default function LeaguePage() {
     const parsed = parsedRaw === null || Number.isNaN(parsedRaw) ? null : Math.min(200, Math.max(0, parsedRaw));
     const field = side === "home" ? "home_points_scored" : "away_points_scored";
     await updateFrameWithDerivedWinner(slot, { [field]: slot.home_forfeit || slot.away_forfeit ? 0 : parsed } as Partial<FrameSlot>);
-  };
-
-  const updateNominatedName = async (slot: FrameSlot, side: "home" | "away", value: string) => {
-    if (!canManage && !canSubmitCurrentFixture) {
-      setMessage("You can only update fixtures for your own team.");
-      return;
-    }
-    const key = `${slot.id}:${side}`;
-    setNominatedNames((prev) => ({ ...prev, [key]: value }));
-    const column = side === "home" ? "home_nominated_name" : "away_nominated_name";
-    if (!canManage) {
-      await updateSlot(slot.id, { [column]: value.trim() || null } as Partial<FrameSlot>, { localOnly: true });
-      return;
-    }
-    const client = supabase;
-    if (!client) return;
-    const { error } = await client
-      .from("league_fixture_frames")
-      .update({ [column]: value.trim() || null } as Record<string, string | null>)
-      .eq("id", slot.id);
-    if (error) {
-      setMessage(error.message);
-    }
   };
 
   const setBreakField = (idx: number, patch: Partial<LeagueBreak>) => {
@@ -5727,6 +5852,7 @@ export default function LeaguePage() {
                       <p className="font-semibold">Premier League 2026/2027 rules applied automatically</p>
                       <ul className="mt-1 space-y-1 text-xs text-sky-800">
                         <li>4 singles frames and 1 doubles frame.</li>
+                        <li>A team must field at least 2 players. With only 2 players, frame 3 is forfeited, the system randomly nominates one of them for frame 4, and both play the doubles.</li>
                         <li>Players begin at Elo 1000 and handicap 0; handicaps are reviewed at least every 4 weeks.</li>
                         <li>Handicap match play is enabled with no maximum start.</li>
                         <li>On the third miss attempt while snookered, the balls remain where they lie.</li>
@@ -5738,6 +5864,7 @@ export default function LeaguePage() {
                       <p className="font-semibold">Division 1 2026/2027 rules applied automatically</p>
                       <ul className="mt-1 space-y-1 text-xs text-violet-900">
                         <li>4 singles frames and 1 doubles frame.</li>
+                        <li>A team must field at least 2 players. With only 2 players, frame 3 is forfeited, the system randomly nominates one of them for frame 4, and both play the doubles.</li>
                         <li>All matches are played off scratch with no handicap start.</li>
                         <li>Elo is still recorded in the background for player history.</li>
                         <li>The miss rule is not used.</li>
@@ -6045,6 +6172,7 @@ export default function LeaguePage() {
                 <section className="rounded-2xl border border-fuchsia-200 bg-gradient-to-br from-white to-fuchsia-50 p-4 shadow-sm">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <h2 className="text-lg font-semibold text-fuchsia-900">Knockout Cups / Competitions</h2>
+                    {canManage ? <Link href="/league-invoices" className="rounded-xl border border-fuchsia-300 bg-white px-4 py-2 text-sm font-bold text-fuchsia-900">Club invoices</Link> : null}
                   </div>
                   <p className="mt-1 text-sm text-slate-600">
                     Published knockout competitions and entries are managed here.
@@ -7599,8 +7727,8 @@ export default function LeaguePage() {
                       <ul className="mt-1 space-y-1 text-xs text-sky-800">
                         <li>4 singles plus 1 doubles frame.</li>
                         <li>Singles players can only be selected once in the same fixture.</li>
-                        <li>Nominated Player is available in singles frame 3 only and does not generate player stats.</li>
-                        <li>No Show is available in singles frame 4 only.</li>
+                        <li>A team must field at least 2 players.</li>
+                        <li>With only 2 players, record frame 3 as No Show; the system randomly nominates one of those players for frame 4; both players then play the doubles.</li>
                       </ul>
                     </div>
                   )}
@@ -7608,7 +7736,7 @@ export default function LeaguePage() {
                     <>
                       <p className="text-sm font-semibold text-slate-900">Auto-generate full league fixtures</p>
                       <p className="mt-1 text-xs text-slate-600">
-                        Choose a season start date, then add any reserved Thursdays as break weeks (no league fixtures). Captain and vice-captain roles can be assigned after fixtures are generated.
+                        Choose a season start date, then add any reserved Thursdays as break weeks (no league fixtures). The generator prioritises venue and table limits, then selects the fairest available home/away pattern to avoid consecutive home or away weeks. Captain and vice-captain roles can be assigned afterwards.
                       </p>
                       <div className="mt-2 grid items-end gap-2 sm:grid-cols-6">
                         <label className="space-y-1">
@@ -7961,9 +8089,9 @@ export default function LeaguePage() {
                           if (s.home_player1_id) homeSinglesCount.set(s.home_player1_id, (homeSinglesCount.get(s.home_player1_id) ?? 0) + 1);
                           if (s.away_player1_id) awaySinglesCount.set(s.away_player1_id, (awaySinglesCount.get(s.away_player1_id) ?? 0) + 1);
                         }
-                        const winterFrameFour = fixtureSlots.find((row) => row.slot_type === "singles" && row.slot_no === 4);
+                        const winterFrameThree = fixtureSlots.find((row) => row.slot_type === "singles" && row.slot_no === 3);
                         const homeDoublesOptions =
-                          isWinterFormat && winterFrameFour?.home_forfeit
+                          isWinterFormat && winterFrameThree?.home_forfeit
                             ? sortRosterIds(
                                 fixtureSlots
                                   .filter((row) => row.slot_type === "singles" && (row.slot_no === 1 || row.slot_no === 2))
@@ -7972,7 +8100,7 @@ export default function LeaguePage() {
                               )
                             : homeRosterIds;
                         const awayDoublesOptions =
-                          isWinterFormat && winterFrameFour?.away_forfeit
+                          isWinterFormat && winterFrameThree?.away_forfeit
                             ? sortRosterIds(
                                 fixtureSlots
                                   .filter((row) => row.slot_type === "singles" && (row.slot_no === 1 || row.slot_no === 2))
@@ -7980,24 +8108,6 @@ export default function LeaguePage() {
                                   .filter((id): id is string => Boolean(id))
                               )
                             : awayRosterIds;
-                        const homeNominatedOptions =
-                          isWinterFormat
-                            ? sortRosterIds(
-                                fixtureSlots
-                                  .filter((row) => row.slot_type === "singles" && (row.slot_no === 1 || row.slot_no === 2))
-                                  .map((row) => row.home_player1_id)
-                                  .filter((id): id is string => Boolean(id))
-                              )
-                            : [];
-                        const awayNominatedOptions =
-                          isWinterFormat
-                            ? sortRosterIds(
-                                fixtureSlots
-                                  .filter((row) => row.slot_type === "singles" && (row.slot_no === 1 || row.slot_no === 2))
-                                  .map((row) => row.away_player1_id)
-                                  .filter((id): id is string => Boolean(id))
-                              )
-                            : [];
                         const homeSelection = getSinglesSelectionValue(slot, "home");
                         const awaySelection = getSinglesSelectionValue(slot, "away");
                         return (
@@ -8049,8 +8159,8 @@ export default function LeaguePage() {
                                     onChange={(e) => void applySinglesSelection(slot, "home", e.target.value)}
                                   >
                                     <option value="">Home player</option>
-                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
-                                    {isWinterFormat && slot.slot_no === 3 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                    {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">System-nominated player</option> : null}
                                     {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                     {homeRosterIds.map((id) => (
                                       <option key={id} value={id} disabled={(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id}>
@@ -8110,8 +8220,8 @@ export default function LeaguePage() {
                                     onChange={(e) => void applySinglesSelection(slot, "away", e.target.value)}
                                   >
                                     <option value="">Away player</option>
-                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NO_SHOW__">No Show</option> : null}
-                                    {isWinterFormat && slot.slot_no === 3 ? <option value="__NOMINATED__">Nominated Player</option> : null}
+                                    {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show</option> : null}
+                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">System-nominated player</option> : null}
                                     {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                     {awayRosterIds.map((id) => (
                                       <option key={id} value={id} disabled={(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id}>
@@ -8135,41 +8245,17 @@ export default function LeaguePage() {
                                 placeholder="0-200"
                               />
                             </div>
-                            {slot.slot_type === "singles" && isWinterFormat && slot.slot_no === 3 ? (
+                            {slot.slot_type === "singles" && isWinterFormat && slot.slot_no === 4 ? (
                               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                                 {slot.home_nominated ? (
-                                  <select
-                                    className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
-                                    value={nominatedNames[`${slot.id}:home`] ?? ""}
-                                    onChange={(e) => {
-                                      setNominatedNames((prev) => ({ ...prev, [`${slot.id}:home`]: e.target.value }));
-                                      void updateNominatedName(slot, "home", e.target.value);
-                                    }}
-                                  >
-                                    <option value="">Home nominated player (info)</option>
-                                    {homeNominatedOptions.map((id) => (
-                                      <option key={id} value={named(playerById.get(id))}>
-                                        {named(playerById.get(id))}
-                                      </option>
-                                    ))}
-                                  </select>
+                                  <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900">
+                                    System selected: {nominatedNames[`${slot.id}:home`] || slot.home_nominated_name || "Awaiting frame 3 selection"}
+                                  </div>
                                 ) : <div />}
                                 {slot.away_nominated ? (
-                                  <select
-                                    className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
-                                    value={nominatedNames[`${slot.id}:away`] ?? ""}
-                                    onChange={(e) => {
-                                      setNominatedNames((prev) => ({ ...prev, [`${slot.id}:away`]: e.target.value }));
-                                      void updateNominatedName(slot, "away", e.target.value);
-                                    }}
-                                  >
-                                    <option value="">Away nominated player (info)</option>
-                                    {awayNominatedOptions.map((id) => (
-                                      <option key={id} value={named(playerById.get(id))}>
-                                        {named(playerById.get(id))}
-                                      </option>
-                                    ))}
-                                  </select>
+                                  <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900">
+                                    System selected: {nominatedNames[`${slot.id}:away`] || slot.away_nominated_name || "Awaiting frame 3 selection"}
+                                  </div>
                                 ) : <div />}
                               </div>
                             ) : null}

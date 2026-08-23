@@ -99,7 +99,7 @@ export default function PrivacyPage() {
           <div>
             <h2 className="text-base font-semibold text-slate-900">9. Contact</h2>
             <p className="mt-2">
-              Contact the League Secretary or Chairman for ordinary privacy requests and data corrections, or the System Owner for security-sensitive requests.
+              Contact the League Secretary, Chairman or Treasurer for ordinary privacy requests and data corrections, or the System Owner for security-sensitive requests.
             </p>
           </div>
 

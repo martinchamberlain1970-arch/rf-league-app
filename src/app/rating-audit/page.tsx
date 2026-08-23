@@ -130,7 +130,7 @@ export default function RatingAuditPage() {
           />
           {!admin.loading && !admin.canManageLeague ? (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
-              League Secretary or Chairman access is required for the Elo Audit.
+              League Secretary, Chairman or Treasurer access is required for the Elo Audit.
             </section>
           ) : null}
 

@@ -24,6 +24,8 @@ const RESTORE_ORDER = [
   "competitions",
   "competition_entries",
   "league_entry_packs",
+  "league_invoice_batches",
+  "league_invoices",
   "player_claim_requests",
   "player_update_requests",
   "player_deletion_requests",

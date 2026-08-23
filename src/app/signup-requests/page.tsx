@@ -95,7 +95,7 @@ export default function SignupRequestsPage() {
     const client = supabase;
     if (!client) return;
     if (!canManageRequests || !admin.userId) {
-      setMessage("League Secretary or Chairman access is required to review signup claims.");
+      setMessage("League Secretary, Chairman or Treasurer access is required to review signup claims.");
       return;
     }
     const { data: sessionRes } = await client.auth.getSession();
@@ -204,7 +204,7 @@ export default function SignupRequestsPage() {
         <RequireAuth>
           <ScreenHeader title="Signup Requests" eyebrow="League Administration" subtitle="Review new-user profile links and location requests." />
           {!admin.loading && !canManageRequests ? (
-            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">League Secretary or Chairman access is required.</section>
+            <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">League Secretary, Chairman or Treasurer access is required.</section>
           ) : null}
           {!admin.loading && canManageRequests ? (
             <>

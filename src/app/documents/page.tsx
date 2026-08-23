@@ -116,7 +116,7 @@ export default function DocumentsPage() {
     const client = supabase;
     if (!client || !admin.userId) return;
     if (!admin.canManageLeague) {
-      setMessage("League Secretary or Chairman access is required to upload league documents.");
+      setMessage("League Secretary, Chairman or Treasurer access is required to upload league documents.");
       return;
     }
 
@@ -178,7 +178,7 @@ export default function DocumentsPage() {
     const client = supabase;
     if (!client || !admin.userId) return;
     if (!admin.canManageLeague) {
-      setMessage("League Secretary or Chairman access is required to delete league documents.");
+      setMessage("League Secretary, Chairman or Treasurer access is required to delete league documents.");
       return;
     }
     const { data: sessionRes } = await client.auth.getSession();

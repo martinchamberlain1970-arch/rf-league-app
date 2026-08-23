@@ -138,7 +138,7 @@ export default function EntryPacksPage() {
       <div className="mx-auto max-w-6xl space-y-4">
         <RequireAuth>
           <ScreenHeader title="League Team Registrations" eyebrow="League Administration" subtitle="Track which teams have registered their players and roles, then review and import submitted rosters." />
-          {!admin.loading && !admin.canManageLeague ? <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">League Secretary or Chairman access is required.</section> : null}
+          {!admin.loading && !admin.canManageLeague ? <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">League Secretary, Chairman or Treasurer access is required.</section> : null}
           {admin.canManageLeague ? <>
             <MessageModal message={message} onClose={() => setMessage(null)} />
             {notice ? <section className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-900"><div className="flex items-center justify-between gap-3"><span>{notice}</span><button type="button" onClick={() => setNotice(null)} className="text-sm font-bold">Dismiss</button></div></section> : null}

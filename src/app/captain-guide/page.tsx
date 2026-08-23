@@ -7,7 +7,7 @@ const sections = [
     bullets: [
       "Sign in using your normal league-app account.",
       "If you have been assigned as captain or vice-captain, your dashboard and notifications will reflect that automatically.",
-      "If Captain Results or the relevant fixture permissions are missing, contact the League Secretary or Chairman rather than creating a second account.",
+      "If Captain Results or the relevant fixture permissions are missing, contact the League Secretary, Chairman or Treasurer rather than creating a second account.",
     ],
   },
   {
@@ -44,7 +44,7 @@ const sections = [
       "For summer leagues, remember the two-singles-per-player rule. For winter leagues, check nominated-player and no-show rules before submitting.",
       "Enter frame points accurately and add any qualifying 30+ breaks.",
       "Use the same controlling device for score entry and break entry where possible.",
-      "Use Save progress if you need to stop and return before final submission.",
+      "Each completed frame is saved as you advance. Your current work is also kept safely on the device until final submission.",
     ],
   },
   {
@@ -61,7 +61,7 @@ const sections = [
     bullets: [
       "League rule: the home team should submit the result by default unless a league officer has agreed another arrangement.",
       "Check the full card before submitting, especially player assignments, points, and breaks.",
-      "After the final frame, do not leave the fixture at saved-progress stage. The card must still be finally submitted.",
+      "After the final frame, complete the final review and press Submit match result.",
       "Submit the result when complete. The submission then moves into the league-officer review queue.",
       "Result deadline: the match result must be entered by midnight on the following day.",
       "WhatsApp results should be treated as an exception or backup route only. The normal expectation is that the result is submitted in the app so the system can update automatically after approval.",
@@ -73,7 +73,7 @@ const sections = [
     bullets: [
       "If a fixture needs moving, use the fixture date request process rather than relying only on an informal message.",
       "If you spot an error before submission, correct it immediately in Captain Results.",
-      "If you spot an error after submission, contact the League Secretary or Chairman. They can return the result for correction or amend it during review.",
+      "If you spot an error after submission, contact the League Secretary, Chairman or Treasurer. They can return the result for correction or amend it during review.",
       "If a 30+ break was missed or a player could not complete a competition sign-up, tell a league officer promptly so it can be fixed cleanly.",
     ],
   },
