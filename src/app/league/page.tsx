@@ -2931,6 +2931,124 @@ export default function LeaguePage() {
       }
       return valid;
     };
+    const assignCombinedFirstCycle = (pairingsBySeason: Map<string, UndirectedMatch[][]>) => {
+      const assigned = new Map<string, DirectedMatch[][]>(
+        plans.map((plan) => [plan.season.id, Array.from({ length: firstLegRoundCount }, () => [])])
+      );
+      const teamSeasonId = new Map(plans.flatMap((plan) => plan.teamIds.map((teamId) => [teamId, plan.season.id] as const)));
+      const homeCountByTeam = new Map<string, number>();
+      const maximumFirstCycleHomes = Math.ceil(firstLegRoundCount / 2);
+      const firstVenueHomes = Array.from({ length: firstLegRoundCount }, () => new Map<string, number>());
+      const mirrorVenueHomes = Array.from({ length: firstLegRoundCount }, () => new Map<string, number>());
+      const firstGroupHomes = Array.from({ length: firstLegRoundCount }, () => homeGroupLimits.map(() => 0));
+      const mirrorGroupHomes = Array.from({ length: firstLegRoundCount }, () => homeGroupLimits.map(() => 0));
+      const venueTeamCounts = new Map<string, number>();
+      combinedTeams.forEach((team) => venueTeamCounts.set(team.location_id, (venueTeamCounts.get(team.location_id) ?? 0) + 1));
+      const roundMatches = Array.from({ length: firstLegRoundCount }, (_, roundIndex) =>
+        plans
+          .flatMap((plan) =>
+            (pairingsBySeason.get(plan.season.id)?.[roundIndex] ?? []).map((match) => ({ ...match, seasonId: plan.season.id }))
+          )
+          .sort((left, right) => {
+            const leftPressure = Math.max(
+              (venueTeamCounts.get(teamVenueById.get(left.teamAId) ?? "") ?? 0) /
+                (venueCapacityById.get(teamVenueById.get(left.teamAId) ?? "") ?? 1),
+              (venueTeamCounts.get(teamVenueById.get(left.teamBId) ?? "") ?? 0) /
+                (venueCapacityById.get(teamVenueById.get(left.teamBId) ?? "") ?? 1)
+            );
+            const rightPressure = Math.max(
+              (venueTeamCounts.get(teamVenueById.get(right.teamAId) ?? "") ?? 0) /
+                (venueCapacityById.get(teamVenueById.get(right.teamAId) ?? "") ?? 1),
+              (venueTeamCounts.get(teamVenueById.get(right.teamBId) ?? "") ?? 0) /
+                (venueCapacityById.get(teamVenueById.get(right.teamBId) ?? "") ?? 1)
+            );
+            return rightPressure - leftPressure;
+          })
+      );
+      const deadlineAt = Date.now() + 250;
+      let searchNodes = 0;
+      const backtrack = (roundIndex: number, matchIndex: number): boolean => {
+        searchNodes += 1;
+        if (Date.now() > deadlineAt || searchNodes > 100_000) return false;
+        if (roundIndex >= firstLegRoundCount) {
+          const minimumFirstCycleHomes = Math.floor(firstLegRoundCount / 2);
+          return plans.every((plan) =>
+            plan.teamIds.every((teamId) => (homeCountByTeam.get(teamId) ?? 0) >= minimumFirstCycleHomes)
+          );
+        }
+        const matches = roundMatches[roundIndex];
+        if (matchIndex >= matches.length) return backtrack(roundIndex + 1, 0);
+        const match = matches[matchIndex];
+        const seasonRounds = assigned.get(match.seasonId);
+        if (!seasonRounds) return false;
+        const candidates: DirectedMatch[] = shuffleArray([
+          { homeTeamId: match.teamAId, awayTeamId: match.teamBId },
+          { homeTeamId: match.teamBId, awayTeamId: match.teamAId },
+        ]).sort((left, right) => {
+          const roundsForLeft = assigned.get(teamSeasonId.get(left.homeTeamId) ?? "") ?? [];
+          const roundsForRight = assigned.get(teamSeasonId.get(right.homeTeamId) ?? "") ?? [];
+          const leftPenalty =
+            (getLastSideBeforeRound(left.homeTeamId, roundsForLeft, roundIndex) === "home" ? 1 : 0) +
+            (getLastSideBeforeRound(left.awayTeamId, roundsForLeft, roundIndex) === "away" ? 1 : 0);
+          const rightPenalty =
+            (getLastSideBeforeRound(right.homeTeamId, roundsForRight, roundIndex) === "home" ? 1 : 0) +
+            (getLastSideBeforeRound(right.awayTeamId, roundsForRight, roundIndex) === "away" ? 1 : 0);
+          return leftPenalty - rightPenalty;
+        });
+        for (const candidate of candidates) {
+          if ((homeCountByTeam.get(candidate.homeTeamId) ?? 0) >= maximumFirstCycleHomes) continue;
+          const homeVenueId = teamVenueById.get(candidate.homeTeamId);
+          const awayVenueId = teamVenueById.get(candidate.awayTeamId);
+          if (!homeVenueId || !awayVenueId) continue;
+          const firstCapacity = venueCapacityById.get(homeVenueId) ?? 1;
+          const mirrorCapacity = venueCapacityById.get(awayVenueId) ?? 1;
+          const firstReserved = baseReservations[roundIndex]?.get(homeVenueId) ?? 0;
+          const mirrorReserved = genFixtureCycles >= 2
+            ? baseReservations[firstLegRoundCount + roundIndex]?.get(awayVenueId) ?? 0
+            : 0;
+          const thirdReserved = genFixtureCycles === 3
+            ? baseReservations[firstLegRoundCount * 2 + roundIndex]?.get(homeVenueId) ?? 0
+            : 0;
+          if ((firstVenueHomes[roundIndex].get(homeVenueId) ?? 0) + firstReserved >= firstCapacity) continue;
+          if (genFixtureCycles >= 2 && (mirrorVenueHomes[roundIndex].get(awayVenueId) ?? 0) + mirrorReserved >= mirrorCapacity) continue;
+          if (genFixtureCycles === 3 && (firstVenueHomes[roundIndex].get(homeVenueId) ?? 0) + thirdReserved >= firstCapacity) continue;
+          let groupBlocked = false;
+          homeGroupLimits.forEach((group, groupIndex) => {
+            if (group.teamIds.has(candidate.homeTeamId) && firstGroupHomes[roundIndex][groupIndex] >= group.maxHomes) groupBlocked = true;
+            if (genFixtureCycles >= 2 && group.teamIds.has(candidate.awayTeamId) && mirrorGroupHomes[roundIndex][groupIndex] >= group.maxHomes) groupBlocked = true;
+          });
+          if (groupBlocked) continue;
+
+          seasonRounds[roundIndex].push(candidate);
+          homeCountByTeam.set(candidate.homeTeamId, (homeCountByTeam.get(candidate.homeTeamId) ?? 0) + 1);
+          firstVenueHomes[roundIndex].set(homeVenueId, (firstVenueHomes[roundIndex].get(homeVenueId) ?? 0) + 1);
+          if (genFixtureCycles >= 2) mirrorVenueHomes[roundIndex].set(awayVenueId, (mirrorVenueHomes[roundIndex].get(awayVenueId) ?? 0) + 1);
+          homeGroupLimits.forEach((group, groupIndex) => {
+            if (group.teamIds.has(candidate.homeTeamId)) firstGroupHomes[roundIndex][groupIndex] += 1;
+            if (genFixtureCycles >= 2 && group.teamIds.has(candidate.awayTeamId)) mirrorGroupHomes[roundIndex][groupIndex] += 1;
+          });
+          if (backtrack(roundIndex, matchIndex + 1)) return true;
+          seasonRounds[roundIndex].pop();
+          const nextHomeCount = (homeCountByTeam.get(candidate.homeTeamId) ?? 1) - 1;
+          if (nextHomeCount <= 0) homeCountByTeam.delete(candidate.homeTeamId);
+          else homeCountByTeam.set(candidate.homeTeamId, nextHomeCount);
+          const nextFirstVenueCount = (firstVenueHomes[roundIndex].get(homeVenueId) ?? 1) - 1;
+          if (nextFirstVenueCount <= 0) firstVenueHomes[roundIndex].delete(homeVenueId);
+          else firstVenueHomes[roundIndex].set(homeVenueId, nextFirstVenueCount);
+          if (genFixtureCycles >= 2) {
+            const nextMirrorVenueCount = (mirrorVenueHomes[roundIndex].get(awayVenueId) ?? 1) - 1;
+            if (nextMirrorVenueCount <= 0) mirrorVenueHomes[roundIndex].delete(awayVenueId);
+            else mirrorVenueHomes[roundIndex].set(awayVenueId, nextMirrorVenueCount);
+          }
+          homeGroupLimits.forEach((group, groupIndex) => {
+            if (group.teamIds.has(candidate.homeTeamId)) firstGroupHomes[roundIndex][groupIndex] -= 1;
+            if (genFixtureCycles >= 2 && group.teamIds.has(candidate.awayTeamId)) mirrorGroupHomes[roundIndex][groupIndex] -= 1;
+          });
+        }
+        return false;
+      };
+      return backtrack(0, 0) ? assigned : null;
+    };
 
     setMessage(null);
     setFixtureGenerationProgress({ running: true, percent: 4, message: "Preparing both winter divisions…" });
@@ -2950,26 +3068,11 @@ export default function LeaguePage() {
           });
           await yieldToBrowser();
         }
-        const reservations = cloneReservations();
-        const candidate = new Map<string, DirectedMatch[][]>();
-        let valid = true;
-        for (const plan of orderedPlansForAttempt(attempt)) {
-          const pairings = buildRoundRobinRounds(shuffleArray(plan.teamIds));
-          const assigned = assignHomeAwayForRounds(pairings, teamVenueById, venueCapacityById, {
-            roundOffset: 0,
-            reservedVenueHomesByRound: reservations,
-            homeGroupLimits,
-            searchDeadlineAt: Date.now() + 100,
-            maxSearchNodes: 35_000,
-          });
-          if (!assigned) {
-            valid = false;
-            break;
-          }
-          candidate.set(plan.season.id, assigned);
-          reserveScheduledHomes(reservations, assigned, 0);
-        }
-        if (!valid || candidate.size !== plans.length) continue;
+        const pairingsBySeason = new Map(
+          plans.map((plan) => [plan.season.id, buildRoundRobinRounds(shuffleArray(plan.teamIds))])
+        );
+        const candidate = assignCombinedFirstCycle(pairingsBySeason);
+        if (!candidate || candidate.size !== plans.length) continue;
         if (genFixtureCycles >= 2) {
           const mirroredCandidate = new Map<string, DirectedMatch[][]>();
           plans.forEach((plan) => {
