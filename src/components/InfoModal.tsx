@@ -11,22 +11,27 @@ type InfoModalProps = {
 export default function InfoModal({ open, title, description, closeLabel = "OK", onClose }: InfoModalProps) {
   if (!open) return null;
   return (
-    <div className="fixed inset-0 z-[90] flex items-center justify-center bg-slate-900/50 p-4">
-      <div className="w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-5 shadow-lg">
-        <h2 className="text-lg font-semibold text-slate-900 sm:text-xl">{title}</h2>
-        <div className="mt-3 max-h-[60vh] overflow-y-auto rounded-xl bg-slate-50 p-4">
-          <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700 sm:text-base">{description}</p>
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/65 p-4 backdrop-blur-sm" role="presentation">
+      <section role="dialog" aria-modal="true" aria-labelledby="app-info-title" className="w-full max-w-2xl overflow-hidden rounded-3xl border border-white/10 bg-white shadow-2xl">
+        <header className="bg-gradient-to-r from-slate-950 via-teal-950 to-slate-900 px-5 py-4 text-white">
+          <p className="text-[11px] font-bold uppercase tracking-[0.2em] text-teal-300">Rack &amp; Frame</p>
+          <h2 id="app-info-title" className="mt-1 text-xl font-bold">{title}</h2>
+        </header>
+        <div className="p-5">
+          <div className="max-h-[60vh] overflow-y-auto rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="whitespace-pre-wrap text-sm leading-7 text-slate-700 sm:text-base">{description}</p>
+          </div>
+          <div className="mt-4 flex items-center justify-end">
+            <button
+              type="button"
+              className="rounded-xl bg-teal-700 px-4 py-2.5 text-sm font-bold text-white"
+              onClick={onClose}
+            >
+              {closeLabel}
+            </button>
+          </div>
         </div>
-        <div className="mt-4 flex items-center justify-end">
-          <button
-            type="button"
-            className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-medium text-white"
-            onClick={onClose}
-          >
-            {closeLabel}
-          </button>
-        </div>
-      </div>
+      </section>
     </div>
   );
 }

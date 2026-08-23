@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
+import { useAppDialog } from "@/components/AppDialogProvider";
 import useAdminStatus from "@/components/useAdminStatus";
 import { supabase } from "@/lib/supabase";
 import type { LeagueEntryPackPlayer } from "@/lib/league-entry-pack";
@@ -35,6 +36,7 @@ type Team = { id: string; season_id: string; location_id?: string | null; name: 
 type Location = { id: string; name: string };
 
 export default function EntryPacksPage() {
+  const { showConfirm, showPrompt } = useAppDialog();
   const admin = useAdminStatus();
   const [packs, setPacks] = useState<PackRow[]>([]);
   const [seasons, setSeasons] = useState<Season[]>([]);
@@ -92,12 +94,28 @@ export default function EntryPacksPage() {
   const act = async (pack: PackRow, action: "approve" | "reject" | "rotate") => {
     let reviewNotes = "";
     if (action === "reject") {
-      reviewNotes = window.prompt("Explain what the team must correct:", pack.review_notes ?? "")?.trim() ?? "";
+      reviewNotes = await showPrompt({
+        title: "Return registration for correction",
+        description: "Explain clearly what the team needs to correct before submitting the registration again.",
+        initialValue: pack.review_notes ?? "",
+        placeholder: "Enter the required corrections…",
+        confirmLabel: "Return to team",
+        required: true,
+      }) ?? "";
       if (!reviewNotes) return;
     }
     if (action === "approve" && !validatedPackIds.has(pack.id)) return setMessage("Confirm that you have checked the roster and possible profile matches before approval.");
-    if (action === "approve" && !window.confirm(`Approve and import ${teamById.get(pack.team_id)?.name ?? "this team"}'s league roster? This will match existing profiles and create any remaining players.`)) return;
-    if (action === "rotate" && !window.confirm("Reset this team’s browser access? Their currently saved link/browser will stop working, but their draft data will be retained.")) return;
+    if (action === "approve" && !await showConfirm({
+      title: "Approve team registration?",
+      description: `Approve and import ${teamById.get(pack.team_id)?.name ?? "this team"}'s league roster? Existing player profiles will be matched and any remaining players will be created.`,
+      confirmLabel: "Approve and import",
+    })) return;
+    if (action === "rotate" && !await showConfirm({
+      title: "Reset browser access?",
+      description: "The currently saved link and browser access will stop working. The team’s draft information will be retained.",
+      confirmLabel: "Reset access",
+      tone: "danger",
+    })) return;
     setBusyId(pack.id);
     try {
       await request({ action, packId: pack.id, reviewNotes });

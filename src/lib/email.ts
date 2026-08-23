@@ -1,6 +1,6 @@
 const resendApiKey = process.env.RESEND_API_KEY?.trim() ?? "";
 const defaultRecipient = process.env.NOTIFICATION_EMAIL_TO?.trim() || process.env.SUPER_ADMIN_EMAIL?.trim() || "";
-const defaultSender = process.env.EMAIL_FROM?.trim() || "League App <onboarding@resend.dev>";
+const defaultSender = process.env.EMAIL_FROM?.trim() || "Rack & Frame League <onboarding@resend.dev>";
 
 type SendEmailOptions = {
   to?: string | null;

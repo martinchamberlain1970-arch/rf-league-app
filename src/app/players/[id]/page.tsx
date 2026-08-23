@@ -11,6 +11,7 @@ import useAdminStatus from "@/components/useAdminStatus";
 import ConfirmModal from "@/components/ConfirmModal";
 import InfoModal from "@/components/InfoModal";
 import MessageModal from "@/components/MessageModal";
+import { useAppDialog } from "@/components/AppDialogProvider";
 import { countryCodeToFlagEmoji } from "@/lib/country-flags";
 import { targetHandicapFromElo } from "@/lib/snooker-rating";
 
@@ -174,6 +175,7 @@ function describeAvatarUploadError(error: unknown) {
 }
 
 export default function PlayerProfilePage() {
+  const { showPrompt } = useAppDialog();
   const { id } = useParams<{ id: string }>();
   const [player, setPlayer] = useState<Player | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
@@ -428,7 +430,14 @@ export default function PlayerProfilePage() {
   const onEditFullName = async () => {
     const client = supabase;
     if (!client || !player) return;
-    const proposed = window.prompt(`Enter first and second name for ${player.display_name}`, player.full_name ?? "");
+    const proposed = await showPrompt({
+      title: "Update player name",
+      description: `Enter the correct name for ${player.display_name}.`,
+      initialValue: player.full_name ?? "",
+      placeholder: "First and second name",
+      confirmLabel: "Save name",
+      required: true,
+    });
     if (!proposed) return;
     const cleaned = proposed.trim();
     const parts = cleaned.split(/\s+/).filter(Boolean);

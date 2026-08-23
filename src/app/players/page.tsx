@@ -9,6 +9,7 @@ import useAdminStatus from "@/components/useAdminStatus";
 import ConfirmModal from "@/components/ConfirmModal";
 import InfoModal from "@/components/InfoModal";
 import MessageModal from "@/components/MessageModal";
+import { useAppDialog } from "@/components/AppDialogProvider";
 import { appRoleLabel, isSuperRole, normalizeAppRole, type AppRole } from "@/lib/app-roles";
 
 type Player = {
@@ -128,6 +129,7 @@ function isMissingColumnError(message?: string | null) {
 }
 
 export default function PlayersPage() {
+  const { showPrompt } = useAppDialog();
   const admin = useAdminStatus();
   const [players, setPlayers] = useState<Player[]>([]);
   const [claims, setClaims] = useState<ClaimRequest[]>([]);
@@ -809,12 +811,19 @@ export default function PlayersPage() {
   const onRequestClaim = async (player: Player) => {
     const client = supabase;
     if (!client || !userId) return;
-    const fullName = window.prompt(`Confirm your first and second name for claiming "${player.display_name}"`, player.full_name ?? "");
-    if (!fullName || !fullName.trim()) return;
+    const fullName = await showPrompt({
+      title: "Confirm your name",
+      description: `Enter your first and second name to request the “${player.display_name}” player profile.`,
+      initialValue: player.full_name ?? "",
+      placeholder: "First and second name",
+      confirmLabel: "Request profile",
+      required: true,
+    });
+    if (!fullName) return;
     const { error } = await client.from("player_claim_requests").insert({
       player_id: player.id,
       requester_user_id: userId,
-      requested_full_name: fullName.trim(),
+      requested_full_name: fullName,
       status: "pending",
     });
     if (error) {

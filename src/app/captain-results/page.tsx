@@ -6,6 +6,7 @@ import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
 import InfoModal from "@/components/InfoModal";
 import ConfirmModal from "@/components/ConfirmModal";
+import { useAppDialog } from "@/components/AppDialogProvider";
 import useAdminStatus from "@/components/useAdminStatus";
 import { supabase } from "@/lib/supabase";
 import { calculateAdjustedScoresWithCap, MAX_SNOOKER_START } from "@/lib/snooker-handicap";
@@ -264,6 +265,7 @@ const sectionCardTintClass = "bg-gradient-to-br from-teal-50 via-white to-emeral
 const sectionTitleClass = "text-lg font-semibold text-slate-900";
 
 export default function CaptainResultsPage() {
+  const { showConfirm } = useAppDialog();
   const admin = useAdminStatus();
   const [message, setMessage] = useState<string | null>(null);
   const [info, setInfo] = useState<{ title: string; description: string } | null>(null);
@@ -1922,14 +1924,12 @@ export default function CaptainResultsPage() {
               {canEditSubmittedHomeLineup ? (
                 <button
                   type="button"
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        "Reopen the submitted home lineup for editing? You can only do this before 19:15 and before the away team confirms its lineup."
-                      )
-                    ) {
-                      void reopenSubmittedHomeLineup();
-                    }
+                  onClick={async () => {
+                    if (await showConfirm({
+                      title: "Reopen the home lineup?",
+                      description: "The submitted home lineup will reopen for editing. This is only available before 19:15 and before the away team confirms its lineup.",
+                      confirmLabel: "Reopen lineup",
+                    })) void reopenSubmittedHomeLineup();
                   }}
                   disabled={submitting}
                   className="min-h-11 rounded-xl border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 disabled:opacity-60"
@@ -2190,14 +2190,12 @@ export default function CaptainResultsPage() {
                         {canEnableProxyEntry ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  "Enable agreed proxy entry for tonight? Use this only when both teams agree that one captain or vice-captain will enter both lineups and the final result in the app."
-                                )
-                              ) {
-                                void enableProxyEntry();
-                              }
+                            onClick={async () => {
+                              if (await showConfirm({
+                                title: "Enable agreed proxy entry?",
+                                description: "Use this only when both teams agree that one captain or vice-captain will enter both lineups and the final result in Rack & Frame.",
+                                confirmLabel: "Enable proxy entry",
+                              })) void enableProxyEntry();
                             }}
                             disabled={submitting}
                             className="rounded-xl border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-900"
@@ -2217,8 +2215,12 @@ export default function CaptainResultsPage() {
                             </button>
                             <button
                               type="button"
-                              onClick={() => {
-                                if (window.confirm("Mark this fixture to use a paper pre-match card instead?")) void markPaperLineup();
+                              onClick={async () => {
+                                if (await showConfirm({
+                                  title: "Use a paper record?",
+                                  description: "This fixture will use a paper pre-match card instead of the normal digital lineup process.",
+                                  confirmLabel: "Use paper record",
+                                })) void markPaperLineup();
                               }}
                               disabled={submitting}
                               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
@@ -2230,14 +2232,12 @@ export default function CaptainResultsPage() {
                         {canEditSubmittedHomeLineup ? (
                           <button
                             type="button"
-                            onClick={() => {
-                              if (
-                                window.confirm(
-                                  "Reopen the submitted home lineup for editing? You can only do this before 19:15 and before the away team confirms its lineup."
-                                )
-                              ) {
-                                void reopenSubmittedHomeLineup();
-                              }
+                            onClick={async () => {
+                              if (await showConfirm({
+                                title: "Reopen the home lineup?",
+                                description: "The submitted home lineup will reopen for editing. This is only available before 19:15 and before the away team confirms its lineup.",
+                                confirmLabel: "Reopen lineup",
+                              })) void reopenSubmittedHomeLineup();
                             }}
                             disabled={submitting}
                             className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900"

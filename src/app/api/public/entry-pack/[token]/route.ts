@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { normalizeEntryPackPayload, validateEntryPackPayload } from "@/lib/league-entry-pack";
 import { normalizePlayerName } from "@/lib/player-name-match";
+import { sendNotificationEmail } from "@/lib/email";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -14,6 +15,43 @@ const noStore = {
   "Referrer-Policy": "no-referrer",
   "X-Robots-Tag": "noindex, nofollow, noarchive",
 };
+
+const validEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
+const escapeHtml = (value: string) => value
+  .replaceAll("&", "&amp;")
+  .replaceAll("<", "&lt;")
+  .replaceAll(">", "&gt;")
+  .replaceAll('"', "&quot;");
+
+function registrationCopyContent(input: {
+  teamName: string;
+  seasonName: string;
+  submittedAt: string;
+  players: ReturnType<typeof normalizeEntryPackPayload>["players"];
+  generalNotes: string;
+}) {
+  const roleFor = (player: (typeof input.players)[number]) => player.isCaptain ? "Captain" : player.isViceCaptain ? "Vice-captain" : "Player";
+  const playerLines = input.players.filter((player) => player.fullName).map((player) => `${roleFor(player)}: ${player.fullName}`);
+  const submitted = new Intl.DateTimeFormat("en-GB", { dateStyle: "long", timeStyle: "short", timeZone: "Europe/London" }).format(new Date(input.submittedAt));
+  const text = [
+    "Rack & Frame League — Team Registration Copy",
+    "",
+    `Team: ${input.teamName}`,
+    `League: ${input.seasonName}`,
+    `Submitted: ${submitted}`,
+    "",
+    "Registered roster",
+    ...playerLines,
+    ...(input.generalNotes ? ["", "Additional information", input.generalNotes] : []),
+    "",
+    "The League Secretary or Chairman will review this submission before importing the roster.",
+    "This is a confirmation copy only. Please do not reply to this automated email.",
+  ].join("\n");
+  const rows = input.players.filter((player) => player.fullName).map((player) => `<tr><td style="padding:9px 12px;border-bottom:1px solid #e2e8f0;color:#475569">${escapeHtml(roleFor(player))}</td><td style="padding:9px 12px;border-bottom:1px solid #e2e8f0;font-weight:600;color:#0f172a">${escapeHtml(player.fullName)}</td></tr>`).join("");
+  const html = `<div style="font-family:Arial,sans-serif;max-width:680px;margin:0 auto;color:#0f172a"><div style="background:#0f172a;padding:24px;border-radius:18px 18px 0 0;color:white"><div style="color:#5eead4;font-size:12px;font-weight:700;letter-spacing:2px;text-transform:uppercase">Rack &amp; Frame League</div><h1 style="margin:8px 0 0;font-size:26px">Team registration received</h1></div><div style="border:1px solid #cbd5e1;border-top:0;padding:24px;border-radius:0 0 18px 18px"><p style="margin-top:0">This is your copy of the submitted league roster.</p><p><strong>Team:</strong> ${escapeHtml(input.teamName)}<br><strong>League:</strong> ${escapeHtml(input.seasonName)}<br><strong>Submitted:</strong> ${escapeHtml(submitted)}</p><table style="width:100%;border-collapse:collapse;margin:20px 0"><thead><tr style="background:#f1f5f9"><th style="padding:9px 12px;text-align:left">Role</th><th style="padding:9px 12px;text-align:left">Player</th></tr></thead><tbody>${rows}</tbody></table>${input.generalNotes ? `<div style="background:#f8fafc;border-radius:12px;padding:14px"><strong>Additional information</strong><p style="margin:8px 0 0;white-space:pre-wrap">${escapeHtml(input.generalNotes)}</p></div>` : ""}<p style="margin:20px 0 0;color:#475569">The League Secretary or Chairman will review this submission before importing the roster.</p><p style="font-size:12px;color:#64748b">This is a confirmation copy only. Please do not reply to this automated email.</p></div></div>`;
+  return { text, html };
+}
 
 async function loadPack(client: SupabaseClient, token: string) {
   if (!/^[a-f0-9]{48}$/i.test(token)) return { error: "Entry pack not found." as const, status: 404 };
@@ -144,7 +182,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
   const loaded = await loadPack(client, token);
   if ("error" in loaded) return NextResponse.json({ error: loaded.error }, { status: loaded.status, headers: noStore });
   const [seasonStatusRes, startedFixturesRes] = await Promise.all([
-    client.from("league_seasons").select("is_active").eq("id", loaded.pack.season_id).maybeSingle(),
+    client.from("league_seasons").select("id,name,is_active").eq("id", loaded.pack.season_id).maybeSingle(),
     client.from("league_fixtures").select("id").eq("season_id", loaded.pack.season_id).in("status", ["in_progress", "complete"]).limit(1),
   ]);
   const statusError = seasonStatusRes.error?.message || startedFixturesRes.error?.message;
@@ -154,6 +192,9 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
   }
   if (loaded.pack.status === "approved") {
     return NextResponse.json({ error: "This entry pack has been approved and is now read-only. Contact a league officer for changes." }, { status: 409, headers: noStore });
+  }
+  if (loaded.pack.status === "submitted") {
+    return NextResponse.json({ error: "This team registration has already been submitted and is awaiting review." }, { status: 409, headers: noStore });
   }
 
   const body = await req.json().catch(() => null);
@@ -179,11 +220,15 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
     return NextResponse.json({ ok: true, status: "draft", updatedAt: now }, { headers: noStore });
   }
   const action = body?.action === "submit" ? "submit" : "save";
+  const receiptEmail = action === "submit" ? String(body?.receiptEmail ?? "").trim().toLowerCase().slice(0, 254) : "";
+  if (receiptEmail && !validEmail(receiptEmail)) {
+    return NextResponse.json({ error: "Enter a valid email address for the optional submission copy." }, { status: 400, headers: noStore });
+  }
   const payload = normalizeEntryPackPayload(body?.pack);
   const validationError = validateEntryPackPayload(payload, action === "submit");
   if (validationError) return NextResponse.json({ error: validationError }, { status: 400, headers: noStore });
 
-  const teamRes = await client.from("league_teams").select("location_id").eq("id", loaded.pack.team_id).maybeSingle();
+  const teamRes = await client.from("league_teams").select("id,name,location_id").eq("id", loaded.pack.team_id).maybeSingle();
   if (teamRes.error || !teamRes.data) return NextResponse.json({ error: teamRes.error?.message ?? "The linked league team is no longer available." }, { status: 400, headers: noStore });
   const selections = await loadOtherTeamSelections(client, loaded.pack.season_id, loaded.pack.team_id, teamRes.data.location_id);
   if (selections.error) return NextResponse.json({ error: selections.error }, { status: 400, headers: noStore });
@@ -223,5 +268,27 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
     })
     .eq("id", loaded.pack.id);
   if (updateRes.error) return NextResponse.json({ error: updateRes.error.message }, { status: 400, headers: noStore });
-  return NextResponse.json({ ok: true, status: action === "submit" ? "submitted" : "draft", updatedAt: now }, { headers: noStore });
+
+  let receiptStatus: "not_requested" | "sent" | "failed" = "not_requested";
+  if (action === "submit" && receiptEmail) {
+    const content = registrationCopyContent({
+      teamName: teamRes.data.name,
+      seasonName: seasonStatusRes.data.name,
+      submittedAt: now,
+      players: payload.players,
+      generalNotes: payload.generalNotes,
+    });
+    try {
+      const emailResult = await sendNotificationEmail({
+        to: receiptEmail,
+        subject: `Rack & Frame League — ${teamRes.data.name} registration copy`,
+        text: content.text,
+        html: content.html,
+      });
+      receiptStatus = emailResult.sent ? "sent" : "failed";
+    } catch {
+      receiptStatus = "failed";
+    }
+  }
+  return NextResponse.json({ ok: true, status: action === "submit" ? "submitted" : "draft", updatedAt: now, receiptStatus }, { headers: noStore });
 }

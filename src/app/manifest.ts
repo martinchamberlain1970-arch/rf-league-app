@@ -3,7 +3,7 @@ import type { MetadataRoute } from "next";
 export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Rack & Frame League Manager",
-    short_name: "Rack & Frame",
+    short_name: "R&F League",
     description: "Fixtures, frame-by-frame scoring, results and competitions for the Rack & Frame league.",
     start_url: "/",
     scope: "/",
@@ -14,19 +14,19 @@ export default function manifest(): MetadataRoute.Manifest {
     categories: ["sports", "productivity"],
     icons: [
       {
-        src: "/icons/icon-192.png",
+        src: "/icons/rack-frame-icon-192-v2.png",
         sizes: "192x192",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/icons/icon-512.png",
+        src: "/icons/rack-frame-icon-512-v2.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "any",
       },
       {
-        src: "/icons/icon-maskable-512.png",
+        src: "/icons/rack-frame-maskable-512-v2.png",
         sizes: "512x512",
         type: "image/png",
         purpose: "maskable",

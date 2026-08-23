@@ -8,6 +8,7 @@ import useAdminStatus from "@/components/useAdminStatus";
 import MessageModal from "@/components/MessageModal";
 import InfoModal from "@/components/InfoModal";
 import ConfirmModal from "@/components/ConfirmModal";
+import { useAppDialog } from "@/components/AppDialogProvider";
 import { supabase } from "@/lib/supabase";
 import { calculateAdjustedScoresWithCap, MAX_SNOOKER_START } from "@/lib/snooker-handicap";
 
@@ -586,6 +587,7 @@ const describeFixtureReschedule = (request?: FixtureChangeRequest | null) => {
 };
 
 export default function LeaguePage() {
+  const { showConfirm } = useAppDialog();
   const admin = useAdminStatus();
   const [guidedTarget, setGuidedTarget] = useState<null | "create-league" | "add-league-teams" | "assign-players" | "generate-fixtures" | "publish-league">(null);
   const [highlightedGuidedTarget, setHighlightedGuidedTarget] = useState<null | "create-league" | "add-league-teams" | "assign-players" | "generate-fixtures" | "publish-league">(null);
@@ -2226,7 +2228,12 @@ export default function LeaguePage() {
       setMessage(`Cannot delete "${team.name}" because it is already used in a league.`);
       return;
     }
-    const ok = window.confirm(`Delete registered team "${team.name}"? This will remove team-player assignments.`);
+    const ok = await showConfirm({
+      title: "Delete registered team?",
+      description: `Delete “${team.name}”? This will also remove its team-player assignments.`,
+      confirmLabel: "Delete team",
+      tone: "danger",
+    });
     if (!ok) return;
     const delMembers = await client.from("league_registered_team_members").delete().eq("team_id", teamId);
     if (delMembers.error) {
@@ -3193,11 +3200,11 @@ export default function LeaguePage() {
       setMessage("League management access is required to recalculate handicaps.");
       return;
     }
-    const confirmed = window.confirm(
-      `This will change actual playing handicaps now by aligning them to each player's current Elo target.
-
-Elo updates do not need this button. Press Cancel if you only want Elo to keep updating in the background.`
-    );
+    const confirmed = await showConfirm({
+      title: "Apply Elo handicap changes?",
+      description: "This changes actual playing handicaps now by aligning them with each player’s current Elo target.\n\nElo updates do not require this action. Cancel if you only want Elo to continue updating in the background.",
+      confirmLabel: "Apply handicaps",
+    });
     if (!confirmed) return;
     const sessionRes = await client.auth.getSession();
     const token = sessionRes.data.session?.access_token ?? null;
@@ -4099,7 +4106,12 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
       setMessage("League management access is required to delete knockout competitions.");
       return;
     }
-    if (!window.confirm(`Delete "${competitionName}"? This will remove it from active competitions.`)) return;
+    if (!await showConfirm({
+      title: "Delete competition?",
+      description: `Delete “${competitionName}”? It will be removed from active competitions.`,
+      confirmLabel: "Delete competition",
+      tone: "danger",
+    })) return;
     const res = await client
       .from("competitions")
       .update({ is_archived: true, signup_open: false })
@@ -4123,7 +4135,12 @@ Elo updates do not need this button. Press Cancel if you only want Elo to keep u
       setInfoModal({ title: "No Competitions", description: "There are no active knockout competitions to delete." });
       return;
     }
-    if (!window.confirm(`Delete all ${knockoutCompetitions.length} active knockout competitions?`)) return;
+    if (!await showConfirm({
+      title: "Delete all active competitions?",
+      description: `This will remove all ${knockoutCompetitions.length} active knockout competitions.`,
+      confirmLabel: "Delete all",
+      tone: "danger",
+    })) return;
     const ids = knockoutCompetitions.map((c) => c.id);
     const res = await client
       .from("competitions")
