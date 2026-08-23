@@ -22,6 +22,7 @@ type Payload = {
   seasons: SeasonOption[];
   season: SeasonOption | null;
   fixtures: PublicFixture[];
+  isDraftPreview?: boolean;
   error?: string;
 };
 
@@ -45,6 +46,7 @@ function shortLeagueName(value: string) {
 
 export default function PublicFixturesPage() {
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
+  const [draftToken, setDraftToken] = useState("");
   const [queryReady, setQueryReady] = useState(false);
   const [data, setData] = useState<Payload | null>(null);
   const [loading, setLoading] = useState(true);
@@ -53,7 +55,9 @@ export default function PublicFixturesPage() {
 
   useEffect(() => {
     const requestedSeasonId = new URLSearchParams(window.location.search).get("seasonId")?.trim() ?? "";
+    const requestedDraftToken = new URLSearchParams(window.location.search).get("draft")?.trim() ?? "";
     setSelectedSeasonId(requestedSeasonId);
+    setDraftToken(requestedDraftToken);
     setQueryReady(true);
   }, []);
 
@@ -63,7 +67,10 @@ export default function PublicFixturesPage() {
     const load = async () => {
       setLoading(true);
       try {
-        const query = selectedSeasonId ? `?seasonId=${encodeURIComponent(selectedSeasonId)}` : "";
+        const params = new URLSearchParams();
+        if (selectedSeasonId) params.set("seasonId", selectedSeasonId);
+        if (draftToken) params.set("draft", draftToken);
+        const query = params.size ? `?${params.toString()}` : "";
         const resp = await fetch(`/api/public/fixtures${query}`, { cache: "no-store" });
         const payload = (await resp.json().catch(() => ({ seasons: [], season: null, fixtures: [] }))) as Payload;
         if (!active) return;
@@ -84,7 +91,7 @@ export default function PublicFixturesPage() {
     return () => {
       active = false;
     };
-  }, [queryReady, selectedSeasonId]);
+  }, [draftToken, queryReady, selectedSeasonId]);
 
   const rounds = useMemo(() => {
     const grouped = new Map<string, { weekNo: number | null; fixtureDate: string | null; fixtures: PublicFixture[] }>();
@@ -101,13 +108,16 @@ export default function PublicFixturesPage() {
   const chooseSeason = (seasonId: string) => {
     setCopied(false);
     setSelectedSeasonId(seasonId);
+    setDraftToken("");
     window.history.replaceState(null, "", `/display/fixtures?seasonId=${encodeURIComponent(seasonId)}`);
   };
 
   const copyLink = async () => {
     if (!data?.season?.id) return;
-    const url = `${window.location.origin}/display/fixtures?seasonId=${encodeURIComponent(data.season.id)}`;
-    await navigator.clipboard.writeText(url);
+    const url = new URL("/display/fixtures", window.location.origin);
+    url.searchParams.set("seasonId", data.season.id);
+    if (data.isDraftPreview && draftToken) url.searchParams.set("draft", draftToken);
+    await navigator.clipboard.writeText(url.toString());
     setCopied(true);
     window.setTimeout(() => setCopied(false), 2500);
   };
@@ -116,17 +126,26 @@ export default function PublicFixturesPage() {
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_55%)] px-4 py-6 text-white sm:px-6">
       <div className="mx-auto max-w-6xl space-y-4">
         <header className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/20 backdrop-blur">
-          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-300">Rack &amp; Frame · Public Fixtures</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-300">
+            Rack &amp; Frame · {data?.isDraftPreview ? "Draft Fixture Review" : "Public Fixtures"}
+          </p>
           <h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">
             {data?.season?.name ?? "League Fixtures"}
           </h1>
-          <p className="mt-2 text-sm text-slate-300">Complete published fixture list · Updated {updatedAt || "--:--"}</p>
+          <p className="mt-2 text-sm text-slate-300">
+            {data?.isDraftPreview ? "Private officer review copy" : "Complete published fixture list"} · Updated {updatedAt || "--:--"}
+          </p>
+          {data?.isDraftPreview ? (
+            <div className="mt-4 rounded-2xl border border-amber-300/30 bg-amber-400/10 px-4 py-3 text-sm text-amber-100">
+              <strong>Private draft preview:</strong> for league officers to review before publication. Anyone with this private link can view the draft fixtures.
+            </div>
+          ) : null}
         </header>
 
         <section className="rounded-3xl border border-white/10 bg-slate-900/80 p-4 shadow-2xl shadow-black/20">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <label className="block flex-1 text-sm font-medium text-slate-200" htmlFor="public-fixture-season">
-              League division
+              {data?.isDraftPreview ? "Draft league division" : "League division"}
               <select
                 id="public-fixture-season"
                 className="mt-1 block w-full rounded-xl border border-white/15 bg-slate-950 px-3 py-2.5 text-white sm:max-w-xl"
@@ -160,7 +179,7 @@ export default function PublicFixturesPage() {
 
         {!data?.error && !loading && rounds.length === 0 ? (
           <section className="rounded-3xl border border-white/10 bg-white/5 p-8 text-slate-200">
-            No fixtures have been published for this league yet.
+            {data?.isDraftPreview ? "No draft fixtures are currently available for this league." : "No fixtures have been published for this league yet."}
           </section>
         ) : null}
 

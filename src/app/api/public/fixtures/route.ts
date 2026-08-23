@@ -3,11 +3,21 @@ import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
+const responseHeaders = {
+  "Cache-Control": "private, no-store, max-age=0",
+  "Referrer-Policy": "no-referrer",
+  "X-Robots-Tag": "noindex, nofollow, noarchive",
+};
+
+function json(body: unknown, status = 200) {
+  return NextResponse.json(body, { status, headers: responseHeaders });
+}
 
 type SeasonRow = {
   id: string;
   name: string;
   created_at: string | null;
+  is_published: boolean | null;
 };
 
 type TeamRow = {
@@ -28,35 +38,70 @@ type FixtureRow = {
 
 export async function GET(req: NextRequest) {
   if (!supabaseUrl || !serviceRoleKey) {
-    return NextResponse.json({ error: "Server configuration missing." }, { status: 500 });
+    return json({ error: "Server configuration missing." }, 500);
   }
 
   const requestedSeasonId = req.nextUrl.searchParams.get("seasonId")?.trim() ?? "";
+  const draftToken = req.nextUrl.searchParams.get("draft")?.trim() ?? "";
+  const validDraftToken = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(draftToken);
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
   const seasonsRes = await adminClient
     .from("league_seasons")
-    .select("id,name,created_at")
+    .select("id,name,created_at,is_published")
     .eq("is_published", true)
     .order("created_at", { ascending: false });
 
   if (seasonsRes.error) {
-    return NextResponse.json({ error: seasonsRes.error.message }, { status: 500 });
+    return json({ error: seasonsRes.error.message }, 500);
   }
 
   const seasons = (seasonsRes.data ?? []) as SeasonRow[];
   let selectedSeason = requestedSeasonId
     ? seasons.find((season) => season.id === requestedSeasonId) ?? null
     : null;
+  let isDraftPreview = false;
+
+  if (requestedSeasonId && !selectedSeason && validDraftToken) {
+    const draftLinkRes = await adminClient
+      .from("league_fixture_draft_links")
+      .select("season_id")
+      .eq("season_id", requestedSeasonId)
+      .eq("share_token", draftToken)
+      .maybeSingle();
+
+    if (draftLinkRes.error) {
+      const migrationMissing = /league_fixture_draft_links|schema cache|does not exist/i.test(draftLinkRes.error.message);
+      return json(
+        { error: migrationMissing ? "This draft fixture link is not available yet." : draftLinkRes.error.message },
+        migrationMissing ? 404 : 500
+      );
+    }
+    if (draftLinkRes.data) {
+      const draftSeasonRes = await adminClient
+        .from("league_seasons")
+        .select("id,name,created_at,is_published")
+        .eq("id", requestedSeasonId)
+        .eq("is_active", true)
+        .maybeSingle();
+      if (draftSeasonRes.error) {
+        return json({ error: draftSeasonRes.error.message }, 500);
+      }
+      if (draftSeasonRes.data) {
+        selectedSeason = draftSeasonRes.data as SeasonRow;
+        isDraftPreview = true;
+      }
+    }
+  }
 
   if (requestedSeasonId && !selectedSeason) {
-    return NextResponse.json(
+    return json(
       {
         seasons: seasons.map(({ id, name }) => ({ id, name })),
         season: null,
         fixtures: [],
-        error: "This league is not currently published.",
+        error: "This draft link is invalid or has expired, or the league is not currently published.",
       },
-      { status: 404 }
+      404
     );
   }
 
@@ -68,7 +113,7 @@ export async function GET(req: NextRequest) {
       .neq("status", "complete");
 
     if (openFixturesRes.error) {
-      return NextResponse.json({ error: openFixturesRes.error.message }, { status: 500 });
+      return json({ error: openFixturesRes.error.message }, 500);
     }
 
     const seasonsWithOpenFixtures = new Set(
@@ -78,7 +123,7 @@ export async function GET(req: NextRequest) {
   }
 
   if (!selectedSeason) {
-    return NextResponse.json({ seasons: [], season: null, fixtures: [] });
+    return json({ seasons: [], season: null, fixtures: [] });
   }
 
   const [teamsRes, fixturesRes] = await Promise.all([
@@ -97,7 +142,7 @@ export async function GET(req: NextRequest) {
 
   const firstError = teamsRes.error?.message || fixturesRes.error?.message;
   if (firstError) {
-    return NextResponse.json({ error: firstError }, { status: 500 });
+    return json({ error: firstError }, 500);
   }
 
   const teamNameById = new Map(
@@ -105,9 +150,12 @@ export async function GET(req: NextRequest) {
   );
   const fixtures = (fixturesRes.data ?? []) as FixtureRow[];
 
-  return NextResponse.json({
-    seasons: seasons.map(({ id, name }) => ({ id, name })),
+  return json({
+    seasons: isDraftPreview
+      ? [{ id: selectedSeason.id, name: selectedSeason.name }]
+      : seasons.map(({ id, name }) => ({ id, name })),
     season: { id: selectedSeason.id, name: selectedSeason.name },
+    isDraftPreview,
     fixtures: fixtures.map((fixture) => ({
       id: fixture.id,
       fixtureDate: fixture.fixture_date,

@@ -4879,6 +4879,37 @@ export default function LeaguePage() {
     setInfoModal({ title: "Fixtures Published", description: "A notification is now available in user inboxes." });
   };
 
+  const copyFixtureShareLink = async () => {
+    const client = supabase;
+    if (!client || !currentSeason) return;
+    const sessionRes = await client.auth.getSession();
+    const token = sessionRes.data.session?.access_token ?? null;
+    if (!token) {
+      setMessage("Session expired. Please sign in again.");
+      return;
+    }
+    try {
+      const response = await fetch(`/api/league/fixture-share-link?seasonId=${encodeURIComponent(currentSeason.id)}`, {
+        headers: { Authorization: `Bearer ${token}` },
+        cache: "no-store",
+      });
+      const payload = (await response.json().catch(() => ({}))) as { error?: string; sharePath?: string; mode?: "draft" | "published" };
+      if (!response.ok || !payload.sharePath) {
+        setMessage(payload.error ?? "The fixture share link could not be prepared.");
+        return;
+      }
+      await navigator.clipboard.writeText(`${window.location.origin}${payload.sharePath}`);
+      setInfoModal({
+        title: payload.mode === "draft" ? "Private Draft Link Copied" : "Public Fixture Link Copied",
+        description: payload.mode === "draft"
+          ? "The private draft fixture link is ready to paste into the league officers’ WhatsApp group. Anyone with this link can view the draft fixtures before publication."
+          : "The public fixture link is ready to paste into WhatsApp.",
+      });
+    } catch {
+      setMessage("Network error while preparing the fixture share link.");
+    }
+  };
+
   const publishLeague = async () => {
     const client = supabase;
     if (!client) return;
@@ -8573,37 +8604,33 @@ export default function LeaguePage() {
                   </div>
                 ) : null}
                 {currentSeason ? (
-                  <div className={`mt-3 rounded-xl border p-3 ${currentSeason.is_published ? "border-cyan-200 bg-cyan-50" : "border-slate-200 bg-slate-50"}`}>
+                  <div className={`mt-3 rounded-xl border p-3 ${currentSeason.is_published ? "border-cyan-200 bg-cyan-50" : "border-amber-200 bg-amber-50"}`}>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <p className="text-sm font-semibold text-slate-900">Public fixture list</p>
+                        <p className="text-sm font-semibold text-slate-900">Fixture sharing</p>
                         <p className="mt-1 text-xs text-slate-600">
                           {currentSeason.is_published
                             ? "This permanent link shows the complete fixture list and can be shared with clubs on WhatsApp."
-                            : "The shareable fixture link will become publicly accessible when this league is published."}
+                            : "Copy a private draft-preview link for league officers. It works before publication and should not be shared beyond the officer group."}
                         </p>
                       </div>
                       <div className="flex flex-wrap gap-2">
-                        <a
-                          href={`/display/fixtures?seasonId=${encodeURIComponent(currentSeason.id)}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          aria-disabled={!currentSeason.is_published}
-                          className={`rounded-xl border px-4 py-2 text-sm font-medium ${currentSeason.is_published ? "border-cyan-300 bg-white text-cyan-900" : "pointer-events-none border-slate-200 bg-slate-100 text-slate-400"}`}
-                        >
-                          Open public fixtures
-                        </a>
+                        {currentSeason.is_published ? (
+                          <a
+                            href={`/display/fixtures?seasonId=${encodeURIComponent(currentSeason.id)}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-xl border border-cyan-300 bg-white px-4 py-2 text-sm font-medium text-cyan-900"
+                          >
+                            Open public fixtures
+                          </a>
+                        ) : null}
                         <button
                           type="button"
-                          disabled={!currentSeason.is_published}
-                          onClick={async () => {
-                            const publicUrl = `${window.location.origin}/display/fixtures?seasonId=${encodeURIComponent(currentSeason.id)}`;
-                            await navigator.clipboard.writeText(publicUrl);
-                            setMessage(`${currentSeason.name} public fixture link copied.`);
-                          }}
-                          className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+                          onClick={() => void copyFixtureShareLink()}
+                          className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white"
                         >
-                          Copy WhatsApp link
+                          {currentSeason.is_published ? "Copy WhatsApp link" : "Copy private draft link"}
                         </button>
                       </div>
                     </div>
