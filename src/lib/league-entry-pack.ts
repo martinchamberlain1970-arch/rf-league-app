@@ -5,10 +5,6 @@ export type LeagueEntryPackPlayer = {
   email: string;
   isCaptain: boolean;
   isViceCaptain: boolean;
-  isJunior: boolean;
-  juniorAgeBand: "" | "under_13" | "13_15" | "16_17";
-  guardianName: string;
-  guardianPhone: string;
   competitionIds: string[];
 };
 
@@ -34,8 +30,6 @@ export function normalizeEntryPackPayload(value: unknown): LeagueEntryPackPayloa
   const rawPlayers = Array.isArray(body.players) ? body.players.slice(0, 60) : [];
   const players = rawPlayers.map((raw, index) => {
     const row = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-    const juniorAgeBand: LeagueEntryPackPlayer["juniorAgeBand"] =
-      row.juniorAgeBand === "under_13" || row.juniorAgeBand === "13_15" || row.juniorAgeBand === "16_17" ? row.juniorAgeBand : "";
     return {
       rowId: clean(row.rowId, 80) || `row-${index + 1}`,
       fullName: clean(row.fullName, 140),
@@ -43,10 +37,6 @@ export function normalizeEntryPackPayload(value: unknown): LeagueEntryPackPayloa
       email: clean(row.email, 254).toLowerCase(),
       isCaptain: Boolean(row.isCaptain),
       isViceCaptain: Boolean(row.isViceCaptain),
-      isJunior: Boolean(row.isJunior),
-      juniorAgeBand,
-      guardianName: clean(row.guardianName, 140),
-      guardianPhone: normalizePhone(row.guardianPhone),
       competitionIds: Array.isArray(row.competitionIds)
         ? Array.from(new Set(row.competitionIds.map((id) => clean(id, 80)).filter(Boolean))).slice(0, 30)
         : [],
@@ -80,8 +70,8 @@ export function validateEntryPackPayload(payload: LeagueEntryPackPayload, forSub
   let captainCount = 0;
   let viceCount = 0;
   for (const [index, player] of payload.players.entries()) {
-    if (!player.fullName || (!player.isJunior && player.fullName.split(/\s+/).filter(Boolean).length < 2)) {
-      return player.isJunior ? `Junior player ${index + 1} needs a first name or recognised playing name.` : `Player ${index + 1} needs a full first and second name.`;
+    if (!player.fullName || player.fullName.split(/\s+/).filter(Boolean).length < 2) {
+      return `Player ${index + 1} needs a full first and second name.`;
     }
     const nameKey = player.fullName.toLowerCase();
     if (names.has(nameKey)) return `${player.fullName} appears more than once in the roster.`;
@@ -89,8 +79,6 @@ export function validateEntryPackPayload(payload: LeagueEntryPackPayload, forSub
     if (player.isCaptain) captainCount += 1;
     if (player.isViceCaptain) viceCount += 1;
     if (player.isCaptain && player.isViceCaptain) return `${player.fullName} cannot be both captain and vice-captain.`;
-    if (player.isJunior && !player.guardianName) return `Enter a parent or guardian name for junior player ${player.fullName}.`;
-    if (player.isJunior && !player.juniorAgeBand) return `Select an age band for junior player ${player.fullName}.`;
   }
   if (captainCount !== 1) return "Select exactly one team captain.";
   if (viceCount !== 1) return "Select exactly one team vice-captain.";

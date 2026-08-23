@@ -99,15 +99,12 @@ async function createOrReturnPack(adminClient: SupabaseClient, user: User, seaso
   const playerIds = memberRows.map((member) => member.player_id).filter(Boolean);
   let seededPlayers: LeagueEntryPackPlayer[] = [];
   if (playerIds.length > 0) {
-    const playersRes = await adminClient.from("players").select("id,full_name,display_name,age_band,guardian_name").in("id", playerIds);
+    const playersRes = await adminClient.from("players").select("id,full_name,display_name").in("id", playerIds);
     if (playersRes.error) throw new Error(playersRes.error.message);
     const playerById = new Map((playersRes.data ?? []).map((player) => [player.id, player]));
     seededPlayers = memberRows.flatMap((member) => {
       const player = playerById.get(member.player_id);
       if (!player) return [];
-      const isJunior = Boolean(player.age_band && player.age_band !== "18_plus");
-      const juniorAgeBand: LeagueEntryPackPlayer["juniorAgeBand"] =
-        player.age_band === "under_13" || player.age_band === "13_15" || player.age_band === "16_17" ? player.age_band : "";
       return [{
         rowId: `player-${player.id}`,
         fullName: player.full_name?.trim() || player.display_name,
@@ -115,10 +112,6 @@ async function createOrReturnPack(adminClient: SupabaseClient, user: User, seaso
         email: "",
         isCaptain: Boolean(member.is_captain),
         isViceCaptain: Boolean(member.is_vice_captain),
-        isJunior,
-        juniorAgeBand,
-        guardianName: player.guardian_name ?? "",
-        guardianPhone: "",
         competitionIds: [],
       }];
     });
@@ -180,8 +173,8 @@ async function approveAndImport(adminClient: SupabaseClient, user: User, packId:
         .update({
           location_id: teamRes.data.location_id,
           is_archived: false,
-          age_band: player.isJunior ? player.juniorAgeBand : "18_plus",
-          guardian_name: player.isJunior ? player.guardianName : null,
+          age_band: "18_plus",
+          guardian_name: null,
         })
         .eq("id", exact[0].id);
       if (updateRes.error) throw new Error(updateRes.error.message);
@@ -205,8 +198,8 @@ async function approveAndImport(adminClient: SupabaseClient, user: User, packId:
         display_name: displayName,
         location_id: teamRes.data.location_id,
         is_archived: false,
-        age_band: player.isJunior ? player.juniorAgeBand : "18_plus",
-        guardian_name: player.isJunior ? player.guardianName : null,
+        age_band: "18_plus",
+        guardian_name: null,
       })
       .select("id")
       .single();

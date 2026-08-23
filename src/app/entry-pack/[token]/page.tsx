@@ -18,10 +18,6 @@ const emptyPlayer = (): LeagueEntryPackPlayer => ({
   email: "",
   isCaptain: false,
   isViceCaptain: false,
-  isJunior: false,
-  juniorAgeBand: "",
-  guardianName: "",
-  guardianPhone: "",
   competitionIds: [],
 });
 
@@ -159,7 +155,7 @@ export default function PublicEntryPackPage() {
         <section className="rounded-2xl border border-sky-200 bg-sky-50 p-5 shadow-sm">
           <h2 className="text-xl font-bold text-slate-950">Instructions</h2>
           <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-800">
-            <li>Add every player who will be registered for this team in the winter league. Adults need their full first and second name; use only a first name or recognised playing name for a junior.</li>
+            <li>Add every player who will be registered for this team in the winter league, using their full first and second name.</li>
             <li>Select exactly one captain and exactly one vice-captain. Both roles are mandatory.</li>
             <li>Use <strong>Save draft</strong> while collecting details. Submit only when the roster is complete.</li>
             <li>Knockout competition entry forms will be sent separately and are not part of this league registration.</li>
@@ -180,14 +176,12 @@ export default function PublicEntryPackPage() {
                 <article key={player.rowId} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="flex items-center justify-between gap-3"><h3 className="font-bold text-slate-900">Player {index + 1}</h3>{pack.players.length > 1 ? <button type="button" onClick={() => setPack((current) => ({ ...current, players: current.players.filter((row) => row.rowId !== player.rowId) }))} className="text-sm font-semibold text-rose-700">Remove</button> : null}</div>
                   <div className="mt-3 grid gap-3 md:grid-cols-1">
-                    <label className="text-xs font-bold uppercase tracking-wide text-slate-600">{player.isJunior ? "First / playing name" : "Full name"} *<input value={player.fullName} onChange={(event) => updatePlayer(player.rowId, { fullName: event.target.value })} placeholder={player.isJunior ? "First name or playing name" : "First and second name"} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal" /></label>
+                    <label className="text-xs font-bold uppercase tracking-wide text-slate-600">Full name *<input value={player.fullName} onChange={(event) => updatePlayer(player.rowId, { fullName: event.target.value })} placeholder="First and second name" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal" /></label>
                   </div>
                   <div className="mt-3 flex flex-wrap gap-3 text-sm">
                     <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2"><input type="checkbox" checked={player.isCaptain} onChange={(event) => updatePlayer(player.rowId, { isCaptain: event.target.checked, isViceCaptain: event.target.checked ? false : player.isViceCaptain })} /> Captain</label>
                     <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2"><input type="checkbox" checked={player.isViceCaptain} onChange={(event) => updatePlayer(player.rowId, { isViceCaptain: event.target.checked, isCaptain: event.target.checked ? false : player.isCaptain })} /> Vice-captain</label>
-                    <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2"><input type="checkbox" checked={player.isJunior} onChange={(event) => updatePlayer(player.rowId, { isJunior: event.target.checked })} /> Under 18</label>
                   </div>
-                  {player.isJunior ? <div className="mt-3 grid gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 md:grid-cols-2"><label className="text-xs font-bold text-amber-900">Age band *<select value={player.juniorAgeBand} onChange={(event) => updatePlayer(player.rowId, { juniorAgeBand: event.target.value as LeagueEntryPackPlayer["juniorAgeBand"] })} className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-normal"><option value="">Select age band</option><option value="under_13">Under 13</option><option value="13_15">Age 13–15</option><option value="16_17">Age 16–17</option></select></label><label className="text-xs font-bold text-amber-900">Parent / guardian name *<input value={player.guardianName} onChange={(event) => updatePlayer(player.rowId, { guardianName: event.target.value })} className="mt-1 w-full rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-normal" /></label></div> : null}
                 </article>
               ))}
             </div>

@@ -50,7 +50,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ token:
     contactName: "",
     contactEmail: "",
     contactPhone: "",
-    players: Array.isArray(pack.players) ? pack.players.map((player: Record<string, unknown>) => ({ ...player, phoneNumber: "", email: "", guardianPhone: "" })) : [],
+    players: Array.isArray(pack.players) ? pack.players.map((player: Record<string, unknown>) => ({ ...player, phoneNumber: "", email: "" })) : [],
     competitionNotes: pack.competition_notes,
     generalNotes: pack.general_notes,
     phoneSharingConfirmed: false,
@@ -132,7 +132,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
   payload.contactName = "";
   payload.contactEmail = "";
   payload.contactPhone = "";
-  payload.players = payload.players.map((player) => ({ ...player, phoneNumber: "", email: "", guardianPhone: "", competitionIds: [] }));
+  payload.players = payload.players.map((player) => ({ ...player, phoneNumber: "", email: "", competitionIds: [] }));
   payload.competitionNotes = "";
   payload.phoneSharingConfirmed = false;
 
