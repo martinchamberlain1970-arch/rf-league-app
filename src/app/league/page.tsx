@@ -3141,6 +3141,10 @@ export default function LeaguePage() {
         });
         const directCycleValid = cycleRespectsHardRules(directCycle, firstLegRoundCount * cycleIndex);
         if (directCycleValid) return directCycle;
+        // The agreed three-cycle format requires cycle three to repeat cycle one
+        // in the same round order, including the home and away teams. Do not let
+        // the fallback scheduler move those matches to different weeks.
+        if (cycleIndex === 2) return null;
         let bestCycle: Map<string, DirectedMatch[][]> | null = directCycleValid ? directCycle : null;
         let bestCycleFairness = directCycleValid
           ? combinedFairness(
@@ -3246,10 +3250,11 @@ export default function LeaguePage() {
             84,
             "The combined third cycle could not be completed.",
             [
-              "Combined fixture generation stopped. Both divisions were rearranged together, but the third cycle still could not satisfy every hard rule. No existing fixtures were changed.",
-              "Restrictions checked: venue table capacity across both divisions; no team twice in one week; Perry Street D/E not both at home; and all shared reserved Thursdays.",
+              "Combined fixture generation stopped because the third cycle could not repeat the first cycle exactly while satisfying every hard rule. No existing fixtures were changed.",
+              "The third cycle must use the same weekly pairings and the same home/away teams as the first cycle.",
+              "Other restrictions checked: venue table capacity across both divisions; no team twice in one week; Perry Street D/E not both at home; and all shared reserved Thursdays.",
               "Home/away alternation is only a preference and did not cause this failure.",
-              "What to modify: add one playable Thursday or remove one shared reserved date, then try again.",
+              "What to modify: check the third-cycle dates and remove a conflicting reserved date, or add a playable Thursday before the third cycle, then try again.",
             ].join("\n")
           );
           return;
@@ -3260,6 +3265,29 @@ export default function LeaguePage() {
             ...(thirdCycle.get(plan.season.id) ?? []),
           ]);
         });
+      }
+
+      if (genFixtureCycles === 3) {
+        const roundKey = (round: DirectedMatch[]) =>
+          round
+            .map((match) => `${match.homeTeamId}:${match.awayTeamId}`)
+            .sort()
+            .join("|");
+        const thirdCycleMatchesFirst = plans.every((plan) => {
+          const rounds = schedules.get(plan.season.id) ?? [];
+          if (rounds.length < firstLegRoundCount * 3) return false;
+          return Array.from({ length: firstLegRoundCount }, (_, roundIndex) => roundIndex).every(
+            (roundIndex) => roundKey(rounds[roundIndex]) === roundKey(rounds[firstLegRoundCount * 2 + roundIndex])
+          );
+        });
+        if (!thirdCycleMatchesFirst) {
+          stopGeneration(
+            84,
+            "The third cycle does not exactly repeat the first cycle.",
+            "No existing fixtures were changed. Generate the schedule again so every third-cycle week has the same pairings and home/away teams as its corresponding first-cycle week."
+          );
+          return;
+        }
       }
 
       setFixtureGenerationProgress({ running: true, percent: 87, message: "Validating the combined winter schedule…" });
@@ -3323,7 +3351,7 @@ export default function LeaguePage() {
             `${plan.season.name}: ${count} fixtures; ${fairness.consecutivePairs === 0 ? "full home/away alternation" : `${fairness.consecutivePairs} unavoidable consecutive home/away pairing${fairness.consecutivePairs === 1 ? "" : "s"}`}.`
           ),
           "",
-          `Shared rules passed: venue table capacities; Perry Street maximum ${venueCapacityById.get(perryStreetD?.location_id ?? "") ?? 2} home teams per Thursday; Perry Street D/E never both at home; ${breakWeekSet.size} reserved week${breakWeekSet.size === 1 ? "" : "s"}.`,
+          `Shared rules passed: venue table capacities; Perry Street maximum ${venueCapacityById.get(perryStreetD?.location_id ?? "") ?? 2} home teams per Thursday; Perry Street D/E never both at home; ${breakWeekSet.size} reserved week${breakWeekSet.size === 1 ? "" : "s"}${genFixtureCycles === 3 ? "; third cycle exactly repeats the first cycle with the same home/away teams" : ""}.`,
           "",
           "Continuing will replace the existing fixture lists for both winter divisions. No player or captain assignments will be changed.",
         ].join("\n"),
@@ -3360,7 +3388,7 @@ export default function LeaguePage() {
       setFixtureGenerationProgress({ running: false, percent: 100, message: `${fixturePayload.length} winter fixtures generated successfully.` });
       setInfoModal({
         title: "Both Winter Divisions Generated",
-        description: `${fixturePayload.length} fixtures were generated and validated together for ${winterSeasons.map((season) => season.name).join(" and ")}. Shared venue capacity, the Perry Street D/E restriction and reserved weeks were applied across the complete schedule.`,
+        description: `${fixturePayload.length} fixtures were generated and validated together for ${winterSeasons.map((season) => season.name).join(" and ")}. Shared venue capacity, the Perry Street D/E restriction and reserved weeks were applied across the complete schedule.${genFixtureCycles === 3 ? " The third cycle was also verified as an exact repeat of the first cycle, including home and away teams." : ""}`,
       });
     } catch (error) {
       const description = error instanceof Error ? error.message : "An unexpected combined scheduling error occurred.";
