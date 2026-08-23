@@ -3334,86 +3334,21 @@ export default function LeaguePage() {
         return;
       }
 
-      const existingFixtureIds = fixtures
-        .filter((fixture) => seasonIds.includes(fixture.season_id))
-        .map((fixture) => fixture.id);
-      setFixtureGenerationProgress({ running: true, percent: 92, message: "Saving the replacement fixtures safely…" });
-      const insertResult = await client
-        .from("league_fixtures")
-        .insert(fixturePayload)
-        .select("id,season_id,week_no,home_team_id,away_team_id");
-      if (insertResult.error) {
-        stopGeneration(92, "The combined fixtures could not be saved; the existing lists were kept.", insertResult.error.message);
+      setFixtureGenerationProgress({ running: true, percent: 94, message: "Replacing both divisions in one safe transaction…" });
+      const replaceResult = await client.rpc("replace_combined_winter_fixtures", {
+        p_season_ids: seasonIds,
+        p_fixtures: fixturePayload,
+      });
+      if (replaceResult.error) {
+        const migrationMissing = /replace_combined_winter_fixtures|schema cache/i.test(replaceResult.error.message);
+        stopGeneration(
+          94,
+          "The combined fixtures could not be saved; the existing lists were kept.",
+          migrationMissing
+            ? "The combined-fixture database update has not been installed yet. Run the latest Supabase migration, then try again."
+            : replaceResult.error.message
+        );
         return;
-      }
-      const insertedFixtures = insertResult.data ?? [];
-      if (insertedFixtures.length > 0) {
-        setFixtureGenerationProgress({ running: true, percent: 97, message: "Creating scorecards for both divisions…" });
-        const frameRows = insertedFixtures.flatMap((fixture) => {
-          const fixtureSeason = seasonById.get(fixture.season_id);
-          const cfg = getSeasonFrameConfig(fixtureSeason);
-          return [
-            ...Array.from({ length: cfg.singles }, (_, index) => ({
-              fixture_id: fixture.id,
-              slot_no: index + 1,
-              slot_type: "singles" as const,
-              home_player1_id: null,
-              home_player2_id: null,
-              away_player1_id: null,
-              away_player2_id: null,
-              home_nominated: false,
-              away_nominated: false,
-              home_forfeit: false,
-              away_forfeit: false,
-              winner_side: null,
-              home_nominated_name: null,
-              away_nominated_name: null,
-              home_points_scored: null,
-              away_points_scored: null,
-            })),
-            ...Array.from({ length: cfg.doubles }, (_, index) => ({
-              fixture_id: fixture.id,
-              slot_no: cfg.singles + index + 1,
-              slot_type: "doubles" as const,
-              home_player1_id: null,
-              home_player2_id: null,
-              away_player1_id: null,
-              away_player2_id: null,
-              home_nominated: false,
-              away_nominated: false,
-              home_forfeit: false,
-              away_forfeit: false,
-              winner_side: null,
-              home_nominated_name: null,
-              away_nominated_name: null,
-              home_points_scored: null,
-              away_points_scored: null,
-            })),
-          ];
-        });
-        const frameInsertResult = await client.from("league_fixture_frames").insert(frameRows);
-        if (frameInsertResult.error) {
-          const insertedIds = insertedFixtures.map((fixture) => fixture.id);
-          await client.from("league_fixtures").delete().in("id", insertedIds);
-          stopGeneration(97, "The combined scorecards could not be created; the existing lists were kept.", frameInsertResult.error.message);
-          return;
-        }
-      }
-      if (existingFixtureIds.length > 0) {
-        setFixtureGenerationProgress({ running: true, percent: 98, message: "Activating the new lists and removing the old pending fixtures…" });
-        const removeOldResult = await client.from("league_fixtures").delete().in("id", existingFixtureIds);
-        if (removeOldResult.error) {
-          const insertedIds = insertedFixtures.map((fixture) => fixture.id);
-          const rollbackResult = await client.from("league_fixtures").delete().in("id", insertedIds);
-          stopGeneration(
-            98,
-            rollbackResult.error
-              ? "The old fixtures could not be removed and duplicate fixtures may need review."
-              : "The old fixtures could not be removed; the replacement lists were rolled back.",
-            removeOldResult.error.message
-          );
-          return;
-        }
       }
       setFixtureGenerationProgress({ running: true, percent: 99, message: "Refreshing both divisions…" });
       await loadAll();
