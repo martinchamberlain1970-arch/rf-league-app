@@ -8572,6 +8572,43 @@ export default function LeaguePage() {
                     <p className="mt-1 text-xs">The referee&apos;s decision is final.</p>
                   </div>
                 ) : null}
+                {currentSeason ? (
+                  <div className={`mt-3 rounded-xl border p-3 ${currentSeason.is_published ? "border-cyan-200 bg-cyan-50" : "border-slate-200 bg-slate-50"}`}>
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-semibold text-slate-900">Public fixture list</p>
+                        <p className="mt-1 text-xs text-slate-600">
+                          {currentSeason.is_published
+                            ? "This permanent link shows the complete fixture list and can be shared with clubs on WhatsApp."
+                            : "The shareable fixture link will become publicly accessible when this league is published."}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <a
+                          href={`/display/fixtures?seasonId=${encodeURIComponent(currentSeason.id)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                          aria-disabled={!currentSeason.is_published}
+                          className={`rounded-xl border px-4 py-2 text-sm font-medium ${currentSeason.is_published ? "border-cyan-300 bg-white text-cyan-900" : "pointer-events-none border-slate-200 bg-slate-100 text-slate-400"}`}
+                        >
+                          Open public fixtures
+                        </a>
+                        <button
+                          type="button"
+                          disabled={!currentSeason.is_published}
+                          onClick={async () => {
+                            const publicUrl = `${window.location.origin}/display/fixtures?seasonId=${encodeURIComponent(currentSeason.id)}`;
+                            await navigator.clipboard.writeText(publicUrl);
+                            setMessage(`${currentSeason.name} public fixture link copied.`);
+                          }}
+                          className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:opacity-40"
+                        >
+                          Copy WhatsApp link
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
                 <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   {isSummerFormat ? (
                     <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
