@@ -18,6 +18,7 @@ type SeasonRow = {
   name: string;
   created_at: string | null;
   is_published: boolean | null;
+  is_active?: boolean | null;
 };
 
 type TeamRow = {
@@ -60,12 +61,12 @@ export async function GET(req: NextRequest) {
     ? seasons.find((season) => season.id === requestedSeasonId) ?? null
     : null;
   let isDraftPreview = false;
+  let draftAccessibleSeasons: SeasonRow[] = [];
 
   if (requestedSeasonId && !selectedSeason && validDraftToken) {
     const draftLinkRes = await adminClient
       .from("league_fixture_draft_links")
       .select("season_id")
-      .eq("season_id", requestedSeasonId)
       .eq("share_token", draftToken)
       .maybeSingle();
 
@@ -77,18 +78,37 @@ export async function GET(req: NextRequest) {
       );
     }
     if (draftLinkRes.data) {
-      const draftSeasonRes = await adminClient
+      const tokenSeasonRes = await adminClient
         .from("league_seasons")
-        .select("id,name,created_at,is_published")
-        .eq("id", requestedSeasonId)
+        .select("id,name,created_at,is_published,is_active")
+        .eq("id", draftLinkRes.data.season_id)
         .eq("is_active", true)
         .maybeSingle();
-      if (draftSeasonRes.error) {
-        return json({ error: draftSeasonRes.error.message }, 500);
+      if (tokenSeasonRes.error) {
+        return json({ error: tokenSeasonRes.error.message }, 500);
       }
-      if (draftSeasonRes.data) {
-        selectedSeason = draftSeasonRes.data as SeasonRow;
-        isDraftPreview = true;
+      if (tokenSeasonRes.data) {
+        const tokenSeason = tokenSeasonRes.data as SeasonRow;
+        draftAccessibleSeasons = [tokenSeason];
+        const winterYear = tokenSeason.name.match(/\b\d{4}\/\d{4}\b/)?.[0] ?? "";
+        const isWinterDivision = /premier league|division 1/i.test(tokenSeason.name);
+        if (winterYear && isWinterDivision) {
+          const siblingSeasonsRes = await adminClient
+            .from("league_seasons")
+            .select("id,name,created_at,is_published,is_active")
+            .eq("is_active", true)
+            .ilike("name", `%${winterYear}%`)
+            .order("name", { ascending: true });
+          if (siblingSeasonsRes.error) {
+            return json({ error: siblingSeasonsRes.error.message }, 500);
+          }
+          const winterDivisions = ((siblingSeasonsRes.data ?? []) as SeasonRow[])
+            .filter((season) => /premier league|division 1/i.test(season.name));
+          if (winterDivisions.length > 0) draftAccessibleSeasons = winterDivisions;
+        }
+
+        selectedSeason = draftAccessibleSeasons.find((season) => season.id === requestedSeasonId) ?? null;
+        isDraftPreview = Boolean(selectedSeason);
       }
     }
   }
@@ -96,7 +116,7 @@ export async function GET(req: NextRequest) {
   if (requestedSeasonId && !selectedSeason) {
     return json(
       {
-        seasons: seasons.map(({ id, name }) => ({ id, name })),
+        seasons: [],
         season: null,
         fixtures: [],
         error: "This draft link is invalid or has expired, or the league is not currently published.",
@@ -152,7 +172,7 @@ export async function GET(req: NextRequest) {
 
   return json({
     seasons: isDraftPreview
-      ? [{ id: selectedSeason.id, name: selectedSeason.name }]
+      ? draftAccessibleSeasons.map(({ id, name }) => ({ id, name }))
       : seasons.map(({ id, name }) => ({ id, name })),
     season: { id: selectedSeason.id, name: selectedSeason.name },
     isDraftPreview,

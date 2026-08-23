@@ -108,8 +108,13 @@ export default function PublicFixturesPage() {
   const chooseSeason = (seasonId: string) => {
     setCopied(false);
     setSelectedSeasonId(seasonId);
-    setDraftToken("");
-    window.history.replaceState(null, "", `/display/fixtures?seasonId=${encodeURIComponent(seasonId)}`);
+    const params = new URLSearchParams({ seasonId });
+    if (data?.isDraftPreview && draftToken) {
+      params.set("draft", draftToken);
+    } else {
+      setDraftToken("");
+    }
+    window.history.replaceState(null, "", `/display/fixtures?${params.toString()}`);
   };
 
   const copyLink = async () => {
