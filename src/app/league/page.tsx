@@ -2959,6 +2959,134 @@ export default function LeaguePage() {
       }
       return bestRounds;
     };
+    const describeFixtureCollisions = (candidateRounds: DirectedMatch[][], roundOffset: number) => {
+      const collisions: string[] = [];
+      candidateRounds.forEach((round, roundIndex) => {
+        const globalRoundIndex = roundOffset + roundIndex;
+        const slot = roundSlots[globalRoundIndex];
+        const homeMatchesByVenue = new Map<string, DirectedMatch[]>();
+        round.forEach((match) => {
+          const venueId = teamVenueById.get(match.homeTeamId);
+          if (!venueId) return;
+          homeMatchesByVenue.set(venueId, [...(homeMatchesByVenue.get(venueId) ?? []), match]);
+        });
+        homeMatchesByVenue.forEach((homeMatches, venueId) => {
+          const capacity = venueCapacityById.get(venueId) ?? 1;
+          const reservedCount = reservedVenueHomesByRound[globalRoundIndex]?.get(venueId) ?? 0;
+          if (homeMatches.length + reservedCount <= capacity) return;
+          const existingAtVenue = otherScheduledFixtures.filter((fixture) => {
+            if (fixture.location_id !== venueId) return false;
+            const existingDate = fixture.fixture_date?.slice(0, 10) ?? null;
+            return slot?.fixtureDate && existingDate
+              ? slot.fixtureDate === existingDate
+              : Number(fixture.week_no ?? 0) === slot?.weekNo;
+          });
+          const dateLabel = slot?.fixtureDate
+            ? new Date(`${slot.fixtureDate}T12:00:00`).toLocaleDateString("en-GB", {
+                weekday: "long",
+                day: "numeric",
+                month: "long",
+                year: "numeric",
+              })
+            : `week ${slot?.weekNo ?? globalRoundIndex + 1}`;
+          const venueName = locationById.get(venueId)?.name ?? "Unknown venue";
+          const newFixtureNames = homeMatches
+            .map((match) => `${teamById.get(match.homeTeamId)?.name ?? "Unknown team"} v ${teamById.get(match.awayTeamId)?.name ?? "Unknown team"}`)
+            .join(", ");
+          const existingFixtureNames = existingAtVenue
+            .map((fixture) => `${teamById.get(fixture.home_team_id)?.name ?? "Unknown team"} v ${teamById.get(fixture.away_team_id)?.name ?? "Unknown team"}`)
+            .join(", ");
+          collisions.push(
+            `• ${dateLabel} at ${venueName}: ${homeMatches.length + reservedCount} home table${homeMatches.length + reservedCount === 1 ? " is" : "s are"} required, but only ${capacity} ${capacity === 1 ? "is" : "are"} available. ${existingFixtureNames ? `Already scheduled: ${existingFixtureNames}. ` : ""}This division would add: ${newFixtureNames}.`
+          );
+        });
+      });
+      return collisions;
+    };
+    const diagnoseDirectedLegFailure = async (
+      matches: DirectedMatch[],
+      priorRounds: DirectedMatch[][],
+      roundOffset: number
+    ) => {
+      setFixtureGenerationProgress({ running: true, percent: 86, message: "Identifying the exact scheduling constraint…" });
+      await yieldToBrowser();
+      const findCandidate = async (options: { ignoreReservations?: boolean; ignoreHomeGroup?: boolean; expandVenueCapacity?: boolean }) => {
+        const diagnosticCapacity = options.expandVenueCapacity
+          ? new Map(Array.from(venueCapacityById.keys()).map((venueId) => [venueId, seasonTeams.length]))
+          : venueCapacityById;
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+          if (attempt % 2 === 0) await yieldToBrowser();
+          const scheduled = scheduleDirectedMatchesIntoRounds(
+            shuffleArray(matches),
+            firstLegRoundsCount,
+            matchesPerRound,
+            teamVenueById,
+            diagnosticCapacity,
+            priorRounds,
+            {
+              roundOffset,
+              reservedVenueHomesByRound: options.ignoreReservations ? [] : reservedVenueHomesByRound,
+              homeGroupLimits: options.ignoreHomeGroup ? [] : homeGroupLimits,
+              searchDeadlineAt: Date.now() + 75,
+              maxSearchNodes: 20_000,
+            }
+          );
+          if (scheduled) return scheduled;
+        }
+        return null;
+      };
+
+      const withoutOtherDivision = await findCandidate({ ignoreReservations: true });
+      if (withoutOtherDivision) {
+        const collisions = describeFixtureCollisions(withoutOtherDivision, roundOffset);
+        if (collisions.length > 0) {
+          const shown = collisions.slice(0, 4);
+          const remaining = collisions.length - shown.length;
+          return [
+            "Exact constraint: fixtures already scheduled in the other division leave too few tables at the shared venue on these dates:",
+            ...shown,
+            remaining > 0 ? `• Plus ${remaining} further conflicting date${remaining === 1 ? "" : "s"}.` : "",
+            "What to modify: move, reverse or reschedule at least one of the named existing fixtures on each conflicting date so the venue total does not exceed its registered table count. Alternatively, align both divisions around an additional reserved week and regenerate them.",
+          ].filter(Boolean).join("\n");
+        }
+      }
+
+      if (homeGroupLimits.length > 0) {
+        const withoutHomeGroup = await findCandidate({ ignoreHomeGroup: true });
+        if (withoutHomeGroup) {
+          const group = homeGroupLimits[0];
+          const conflictingRounds = withoutHomeGroup.flatMap((round, roundIndex) => {
+            const homes = round.filter((match) => group.teamIds.has(match.homeTeamId));
+            if (homes.length <= group.maxHomes) return [];
+            const slot = roundSlots[roundOffset + roundIndex];
+            const dateLabel = slot?.fixtureDate
+              ? new Date(`${slot.fixtureDate}T12:00:00`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })
+              : `week ${slot?.weekNo ?? roundOffset + roundIndex + 1}`;
+            return [`• ${dateLabel}: ${homes.map((match) => teamById.get(match.homeTeamId)?.name ?? "Unknown team").join(" and ")} would both need to be at home.`];
+          });
+          return [
+            "Exact constraint: the Perry Street D/E rule is preventing the remaining fixtures from fitting into the available rounds.",
+            ...conflictingRounds.slice(0, 4),
+            "What to modify: change one affected pairing/date, add a playable week, or explicitly allow Perry Street D and E to be at home together on one of the listed dates (only if table capacity permits).",
+          ].join("\n");
+        }
+      }
+
+      const withoutVenueLimit = await findCandidate({ expandVenueCapacity: true });
+      if (withoutVenueLimit) {
+        const collisions = describeFixtureCollisions(withoutVenueLimit, roundOffset);
+        return [
+          "Exact constraint: the registered table capacity at a shared venue is too low for the required home fixtures.",
+          ...collisions.slice(0, 4),
+          "What to modify: move or reverse one of the named home fixtures, add another fixture week, or correct the venue's table count if the number held in Rack & Frame is wrong.",
+        ].join("\n");
+      }
+
+      return [
+        "Exact constraint: no single rule can be relaxed on its own to make the return cycle fit; it is the combined effect of shared-venue table limits, the other division's occupied dates and the Perry Street D/E home restriction.",
+        "What to modify: add one extra playable Thursday or move at least one existing Perry Street home fixture in the other division, then regenerate. This is preferable to removing the D/E rule.",
+      ].join("\n");
+    };
     if (genFixtureCycles >= 2) {
       const secondLegMatches = firstLegRounds.flatMap((round) =>
         round.map((match) => ({ homeTeamId: match.awayTeamId, awayTeamId: match.homeTeamId }))
@@ -2972,10 +3100,11 @@ export default function LeaguePage() {
         "Arranging return fixtures"
       );
       if (!secondLegRounds) {
+        const diagnostic = await diagnoseDirectedLegFailure(secondLegMatches, firstLegRounds, firstLegRoundsCount);
         stopFixtureGeneration(
           genFixtureCycles === 3 ? 65 : 84,
           "No valid return cycle was found within the safe search limit.",
-          "Fixture generation stopped safely and no existing fixtures were changed. The return fixtures could not be arranged within the shared venue and home restrictions. Check the other division's dates and reserved weeks, then try again."
+          `Fixture generation stopped safely and no existing fixtures were changed.\n\n${diagnostic}`
         );
         return;
       }
@@ -2991,10 +3120,11 @@ export default function LeaguePage() {
           "Arranging the third fixture cycle"
         );
         if (!thirdLegRounds) {
+          const diagnostic = await diagnoseDirectedLegFailure(thirdLegMatches, allRounds, firstLegRoundsCount * 2);
           stopFixtureGeneration(
             85,
             "No valid third cycle was found within the safe search limit.",
-            "Fixture generation stopped safely and no existing fixtures were changed. The third cycle could not be arranged within the shared venue and home restrictions. Check the other division's dates and reserved weeks, then try again."
+            `Fixture generation stopped safely and no existing fixtures were changed.\n\n${diagnostic}`
           );
           return;
         }
