@@ -1,15 +1,5 @@
--- Allow repeat home/away pairings in later cycles and replace both winter
--- divisions atomically after the combined fixture preview has been approved.
-
-alter table public.league_fixtures
-  drop constraint if exists league_fixtures_season_id_home_team_id_away_team_id_fixture_key;
-
-alter table public.league_fixtures
-  drop constraint if exists league_fixtures_season_week_home_away_key;
-
-alter table public.league_fixtures
-  add constraint league_fixtures_season_week_home_away_key
-  unique (season_id, week_no, home_team_id, away_team_id);
+-- Correct the combined winter replacement function for databases where the
+-- existing league fixture trigger automatically creates each fixture's frames.
 
 create or replace function public.replace_combined_winter_fixtures(
   p_season_ids uuid[],
@@ -91,9 +81,8 @@ begin
       fixture_row.away_team_id
     );
 
-    -- The existing league fixture trigger creates the configured frame slots.
-    -- Do not insert them here as that would duplicate (fixture_id, slot_no).
-
+    -- league_fixtures already has a trigger which creates the configured
+    -- singles and doubles frame slots for the newly inserted fixture.
     inserted_count := inserted_count + 1;
   end loop;
 

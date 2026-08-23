@@ -3341,11 +3341,14 @@ export default function LeaguePage() {
       });
       if (replaceResult.error) {
         const migrationMissing = /replace_combined_winter_fixtures|schema cache/i.test(replaceResult.error.message);
+        const frameTriggerConflict = /league_fixture_frames_fixture_id_slot_no_key|duplicate key.*fixture_frames/i.test(replaceResult.error.message);
         stopGeneration(
           94,
           "The combined fixtures could not be saved; the existing lists were kept.",
           migrationMissing
             ? "The combined-fixture database update has not been installed yet. Run the latest Supabase migration, then try again."
+            : frameTriggerConflict
+              ? "The database still has the earlier combined-fixture function. Run the latest Supabase follow-up migration so Rack & Frame can use the existing automatic frame setup, then try again."
             : replaceResult.error.message
         );
         return;
