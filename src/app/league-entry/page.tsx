@@ -42,16 +42,18 @@ export default function SharedLeagueEntryPage() {
     if (!teamId) return setError("Select your team first.");
     setBusy(true); setError("");
     const storageKey = `rf-league-registration-token:${teamId}`;
+    const blankFormMarkerKey = `rf-league-registration-blank-form-v2:${teamId}`;
     const draftToken = localStorage.getItem(storageKey) || makeToken();
     localStorage.setItem(storageKey, draftToken);
     const response = await fetch("/api/public/league-registration", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ teamId, draftToken }),
+      body: JSON.stringify({ teamId, draftToken, startBlank: localStorage.getItem(blankFormMarkerKey) !== "1" }),
     });
     const result = await response.json().catch(() => ({}));
     setBusy(false);
     if (!response.ok) return setError(result.error ?? "The team registration could not be opened.");
+    localStorage.setItem(blankFormMarkerKey, "1");
     window.location.assign(result.entryUrl);
   };
 
@@ -66,7 +68,7 @@ export default function SharedLeagueEntryPage() {
       <h2 className="text-lg font-bold text-slate-950">Before you start</h2>
       <ul className="mt-2 list-disc space-y-1 pl-5">
         <li>No Rack &amp; Frame account is required to complete this registration.</li>
-        <li>Add every player and select exactly one captain. A vice-captain is optional.</li>
+        <li>Add every player and select exactly one captain and exactly one vice-captain.</li>
         <li>No telephone numbers or private match-arranging contact details are collected here.</li>
         <li>The captain and vice-captain will later receive team access for line-ups, fixture completion and results. A separate guide will be supplied.</li>
         <li>Competition entries and competition contact details use the separate competition-entry form.</li>
@@ -86,4 +88,3 @@ export default function SharedLeagueEntryPage() {
     </section>
   </div></main>;
 }
-

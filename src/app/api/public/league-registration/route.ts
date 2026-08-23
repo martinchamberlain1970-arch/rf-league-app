@@ -53,6 +53,7 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const teamId = String(body?.teamId ?? "").trim();
     const draftToken = String(body?.draftToken ?? "").trim().toLowerCase();
+    const startBlank = body?.startBlank === true;
     if (!teamId) throw new Error("Select your team.");
     if (!/^[a-f0-9]{48}$/.test(draftToken)) throw new Error("The private browser key is invalid. Reload the page and try again.");
 
@@ -82,7 +83,22 @@ export async function POST(req: NextRequest) {
       if (!pack.common_draft_token && (pack.status === "draft" || pack.status === "rejected")) {
         const claimRes = await client
           .from("league_entry_packs")
-          .update({ common_draft_token: draftToken, updated_at: new Date().toISOString() })
+          .update({
+            common_draft_token: draftToken,
+            status: "draft",
+            contact_name: null,
+            contact_email: null,
+            contact_phone: null,
+            players: [],
+            general_notes: null,
+            phone_sharing_confirmed: false,
+            accuracy_confirmed: false,
+            submitted_at: null,
+            reviewed_at: null,
+            reviewed_by_user_id: null,
+            review_notes: null,
+            updated_at: new Date().toISOString(),
+          })
           .eq("id", pack.id)
           .is("common_draft_token", null)
           .select("id,public_token,status,common_draft_token")
@@ -94,6 +110,26 @@ export async function POST(req: NextRequest) {
       } else {
         return NextResponse.json({ error: "This team registration has already been started on another browser. Continue on that browser or ask the League Secretary to reset access." }, { status: 409, headers: noStore });
       }
+    }
+
+    if (startBlank && pack.common_draft_token === draftToken && (pack.status === "draft" || pack.status === "rejected")) {
+      const blankRes = await client.from("league_entry_packs").update({
+        status: "draft",
+        contact_name: null,
+        contact_email: null,
+        contact_phone: null,
+        players: [],
+        general_notes: null,
+        phone_sharing_confirmed: false,
+        accuracy_confirmed: false,
+        submitted_at: null,
+        reviewed_at: null,
+        reviewed_by_user_id: null,
+        review_notes: null,
+        updated_at: new Date().toISOString(),
+      }).eq("id", pack.id);
+      if (blankRes.error) throw new Error(blankRes.error.message);
+      pack = { ...pack, status: "draft" };
     }
 
     return NextResponse.json({ ok: true, status: pack.status, entryUrl: `/entry-pack/${pack.public_token}` }, { headers: noStore });

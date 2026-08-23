@@ -42,7 +42,7 @@ export default function PublicEntryPackPage() {
   const [data, setData] = useState<PackResponse | null>(null);
   const [pack, setPack] = useState<LeagueEntryPackPayload>(emptyPayload);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<"save" | "submit" | null>(null);
+  const [busy, setBusy] = useState<"save" | "submit" | "reset" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -111,6 +111,22 @@ export default function PublicEntryPackPage() {
     if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const resetRegistration = async () => {
+    if (!window.confirm("Clear every player and role from this registration and start again? This cannot be undone.")) return;
+    setBusy("reset"); setError(null); setMessage(null);
+    const response = await fetch(`/api/public/entry-pack/${encodeURIComponent(token)}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reset" }),
+    });
+    const result = await response.json().catch(() => ({}));
+    setBusy(null);
+    if (!response.ok) return setError(result?.error ?? "The registration could not be cleared.");
+    setMessage("The form has been cleared. You can now start the team registration again.");
+    await load();
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
   if (loading) return <main className="min-h-screen bg-slate-100 p-6"><p className="mx-auto max-w-5xl rounded-2xl bg-white p-5 text-slate-700 shadow-sm">Loading team registration…</p></main>;
   if (!data || error && !data) return <main className="min-h-screen bg-slate-100 p-6"><section className="mx-auto max-w-3xl rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-900"><h1 className="text-xl font-bold">Team registration unavailable</h1><p className="mt-2">{error}</p></section></main>;
 
@@ -129,6 +145,8 @@ export default function PublicEntryPackPage() {
           </div>
         </header>
 
+        {!locked ? <nav className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"><a href="/league-entry" className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700">Back to team selection</a><button type="button" disabled={Boolean(busy)} onClick={() => void resetRegistration()} className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-800 disabled:opacity-50">{busy === "reset" ? "Clearing…" : "Clear form and start again"}</button><span className="text-xs text-slate-500">Save your draft before going back if you want to keep your latest changes.</span></nav> : null}
+
         {message ? <section className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 font-medium text-emerald-900">{message}</section> : null}
         {error ? <section className="rounded-2xl border border-rose-300 bg-rose-50 p-4 font-medium text-rose-900">{error}</section> : null}
         {data.pack.status === "rejected" && data.pack.reviewNotes ? (
@@ -142,7 +160,7 @@ export default function PublicEntryPackPage() {
           <h2 className="text-xl font-bold text-slate-950">Instructions</h2>
           <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-800">
             <li>Add every player who will be registered for this team in the winter league. Adults need their full first and second name; use only a first name or recognised playing name for a junior.</li>
-            <li>Select exactly one captain and, if applicable, one vice-captain.</li>
+            <li>Select exactly one captain and exactly one vice-captain. Both roles are mandatory.</li>
             <li>Use <strong>Save draft</strong> while collecting details. Submit only when the roster is complete.</li>
             <li>Knockout competition entry forms will be sent separately and are not part of this league registration.</li>
             <li>After submission, the League Secretary or Chairman will check historic profiles before creating new players.</li>
@@ -154,7 +172,7 @@ export default function PublicEntryPackPage() {
         <fieldset disabled={locked} className="space-y-4 disabled:opacity-80">
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div><h2 className="text-xl font-bold text-slate-950">1. Team roster and roles</h2><p className="mt-1 text-sm text-slate-600">Add every player, then select the captain and optional vice-captain.</p></div>
+              <div><h2 className="text-xl font-bold text-slate-950">1. Team roster and roles</h2><p className="mt-1 text-sm text-slate-600">Add every player, then select exactly one captain and exactly one vice-captain.</p></div>
               <button type="button" onClick={() => setPack((current) => ({ ...current, players: [...current.players, emptyPlayer()] }))} className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-bold text-white">Add player</button>
             </div>
             <div className="mt-4 space-y-4">

@@ -93,7 +93,7 @@ export function validateEntryPackPayload(payload: LeagueEntryPackPayload, forSub
     if (player.isJunior && !player.juniorAgeBand) return `Select an age band for junior player ${player.fullName}.`;
   }
   if (captainCount !== 1) return "Select exactly one team captain.";
-  if (viceCount > 1) return "Select no more than one vice-captain.";
+  if (viceCount !== 1) return "Select exactly one team vice-captain.";
   if (!payload.accuracyConfirmed) return "Confirm that the league roster and captain roles are accurate.";
   return null;
 }

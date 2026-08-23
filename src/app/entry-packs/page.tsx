@@ -122,7 +122,7 @@ export default function EntryPacksPage() {
               <h2 className="text-lg font-bold text-slate-950">How team registration works</h2>
               <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-800">
                 <li>Send the same public league-registration URL to every team.</li>
-                <li>The team selects its league and team name, then records all players, one captain and an optional vice-captain.</li>
+                <li>The team selects its league and team name, then records all players, exactly one captain and exactly one vice-captain.</li>
                 <li>No private match-arranging telephone numbers or emails are collected through league registration.</li>
                 <li>When submitted, check names carefully. Approval matches historic profiles, creates missing players and builds the league roster.</li>
                 <li>Captain and vice-captain access is account-based. They will receive a guide covering team access, line-ups, fixture completion and results.</li>

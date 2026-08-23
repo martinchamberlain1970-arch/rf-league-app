@@ -103,6 +103,27 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
   }
 
   const body = await req.json().catch(() => null);
+  if (body?.action === "reset") {
+    const now = new Date().toISOString();
+    const resetRes = await client.from("league_entry_packs").update({
+      status: "draft",
+      contact_name: null,
+      contact_email: null,
+      contact_phone: null,
+      players: [],
+      competition_notes: null,
+      general_notes: null,
+      phone_sharing_confirmed: false,
+      accuracy_confirmed: false,
+      submitted_at: null,
+      reviewed_at: null,
+      reviewed_by_user_id: null,
+      review_notes: null,
+      updated_at: now,
+    }).eq("id", loaded.pack.id);
+    if (resetRes.error) return NextResponse.json({ error: resetRes.error.message }, { status: 400, headers: noStore });
+    return NextResponse.json({ ok: true, status: "draft", updatedAt: now }, { headers: noStore });
+  }
   const action = body?.action === "submit" ? "submit" : "save";
   const payload = normalizeEntryPackPayload(body?.pack);
   const validationError = validateEntryPackPayload(payload, action === "submit");
