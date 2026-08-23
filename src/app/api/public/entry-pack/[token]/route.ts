@@ -42,11 +42,12 @@ async function loadOtherTeamSelections(client: SupabaseClient, seasonId: string,
   const teamNameById = new Map(otherTeams.map((team) => [team.id, team.name]));
   const packsRes = await client
     .from("league_entry_packs")
-    .select("team_id,players")
+    .select("team_id,status,players,common_draft_token")
     .eq("season_id", seasonId)
     .in("team_id", otherTeams.map((team) => team.id));
   if (packsRes.error) return { selectedByName, error: packsRes.error.message };
   for (const otherPack of packsRes.data ?? []) {
+    if ((otherPack.status === "draft" || otherPack.status === "rejected") && !otherPack.common_draft_token) continue;
     const teamName = teamNameById.get(otherPack.team_id);
     if (!teamName) continue;
     const players = normalizeEntryPackPayload({ players: otherPack.players }).players;

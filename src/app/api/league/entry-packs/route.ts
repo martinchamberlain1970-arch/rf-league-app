@@ -54,7 +54,7 @@ export async function GET(req: NextRequest) {
     const [packsRes, seasonsRes, teamsRes, locationsRes, startedFixturesRes, playersRes] = await Promise.all([
       adminClient
         .from("league_entry_packs")
-        .select("id,public_token,season_id,team_id,status,contact_name,contact_email,contact_phone,players,competition_notes,general_notes,submitted_at,reviewed_at,review_notes,created_at,updated_at")
+        .select("id,public_token,season_id,team_id,status,common_draft_token,contact_name,contact_email,contact_phone,players,competition_notes,general_notes,submitted_at,reviewed_at,review_notes,created_at,updated_at")
         .order("updated_at", { ascending: false }),
       adminClient.from("league_seasons").select("id,name,is_published,is_active,created_at").eq("is_active", true).order("created_at", { ascending: false }),
       adminClient.from("league_teams").select("id,season_id,location_id,name,is_active").order("name"),

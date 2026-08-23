@@ -18,7 +18,7 @@ async function openRegistrationData(client: SupabaseClient) {
     client.from("league_seasons").select("id,name,is_active,created_at").eq("is_active", true).order("created_at", { ascending: false }),
     client.from("league_teams").select("id,season_id,location_id,name,is_active").eq("is_active", true).order("name"),
     client.from("locations").select("id,name"),
-    client.from("league_entry_packs").select("team_id,status,players"),
+    client.from("league_entry_packs").select("team_id,status,players,common_draft_token"),
     client.from("league_fixtures").select("season_id").in("status", ["in_progress", "complete"]),
   ]);
   const error = seasonsRes.error?.message || teamsRes.error?.message || locationsRes.error?.message || packsRes.error?.message || startedFixturesRes.error?.message;
@@ -29,7 +29,8 @@ async function openRegistrationData(client: SupabaseClient) {
   const locationName = new Map((locationsRes.data ?? []).map((location) => [location.id, location.name]));
   const statusByTeamId = new Map((packsRes.data ?? []).map((pack) => {
     const namedPlayerCount = normalizeEntryPackPayload({ players: pack.players }).players.filter((player) => Boolean(player.fullName)).length;
-    return [pack.team_id, pack.status === "draft" && namedPlayerCount === 0 ? "not_started" : pack.status];
+    const isUnclaimedDraft = (pack.status === "draft" || pack.status === "rejected") && !pack.common_draft_token;
+    return [pack.team_id, isUnclaimedDraft || (pack.status === "draft" && namedPlayerCount === 0) ? "not_started" : pack.status];
   }));
   const teams = (teamsRes.data ?? []).filter((team) => seasonIds.has(team.season_id)).map((team) => ({
     id: team.id,
