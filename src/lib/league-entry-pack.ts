@@ -41,7 +41,7 @@ export function normalizeEntryPackPayload(value: unknown): LeagueEntryPackPayloa
         ? Array.from(new Set(row.competitionIds.map((id) => clean(id, 80)).filter(Boolean))).slice(0, 30)
         : [],
     };
-  });
+  }).filter((player) => Boolean(player.fullName) || player.isCaptain || player.isViceCaptain);
   return {
     contactName: clean(body.contactName, 140),
     contactEmail: clean(body.contactEmail, 254).toLowerCase(),
@@ -64,20 +64,22 @@ export function validateEntryPackPayload(payload: LeagueEntryPackPayload, forSub
     }
     return null;
   }
-  if (payload.players.length === 0) return "Add at least one player to the team roster.";
-
   const names = new Set<string>();
   let captainCount = 0;
   let viceCount = 0;
-  for (const [index, player] of payload.players.entries()) {
-    if (!player.fullName || player.fullName.split(/\s+/).filter(Boolean).length < 2) {
-      return `Player ${index + 1} needs a full first and second name.`;
+  for (const player of payload.players) {
+    if (player.isCaptain) captainCount += 1;
+    if (player.isViceCaptain) viceCount += 1;
+    if (!player.fullName) {
+      if (player.isCaptain) return "Enter the captain's full first and second name.";
+      if (player.isViceCaptain) return "Enter the vice-captain's full first and second name.";
+      continue;
     }
+    const roleLabel = player.isCaptain ? "The captain" : player.isViceCaptain ? "The vice-captain" : `Player “${player.fullName}”`;
+    if (player.fullName.split(/\s+/).filter(Boolean).length < 2) return `${roleLabel} needs a full first and second name.`;
     const nameKey = player.fullName.toLowerCase();
     if (names.has(nameKey)) return `${player.fullName} appears more than once in the roster.`;
     names.add(nameKey);
-    if (player.isCaptain) captainCount += 1;
-    if (player.isViceCaptain) viceCount += 1;
     if (player.isCaptain && player.isViceCaptain) return `${player.fullName} cannot be both captain and vice-captain.`;
   }
   if (captainCount !== 1) return "Select exactly one team captain.";

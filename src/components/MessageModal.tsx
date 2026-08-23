@@ -49,7 +49,7 @@ function deriveTitle(message: string) {
   if (/^(failed|error|unable|could not|cannot)\b/.test(text)) return "Action Required";
 
   if (
-    /\b(required|must|select|enter|invalid|duplicate|cannot|can't|should)\b/.test(text) ||
+    /\b(required|must|needs?|select|enter|invalid|duplicate|cannot|can't|should)\b/.test(text) ||
     /not configured/.test(text)
   ) {
     return "Validation Error";

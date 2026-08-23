@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
+import MessageModal from "@/components/MessageModal";
 import type { LeagueEntryPackPayload, LeagueEntryPackPlayer } from "@/lib/league-entry-pack";
 import { normalizePlayerName, playerNameMatchKind } from "@/lib/player-name-match";
 
@@ -9,7 +10,7 @@ type PackResponse = {
   pack: LeagueEntryPackPayload & { status: "draft" | "submitted" | "approved" | "rejected"; submittedAt?: string | null; reviewNotes?: string | null; updatedAt?: string | null };
   season: { id: string; name: string; is_active?: boolean | null };
   team: { id: string; name: string; location_id?: string | null; locationName: string };
-  clubPlayers: Array<{ id: string; name: string }>;
+  clubPlayers: Array<{ id: string; name: string; selectedByOtherTeam: string | null }>;
   error?: string;
 };
 
@@ -58,6 +59,7 @@ export default function PublicEntryPackPage() {
   const [busy, setBusy] = useState<"save" | "submit" | "reset" | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [warning, setWarning] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -89,15 +91,19 @@ export default function PublicEntryPackPage() {
   }, [token]);
 
   const locked = data?.pack.status === "approved";
-  const selectedNames = new Set(pack.players.map((player) => player.fullName.trim().toLowerCase()).filter(Boolean));
-  const nameMatchNotice = (fullName: string) => {
+  const selectedNames = new Set(pack.players.map((player) => normalizePlayerName(player.fullName)).filter(Boolean));
+  const exactClubMatch = (fullName: string) => (data?.clubPlayers ?? []).find((option) => playerNameMatchKind(fullName, option.name) === "exact");
+  const checkNameWarning = (fullName: string) => {
     if (!fullName.trim()) return null;
     const clubPlayers = data?.clubPlayers ?? [];
     const exact = clubPlayers.find((option) => playerNameMatchKind(fullName, option.name) === "exact");
-    if (exact) return <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">Existing club player matched: {exact.name}</p>;
+    if (exact?.selectedByOtherTeam) {
+      setWarning(`${exact.name} has already been selected for ${exact.selectedByOtherTeam}. Choose another player or contact the League Secretary.`);
+      return;
+    }
+    if (exact) return;
     const possible = clubPlayers.filter((option) => playerNameMatchKind(fullName, option.name) === "possible").slice(0, 3);
-    if (possible.length === 0) return null;
-    return <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">Possible existing {data?.team.locationName ?? "club"} player: {possible.map((option) => option.name).join(", ")}. Check the spelling or select the existing player above.</p>;
+    if (possible.length > 0) setWarning(`Possible existing ${data?.team.locationName ?? "club"} player: ${possible.map((option) => option.name).join(", ")}. Check the spelling or select the existing player from the list.`);
   };
   const updatePlayer = (rowId: string, patch: Partial<LeagueEntryPackPlayer>) => {
     setPack((current) => ({
@@ -112,12 +118,14 @@ export default function PublicEntryPackPage() {
       }),
     }));
     setMessage(null);
+    setWarning(null);
   };
 
   const save = async (action: "save" | "submit") => {
     setBusy(action);
     setError(null);
     setMessage(null);
+    setWarning(null);
     const response = await fetch(`/api/public/entry-pack/${encodeURIComponent(token)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -136,7 +144,7 @@ export default function PublicEntryPackPage() {
 
   const resetRegistration = async () => {
     if (!window.confirm("Clear every player and role from this registration and start again? This cannot be undone.")) return;
-    setBusy("reset"); setError(null); setMessage(null);
+    setBusy("reset"); setError(null); setMessage(null); setWarning(null);
     const response = await fetch(`/api/public/entry-pack/${encodeURIComponent(token)}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -156,6 +164,7 @@ export default function PublicEntryPackPage() {
   return (
     <main className="min-h-screen bg-slate-100 p-3 sm:p-6">
       <div className="mx-auto max-w-6xl space-y-4">
+        <MessageModal message={error ?? warning} onClose={() => { setError(null); setWarning(null); }} />
         <header className="rounded-3xl bg-gradient-to-r from-slate-950 via-teal-950 to-slate-900 p-5 text-white shadow-xl sm:p-7">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-teal-300">Rack &amp; Frame · Team registration</p>
           <h1 className="mt-2 text-3xl font-black">Winter League Team Registration</h1>
@@ -171,7 +180,6 @@ export default function PublicEntryPackPage() {
         {!locked ? <nav className="flex flex-wrap items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm"><a href="/league-entry" className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700">Back to team selection</a><button type="button" disabled={Boolean(busy)} onClick={() => void resetRegistration()} className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-800 disabled:opacity-50">{busy === "reset" ? "Clearing…" : "Clear form and start again"}</button><span className="text-xs text-slate-500">Save your draft before going back if you want to keep your latest changes.</span></nav> : null}
 
         {message ? <section className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 font-medium text-emerald-900">{message}</section> : null}
-        {error ? <section className="rounded-2xl border border-rose-300 bg-rose-50 p-4 font-medium text-rose-900">{error}</section> : null}
         {data.pack.status === "rejected" && data.pack.reviewNotes ? (
           <section className="rounded-2xl border border-amber-300 bg-amber-50 p-4 text-amber-950">
             <p className="font-bold">Returned for correction</p><p className="mt-1 text-sm">{data.pack.reviewNotes}</p>
@@ -182,7 +190,7 @@ export default function PublicEntryPackPage() {
         <section className="rounded-2xl border border-sky-200 bg-sky-50 p-5 shadow-sm">
           <h2 className="text-xl font-bold text-slate-950">Instructions</h2>
           <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-800">
-            <li>Complete the captain, vice-captain and five player fields. Use <strong>Add another player</strong> for a larger squad.</li>
+            <li>Complete the mandatory captain and vice-captain fields. Five optional player fields are ready to use, and <strong>Add another player</strong> is available for larger squads.</li>
             <li>Choose an existing player from the club list where possible, or enter a full name for a new player.</li>
             <li>Use <strong>Save draft</strong> while collecting details. Submit only when the roster is complete.</li>
             <li>Knockout competition entry forms will be sent separately and are not part of this league registration.</li>
@@ -195,7 +203,7 @@ export default function PublicEntryPackPage() {
         <fieldset disabled={locked} className="space-y-4 disabled:opacity-80">
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div><h2 className="text-xl font-bold text-slate-950">1. Team roster and roles</h2><p className="mt-1 text-sm text-slate-600">Seven fields are provided: captain, vice-captain and five additional players.</p></div>
+              <div><h2 className="text-xl font-bold text-slate-950">1. Team roster and roles</h2><p className="mt-1 text-sm text-slate-600">Captain and vice-captain are mandatory. The five additional player fields are optional.</p></div>
               <button type="button" onClick={() => setPack((current) => ({ ...current, players: [...current.players, emptyPlayer()] }))} className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-bold text-white">Add another player</button>
             </div>
             <div className="mt-4 space-y-4">
@@ -203,8 +211,8 @@ export default function PublicEntryPackPage() {
                 <article key={player.rowId} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
                   <div className="flex items-center justify-between gap-3"><h3 className="font-bold text-slate-900">{index === 0 ? "Captain" : index === 1 ? "Vice-captain" : `Player ${index - 1}`}</h3>{index >= 7 ? <button type="button" onClick={() => setPack((current) => ({ ...current, players: current.players.filter((row) => row.rowId !== player.rowId) }))} className="text-sm font-semibold text-rose-700">Remove</button> : null}</div>
                   <div className="mt-3 grid gap-3 md:grid-cols-2">
-                    <label className="text-xs font-bold uppercase tracking-wide text-slate-600">Choose existing {data.team.locationName} player<select value={data.clubPlayers.find((option) => normalizePlayerName(option.name) === normalizePlayerName(player.fullName))?.name ?? ""} onChange={(event) => updatePlayer(player.rowId, { fullName: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal"><option value="">Select from club…</option>{data.clubPlayers.map((option) => <option key={option.id} value={option.name} disabled={selectedNames.has(option.name.trim().toLowerCase()) && option.name !== player.fullName}>{option.name}</option>)}</select></label>
-                    <label className="text-xs font-bold uppercase tracking-wide text-slate-600">Full name *<input value={player.fullName} onChange={(event) => updatePlayer(player.rowId, { fullName: event.target.value })} placeholder="First and second name" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal" /><span className="mt-1 block text-[11px] font-normal normal-case tracking-normal text-slate-500">You can type here if the player is new to the club.</span>{nameMatchNotice(player.fullName)}</label>
+                    <label className="text-xs font-bold uppercase tracking-wide text-slate-600">Choose existing {data.team.locationName} player<select value={data.clubPlayers.find((option) => normalizePlayerName(option.name) === normalizePlayerName(player.fullName))?.name ?? ""} onChange={(event) => updatePlayer(player.rowId, { fullName: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal"><option value="">Select from club…</option>{data.clubPlayers.map((option) => { const alreadyInThisRoster = selectedNames.has(normalizePlayerName(option.name)) && normalizePlayerName(option.name) !== normalizePlayerName(player.fullName); const unavailable = Boolean(option.selectedByOtherTeam) || alreadyInThisRoster; return <option key={option.id} value={option.name} disabled={unavailable}>{option.name}{option.selectedByOtherTeam ? ` — already selected for ${option.selectedByOtherTeam}` : alreadyInThisRoster ? " — already selected on this form" : ""}</option>; })}</select></label>
+                    <label className="text-xs font-bold uppercase tracking-wide text-slate-600">Full name {index < 2 ? "*" : "(optional)"}<input value={player.fullName} onChange={(event) => updatePlayer(player.rowId, { fullName: event.target.value })} onBlur={() => checkNameWarning(player.fullName)} placeholder="First and second name" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal" /><span className="mt-1 block text-[11px] font-normal normal-case tracking-normal text-slate-500">You can type here if the player is new to the club.</span>{exactClubMatch(player.fullName) && !exactClubMatch(player.fullName)?.selectedByOtherTeam ? <span className="mt-2 block rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold normal-case tracking-normal text-emerald-800">Existing club player matched: {exactClubMatch(player.fullName)?.name}</span> : null}</label>
                   </div>
                 </article>
               ))}

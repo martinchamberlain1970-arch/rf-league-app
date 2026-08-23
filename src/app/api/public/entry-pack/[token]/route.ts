@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { normalizeEntryPackPayload, validateEntryPackPayload } from "@/lib/league-entry-pack";
+import { normalizePlayerName } from "@/lib/player-name-match";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -26,6 +27,37 @@ async function loadPack(client: SupabaseClient, token: string) {
   return { pack: packRes.data };
 }
 
+async function loadOtherTeamSelections(client: SupabaseClient, seasonId: string, currentTeamId: string, locationId: string | null) {
+  const selectedByName = new Map<string, string>();
+  if (!locationId) return { selectedByName };
+  const teamsRes = await client
+    .from("league_teams")
+    .select("id,name")
+    .eq("season_id", seasonId)
+    .eq("location_id", locationId)
+    .neq("id", currentTeamId);
+  if (teamsRes.error) return { selectedByName, error: teamsRes.error.message };
+  const otherTeams = teamsRes.data ?? [];
+  if (otherTeams.length === 0) return { selectedByName };
+  const teamNameById = new Map(otherTeams.map((team) => [team.id, team.name]));
+  const packsRes = await client
+    .from("league_entry_packs")
+    .select("team_id,players")
+    .eq("season_id", seasonId)
+    .in("team_id", otherTeams.map((team) => team.id));
+  if (packsRes.error) return { selectedByName, error: packsRes.error.message };
+  for (const otherPack of packsRes.data ?? []) {
+    const teamName = teamNameById.get(otherPack.team_id);
+    if (!teamName) continue;
+    const players = normalizeEntryPackPayload({ players: otherPack.players }).players;
+    for (const player of players) {
+      const key = normalizePlayerName(player.fullName);
+      if (key && !selectedByName.has(key)) selectedByName.set(key, teamName);
+    }
+  }
+  return { selectedByName };
+}
+
 export async function GET(_req: NextRequest, context: { params: Promise<{ token: string }> }) {
   if (!supabaseUrl || !serviceRoleKey) return NextResponse.json({ error: "Server is not configured." }, { status: 500, headers: noStore });
   const { token } = await context.params;
@@ -46,18 +78,23 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ token:
     return NextResponse.json({ error: "This league entry period has closed because the league is completed or already in progress." }, { status: 410, headers: noStore });
   }
 
-  let clubPlayers: Array<{ id: string; name: string }> = [];
+  let clubPlayers: Array<{ id: string; name: string; selectedByOtherTeam: string | null }> = [];
   if (teamRes.data.location_id) {
-    const clubPlayersRes = await client
-      .from("players")
-      .select("id,full_name,display_name")
-      .eq("location_id", teamRes.data.location_id)
-      .or("is_archived.is.null,is_archived.eq.false")
-      .order("display_name");
-    if (clubPlayersRes.error) return NextResponse.json({ error: clubPlayersRes.error.message }, { status: 400, headers: noStore });
+    const [clubPlayersRes, selections] = await Promise.all([
+      client
+        .from("players")
+        .select("id,full_name,display_name")
+        .eq("location_id", teamRes.data.location_id)
+        .or("is_archived.is.null,is_archived.eq.false")
+        .order("display_name"),
+      loadOtherTeamSelections(client, pack.season_id, pack.team_id, teamRes.data.location_id),
+    ]);
+    const clubError = clubPlayersRes.error?.message || selections.error;
+    if (clubError) return NextResponse.json({ error: clubError }, { status: 400, headers: noStore });
     clubPlayers = (clubPlayersRes.data ?? []).map((player) => ({
       id: player.id,
       name: player.full_name?.trim() || player.display_name,
+      selectedByOtherTeam: selections.selectedByName.get(normalizePlayerName(player.full_name?.trim() || player.display_name)) ?? null,
     }));
   }
 
@@ -144,6 +181,18 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
   const payload = normalizeEntryPackPayload(body?.pack);
   const validationError = validateEntryPackPayload(payload, action === "submit");
   if (validationError) return NextResponse.json({ error: validationError }, { status: 400, headers: noStore });
+
+  const teamRes = await client.from("league_teams").select("location_id").eq("id", loaded.pack.team_id).maybeSingle();
+  if (teamRes.error || !teamRes.data) return NextResponse.json({ error: teamRes.error?.message ?? "The linked league team is no longer available." }, { status: 400, headers: noStore });
+  const selections = await loadOtherTeamSelections(client, loaded.pack.season_id, loaded.pack.team_id, teamRes.data.location_id);
+  if (selections.error) return NextResponse.json({ error: selections.error }, { status: 400, headers: noStore });
+  const conflicts = payload.players.flatMap((player) => {
+    const selectedBy = selections.selectedByName.get(normalizePlayerName(player.fullName));
+    return selectedBy ? [`${player.fullName} has already been selected for ${selectedBy}.`] : [];
+  });
+  if (conflicts.length > 0) {
+    return NextResponse.json({ error: `${conflicts.slice(0, 5).join(" ")} Remove the duplicate selection or contact the League Secretary.` }, { status: 409, headers: noStore });
+  }
 
   payload.contactName = "";
   payload.contactEmail = "";

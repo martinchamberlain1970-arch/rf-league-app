@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import MessageModal from "@/components/MessageModal";
 
 type Season = { id: string; name: string };
 type Team = {
@@ -58,6 +59,7 @@ export default function SharedLeagueEntryPage() {
   };
 
   return <main className="min-h-screen bg-slate-100 p-3 sm:p-6"><div className="mx-auto max-w-4xl space-y-4">
+    <MessageModal message={error || null} onClose={() => setError("")} />
     <header className="rounded-3xl bg-gradient-to-r from-slate-950 via-teal-950 to-slate-900 p-6 text-white shadow-xl sm:p-8">
       <p className="text-xs font-bold uppercase tracking-[.2em] text-teal-300">Rack &amp; Frame · Winter League</p>
       <h1 className="mt-2 text-3xl font-black">League Team Registration</h1>
@@ -68,15 +70,13 @@ export default function SharedLeagueEntryPage() {
       <h2 className="text-lg font-bold text-slate-950">Before you start</h2>
       <ul className="mt-2 list-disc space-y-1 pl-5">
         <li>No Rack &amp; Frame account is required to complete this registration.</li>
-        <li>The form provides fields for the captain, vice-captain and five additional players, with the option to add more.</li>
+        <li>The captain and vice-captain are mandatory. Five optional player fields are provided, with the option to add more.</li>
         <li>Existing players can be selected from the chosen team&apos;s club list; new players can be entered manually.</li>
         <li>No telephone numbers or private match-arranging contact details are collected here.</li>
         <li>The captain and vice-captain will later receive team access for line-ups, fixture completion and results. A separate guide will be supplied.</li>
         <li>Competition entries and competition contact details use the separate competition-entry form.</li>
       </ul>
     </section>
-
-    {error ? <section className="rounded-2xl border border-rose-300 bg-rose-50 p-4 font-semibold text-rose-900">{error}</section> : null}
 
     <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
       <h2 className="text-xl font-bold text-slate-950">Select your team</h2>
