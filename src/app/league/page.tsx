@@ -243,6 +243,8 @@ type FixtureSchedulingConstraints = {
   roundOffset?: number;
   reservedVenueHomesByRound?: Array<Map<string, number>>;
   homeGroupLimits?: HomeGroupLimit[];
+  searchDeadlineAt?: number;
+  maxSearchNodes?: number;
 };
 type HomeAwayFairness = {
   score: number;
@@ -374,7 +376,11 @@ const assignHomeAwayForRounds = (
   });
   const assigned: DirectedMatch[][] = rounds.map(() => []);
   const homeCountByTeam = new Map<string, number>();
+  let searchNodes = 0;
   const backtrack = (roundIndex: number, matchIndex: number): boolean => {
+    searchNodes += 1;
+    if (constraints.searchDeadlineAt && Date.now() > constraints.searchDeadlineAt) return false;
+    if (constraints.maxSearchNodes && searchNodes > constraints.maxSearchNodes) return false;
     if (roundIndex >= rounds.length) return true;
     const round = rounds[roundIndex];
     if (matchIndex >= round.length) return backtrack(roundIndex + 1, 0);
@@ -446,7 +452,11 @@ const scheduleDirectedMatchesIntoRounds = (
     if (currentRoundsSide) return currentRoundsSide;
     return getLastSideBeforeRound(teamId, priorRounds, priorRounds.length);
   };
+  let searchNodes = 0;
   const placeMatch = (remaining: DirectedMatch[]): boolean => {
+    searchNodes += 1;
+    if (constraints.searchDeadlineAt && Date.now() > constraints.searchDeadlineAt) return false;
+    if (constraints.maxSearchNodes && searchNodes > constraints.maxSearchNodes) return false;
     if (remaining.length === 0) return true;
     let bestIndex = -1;
     let bestOptions: number[] | null = null;
@@ -739,6 +749,11 @@ export default function LeaguePage() {
   const [genClearExisting, setGenClearExisting] = useState(true);
   const [breakDateInput, setBreakDateInput] = useState("");
   const [breakDates, setBreakDates] = useState<string[]>([]);
+  const [fixtureGenerationProgress, setFixtureGenerationProgress] = useState<{
+    running: boolean;
+    percent: number;
+    message: string;
+  } | null>(null);
   const [nominatedNames, setNominatedNames] = useState<Record<string, string>>({});
   const [fixtureBreaks, setFixtureBreaks] = useState<LeagueBreak[]>([
     { player_id: null, entered_player_name: "", break_value: "" },
@@ -2725,6 +2740,7 @@ export default function LeaguePage() {
   const generateFixtures = async () => {
     const client = supabase;
     if (!client) return;
+    if (fixtureGenerationProgress?.running) return;
     if (!canManage) {
       setMessage("League management access is required to generate fixtures.");
       return;
@@ -2822,6 +2838,23 @@ export default function LeaguePage() {
       perryStreetD && perryStreetE
         ? [{ teamIds: new Set([perryStreetD.id, perryStreetE.id]), maxHomes: 1 }]
         : [];
+    const yieldToBrowser = () =>
+      new Promise<void>((resolve) => {
+        if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+          window.requestAnimationFrame(() => resolve());
+          return;
+        }
+        setTimeout(resolve, 0);
+      });
+    const stopFixtureGeneration = (percent: number, progressMessage: string, errorMessage: string) => {
+      setFixtureGenerationProgress({ running: false, percent, message: progressMessage });
+      setMessage(errorMessage);
+    };
+    setMessage(null);
+    setFixtureGenerationProgress({ running: true, percent: 4, message: "Preparing teams, venues and reserved dates…" });
+    await yieldToBrowser();
+
+    try {
     const seasonTeamIds = seasonTeams.map((team) => team.id);
     const scheduledWeekNos = roundSlots.map((slot) => slot.weekNo);
     const isFairerSchedule = (candidate: HomeAwayFairness, current: HomeAwayFairness | null) =>
@@ -2831,15 +2864,26 @@ export default function LeaguePage() {
       (candidate.score === current.score &&
         candidate.longestRun === current.longestRun &&
         candidate.consecutivePairs < current.consecutivePairs);
-    const tryBuildFirstLeg = () => {
+    const tryBuildFirstLeg = async () => {
       let bestRounds: DirectedMatch[][] | null = null;
       let bestFairness: HomeAwayFairness | null = null;
-      for (let attempt = 0; attempt < 200; attempt += 1) {
+      const maxAttempts = 80;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        if (attempt % 4 === 0) {
+          setFixtureGenerationProgress({
+            running: true,
+            percent: 8 + Math.round((attempt / maxAttempts) * 34),
+            message: `Testing first-cycle fixture patterns… ${attempt + 1} of ${maxAttempts}`,
+          });
+          await yieldToBrowser();
+        }
         const rounds = buildRoundRobinRounds(shuffleArray(seasonTeams.map((team) => team.id)));
         const assigned = assignHomeAwayForRounds(rounds, teamVenueById, venueCapacityById, {
           roundOffset: 0,
           reservedVenueHomesByRound,
           homeGroupLimits,
+          searchDeadlineAt: Date.now() + 100,
+          maxSearchNodes: 30_000,
         });
         if (!assigned) continue;
         const fairness = evaluateHomeAwayFairness(
@@ -2855,16 +2899,36 @@ export default function LeaguePage() {
       }
       return bestRounds;
     };
-    const firstLegRounds = tryBuildFirstLeg();
+    const firstLegRounds = await tryBuildFirstLeg();
     if (!firstLegRounds) {
-      setMessage("We couldn't generate a valid first-half fixture list with the current shared venue table limits. Check the other division's fixture dates, reserved weeks, and venue capacities.");
+      stopFixtureGeneration(
+        42,
+        "No valid first cycle was found within the safe search limit.",
+        "Fixture generation stopped safely and no existing fixtures were changed. Check Division 1 against the other division's dates, Perry Street's two-table limit, the Perry Street D/E home restriction, reserved weeks and venue capacities, then try again."
+      );
       return;
     }
     const allRounds: DirectedMatch[][] = [...firstLegRounds];
-    const tryScheduleLeg = (matches: DirectedMatch[], priorRounds: DirectedMatch[][], roundOffset: number) => {
+    const tryScheduleLeg = async (
+      matches: DirectedMatch[],
+      priorRounds: DirectedMatch[][],
+      roundOffset: number,
+      progressStart: number,
+      progressEnd: number,
+      progressLabel: string
+    ) => {
       let bestRounds: DirectedMatch[][] | null = null;
       let bestFairness: HomeAwayFairness | null = null;
-      for (let attempt = 0; attempt < 80; attempt += 1) {
+      const maxAttempts = 40;
+      for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+        if (attempt % 2 === 0) {
+          setFixtureGenerationProgress({
+            running: true,
+            percent: progressStart + Math.round((attempt / maxAttempts) * (progressEnd - progressStart)),
+            message: `${progressLabel}… ${attempt + 1} of ${maxAttempts}`,
+          });
+          await yieldToBrowser();
+        }
         const scheduled = scheduleDirectedMatchesIntoRounds(
           shuffleArray(matches),
           firstLegRoundsCount,
@@ -2876,6 +2940,8 @@ export default function LeaguePage() {
             roundOffset,
             reservedVenueHomesByRound,
             homeGroupLimits,
+            searchDeadlineAt: Date.now() + 100,
+            maxSearchNodes: 30_000,
           }
         );
         if (!scheduled) continue;
@@ -2897,30 +2963,46 @@ export default function LeaguePage() {
       const secondLegMatches = firstLegRounds.flatMap((round) =>
         round.map((match) => ({ homeTeamId: match.awayTeamId, awayTeamId: match.homeTeamId }))
       );
-      const secondLegRounds = tryScheduleLeg(
+      const secondLegRounds = await tryScheduleLeg(
         secondLegMatches,
         firstLegRounds,
-        firstLegRoundsCount
+        firstLegRoundsCount,
+        44,
+        genFixtureCycles === 3 ? 65 : 84,
+        "Arranging return fixtures"
       );
       if (!secondLegRounds) {
-        setMessage("The return fixtures could not be arranged without breaking shared venue table limits. Check the other division's fixture dates or reserved weeks.");
+        stopFixtureGeneration(
+          genFixtureCycles === 3 ? 65 : 84,
+          "No valid return cycle was found within the safe search limit.",
+          "Fixture generation stopped safely and no existing fixtures were changed. The return fixtures could not be arranged within the shared venue and home restrictions. Check the other division's dates and reserved weeks, then try again."
+        );
         return;
       }
       allRounds.push(...secondLegRounds);
       if (genFixtureCycles === 3) {
         const thirdLegMatches = firstLegRounds.flatMap((round) => round.map((match) => ({ ...match })));
-        const thirdLegRounds = tryScheduleLeg(
+        const thirdLegRounds = await tryScheduleLeg(
           thirdLegMatches,
           allRounds,
-          firstLegRoundsCount * 2
+          firstLegRoundsCount * 2,
+          66,
+          85,
+          "Arranging the third fixture cycle"
         );
         if (!thirdLegRounds) {
-          setMessage("The third cycle could not be arranged without breaking shared venue table limits. Check the other division's fixture dates or reserved weeks.");
+          stopFixtureGeneration(
+            85,
+            "No valid third cycle was found within the safe search limit.",
+            "Fixture generation stopped safely and no existing fixtures were changed. The third cycle could not be arranged within the shared venue and home restrictions. Check the other division's dates and reserved weeks, then try again."
+          );
           return;
         }
         allRounds.push(...thirdLegRounds);
       }
     }
+    setFixtureGenerationProgress({ running: true, percent: 88, message: "Checking home and away fairness…" });
+    await yieldToBrowser();
     const homeAwayFairness = evaluateHomeAwayFairness(allRounds, seasonTeamIds, scheduledWeekNos);
     const fixturePayload = allRounds.flatMap((round, roundIndex) => {
       const slot = roundSlots[roundIndex];
@@ -2934,24 +3016,27 @@ export default function LeaguePage() {
       }));
     });
     if (genClearExisting) {
+      setFixtureGenerationProgress({ running: true, percent: 92, message: "Replacing the existing fixture list…" });
       const clearRes = await client.from("league_fixtures").delete().eq("season_id", seasonId);
       if (clearRes.error) {
-        setMessage(clearRes.error.message);
+        stopFixtureGeneration(92, "The existing fixtures could not be replaced.", clearRes.error.message);
         return;
       }
     }
+    setFixtureGenerationProgress({ running: true, percent: 94, message: "Saving the new fixture list…" });
     const insertRes = await client
       .from("league_fixtures")
       .insert(fixturePayload)
       .select("id,season_id,week_no,home_team_id,away_team_id");
     if (insertRes.error) {
-      setMessage(insertRes.error.message);
+      stopFixtureGeneration(94, "The new fixtures could not be saved.", insertRes.error.message);
       return;
     }
     const insertedFixtures = insertRes.data ?? [];
     if (insertedFixtures.length > 0) {
       const frameCheck = await client.from("league_fixture_frames").select("fixture_id").in("fixture_id", insertedFixtures.map((row) => row.id)).limit(1);
       if (!frameCheck.error && (frameCheck.data?.length ?? 0) === 0) {
+        setFixtureGenerationProgress({ running: true, percent: 97, message: "Creating fixture scorecards…" });
         const frameRows = insertedFixtures.flatMap((fixture) => {
           const season = seasonById.get(fixture.season_id) ?? currentSeason;
           const cfg = getSeasonFrameConfig(season);
@@ -2995,11 +3080,12 @@ export default function LeaguePage() {
         });
         const frameInsertRes = await client.from("league_fixture_frames").insert(frameRows);
         if (frameInsertRes.error) {
-          setMessage(frameInsertRes.error.message);
+          stopFixtureGeneration(97, "The fixture scorecards could not be created.", frameInsertRes.error.message);
           return;
         }
       }
     }
+    setFixtureGenerationProgress({ running: true, percent: 99, message: "Refreshing the league fixture list…" });
     await loadAll();
     const affectedTeamNames = homeAwayFairness.affectedTeamIds
       .map((teamId) => seasonTeams.find((team) => team.id === teamId)?.name)
@@ -3012,6 +3098,19 @@ export default function LeaguePage() {
       title: "Fixtures Generated",
       description: `Generated ${fixturePayload.length} fixtures with shared venue table limits applied across both divisions. ${fairnessSummary} Captain and vice-captain assignments can be completed afterwards.`,
     });
+    setFixtureGenerationProgress({
+      running: false,
+      percent: 100,
+      message: `${fixturePayload.length} fixtures generated successfully.`,
+    });
+    } catch (error) {
+      const description = error instanceof Error ? error.message : "An unexpected scheduling error occurred.";
+      stopFixtureGeneration(
+        0,
+        "Fixture generation stopped.",
+        `Fixture generation stopped before completion. ${description}`
+      );
+    }
   };
 
   const applyBreakWeeksToExisting = async () => {
@@ -7743,6 +7842,7 @@ export default function LeaguePage() {
                           <span className="text-xs font-medium text-slate-600">Season start date</span>
                           <input
                             type="date"
+                            disabled={fixtureGenerationProgress?.running}
                             className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
                             value={genStartDate}
                             onChange={(e) => setGenStartDate(e.target.value)}
@@ -7752,6 +7852,7 @@ export default function LeaguePage() {
                           <span className="text-xs font-medium text-slate-600">Reserved break date (no fixtures)</span>
                           <input
                             type="date"
+                            disabled={fixtureGenerationProgress?.running}
                             className="h-11 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
                             value={breakDateInput}
                             onChange={(e) => setBreakDateInput(e.target.value)}
@@ -7760,32 +7861,76 @@ export default function LeaguePage() {
                         <button
                           type="button"
                           onClick={addBreakDate}
-                          className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700"
+                          disabled={fixtureGenerationProgress?.running}
+                          className="h-11 rounded-xl border border-slate-300 bg-white px-4 text-sm font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           Add break
                         </button>
                         <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
-                          <select value={genFixtureCycles} onChange={(e) => setGenFixtureCycles(Number(e.target.value) as 1 | 2 | 3)} className="w-full bg-transparent font-medium outline-none">
+                          <select disabled={fixtureGenerationProgress?.running} value={genFixtureCycles} onChange={(e) => setGenFixtureCycles(Number(e.target.value) as 1 | 2 | 3)} className="w-full bg-transparent font-medium outline-none disabled:cursor-not-allowed">
                             <option value={1}>Play each team once</option>
                             <option value={2}>Home and away</option>
                             <option value={3}>Three cycles (repeat first half)</option>
                           </select>
                         </label>
                         <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
-                          <input type="checkbox" checked={genClearExisting} onChange={(e) => setGenClearExisting(e.target.checked)} />
+                          <input type="checkbox" disabled={fixtureGenerationProgress?.running} checked={genClearExisting} onChange={(e) => setGenClearExisting(e.target.checked)} />
                           Replace existing fixtures
                         </label>
-                        <button type="button" onClick={generateFixtures} className="h-11 rounded-xl bg-slate-900 px-4 text-sm font-medium text-white">
-                          Generate fixtures
+                        <button
+                          type="button"
+                          onClick={generateFixtures}
+                          disabled={fixtureGenerationProgress?.running}
+                          aria-busy={fixtureGenerationProgress?.running}
+                          className="h-11 rounded-xl bg-slate-900 px-4 text-sm font-medium text-white disabled:cursor-wait disabled:opacity-75"
+                        >
+                          {fixtureGenerationProgress?.running ? "Generating…" : "Generate fixtures"}
                         </button>
                       </div>
+                      {fixtureGenerationProgress ? (
+                        <div
+                          role="status"
+                          aria-live="polite"
+                          className={`mt-3 rounded-xl border p-3 ${
+                            fixtureGenerationProgress.percent === 100
+                              ? "border-emerald-200 bg-emerald-50"
+                              : fixtureGenerationProgress.running
+                                ? "border-sky-200 bg-sky-50"
+                                : "border-amber-200 bg-amber-50"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-3 text-sm font-semibold text-slate-900">
+                            <span>
+                              {fixtureGenerationProgress.running
+                                ? "Generating fixtures"
+                                : fixtureGenerationProgress.percent === 100
+                                  ? "Fixtures ready"
+                                  : "Fixture generation stopped"}
+                            </span>
+                            <span>{fixtureGenerationProgress.percent}%</span>
+                          </div>
+                          <div className="mt-2 h-2 overflow-hidden rounded-full bg-white shadow-inner">
+                            <div
+                              className={`h-full rounded-full transition-[width] duration-300 ${
+                                fixtureGenerationProgress.percent === 100 ? "bg-emerald-500" : "bg-sky-600"
+                              }`}
+                              style={{ width: `${fixtureGenerationProgress.percent}%` }}
+                            />
+                          </div>
+                          <p className="mt-2 text-xs text-slate-700">{fixtureGenerationProgress.message}</p>
+                          {fixtureGenerationProgress.running ? (
+                            <p className="mt-1 text-xs font-medium text-sky-800">Keep this page open while Rack &amp; Frame checks the scheduling rules.</p>
+                          ) : null}
+                        </div>
+                      ) : null}
                       <div className="mt-2 flex flex-wrap items-center gap-2">
                         {breakDates.map((d) => (
                           <button
                             type="button"
                             key={d}
                             onClick={() => removeBreakDate(d)}
-                            className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700"
+                            disabled={fixtureGenerationProgress?.running}
+                            className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                             title="Remove break week"
                           >
                             {new Date(`${d}T12:00:00`).toLocaleDateString(undefined, { weekday: "short", year: "numeric", month: "short", day: "numeric" })} x
@@ -7795,7 +7940,8 @@ export default function LeaguePage() {
                           <button
                             type="button"
                             onClick={() => setBreakDates([])}
-                            className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700"
+                            disabled={fixtureGenerationProgress?.running}
+                            className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             Clear breaks
                           </button>
@@ -7805,7 +7951,8 @@ export default function LeaguePage() {
                         <button
                           type="button"
                           onClick={applyBreakWeeksToExisting}
-                          className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700"
+                          disabled={fixtureGenerationProgress?.running}
+                          className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
                         >
                           Apply break weeks to existing dates
                         </button>
