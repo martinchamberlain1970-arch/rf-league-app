@@ -2898,6 +2898,39 @@ export default function LeaguePage() {
       }, 0);
     const orderedPlansForAttempt = (attempt: number) =>
       attempt % 2 === 0 ? plans : [...plans].reverse();
+    const cycleRespectsHardRules = (cycle: Map<string, DirectedMatch[][]>, roundOffset: number) => {
+      const reservations = cloneReservations();
+      const groupHomesByRound = Array.from({ length: firstLegRoundCount }, () =>
+        homeGroupLimits.map(() => 0)
+      );
+      let valid = true;
+      for (const plan of plans) {
+        const rounds = cycle.get(plan.season.id) ?? [];
+        rounds.forEach((round, roundIndex) => {
+          const globalRoundIndex = roundOffset + roundIndex;
+          round.forEach((match) => {
+            const venueId = teamVenueById.get(match.homeTeamId);
+            const reserved = reservations[globalRoundIndex];
+            if (!venueId || !reserved) {
+              valid = false;
+              return;
+            }
+            const capacity = venueCapacityById.get(venueId) ?? 1;
+            if ((reserved.get(venueId) ?? 0) >= capacity) {
+              valid = false;
+              return;
+            }
+            reserved.set(venueId, (reserved.get(venueId) ?? 0) + 1);
+            homeGroupLimits.forEach((group, groupIndex) => {
+              if (!group.teamIds.has(match.homeTeamId)) return;
+              groupHomesByRound[roundIndex][groupIndex] += 1;
+              if (groupHomesByRound[roundIndex][groupIndex] > group.maxHomes) valid = false;
+            });
+          });
+        });
+      }
+      return valid;
+    };
 
     setMessage(null);
     setFixtureGenerationProgress({ running: true, percent: 4, message: "Preparing both winter divisions…" });
@@ -2937,6 +2970,19 @@ export default function LeaguePage() {
           reserveScheduledHomes(reservations, assigned, 0);
         }
         if (!valid || candidate.size !== plans.length) continue;
+        if (genFixtureCycles >= 2) {
+          const mirroredCandidate = new Map<string, DirectedMatch[][]>();
+          plans.forEach((plan) => {
+            mirroredCandidate.set(
+              plan.season.id,
+              (candidate.get(plan.season.id) ?? []).map((round) =>
+                round.map((match) => ({ homeTeamId: match.awayTeamId, awayTeamId: match.homeTeamId }))
+              )
+            );
+          });
+          if (!cycleRespectsHardRules(mirroredCandidate, firstLegRoundCount)) continue;
+        }
+        if (genFixtureCycles === 3 && !cycleRespectsHardRules(candidate, firstLegRoundCount * 2)) continue;
         const fairness = combinedFairness(candidate);
         if (fairness < bestFirstCycleFairness) {
           bestFirstCycle = candidate;
@@ -2974,8 +3020,33 @@ export default function LeaguePage() {
       schedules = new Map(Array.from(bestFirstCycle.entries()).map(([id, rounds]) => [id, [...rounds]]));
 
       const buildCombinedCycle = async (cycleIndex: number, progressStart: number, progressEnd: number) => {
-        let bestCycle: Map<string, DirectedMatch[][]> | null = null;
-        let bestCycleFairness = Number.POSITIVE_INFINITY;
+        const directCycle = new Map<string, DirectedMatch[][]>();
+        plans.forEach((plan) => {
+          const firstCycle = schedules.get(plan.season.id)?.slice(0, firstLegRoundCount) ?? [];
+          directCycle.set(
+            plan.season.id,
+            firstCycle.map((round) =>
+              round.map((match) =>
+                cycleIndex === 1
+                  ? { homeTeamId: match.awayTeamId, awayTeamId: match.homeTeamId }
+                  : { ...match }
+              )
+            )
+          );
+        });
+        const directCycleValid = cycleRespectsHardRules(directCycle, firstLegRoundCount * cycleIndex);
+        if (directCycleValid) return directCycle;
+        let bestCycle: Map<string, DirectedMatch[][]> | null = directCycleValid ? directCycle : null;
+        let bestCycleFairness = directCycleValid
+          ? combinedFairness(
+              new Map(
+                plans.map((plan) => [
+                  plan.season.id,
+                  [...(schedules.get(plan.season.id) ?? []), ...(directCycle.get(plan.season.id) ?? [])],
+                ])
+              )
+            )
+          : Number.POSITIVE_INFINITY;
         const cycleAttempts = 80;
         const roundOffset = firstLegRoundCount * cycleIndex;
         for (let attempt = 0; attempt < cycleAttempts; attempt += 1) {
@@ -3048,7 +3119,7 @@ export default function LeaguePage() {
             genFixtureCycles === 3 ? 63 : 84,
             "The combined return cycle could not be completed.",
             [
-              "Both divisions were rearranged together, but the return cycle still could not satisfy every hard rule. No existing fixtures were changed.",
+              "Combined fixture generation stopped. Both divisions were rearranged together, but the return cycle still could not satisfy every hard rule. No existing fixtures were changed.",
               "Restrictions checked: venue table capacity across both divisions; no team twice in one week; Perry Street D/E not both at home; and all shared reserved Thursdays.",
               "Home/away alternation is only a preference and did not cause this failure.",
               "What to modify: verify Perry Street is registered with 2 tables, then add one playable Thursday or remove one shared reserved date before trying again.",
@@ -3070,7 +3141,7 @@ export default function LeaguePage() {
             84,
             "The combined third cycle could not be completed.",
             [
-              "Both divisions were rearranged together, but the third cycle still could not satisfy every hard rule. No existing fixtures were changed.",
+              "Combined fixture generation stopped. Both divisions were rearranged together, but the third cycle still could not satisfy every hard rule. No existing fixtures were changed.",
               "Restrictions checked: venue table capacity across both divisions; no team twice in one week; Perry Street D/E not both at home; and all shared reserved Thursdays.",
               "Home/away alternation is only a preference and did not cause this failure.",
               "What to modify: add one playable Thursday or remove one shared reserved date, then try again.",
