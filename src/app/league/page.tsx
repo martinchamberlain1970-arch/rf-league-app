@@ -754,6 +754,7 @@ export default function LeaguePage() {
     percent: number;
     message: string;
   } | null>(null);
+  const [fixtureShareUrl, setFixtureShareUrl] = useState("");
   const [nominatedNames, setNominatedNames] = useState<Record<string, string>>({});
   const [fixtureBreaks, setFixtureBreaks] = useState<LeagueBreak[]>([
     { player_id: null, entered_player_name: "", break_value: "" },
@@ -2057,6 +2058,7 @@ export default function LeaguePage() {
 
   useEffect(() => {
     setSelectedLeagueTeamNames([]);
+    setFixtureShareUrl("");
   }, [seasonId]);
 
   useEffect(() => {
@@ -4898,7 +4900,9 @@ export default function LeaguePage() {
         setMessage(payload.error ?? "The fixture share link could not be prepared.");
         return;
       }
-      await navigator.clipboard.writeText(`${window.location.origin}${payload.sharePath}`);
+      const shareUrl = `${window.location.origin}${payload.sharePath}`;
+      setFixtureShareUrl(shareUrl);
+      await navigator.clipboard.writeText(shareUrl);
       setInfoModal({
         title: payload.mode === "draft" ? "Private Draft Link Copied" : "Public Fixture Link Copied",
         description: payload.mode === "draft"
@@ -8634,6 +8638,30 @@ export default function LeaguePage() {
                         </button>
                       </div>
                     </div>
+                    {fixtureShareUrl ? (
+                      <div className="mt-3 rounded-xl border border-slate-200 bg-white p-3">
+                        <label className="block text-xs font-semibold uppercase tracking-wide text-slate-600" htmlFor="fixture-share-url">
+                          {currentSeason.is_published ? "Public fixture URL" : "Private officer draft URL"}
+                        </label>
+                        <div className="mt-2 flex flex-col gap-2 sm:flex-row">
+                          <input
+                            id="fixture-share-url"
+                            readOnly
+                            value={fixtureShareUrl}
+                            onFocus={(event) => event.currentTarget.select()}
+                            className="min-w-0 flex-1 rounded-lg border border-slate-300 bg-slate-50 px-3 py-2 font-mono text-xs text-slate-800"
+                          />
+                          <a
+                            href={fixtureShareUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-center text-sm font-medium text-slate-800"
+                          >
+                            {currentSeason.is_published ? "Open fixture list" : "Open draft preview"}
+                          </a>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">

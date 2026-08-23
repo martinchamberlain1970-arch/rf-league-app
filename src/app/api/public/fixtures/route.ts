@@ -119,7 +119,7 @@ export async function GET(req: NextRequest) {
         seasons: [],
         season: null,
         fixtures: [],
-        error: "This draft link is invalid or has expired, or the league is not currently published.",
+        error: "This URL does not contain a valid draft access code. A League Secretary, Chairman or Treasurer must open League Manager, select Fixtures and use Copy private draft link.",
       },
       404
     );
