@@ -791,6 +791,22 @@ export default function LeaguePage() {
   const currentSeasonHandicapCap = currentSeason?.handicap_max_start === null ? null : currentSeason?.handicap_max_start ?? MAX_SNOOKER_START;
   const isWinterFormat = currentSeasonSinglesCount === 4 && currentSeasonDoublesCount === 1;
   const isSummerFormat = currentSeasonSinglesCount === 6 && currentSeasonDoublesCount === 0;
+  const combinedWinterFixtureSeasons = useMemo(() => {
+    if (!currentSeason || !isWinterFormat) return [] as Season[];
+    const yearLabel = currentSeason.name.match(/\b\d{4}\/\d{4}\b/)?.[0];
+    if (!yearLabel) return [] as Season[];
+    const winterSeasons = seasons.filter(
+      (season) =>
+        season.is_active !== false &&
+        season.name.includes(yearLabel) &&
+        Math.max(1, Math.min(10, season.singles_count ?? 4)) === 4 &&
+        Math.max(0, Math.min(4, season.doubles_count ?? 1)) === 1
+    );
+    const premier = winterSeasons.find((season) => /premier league/i.test(season.name));
+    const divisionOne = winterSeasons.find((season) => /division 1/i.test(season.name));
+    return premier && divisionOne ? [premier, divisionOne] : [];
+  }, [currentSeason, isWinterFormat, seasons]);
+  const generatesCombinedWinterFixtures = combinedWinterFixtureSeasons.length === 2;
   const isHodgeTriplesFormat =
     currentSeasonSinglesCount === 6 &&
     currentSeasonDoublesCount === 0 &&
@@ -2737,6 +2753,507 @@ export default function LeaguePage() {
     await loadAll();
   };
 
+  const generateCombinedWinterFixtures = async (winterSeasons: Season[]) => {
+    const client = supabase;
+    if (!client) return;
+    const yieldToBrowser = () =>
+      new Promise<void>((resolve) => {
+        if (typeof window !== "undefined" && typeof window.requestAnimationFrame === "function") {
+          window.requestAnimationFrame(() => resolve());
+          return;
+        }
+        setTimeout(resolve, 0);
+      });
+    const stopGeneration = (percent: number, progressMessage: string, errorMessage: string) => {
+      setFixtureGenerationProgress({ running: false, percent, message: progressMessage });
+      setMessage(errorMessage);
+    };
+    if (!genStartDate) {
+      setMessage("Select the shared winter season start date before generating both divisions.");
+      return;
+    }
+    if (winterSeasons.length !== 2) {
+      setMessage("Both an active Premier League and Division 1 season must exist for the same winter year.");
+      return;
+    }
+    const seasonIds = winterSeasons.map((season) => season.id);
+    const startedFixture = fixtures.find(
+      (fixture) => seasonIds.includes(fixture.season_id) && fixture.status !== "pending"
+    );
+    if (startedFixture) {
+      const startedSeason = seasonById.get(startedFixture.season_id);
+      setMessage(
+        `Combined generation cannot replace the winter fixtures because ${startedSeason?.name ?? "one division"} already has an in-progress or completed match. Existing results must be retained; adjust individual future fixtures instead.`
+      );
+      return;
+    }
+    const existingSubmission = submissions.find((submission) => seasonIds.includes(submission.season_id));
+    if (existingSubmission) {
+      const submissionSeason = seasonById.get(existingSubmission.season_id);
+      setMessage(
+        `Combined generation cannot replace the winter fixtures because ${submissionSeason?.name ?? "one division"} already has a saved result submission. Review or remove that submission before replacing both fixture lists.`
+      );
+      return;
+    }
+    const plans = winterSeasons.map((season) => {
+      const planTeams = teams
+        .filter((team) => team.season_id === season.id && team.is_active)
+        .sort((left, right) => left.name.localeCompare(right.name));
+      return {
+        season,
+        teams: planTeams,
+        teamIds: planTeams.map((team) => team.id),
+        firstLegRoundCount: planTeams.length % 2 === 0 ? planTeams.length - 1 : planTeams.length,
+        matchesPerRound: Math.floor(planTeams.length / 2),
+      };
+    });
+    const incompletePlan = plans.find((plan) => plan.teams.length < 2);
+    if (incompletePlan) {
+      setMessage(`${incompletePlan.season.name} needs at least two active teams before combined fixtures can be generated.`);
+      return;
+    }
+    if (new Set(plans.map((plan) => plan.firstLegRoundCount)).size !== 1) {
+      setMessage(
+        `The two divisions currently need different cycle lengths (${plans.map((plan) => `${plan.season.name}: ${plan.firstLegRoundCount} weeks`).join("; ")}). Add or remove teams so both divisions have the same number of fixture weeks before generating them together.`
+      );
+      return;
+    }
+    const combinedTeams = plans.flatMap((plan) => plan.teams);
+    const teamVenueById = new Map(combinedTeams.map((team) => [team.id, team.location_id]));
+    const missingVenueTeam = combinedTeams.find((team) => !team.location_id);
+    if (missingVenueTeam) {
+      setMessage(`${missingVenueTeam.name} does not have a venue assigned. Update the team before generating fixtures.`);
+      return;
+    }
+    const venueCapacityById = new Map(
+      locations.map((location) => [location.id, Math.max(1, Number(location.snooker_table_count ?? 1))])
+    );
+    const firstLegRoundCount = plans[0].firstLegRoundCount;
+    const breakWeekSet = new Set<number>();
+    for (const dateValue of breakDates) {
+      const start = new Date(`${genStartDate}T12:00:00`);
+      const reservedDate = new Date(`${dateValue}T12:00:00`);
+      const diffDays = Math.floor((reservedDate.getTime() - start.getTime()) / (1000 * 60 * 60 * 24));
+      const weekNo = Math.floor(diffDays / 7) + 1;
+      if (Number.isInteger(weekNo) && weekNo > 0) breakWeekSet.add(weekNo);
+    }
+    const totalRoundCount = firstLegRoundCount * genFixtureCycles;
+    let slotWeekNo = 0;
+    const roundSlots = Array.from({ length: totalRoundCount }, () => {
+      slotWeekNo += 1;
+      while (breakWeekSet.has(slotWeekNo)) slotWeekNo += 1;
+      return {
+        weekNo: slotWeekNo,
+        fixtureDate: addDays(genStartDate, (slotWeekNo - 1) * 7),
+      };
+    });
+    const yearLabel = winterSeasons[0].name.match(/\b\d{4}\/\d{4}\b/)?.[0] ?? "";
+    const externalFixtures = fixtures.filter((fixture) => {
+      if (seasonIds.includes(fixture.season_id)) return false;
+      const fixtureSeason = seasonById.get(fixture.season_id);
+      if (!fixtureSeason || fixtureSeason.is_active === false) return false;
+      return yearLabel ? fixtureSeason.name.includes(yearLabel) : true;
+    });
+    const baseReservations = roundSlots.map((slot) => {
+      const reserved = new Map<string, number>();
+      externalFixtures.forEach((fixture) => {
+        if (!fixture.location_id) return;
+        const fixtureDate = fixture.fixture_date?.slice(0, 10) ?? null;
+        const sameSlot = fixtureDate
+          ? fixtureDate === slot.fixtureDate
+          : Number(fixture.week_no ?? 0) === slot.weekNo;
+        if (sameSlot) reserved.set(fixture.location_id, (reserved.get(fixture.location_id) ?? 0) + 1);
+      });
+      return reserved;
+    });
+    const perryStreetD = combinedTeams.find((team) => team.name.trim().toLowerCase() === "perry street d");
+    const perryStreetE = combinedTeams.find((team) => team.name.trim().toLowerCase() === "perry street e");
+    const homeGroupLimits: HomeGroupLimit[] =
+      perryStreetD && perryStreetE
+        ? [{ teamIds: new Set([perryStreetD.id, perryStreetE.id]), maxHomes: 1 }]
+        : [];
+    const cloneReservations = () => baseReservations.map((reserved) => new Map(reserved));
+    const reserveScheduledHomes = (
+      reservations: Array<Map<string, number>>,
+      rounds: DirectedMatch[][],
+      roundOffset: number
+    ) => {
+      rounds.forEach((round, roundIndex) => {
+        const reserved = reservations[roundOffset + roundIndex];
+        if (!reserved) return;
+        round.forEach((match) => {
+          const venueId = teamVenueById.get(match.homeTeamId);
+          if (venueId) reserved.set(venueId, (reserved.get(venueId) ?? 0) + 1);
+        });
+      });
+    };
+    const combinedFairness = (schedules: Map<string, DirectedMatch[][]>) =>
+      plans.reduce((total, plan) => {
+        const fairness = evaluateHomeAwayFairness(
+          schedules.get(plan.season.id) ?? [],
+          plan.teamIds,
+          roundSlots.map((slot) => slot.weekNo)
+        );
+        return total + fairness.score;
+      }, 0);
+    const orderedPlansForAttempt = (attempt: number) =>
+      attempt % 2 === 0 ? plans : [...plans].reverse();
+
+    setMessage(null);
+    setFixtureGenerationProgress({ running: true, percent: 4, message: "Preparing both winter divisions…" });
+    await yieldToBrowser();
+
+    try {
+      let schedules = new Map<string, DirectedMatch[][]>();
+      let bestFirstCycle: Map<string, DirectedMatch[][]> | null = null;
+      let bestFirstCycleFairness = Number.POSITIVE_INFINITY;
+      const firstCycleAttempts = 120;
+      for (let attempt = 0; attempt < firstCycleAttempts; attempt += 1) {
+        if (attempt % 2 === 0) {
+          setFixtureGenerationProgress({
+            running: true,
+            percent: 8 + Math.round((attempt / firstCycleAttempts) * 32),
+            message: `Building the first cycle across both divisions… ${attempt + 1} of ${firstCycleAttempts}`,
+          });
+          await yieldToBrowser();
+        }
+        const reservations = cloneReservations();
+        const candidate = new Map<string, DirectedMatch[][]>();
+        let valid = true;
+        for (const plan of orderedPlansForAttempt(attempt)) {
+          const pairings = buildRoundRobinRounds(shuffleArray(plan.teamIds));
+          const assigned = assignHomeAwayForRounds(pairings, teamVenueById, venueCapacityById, {
+            roundOffset: 0,
+            reservedVenueHomesByRound: reservations,
+            homeGroupLimits,
+            searchDeadlineAt: Date.now() + 100,
+            maxSearchNodes: 35_000,
+          });
+          if (!assigned) {
+            valid = false;
+            break;
+          }
+          candidate.set(plan.season.id, assigned);
+          reserveScheduledHomes(reservations, assigned, 0);
+        }
+        if (!valid || candidate.size !== plans.length) continue;
+        const fairness = combinedFairness(candidate);
+        if (fairness < bestFirstCycleFairness) {
+          bestFirstCycle = candidate;
+          bestFirstCycleFairness = fairness;
+        }
+        if (fairness === 0) break;
+      }
+      if (!bestFirstCycle) {
+        const sharedVenueSummary = locations
+          .map((location) => ({
+            location,
+            teams: combinedTeams.filter((team) => team.location_id === location.id),
+          }))
+          .filter((item) => item.teams.length > 1)
+          .map(
+            (item) =>
+              `• ${item.location.name}: ${item.teams.length} teams share ${Math.max(1, Number(item.location.snooker_table_count ?? 1))} table${Number(item.location.snooker_table_count ?? 1) === 1 ? "" : "s"} (${item.teams.map((team) => team.name).join(", ")}).`
+          );
+        stopGeneration(
+          40,
+          "The combined first cycle could not be completed.",
+          [
+            "Both divisions were tested together and no existing fixtures were changed.",
+            "Hard restrictions applied:",
+            "• No team can play more than once in a week.",
+            "• Home fixtures at a venue cannot exceed its registered table count.",
+            "• Perry Street D and Perry Street E cannot both be at home.",
+            "• Reserved Thursdays cannot contain league fixtures.",
+            ...sharedVenueSummary,
+            "What to modify: check the registered table counts and team venues first. If those are correct, add another playable Thursday or remove a reserved week. Home/away alternation was not treated as a hard restriction.",
+          ].join("\n")
+        );
+        return;
+      }
+      schedules = new Map(Array.from(bestFirstCycle.entries()).map(([id, rounds]) => [id, [...rounds]]));
+
+      const buildCombinedCycle = async (cycleIndex: number, progressStart: number, progressEnd: number) => {
+        let bestCycle: Map<string, DirectedMatch[][]> | null = null;
+        let bestCycleFairness = Number.POSITIVE_INFINITY;
+        const cycleAttempts = 80;
+        const roundOffset = firstLegRoundCount * cycleIndex;
+        for (let attempt = 0; attempt < cycleAttempts; attempt += 1) {
+          if (attempt % 2 === 0) {
+            setFixtureGenerationProgress({
+              running: true,
+              percent: progressStart + Math.round((attempt / cycleAttempts) * (progressEnd - progressStart)),
+              message: `${cycleIndex === 1 ? "Arranging return fixtures" : "Arranging the third cycle"} across both divisions… ${attempt + 1} of ${cycleAttempts}`,
+            });
+            await yieldToBrowser();
+          }
+          const reservations = cloneReservations();
+          schedules.forEach((rounds) => reserveScheduledHomes(reservations, rounds, 0));
+          const candidateCycle = new Map<string, DirectedMatch[][]>();
+          let valid = true;
+          for (const plan of orderedPlansForAttempt(attempt)) {
+            const firstCycle = schedules.get(plan.season.id)?.slice(0, firstLegRoundCount) ?? [];
+            const matches = firstCycle.flatMap((round) =>
+              round.map((match) =>
+                cycleIndex === 1
+                  ? { homeTeamId: match.awayTeamId, awayTeamId: match.homeTeamId }
+                  : { ...match }
+              )
+            );
+            const priorRounds = schedules.get(plan.season.id) ?? [];
+            const scheduled = scheduleDirectedMatchesIntoRounds(
+              shuffleArray(matches),
+              firstLegRoundCount,
+              plan.matchesPerRound,
+              teamVenueById,
+              venueCapacityById,
+              priorRounds,
+              {
+                roundOffset,
+                reservedVenueHomesByRound: reservations,
+                homeGroupLimits,
+                searchDeadlineAt: Date.now() + 100,
+                maxSearchNodes: 35_000,
+              }
+            );
+            if (!scheduled) {
+              valid = false;
+              break;
+            }
+            candidateCycle.set(plan.season.id, scheduled);
+            reserveScheduledHomes(reservations, scheduled, roundOffset);
+          }
+          if (!valid || candidateCycle.size !== plans.length) continue;
+          const completeCandidate = new Map<string, DirectedMatch[][]>();
+          plans.forEach((plan) => {
+            completeCandidate.set(plan.season.id, [
+              ...(schedules.get(plan.season.id) ?? []),
+              ...(candidateCycle.get(plan.season.id) ?? []),
+            ]);
+          });
+          const fairness = combinedFairness(completeCandidate);
+          if (fairness < bestCycleFairness) {
+            bestCycle = candidateCycle;
+            bestCycleFairness = fairness;
+          }
+          if (fairness === 0) break;
+        }
+        return bestCycle;
+      };
+
+      if (genFixtureCycles >= 2) {
+        const returnCycle = await buildCombinedCycle(1, 42, genFixtureCycles === 3 ? 63 : 84);
+        if (!returnCycle) {
+          stopGeneration(
+            genFixtureCycles === 3 ? 63 : 84,
+            "The combined return cycle could not be completed.",
+            [
+              "Both divisions were rearranged together, but the return cycle still could not satisfy every hard rule. No existing fixtures were changed.",
+              "Restrictions checked: venue table capacity across both divisions; no team twice in one week; Perry Street D/E not both at home; and all shared reserved Thursdays.",
+              "Home/away alternation is only a preference and did not cause this failure.",
+              "What to modify: verify Perry Street is registered with 2 tables, then add one playable Thursday or remove one shared reserved date before trying again.",
+            ].join("\n")
+          );
+          return;
+        }
+        plans.forEach((plan) => {
+          schedules.set(plan.season.id, [
+            ...(schedules.get(plan.season.id) ?? []),
+            ...(returnCycle.get(plan.season.id) ?? []),
+          ]);
+        });
+      }
+      if (genFixtureCycles === 3) {
+        const thirdCycle = await buildCombinedCycle(2, 65, 84);
+        if (!thirdCycle) {
+          stopGeneration(
+            84,
+            "The combined third cycle could not be completed.",
+            [
+              "Both divisions were rearranged together, but the third cycle still could not satisfy every hard rule. No existing fixtures were changed.",
+              "Restrictions checked: venue table capacity across both divisions; no team twice in one week; Perry Street D/E not both at home; and all shared reserved Thursdays.",
+              "Home/away alternation is only a preference and did not cause this failure.",
+              "What to modify: add one playable Thursday or remove one shared reserved date, then try again.",
+            ].join("\n")
+          );
+          return;
+        }
+        plans.forEach((plan) => {
+          schedules.set(plan.season.id, [
+            ...(schedules.get(plan.season.id) ?? []),
+            ...(thirdCycle.get(plan.season.id) ?? []),
+          ]);
+        });
+      }
+
+      setFixtureGenerationProgress({ running: true, percent: 87, message: "Validating the combined winter schedule…" });
+      await yieldToBrowser();
+      const fixturePayload = plans.flatMap((plan) =>
+        (schedules.get(plan.season.id) ?? []).flatMap((round, roundIndex) => {
+          const slot = roundSlots[roundIndex];
+          return round.map((match) => ({
+            season_id: plan.season.id,
+            location_id: teamVenueById.get(match.homeTeamId) ?? plan.season.location_id ?? null,
+            week_no: slot.weekNo,
+            fixture_date: slot.fixtureDate,
+            home_team_id: match.homeTeamId,
+            away_team_id: match.awayTeamId,
+          }));
+        })
+      );
+      const venueViolations: string[] = [];
+      roundSlots.forEach((slot, roundIndex) => {
+        const homes = new Map<string, Team[]>();
+        plans.forEach((plan) => {
+          (schedules.get(plan.season.id)?.[roundIndex] ?? []).forEach((match) => {
+            const homeTeam = teamById.get(match.homeTeamId);
+            if (!homeTeam?.location_id) return;
+            homes.set(homeTeam.location_id, [...(homes.get(homeTeam.location_id) ?? []), homeTeam]);
+          });
+        });
+        homes.forEach((homeTeams, venueId) => {
+          const totalHomes = homeTeams.length + (baseReservations[roundIndex]?.get(venueId) ?? 0);
+          const capacity = venueCapacityById.get(venueId) ?? 1;
+          if (totalHomes > capacity) {
+            venueViolations.push(
+              `${slot.fixtureDate}: ${locationById.get(venueId)?.name ?? "Unknown venue"} needs ${totalHomes} tables but has ${capacity}.`
+            );
+          }
+        });
+      });
+      if (venueViolations.length > 0) {
+        stopGeneration(
+          87,
+          "Combined validation found a venue conflict.",
+          `No fixtures were changed.\n\n${venueViolations.slice(0, 6).map((item) => `• ${item}`).join("\n")}`
+        );
+        return;
+      }
+      const perSeasonCounts = plans.map((plan) => ({
+        plan,
+        count: fixturePayload.filter((fixture) => fixture.season_id === plan.season.id).length,
+        fairness: evaluateHomeAwayFairness(
+          schedules.get(plan.season.id) ?? [],
+          plan.teamIds,
+          roundSlots.map((slot) => slot.weekNo)
+        ),
+      }));
+      const confirmed = await showConfirm({
+        title: "Preview Combined Winter Fixtures",
+        description: [
+          `Rack & Frame has produced ${fixturePayload.length} fixtures across both divisions from ${new Date(`${genStartDate}T12:00:00`).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}.`,
+          "",
+          ...perSeasonCounts.map(({ plan, count, fairness }) =>
+            `${plan.season.name}: ${count} fixtures; ${fairness.consecutivePairs === 0 ? "full home/away alternation" : `${fairness.consecutivePairs} unavoidable consecutive home/away pairing${fairness.consecutivePairs === 1 ? "" : "s"}`}.`
+          ),
+          "",
+          `Shared rules passed: venue table capacities; Perry Street maximum ${venueCapacityById.get(perryStreetD?.location_id ?? "") ?? 2} home teams per Thursday; Perry Street D/E never both at home; ${breakWeekSet.size} reserved week${breakWeekSet.size === 1 ? "" : "s"}.`,
+          "",
+          "Continuing will replace the existing fixture lists for both winter divisions. No player or captain assignments will be changed.",
+        ].join("\n"),
+        confirmLabel: "Replace Both Fixture Lists",
+        cancelLabel: "Keep Existing Fixtures",
+        tone: "danger",
+      });
+      if (!confirmed) {
+        setFixtureGenerationProgress({ running: false, percent: 87, message: "Preview cancelled; existing fixtures were kept." });
+        return;
+      }
+
+      const existingFixtureIds = fixtures
+        .filter((fixture) => seasonIds.includes(fixture.season_id))
+        .map((fixture) => fixture.id);
+      setFixtureGenerationProgress({ running: true, percent: 92, message: "Saving the replacement fixtures safely…" });
+      const insertResult = await client
+        .from("league_fixtures")
+        .insert(fixturePayload)
+        .select("id,season_id,week_no,home_team_id,away_team_id");
+      if (insertResult.error) {
+        stopGeneration(92, "The combined fixtures could not be saved; the existing lists were kept.", insertResult.error.message);
+        return;
+      }
+      const insertedFixtures = insertResult.data ?? [];
+      if (insertedFixtures.length > 0) {
+        setFixtureGenerationProgress({ running: true, percent: 97, message: "Creating scorecards for both divisions…" });
+        const frameRows = insertedFixtures.flatMap((fixture) => {
+          const fixtureSeason = seasonById.get(fixture.season_id);
+          const cfg = getSeasonFrameConfig(fixtureSeason);
+          return [
+            ...Array.from({ length: cfg.singles }, (_, index) => ({
+              fixture_id: fixture.id,
+              slot_no: index + 1,
+              slot_type: "singles" as const,
+              home_player1_id: null,
+              home_player2_id: null,
+              away_player1_id: null,
+              away_player2_id: null,
+              home_nominated: false,
+              away_nominated: false,
+              home_forfeit: false,
+              away_forfeit: false,
+              winner_side: null,
+              home_nominated_name: null,
+              away_nominated_name: null,
+              home_points_scored: null,
+              away_points_scored: null,
+            })),
+            ...Array.from({ length: cfg.doubles }, (_, index) => ({
+              fixture_id: fixture.id,
+              slot_no: cfg.singles + index + 1,
+              slot_type: "doubles" as const,
+              home_player1_id: null,
+              home_player2_id: null,
+              away_player1_id: null,
+              away_player2_id: null,
+              home_nominated: false,
+              away_nominated: false,
+              home_forfeit: false,
+              away_forfeit: false,
+              winner_side: null,
+              home_nominated_name: null,
+              away_nominated_name: null,
+              home_points_scored: null,
+              away_points_scored: null,
+            })),
+          ];
+        });
+        const frameInsertResult = await client.from("league_fixture_frames").insert(frameRows);
+        if (frameInsertResult.error) {
+          const insertedIds = insertedFixtures.map((fixture) => fixture.id);
+          await client.from("league_fixtures").delete().in("id", insertedIds);
+          stopGeneration(97, "The combined scorecards could not be created; the existing lists were kept.", frameInsertResult.error.message);
+          return;
+        }
+      }
+      if (existingFixtureIds.length > 0) {
+        setFixtureGenerationProgress({ running: true, percent: 98, message: "Activating the new lists and removing the old pending fixtures…" });
+        const removeOldResult = await client.from("league_fixtures").delete().in("id", existingFixtureIds);
+        if (removeOldResult.error) {
+          const insertedIds = insertedFixtures.map((fixture) => fixture.id);
+          const rollbackResult = await client.from("league_fixtures").delete().in("id", insertedIds);
+          stopGeneration(
+            98,
+            rollbackResult.error
+              ? "The old fixtures could not be removed and duplicate fixtures may need review."
+              : "The old fixtures could not be removed; the replacement lists were rolled back.",
+            removeOldResult.error.message
+          );
+          return;
+        }
+      }
+      setFixtureGenerationProgress({ running: true, percent: 99, message: "Refreshing both divisions…" });
+      await loadAll();
+      setFixtureGenerationProgress({ running: false, percent: 100, message: `${fixturePayload.length} winter fixtures generated successfully.` });
+      setInfoModal({
+        title: "Both Winter Divisions Generated",
+        description: `${fixturePayload.length} fixtures were generated and validated together for ${winterSeasons.map((season) => season.name).join(" and ")}. Shared venue capacity, the Perry Street D/E restriction and reserved weeks were applied across the complete schedule.`,
+      });
+    } catch (error) {
+      const description = error instanceof Error ? error.message : "An unexpected combined scheduling error occurred.";
+      stopGeneration(0, "Combined fixture generation stopped.", `No existing fixtures were deliberately changed. ${description}`);
+    }
+  };
+
   const generateFixtures = async () => {
     const client = supabase;
     if (!client) return;
@@ -2747,6 +3264,10 @@ export default function LeaguePage() {
     }
     if (!seasonId) {
       setMessage("Select a league first.");
+      return;
+    }
+    if (generatesCombinedWinterFixtures) {
+      await generateCombinedWinterFixtures(combinedWinterFixtureSeasons);
       return;
     }
     const getBreakWeeksFromDates = (): number[] => {
@@ -7963,10 +8484,31 @@ export default function LeaguePage() {
                   )}
                   {canManage ? (
                     <>
-                      <p className="text-sm font-semibold text-slate-900">Auto-generate full league fixtures</p>
-                      <p className="mt-1 text-xs text-slate-600">
-                        Choose a season start date, then add any reserved Thursdays as break weeks (no league fixtures). The generator prioritises venue and table limits, then selects the fairest available home/away pattern to avoid consecutive home or away weeks. Captain and vice-captain roles can be assigned afterwards.
+                      <p className="text-sm font-semibold text-slate-900">
+                        {generatesCombinedWinterFixtures ? "Generate both winter divisions together" : "Auto-generate full league fixtures"}
                       </p>
+                      <p className="mt-1 text-xs text-slate-600">
+                        {generatesCombinedWinterFixtures
+                          ? "Premier League and Division 1 are generated as one shared schedule. Venue/table limits, reserved Thursdays and the Perry Street D/E restriction are hard rules; avoiding consecutive home or away weeks is a fairness preference. You will see a full preview before either fixture list is replaced."
+                          : "Choose a season start date, then add any reserved Thursdays as break weeks (no league fixtures). The generator prioritises venue and table limits, then selects the fairest available home/away pattern to avoid consecutive home or away weeks. Captain and vice-captain roles can be assigned afterwards."}
+                      </p>
+                      {generatesCombinedWinterFixtures ? (
+                        <div className="mt-2 rounded-xl border border-teal-200 bg-teal-50 p-3 text-xs text-teal-900">
+                          <p className="font-semibold">Combined winter generation</p>
+                          <p className="mt-1">
+                            This will prepare and validate {combinedWinterFixtureSeasons.map((season) => season.name).join(" and ")} together. Existing fixtures remain unchanged until you approve the preview.
+                          </p>
+                          <p className="mt-2 font-semibold">Hard scheduling restrictions</p>
+                          <ul className="mt-1 list-disc space-y-1 pl-5">
+                            <li>No team can play more than once on the same Thursday.</li>
+                            <li>Each venue&apos;s combined home fixtures cannot exceed its registered table count.</li>
+                            <li>Perry Street can host no more than 2 teams across both divisions on the same Thursday.</li>
+                            <li>Perry Street D and Perry Street E cannot both be at home.</li>
+                            <li>Reserved Thursdays apply to both divisions and contain no league fixtures.</li>
+                          </ul>
+                          <p className="mt-2"><span className="font-semibold">Fairness preference:</span> minimise consecutive home or away weeks without rejecting an otherwise valid fixture list.</p>
+                        </div>
+                      ) : null}
                       <div className="mt-2 grid items-end gap-2 sm:grid-cols-6">
                         <label className="space-y-1">
                           <span className="text-xs font-medium text-slate-600">Season start date</span>
@@ -8004,8 +8546,13 @@ export default function LeaguePage() {
                           </select>
                         </label>
                         <label className="flex h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
-                          <input type="checkbox" disabled={fixtureGenerationProgress?.running} checked={genClearExisting} onChange={(e) => setGenClearExisting(e.target.checked)} />
-                          Replace existing fixtures
+                          <input
+                            type="checkbox"
+                            disabled={fixtureGenerationProgress?.running || generatesCombinedWinterFixtures}
+                            checked={generatesCombinedWinterFixtures ? true : genClearExisting}
+                            onChange={(e) => setGenClearExisting(e.target.checked)}
+                          />
+                          {generatesCombinedWinterFixtures ? "Replace both divisions after preview" : "Replace existing fixtures"}
                         </label>
                         <button
                           type="button"
@@ -8014,7 +8561,11 @@ export default function LeaguePage() {
                           aria-busy={fixtureGenerationProgress?.running}
                           className="h-11 rounded-xl bg-slate-900 px-4 text-sm font-medium text-white disabled:cursor-wait disabled:opacity-75"
                         >
-                          {fixtureGenerationProgress?.running ? "Generating…" : "Generate fixtures"}
+                          {fixtureGenerationProgress?.running
+                            ? "Generating…"
+                            : generatesCombinedWinterFixtures
+                              ? "Generate Both Divisions"
+                              : "Generate fixtures"}
                         </button>
                       </div>
                       {fixtureGenerationProgress ? (
