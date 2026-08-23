@@ -546,8 +546,8 @@ export default function NotificationsPage() {
         entryPackRows.forEach((row) => {
           out.push({
             key: `entry-pack:${row.id}`,
-            title: "Team entry pack awaiting review",
-            detail: `${entryPackTeamName.get(row.team_id) ?? "Team"}${row.contact_name ? ` · submitted by ${row.contact_name}` : ""}`,
+            title: "League team registration awaiting review",
+            detail: entryPackTeamName.get(row.team_id) ?? "Team",
             created_at: row.updated_at,
             href: "/entry-packs",
             status: row.status,

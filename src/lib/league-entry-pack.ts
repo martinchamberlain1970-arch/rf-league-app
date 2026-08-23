@@ -66,21 +66,14 @@ export function normalizeEntryPackPayload(value: unknown): LeagueEntryPackPayloa
 
 export function validateEntryPackPayload(payload: LeagueEntryPackPayload, forSubmission: boolean) {
   if (!forSubmission) {
-    if (payload.contactEmail && !/^\S+@\S+\.\S+$/.test(payload.contactEmail)) return "Enter a valid contact email address or leave it blank.";
-    if (payload.contactPhone && payload.contactPhone.replace(/\D/g, "").length < 10) return "Enter a complete contact telephone number or leave it blank while saving the draft.";
     const draftNames = new Set<string>();
     for (const player of payload.players) {
-      if (player.email && !/^\S+@\S+\.\S+$/.test(player.email)) return `Enter a valid email address for ${player.fullName || "the player"} or leave it blank.`;
-      if (player.phoneNumber && player.phoneNumber.replace(/\D/g, "").length < 10) return `Enter a complete telephone number for ${player.fullName || "the player"} or leave it blank while saving the draft.`;
       const nameKey = player.fullName.toLowerCase();
       if (nameKey && draftNames.has(nameKey)) return `${player.fullName} appears more than once in the roster.`;
       if (nameKey) draftNames.add(nameKey);
     }
     return null;
   }
-  if (!payload.contactName) return "Enter the name of the person completing the pack.";
-  if (!payload.contactPhone || payload.contactPhone.replace(/\D/g, "").length < 10) return "Enter a valid contact telephone number.";
-  if (payload.contactEmail && !/^\S+@\S+\.\S+$/.test(payload.contactEmail)) return "Enter a valid contact email address or leave it blank.";
   if (payload.players.length === 0) return "Add at least one player to the team roster.";
 
   const names = new Set<string>();
@@ -93,19 +86,14 @@ export function validateEntryPackPayload(payload: LeagueEntryPackPayload, forSub
     const nameKey = player.fullName.toLowerCase();
     if (names.has(nameKey)) return `${player.fullName} appears more than once in the roster.`;
     names.add(nameKey);
-    if (!player.phoneNumber || player.phoneNumber.replace(/\D/g, "").length < 10) return `Enter a valid match-arranging telephone number for ${player.fullName}.`;
-    if (player.email && !/^\S+@\S+\.\S+$/.test(player.email)) return `Enter a valid email address for ${player.fullName} or leave it blank.`;
     if (player.isCaptain) captainCount += 1;
     if (player.isViceCaptain) viceCount += 1;
     if (player.isCaptain && player.isViceCaptain) return `${player.fullName} cannot be both captain and vice-captain.`;
-    if (player.isJunior && (!player.guardianName || player.guardianPhone.replace(/\D/g, "").length < 10)) {
-      return `Enter a guardian name and telephone number for junior player ${player.fullName}.`;
-    }
+    if (player.isJunior && !player.guardianName) return `Enter a parent or guardian name for junior player ${player.fullName}.`;
     if (player.isJunior && !player.juniorAgeBand) return `Select an age band for junior player ${player.fullName}.`;
   }
   if (captainCount !== 1) return "Select exactly one team captain.";
   if (viceCount > 1) return "Select no more than one vice-captain.";
-  if (!payload.phoneSharingConfirmed) return "Confirm the match-arranging telephone-number declaration.";
   if (!payload.accuracyConfirmed) return "Confirm that the league roster and captain roles are accurate.";
   return null;
 }

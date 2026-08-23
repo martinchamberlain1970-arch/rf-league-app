@@ -59,7 +59,7 @@ const guideSections = [
       "Use League Manager > Handicaps to run the Elo review and export the handicap list.",
       "Manual corrections remain available, but normal movement is driven by the Elo review flow.",
       "Use Signup Requests, Results Queue, and Notifications to manage the live system.",
-      "Use Team Entry Packs to issue a private no-login link for each team and import winter rosters, mandatory match telephone numbers, captain roles, and cup selections.",
+      "Use League Team Registrations to share one no-login URL, track every team, and import submitted player rosters and captain roles. Private competition contacts are collected separately.",
       "System Owner is a separate platform role for backups, protected access, security, audit, and destructive controls.",
     ],
   },

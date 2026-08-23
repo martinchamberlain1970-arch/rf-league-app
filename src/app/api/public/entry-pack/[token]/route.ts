@@ -47,13 +47,13 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ token:
   }
 
   const normalizedPack = normalizeEntryPackPayload({
-    contactName: pack.contact_name,
-    contactEmail: pack.contact_email,
-    contactPhone: pack.contact_phone,
-    players: pack.players,
+    contactName: "",
+    contactEmail: "",
+    contactPhone: "",
+    players: Array.isArray(pack.players) ? pack.players.map((player: Record<string, unknown>) => ({ ...player, phoneNumber: "", email: "", guardianPhone: "" })) : [],
     competitionNotes: pack.competition_notes,
     generalNotes: pack.general_notes,
-    phoneSharingConfirmed: pack.phone_sharing_confirmed,
+    phoneSharingConfirmed: false,
     accuracyConfirmed: pack.accuracy_confirmed,
   });
 
@@ -108,21 +108,25 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
   const validationError = validateEntryPackPayload(payload, action === "submit");
   if (validationError) return NextResponse.json({ error: validationError }, { status: 400, headers: noStore });
 
-  payload.players = payload.players.map((player) => ({ ...player, competitionIds: [] }));
+  payload.contactName = "";
+  payload.contactEmail = "";
+  payload.contactPhone = "";
+  payload.players = payload.players.map((player) => ({ ...player, phoneNumber: "", email: "", guardianPhone: "", competitionIds: [] }));
   payload.competitionNotes = "";
+  payload.phoneSharingConfirmed = false;
 
   const now = new Date().toISOString();
   const updateRes = await client
     .from("league_entry_packs")
     .update({
       status: action === "submit" ? "submitted" : "draft",
-      contact_name: payload.contactName,
-      contact_email: payload.contactEmail || null,
-      contact_phone: payload.contactPhone,
+      contact_name: null,
+      contact_email: null,
+      contact_phone: null,
       players: payload.players,
       competition_notes: payload.competitionNotes || null,
       general_notes: payload.generalNotes || null,
-      phone_sharing_confirmed: payload.phoneSharingConfirmed,
+      phone_sharing_confirmed: false,
       accuracy_confirmed: payload.accuracyConfirmed,
       submitted_at: action === "submit" ? now : null,
       reviewed_at: null,

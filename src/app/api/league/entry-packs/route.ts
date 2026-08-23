@@ -78,7 +78,7 @@ export async function GET(req: NextRequest) {
 
 async function createOrReturnPack(adminClient: SupabaseClient, user: User, seasonId: string, teamId: string) {
   await assertEntryPacksOpen(adminClient, seasonId);
-  const teamRes = await adminClient.from("league_teams").select("id,season_id,captain_email,captain_phone").eq("id", teamId).maybeSingle();
+  const teamRes = await adminClient.from("league_teams").select("id,season_id").eq("id", teamId).maybeSingle();
   if (teamRes.error) throw new Error(teamRes.error.message);
   if (!teamRes.data || teamRes.data.season_id !== seasonId) throw new Error("Select a team belonging to the chosen season.");
   const existingRes = await adminClient
@@ -99,45 +99,36 @@ async function createOrReturnPack(adminClient: SupabaseClient, user: User, seaso
   const playerIds = memberRows.map((member) => member.player_id).filter(Boolean);
   let seededPlayers: LeagueEntryPackPlayer[] = [];
   if (playerIds.length > 0) {
-    const [playersRes, contactsRes] = await Promise.all([
-      adminClient.from("players").select("id,full_name,display_name,age_band,guardian_name").in("id", playerIds),
-      adminClient.from("player_private_contacts").select("player_id,phone_number,guardian_phone").in("player_id", playerIds),
-    ]);
-    if (playersRes.error || contactsRes.error) throw new Error(playersRes.error?.message ?? contactsRes.error?.message ?? "Failed to pre-populate the entry pack.");
+    const playersRes = await adminClient.from("players").select("id,full_name,display_name,age_band,guardian_name").in("id", playerIds);
+    if (playersRes.error) throw new Error(playersRes.error.message);
     const playerById = new Map((playersRes.data ?? []).map((player) => [player.id, player]));
-    const contactByPlayerId = new Map((contactsRes.data ?? []).map((contact) => [contact.player_id, contact]));
     seededPlayers = memberRows.flatMap((member) => {
       const player = playerById.get(member.player_id);
       if (!player) return [];
       const isJunior = Boolean(player.age_band && player.age_band !== "18_plus");
       const juniorAgeBand: LeagueEntryPackPlayer["juniorAgeBand"] =
         player.age_band === "under_13" || player.age_band === "13_15" || player.age_band === "16_17" ? player.age_band : "";
-      const privateContact = contactByPlayerId.get(player.id);
       return [{
         rowId: `player-${player.id}`,
         fullName: player.full_name?.trim() || player.display_name,
-        phoneNumber: privateContact?.phone_number ?? "",
+        phoneNumber: "",
         email: "",
         isCaptain: Boolean(member.is_captain),
         isViceCaptain: Boolean(member.is_vice_captain),
         isJunior,
         juniorAgeBand,
         guardianName: player.guardian_name ?? "",
-        guardianPhone: isJunior ? privateContact?.guardian_phone ?? privateContact?.phone_number ?? "" : "",
+        guardianPhone: "",
         competitionIds: [],
       }];
     });
   }
-  const seededCaptain = seededPlayers.find((player) => player.isCaptain);
   const createRes = await adminClient
     .from("league_entry_packs")
     .insert({
       season_id: seasonId,
       team_id: teamId,
       created_by_user_id: user.id,
-      contact_name: seededCaptain?.fullName ?? null,
-      contact_email: teamRes.data.captain_email ?? null,
-      contact_phone: teamRes.data.captain_phone ?? seededCaptain?.phoneNumber ?? null,
       players: seededPlayers,
     })
     .select("id,public_token,status")
@@ -146,21 +137,10 @@ async function createOrReturnPack(adminClient: SupabaseClient, user: User, seaso
   return createRes.data;
 }
 
-function roleContacts(players: LeagueEntryPackPlayer[], fallbackEmail: string, fallbackPhone: string) {
-  const captain = players.find((player) => player.isCaptain);
-  const vice = players.find((player) => player.isViceCaptain);
-  return {
-    captain_email: captain?.email || fallbackEmail || null,
-    captain_phone: captain?.phoneNumber || fallbackPhone || null,
-    vice_captain_email: vice?.email || null,
-    vice_captain_phone: vice?.phoneNumber || null,
-  };
-}
-
 async function approveAndImport(adminClient: SupabaseClient, user: User, packId: string, reviewNotes: string) {
   const packRes = await adminClient
     .from("league_entry_packs")
-    .select("id,season_id,team_id,status,contact_email,contact_phone,players")
+    .select("id,season_id,team_id,status,players")
     .eq("id", packId)
     .maybeSingle();
   if (packRes.error) throw new Error(packRes.error.message);
@@ -170,11 +150,11 @@ async function approveAndImport(adminClient: SupabaseClient, user: User, packId:
 
   const payload = normalizeEntryPackPayload({
     contactName: "Reviewed pack",
-    contactEmail: packRes.data.contact_email,
-    contactPhone: packRes.data.contact_phone,
+    contactEmail: "",
+    contactPhone: "",
     players: packRes.data.players,
     competitionNotes: "",
-    phoneSharingConfirmed: true,
+    phoneSharingConfirmed: false,
     accuracyConfirmed: true,
   });
   const validationError = validateEntryPackPayload(payload, true);
@@ -234,19 +214,6 @@ async function approveAndImport(adminClient: SupabaseClient, user: User, packId:
     resolved.set(player.rowId, insertRes.data.id);
   }
 
-  for (const player of payload.players) {
-    const playerId = resolved.get(player.rowId)!;
-    const contactRes = await adminClient.from("player_private_contacts").upsert({
-      player_id: playerId,
-      phone_number: player.phoneNumber,
-      phone_share_consent: true,
-      guardian_phone: player.isJunior ? player.guardianPhone : null,
-      source: "public_league_entry_pack",
-      updated_at: new Date().toISOString(),
-    }, { onConflict: "player_id" });
-    if (contactRes.error) throw new Error(contactRes.error.message);
-  }
-
   const clearRolesRes = await adminClient
     .from("league_team_members")
     .update({ is_captain: false, is_vice_captain: false })
@@ -275,10 +242,6 @@ async function approveAndImport(adminClient: SupabaseClient, user: User, packId:
         });
     if (memberWrite.error) throw new Error(memberWrite.error.message);
   }
-
-  const contacts = roleContacts(payload.players, payload.contactEmail, payload.contactPhone);
-  const teamUpdateRes = await adminClient.from("league_teams").update(contacts).eq("id", packRes.data.team_id);
-  if (teamUpdateRes.error) throw new Error(teamUpdateRes.error.message);
 
   const now = new Date().toISOString();
   const approvalRes = await adminClient
@@ -321,7 +284,7 @@ export async function POST(req: NextRequest) {
     await assertEntryPacksOpen(adminClient, packScopeRes.data.season_id);
     if (action === "rotate") {
       const token = Array.from(crypto.getRandomValues(new Uint8Array(24)), (byte) => byte.toString(16).padStart(2, "0")).join("");
-      const rotateRes = await adminClient.from("league_entry_packs").update({ public_token: token, updated_at: new Date().toISOString() }).eq("id", packId).select("public_token").single();
+      const rotateRes = await adminClient.from("league_entry_packs").update({ public_token: token, common_draft_token: null, updated_at: new Date().toISOString() }).eq("id", packId).select("public_token").single();
       if (rotateRes.error) throw new Error(rotateRes.error.message);
       return NextResponse.json({ ok: true, publicToken: rotateRes.data.public_token });
     }

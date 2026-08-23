@@ -29,7 +29,7 @@ const links = [
   { href: "/audit", title: "Audit Log", desc: "System Owner action trail across the platform." },
   { href: "/rating-audit", title: "Elo Audit", desc: "League-officer review of Elo, handicap alignment, and rated-frame counts." },
   { href: "/signup-requests", title: "Signup Requests", desc: "Review new-account profile and location requests." },
-  { href: "/entry-packs", title: "Team Entry Packs", desc: "Issue private winter registration links and import team rosters and cup entries." },
+  { href: "/entry-packs", title: "League Team Registrations", desc: "Share one public registration form, track team progress and import submitted rosters." },
   { href: "/usage", title: "Usage Analytics", desc: "System Owner page-usage summary." },
   { href: "/results", title: "Results Queue", desc: "Review and approve submitted results." },
   { href: "/notifications", title: "Notifications", desc: "Read and manage your inbox notifications." },
@@ -273,7 +273,7 @@ export default function HomePage() {
       return admin.canManageLeague ? "Review player profiles, claims and requested updates." : "View your own player profile and status.";
     }
     if (href === "/entry-packs") {
-      return "Send each team a private no-login link, then review and import its winter roster and cup selections.";
+      return "Share one no-login league-registration URL, then track, review and import each team’s players and captain roles.";
     }
     if (href === "/events/new") {
       return admin.canManageLeague
