@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { normalizeEntryPackPayload } from "@/lib/league-entry-pack";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -26,7 +27,10 @@ async function openRegistrationData(client: SupabaseClient) {
   const seasons = (seasonsRes.data ?? []).filter((season) => !startedSeasonIds.has(season.id));
   const seasonIds = new Set(seasons.map((season) => season.id));
   const locationName = new Map((locationsRes.data ?? []).map((location) => [location.id, location.name]));
-  const statusByTeamId = new Map((packsRes.data ?? []).map((pack) => [pack.team_id, pack.status === "draft" && (!Array.isArray(pack.players) || pack.players.length === 0) ? "not_started" : pack.status]));
+  const statusByTeamId = new Map((packsRes.data ?? []).map((pack) => {
+    const namedPlayerCount = normalizeEntryPackPayload({ players: pack.players }).players.filter((player) => Boolean(player.fullName)).length;
+    return [pack.team_id, pack.status === "draft" && namedPlayerCount === 0 ? "not_started" : pack.status];
+  }));
   const teams = (teamsRes.data ?? []).filter((team) => seasonIds.has(team.season_id)).map((team) => ({
     id: team.id,
     seasonId: team.season_id,
