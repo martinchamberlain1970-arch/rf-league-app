@@ -68,10 +68,20 @@ async function loadPack(client: SupabaseClient, token: string) {
 async function loadOtherTeamSelections(client: SupabaseClient, seasonId: string, currentTeamId: string, locationId: string | null) {
   const selectedByName = new Map<string, string>();
   if (!locationId) return { selectedByName };
+  const [currentSeasonRes, activeSeasonsRes] = await Promise.all([
+    client.from("league_seasons").select("id,name").eq("id", seasonId).maybeSingle(),
+    client.from("league_seasons").select("id,name").eq("is_active", true),
+  ]);
+  const seasonError = currentSeasonRes.error?.message || activeSeasonsRes.error?.message;
+  if (seasonError) return { selectedByName, error: seasonError };
+  const yearLabel = currentSeasonRes.data?.name.match(/\b\d{4}\/\d{4}\b/)?.[0] ?? null;
+  const relatedSeasonIds = (activeSeasonsRes.data ?? [])
+    .filter((season) => season.id === seasonId || (yearLabel && season.name.includes(yearLabel)))
+    .map((season) => season.id);
   const teamsRes = await client
     .from("league_teams")
-    .select("id,name")
-    .eq("season_id", seasonId)
+    .select("id,name,season_id")
+    .in("season_id", relatedSeasonIds.length > 0 ? relatedSeasonIds : [seasonId])
     .eq("location_id", locationId)
     .neq("id", currentTeamId);
   if (teamsRes.error) return { selectedByName, error: teamsRes.error.message };
@@ -81,7 +91,7 @@ async function loadOtherTeamSelections(client: SupabaseClient, seasonId: string,
   const packsRes = await client
     .from("league_entry_packs")
     .select("team_id,status,players,common_draft_token")
-    .eq("season_id", seasonId)
+    .in("season_id", relatedSeasonIds.length > 0 ? relatedSeasonIds : [seasonId])
     .in("team_id", otherTeams.map((team) => team.id));
   if (packsRes.error) return { selectedByName, error: packsRes.error.message };
   for (const otherPack of packsRes.data ?? []) {
@@ -95,6 +105,55 @@ async function loadOtherTeamSelections(client: SupabaseClient, seasonId: string,
     }
   }
   return { selectedByName };
+}
+
+async function loadClubPlayers(client: SupabaseClient, locationId: string) {
+  const [directPlayersRes, registeredTeamsRes, liveTeamsRes] = await Promise.all([
+    client
+      .from("players")
+      .select("id,full_name,display_name,location_id,is_archived")
+      .eq("location_id", locationId)
+      .or("is_archived.is.null,is_archived.eq.false"),
+    client.from("league_registered_teams").select("id").eq("location_id", locationId),
+    client.from("league_teams").select("id").eq("location_id", locationId),
+  ]);
+  const firstError = directPlayersRes.error?.message || registeredTeamsRes.error?.message || liveTeamsRes.error?.message;
+  if (firstError) return { players: [], error: firstError };
+
+  type ClubPlayer = { id: string; full_name: string | null; display_name: string; location_id: string | null; is_archived?: boolean | null };
+  const playersById = new Map<string, ClubPlayer>();
+  ((directPlayersRes.data ?? []) as ClubPlayer[]).forEach((player) => playersById.set(player.id, player));
+  const registeredTeamIds = (registeredTeamsRes.data ?? []).map((team) => team.id);
+  const liveTeamIds = (liveTeamsRes.data ?? []).map((team) => team.id);
+  const [registeredMembersRes, liveMembersRes] = await Promise.all([
+    registeredTeamIds.length > 0
+      ? client.from("league_registered_team_members").select("player_id").in("team_id", registeredTeamIds)
+      : Promise.resolve({ data: [], error: null }),
+    liveTeamIds.length > 0
+      ? client.from("league_team_members").select("player_id").in("team_id", liveTeamIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const memberError = registeredMembersRes.error?.message || liveMembersRes.error?.message;
+  if (memberError) return { players: [], error: memberError };
+  const rosterPlayerIds = new Set([
+    ...(registeredMembersRes.data ?? []).map((member) => member.player_id),
+    ...(liveMembersRes.data ?? []).map((member) => member.player_id),
+  ]);
+  const missingPlayerIds = Array.from(rosterPlayerIds).filter((playerId) => !playersById.has(playerId));
+  if (missingPlayerIds.length > 0) {
+    const rosterPlayersRes = await client
+      .from("players")
+      .select("id,full_name,display_name,location_id,is_archived")
+      .in("id", missingPlayerIds)
+      .or("is_archived.is.null,is_archived.eq.false");
+    if (rosterPlayersRes.error) return { players: [], error: rosterPlayersRes.error.message };
+    ((rosterPlayersRes.data ?? []) as ClubPlayer[]).forEach((player) => playersById.set(player.id, player));
+  }
+  return {
+    players: Array.from(playersById.values()).sort((left, right) =>
+      (left.full_name?.trim() || left.display_name).localeCompare(right.full_name?.trim() || right.display_name)
+    ),
+  };
 }
 
 export async function GET(_req: NextRequest, context: { params: Promise<{ token: string }> }) {
@@ -119,18 +178,13 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ token:
 
   let clubPlayers: Array<{ id: string; name: string; selectedByOtherTeam: string | null }> = [];
   if (teamRes.data.location_id) {
-    const [clubPlayersRes, selections] = await Promise.all([
-      client
-        .from("players")
-        .select("id,full_name,display_name")
-        .eq("location_id", teamRes.data.location_id)
-        .or("is_archived.is.null,is_archived.eq.false")
-        .order("display_name"),
+    const [clubPlayerResult, selections] = await Promise.all([
+      loadClubPlayers(client, teamRes.data.location_id),
       loadOtherTeamSelections(client, pack.season_id, pack.team_id, teamRes.data.location_id),
     ]);
-    const clubError = clubPlayersRes.error?.message || selections.error;
+    const clubError = clubPlayerResult.error || selections.error;
     if (clubError) return NextResponse.json({ error: clubError }, { status: 400, headers: noStore });
-    clubPlayers = (clubPlayersRes.data ?? []).map((player) => ({
+    clubPlayers = (clubPlayerResult.players ?? []).map((player) => ({
       id: player.id,
       name: player.full_name?.trim() || player.display_name,
       selectedByOtherTeam: selections.selectedByName.get(normalizePlayerName(player.full_name?.trim() || player.display_name)) ?? null,
