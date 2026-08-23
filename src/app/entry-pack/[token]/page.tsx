@@ -3,29 +3,46 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import type { LeagueEntryPackPayload, LeagueEntryPackPlayer } from "@/lib/league-entry-pack";
+import { normalizePlayerName, playerNameMatchKind } from "@/lib/player-name-match";
 
 type PackResponse = {
   pack: LeagueEntryPackPayload & { status: "draft" | "submitted" | "approved" | "rejected"; submittedAt?: string | null; reviewNotes?: string | null; updatedAt?: string | null };
   season: { id: string; name: string; is_active?: boolean | null };
   team: { id: string; name: string; location_id?: string | null; locationName: string };
+  clubPlayers: Array<{ id: string; name: string }>;
   error?: string;
 };
 
-const emptyPlayer = (): LeagueEntryPackPlayer => ({
+const emptyPlayer = (role: "captain" | "vice" | "player" = "player"): LeagueEntryPackPlayer => ({
   rowId: typeof crypto !== "undefined" && "randomUUID" in crypto ? crypto.randomUUID() : `row-${Date.now()}-${Math.random()}`,
   fullName: "",
   phoneNumber: "",
   email: "",
-  isCaptain: false,
-  isViceCaptain: false,
+  isCaptain: role === "captain",
+  isViceCaptain: role === "vice",
   competitionIds: [],
 });
+
+const defaultRoster = () => [emptyPlayer("captain"), emptyPlayer("vice"), ...Array.from({ length: 5 }, () => emptyPlayer())];
+
+const withDefaultRosterSlots = (players: LeagueEntryPackPlayer[]) => {
+  const source = players.map((player) => ({ ...player, competitionIds: [] }));
+  const captainIndex = source.findIndex((player) => player.isCaptain);
+  const captain = captainIndex >= 0 ? { ...source[captainIndex], isCaptain: true, isViceCaptain: false } : emptyPlayer("captain");
+  const viceIndex = source.findIndex((player, index) => index !== captainIndex && player.isViceCaptain);
+  const vice = viceIndex >= 0 ? { ...source[viceIndex], isCaptain: false, isViceCaptain: true } : emptyPlayer("vice");
+  const otherPlayers: LeagueEntryPackPlayer[] = source
+    .filter((_, index) => index !== captainIndex && index !== viceIndex)
+    .map((player) => ({ ...player, isCaptain: false, isViceCaptain: false }));
+  while (otherPlayers.length < 5) otherPlayers.push(emptyPlayer());
+  return [captain, vice, ...otherPlayers];
+};
 
 const emptyPayload = (): LeagueEntryPackPayload => ({
   contactName: "",
   contactEmail: "",
   contactPhone: "",
-  players: [emptyPlayer()],
+  players: defaultRoster(),
   competitionNotes: "",
   generalNotes: "",
   phoneSharingConfirmed: false,
@@ -56,7 +73,7 @@ export default function PublicEntryPackPage() {
       contactName: result.pack.contactName ?? "",
       contactEmail: result.pack.contactEmail ?? "",
       contactPhone: result.pack.contactPhone ?? "",
-      players: result.pack.players?.length ? result.pack.players.map((player) => ({ ...player, competitionIds: [] })) : [emptyPlayer()],
+      players: withDefaultRosterSlots(result.pack.players ?? []),
       competitionNotes: "",
       generalNotes: result.pack.generalNotes ?? "",
       phoneSharingConfirmed: Boolean(result.pack.phoneSharingConfirmed),
@@ -72,6 +89,16 @@ export default function PublicEntryPackPage() {
   }, [token]);
 
   const locked = data?.pack.status === "approved";
+  const selectedNames = new Set(pack.players.map((player) => player.fullName.trim().toLowerCase()).filter(Boolean));
+  const nameMatchNotice = (fullName: string) => {
+    if (!fullName.trim()) return null;
+    const clubPlayers = data?.clubPlayers ?? [];
+    const exact = clubPlayers.find((option) => playerNameMatchKind(fullName, option.name) === "exact");
+    if (exact) return <p className="mt-2 rounded-lg bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">Existing club player matched: {exact.name}</p>;
+    const possible = clubPlayers.filter((option) => playerNameMatchKind(fullName, option.name) === "possible").slice(0, 3);
+    if (possible.length === 0) return null;
+    return <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-900">Possible existing {data?.team.locationName ?? "club"} player: {possible.map((option) => option.name).join(", ")}. Check the spelling or select the existing player above.</p>;
+  };
   const updatePlayer = (rowId: string, patch: Partial<LeagueEntryPackPlayer>) => {
     setPack((current) => ({
       ...current,
@@ -155,8 +182,8 @@ export default function PublicEntryPackPage() {
         <section className="rounded-2xl border border-sky-200 bg-sky-50 p-5 shadow-sm">
           <h2 className="text-xl font-bold text-slate-950">Instructions</h2>
           <ol className="mt-3 list-decimal space-y-2 pl-5 text-sm text-slate-800">
-            <li>Add every player who will be registered for this team in the winter league, using their full first and second name.</li>
-            <li>Select exactly one captain and exactly one vice-captain. Both roles are mandatory.</li>
+            <li>Complete the captain, vice-captain and five player fields. Use <strong>Add another player</strong> for a larger squad.</li>
+            <li>Choose an existing player from the club list where possible, or enter a full name for a new player.</li>
             <li>Use <strong>Save draft</strong> while collecting details. Submit only when the roster is complete.</li>
             <li>Knockout competition entry forms will be sent separately and are not part of this league registration.</li>
             <li>After submission, the League Secretary or Chairman will check historic profiles before creating new players.</li>
@@ -168,19 +195,16 @@ export default function PublicEntryPackPage() {
         <fieldset disabled={locked} className="space-y-4 disabled:opacity-80">
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
-              <div><h2 className="text-xl font-bold text-slate-950">1. Team roster and roles</h2><p className="mt-1 text-sm text-slate-600">Add every player, then select exactly one captain and exactly one vice-captain.</p></div>
-              <button type="button" onClick={() => setPack((current) => ({ ...current, players: [...current.players, emptyPlayer()] }))} className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-bold text-white">Add player</button>
+              <div><h2 className="text-xl font-bold text-slate-950">1. Team roster and roles</h2><p className="mt-1 text-sm text-slate-600">Seven fields are provided: captain, vice-captain and five additional players.</p></div>
+              <button type="button" onClick={() => setPack((current) => ({ ...current, players: [...current.players, emptyPlayer()] }))} className="rounded-xl bg-teal-700 px-4 py-2 text-sm font-bold text-white">Add another player</button>
             </div>
             <div className="mt-4 space-y-4">
               {pack.players.map((player, index) => (
                 <article key={player.rowId} className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                  <div className="flex items-center justify-between gap-3"><h3 className="font-bold text-slate-900">Player {index + 1}</h3>{pack.players.length > 1 ? <button type="button" onClick={() => setPack((current) => ({ ...current, players: current.players.filter((row) => row.rowId !== player.rowId) }))} className="text-sm font-semibold text-rose-700">Remove</button> : null}</div>
-                  <div className="mt-3 grid gap-3 md:grid-cols-1">
-                    <label className="text-xs font-bold uppercase tracking-wide text-slate-600">Full name *<input value={player.fullName} onChange={(event) => updatePlayer(player.rowId, { fullName: event.target.value })} placeholder="First and second name" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal" /></label>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-3 text-sm">
-                    <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2"><input type="checkbox" checked={player.isCaptain} onChange={(event) => updatePlayer(player.rowId, { isCaptain: event.target.checked, isViceCaptain: event.target.checked ? false : player.isViceCaptain })} /> Captain</label>
-                    <label className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2"><input type="checkbox" checked={player.isViceCaptain} onChange={(event) => updatePlayer(player.rowId, { isViceCaptain: event.target.checked, isCaptain: event.target.checked ? false : player.isCaptain })} /> Vice-captain</label>
+                  <div className="flex items-center justify-between gap-3"><h3 className="font-bold text-slate-900">{index === 0 ? "Captain" : index === 1 ? "Vice-captain" : `Player ${index - 1}`}</h3>{index >= 7 ? <button type="button" onClick={() => setPack((current) => ({ ...current, players: current.players.filter((row) => row.rowId !== player.rowId) }))} className="text-sm font-semibold text-rose-700">Remove</button> : null}</div>
+                  <div className="mt-3 grid gap-3 md:grid-cols-2">
+                    <label className="text-xs font-bold uppercase tracking-wide text-slate-600">Choose existing {data.team.locationName} player<select value={data.clubPlayers.find((option) => normalizePlayerName(option.name) === normalizePlayerName(player.fullName))?.name ?? ""} onChange={(event) => updatePlayer(player.rowId, { fullName: event.target.value })} className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal"><option value="">Select from club…</option>{data.clubPlayers.map((option) => <option key={option.id} value={option.name} disabled={selectedNames.has(option.name.trim().toLowerCase()) && option.name !== player.fullName}>{option.name}</option>)}</select></label>
+                    <label className="text-xs font-bold uppercase tracking-wide text-slate-600">Full name *<input value={player.fullName} onChange={(event) => updatePlayer(player.rowId, { fullName: event.target.value })} placeholder="First and second name" className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal" /><span className="mt-1 block text-[11px] font-normal normal-case tracking-normal text-slate-500">You can type here if the player is new to the club.</span>{nameMatchNotice(player.fullName)}</label>
                   </div>
                 </article>
               ))}

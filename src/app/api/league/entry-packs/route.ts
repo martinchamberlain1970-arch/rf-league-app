@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient, type User } from "@supabase/supabase
 import { requireLeagueManager } from "@/lib/server-role";
 import { logServerAudit } from "@/lib/server-audit";
 import { normalizeEntryPackPayload, validateEntryPackPayload, type LeagueEntryPackPlayer } from "@/lib/league-entry-pack";
+import { normalizePlayerName, playerNameMatchKind } from "@/lib/player-name-match";
 
 export const dynamic = "force-dynamic";
 
@@ -50,7 +51,7 @@ async function assertEntryPacksOpen(adminClient: SupabaseClient, seasonId: strin
 export async function GET(req: NextRequest) {
   try {
     const { adminClient } = await authorize(req);
-    const [packsRes, seasonsRes, teamsRes, locationsRes, startedFixturesRes] = await Promise.all([
+    const [packsRes, seasonsRes, teamsRes, locationsRes, startedFixturesRes, playersRes] = await Promise.all([
       adminClient
         .from("league_entry_packs")
         .select("id,public_token,season_id,team_id,status,contact_name,contact_email,contact_phone,players,competition_notes,general_notes,submitted_at,reviewed_at,review_notes,created_at,updated_at")
@@ -59,14 +60,35 @@ export async function GET(req: NextRequest) {
       adminClient.from("league_teams").select("id,season_id,location_id,name,is_active").order("name"),
       adminClient.from("locations").select("id,name").order("name"),
       adminClient.from("league_fixtures").select("season_id").in("status", ["in_progress", "complete"]),
+      adminClient.from("players").select("id,full_name,display_name,location_id,is_archived"),
     ]);
-    const firstError = packsRes.error?.message || seasonsRes.error?.message || teamsRes.error?.message || locationsRes.error?.message || startedFixturesRes.error?.message;
+    const firstError = packsRes.error?.message || seasonsRes.error?.message || teamsRes.error?.message || locationsRes.error?.message || startedFixturesRes.error?.message || playersRes.error?.message;
     if (firstError) throw new Error(firstError);
     const startedSeasonIds = new Set((startedFixturesRes.data ?? []).map((fixture) => fixture.season_id));
     const openSeasons = (seasonsRes.data ?? []).filter((season) => !startedSeasonIds.has(season.id));
     const openSeasonIds = new Set(openSeasons.map((season) => season.id));
+    const locationNameById = new Map((locationsRes.data ?? []).map((location) => [location.id, location.name]));
+    const existingPlayers = (playersRes.data ?? []).map((player) => ({
+      id: player.id,
+      name: player.full_name?.trim() || player.display_name,
+      locationName: player.location_id ? locationNameById.get(player.location_id) ?? "Unknown club" : "No club",
+      isArchived: Boolean(player.is_archived),
+    }));
+    const packs = (packsRes.data ?? []).filter((pack) => openSeasonIds.has(pack.season_id)).map((pack) => ({
+      ...pack,
+      player_matches: pack.status === "submitted" && Array.isArray(pack.players)
+        ? normalizeEntryPackPayload({ players: pack.players }).players.map((player) => ({
+            rowId: player.rowId,
+            matches: existingPlayers
+              .map((candidate) => ({ ...candidate, kind: playerNameMatchKind(player.fullName, candidate.name) }))
+              .filter((candidate) => candidate.kind !== null)
+              .sort((left, right) => (left.kind === "exact" ? -1 : 1) - (right.kind === "exact" ? -1 : 1))
+              .slice(0, 5),
+          })).filter((entry) => entry.matches.length > 0)
+        : [],
+    }));
     return NextResponse.json({
-      packs: (packsRes.data ?? []).filter((pack) => openSeasonIds.has(pack.season_id)),
+      packs,
       seasons: openSeasons,
       teams: (teamsRes.data ?? []).filter((team) => openSeasonIds.has(team.season_id)),
       locations: locationsRes.data ?? [],
@@ -164,8 +186,8 @@ async function approveAndImport(adminClient: SupabaseClient, user: User, packId:
   const resolved = new Map<string, string>();
 
   for (const player of payload.players) {
-    const key = player.fullName.toLowerCase();
-    const exact = allPlayers.filter((candidate) => (candidate.full_name ?? "").trim().toLowerCase() === key);
+    const key = normalizePlayerName(player.fullName);
+    const exact = allPlayers.filter((candidate) => normalizePlayerName(candidate.full_name?.trim() || candidate.display_name) === key);
     if (exact.length > 1) throw new Error(`More than one historic profile matches ${player.fullName}. Resolve the duplicate before approving this pack.`);
     if (exact.length === 1) {
       const updateRes = await adminClient
@@ -205,6 +227,39 @@ async function approveAndImport(adminClient: SupabaseClient, user: User, packId:
       .single();
     if (insertRes.error) throw new Error(insertRes.error.message);
     resolved.set(player.rowId, insertRes.data.id);
+  }
+
+  const rosterPlayerIds = Array.from(new Set(resolved.values()));
+  const currentTeamMembersRes = await adminClient
+    .from("league_team_members")
+    .select("id,player_id")
+    .eq("season_id", packRes.data.season_id)
+    .eq("team_id", packRes.data.team_id);
+  if (currentTeamMembersRes.error) throw new Error(currentTeamMembersRes.error.message);
+  const submittedPlayerIds = new Set(rosterPlayerIds);
+  const staleMembershipIds = (currentTeamMembersRes.data ?? [])
+    .filter((member) => !submittedPlayerIds.has(member.player_id))
+    .map((member) => member.id);
+  if (staleMembershipIds.length > 0) {
+    const staleDeleteRes = await adminClient.from("league_team_members").delete().in("id", staleMembershipIds);
+    if (staleDeleteRes.error) throw new Error(staleDeleteRes.error.message);
+  }
+
+  let movedMembershipCount = 0;
+  for (const playerId of rosterPlayerIds) {
+    const otherMembershipsRes = await adminClient
+      .from("league_team_members")
+      .select("id")
+      .eq("season_id", packRes.data.season_id)
+      .eq("player_id", playerId)
+      .neq("team_id", packRes.data.team_id);
+    if (otherMembershipsRes.error) throw new Error(otherMembershipsRes.error.message);
+    const otherMembershipIds = (otherMembershipsRes.data ?? []).map((member) => member.id);
+    if (otherMembershipIds.length > 0) {
+      const moveDeleteRes = await adminClient.from("league_team_members").delete().in("id", otherMembershipIds);
+      if (moveDeleteRes.error) throw new Error(moveDeleteRes.error.message);
+      movedMembershipCount += otherMembershipIds.length;
+    }
   }
 
   const clearRolesRes = await adminClient
@@ -251,9 +306,15 @@ async function approveAndImport(adminClient: SupabaseClient, user: User, packId:
     entityType: "league_entry_pack",
     entityId: packId,
     summary: `${teamRes.data.name} entry pack approved and imported (${payload.players.length} players).`,
-    meta: { season_id: packRes.data.season_id, team_id: packRes.data.team_id, player_count: payload.players.length },
+    meta: {
+      season_id: packRes.data.season_id,
+      team_id: packRes.data.team_id,
+      player_count: payload.players.length,
+      removed_memberships: staleMembershipIds.length,
+      moved_memberships: movedMembershipCount,
+    },
   });
-  return { importedPlayers: payload.players.length };
+  return { importedPlayers: payload.players.length, removedMemberships: staleMembershipIds.length, movedMemberships: movedMembershipCount };
 }
 
 export async function POST(req: NextRequest) {

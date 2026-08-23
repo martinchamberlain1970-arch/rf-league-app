@@ -68,7 +68,8 @@ export default function SharedLeagueEntryPage() {
       <h2 className="text-lg font-bold text-slate-950">Before you start</h2>
       <ul className="mt-2 list-disc space-y-1 pl-5">
         <li>No Rack &amp; Frame account is required to complete this registration.</li>
-        <li>Add every player and select exactly one captain and exactly one vice-captain.</li>
+        <li>The form provides fields for the captain, vice-captain and five additional players, with the option to add more.</li>
+        <li>Existing players can be selected from the chosen team&apos;s club list; new players can be entered manually.</li>
         <li>No telephone numbers or private match-arranging contact details are collected here.</li>
         <li>The captain and vice-captain will later receive team access for line-ups, fixture completion and results. A separate guide will be supplied.</li>
         <li>Competition entries and competition contact details use the separate competition-entry form.</li>

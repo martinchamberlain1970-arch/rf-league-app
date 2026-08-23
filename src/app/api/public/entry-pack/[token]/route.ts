@@ -46,6 +46,21 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ token:
     return NextResponse.json({ error: "This league entry period has closed because the league is completed or already in progress." }, { status: 410, headers: noStore });
   }
 
+  let clubPlayers: Array<{ id: string; name: string }> = [];
+  if (teamRes.data.location_id) {
+    const clubPlayersRes = await client
+      .from("players")
+      .select("id,full_name,display_name")
+      .eq("location_id", teamRes.data.location_id)
+      .or("is_archived.is.null,is_archived.eq.false")
+      .order("display_name");
+    if (clubPlayersRes.error) return NextResponse.json({ error: clubPlayersRes.error.message }, { status: 400, headers: noStore });
+    clubPlayers = (clubPlayersRes.data ?? []).map((player) => ({
+      id: player.id,
+      name: player.full_name?.trim() || player.display_name,
+    }));
+  }
+
   const normalizedPack = normalizeEntryPackPayload({
     contactName: "",
     contactEmail: "",
@@ -75,6 +90,7 @@ export async function GET(_req: NextRequest, context: { params: Promise<{ token:
       },
       season: seasonRes.data,
       team: { ...teamRes.data, locationName },
+      clubPlayers,
     },
     { headers: noStore }
   );

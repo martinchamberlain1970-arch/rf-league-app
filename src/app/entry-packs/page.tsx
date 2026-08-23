@@ -24,6 +24,10 @@ type PackRow = {
   reviewed_at?: string | null;
   review_notes?: string | null;
   updated_at: string;
+  player_matches?: Array<{
+    rowId: string;
+    matches: Array<{ id: string; name: string; locationName: string; isArchived: boolean; kind: "exact" | "possible" }>;
+  }>;
 };
 type Season = { id: string; name: string; is_published?: boolean | null; is_active?: boolean | null };
 type Team = { id: string; season_id: string; location_id?: string | null; name: string; is_active?: boolean | null };
@@ -39,6 +43,7 @@ export default function EntryPacksPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [validatedPackIds, setValidatedPackIds] = useState<Set<string>>(() => new Set());
 
   const request = async (body?: Record<string, unknown>) => {
     const client = supabase;
@@ -89,7 +94,8 @@ export default function EntryPacksPage() {
       reviewNotes = window.prompt("Explain what the team must correct:", pack.review_notes ?? "")?.trim() ?? "";
       if (!reviewNotes) return;
     }
-    if (action === "approve" && !window.confirm(`Approve and import ${teamById.get(pack.team_id)?.name ?? "this team"}'s league roster?`)) return;
+    if (action === "approve" && !validatedPackIds.has(pack.id)) return setMessage("Confirm that you have checked the roster and possible profile matches before approval.");
+    if (action === "approve" && !window.confirm(`Approve and import ${teamById.get(pack.team_id)?.name ?? "this team"}'s league roster? This will match existing profiles and create any remaining players.`)) return;
     if (action === "rotate" && !window.confirm("Reset this team’s browser access? Their currently saved link/browser will stop working, but their draft data will be retained.")) return;
     setBusyId(pack.id);
     try {
@@ -144,12 +150,15 @@ export default function EntryPacksPage() {
               {availableTeams.map((team) => {
                 const pack = packByTeamId.get(team.id);
                 const players = Array.isArray(pack?.players) ? pack.players : [];
+                const matchesByRowId = new Map((pack?.player_matches ?? []).map((entry) => [entry.rowId, entry.matches]));
+                const flaggedPlayerCount = pack?.player_matches?.length ?? 0;
                 const status = pack && (pack.status !== "draft" || players.length > 0) ? pack.status : "not_started";
                 return <article key={team.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
                   <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-lg font-bold text-slate-950">{team.name}</p><p className="text-sm text-slate-600">{seasonName.get(team.season_id) ?? "Unknown season"}{team.location_id ? ` · ${locationName.get(team.location_id) ?? "Club"}` : ""}</p></div><span className={`rounded-full border px-3 py-1 text-xs font-bold capitalize ${statusClass(status)}`}>{status.replace("_", " ")}</span></div>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-slate-200 p-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Players registered</p><p className="mt-1 text-2xl font-black text-slate-950">{players.length}</p></div><div className="rounded-xl border border-slate-200 p-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Last updated</p><p className="mt-1 text-sm font-bold text-slate-950">{pack ? new Date(pack.updated_at).toLocaleString() : "Not started"}</p></div></div>
-                  {players.length > 0 ? <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3"><summary className="cursor-pointer text-sm font-bold text-slate-800">Review registered players and roles</summary><div className="mt-3 space-y-2">{players.map((player) => <div key={player.rowId} className="rounded-lg bg-white p-3 text-sm text-slate-700"><p className="font-bold text-slate-950">{player.fullName}{player.isCaptain ? " · Captain" : ""}{player.isViceCaptain ? " · Vice-captain" : ""}</p></div>)}</div>{pack?.general_notes ? <p className="mt-2 rounded-lg bg-white p-3 text-sm text-slate-700"><strong>Other notes:</strong> {pack.general_notes}</p> : null}</details> : null}
-                  {pack?.status === "submitted" ? <div className="mt-4 flex flex-wrap gap-2"><button type="button" disabled={busyId === pack.id} onClick={() => void act(pack, "approve")} className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Approve and import</button><button type="button" disabled={busyId === pack.id} onClick={() => void act(pack, "reject")} className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-800 disabled:opacity-50">Return for correction</button></div> : null}
+                  {pack?.status === "submitted" && flaggedPlayerCount > 0 ? <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-950">Profile check: {flaggedPlayerCount} submitted player{flaggedPlayerCount === 1 ? " has" : "s have"} an exact or possible match in the player database. Review the highlighted names below before approving.</p> : null}
+                  {players.length > 0 ? <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3" open={pack?.status === "submitted"}><summary className="cursor-pointer text-sm font-bold text-slate-800">Review registered players and roles</summary><div className="mt-3 space-y-2">{players.map((player) => { const matches = matchesByRowId.get(player.rowId) ?? []; return <div key={player.rowId} className="rounded-lg bg-white p-3 text-sm text-slate-700"><p className="font-bold text-slate-950">{player.fullName}{player.isCaptain ? " · Captain" : ""}{player.isViceCaptain ? " · Vice-captain" : ""}</p>{matches.length > 0 ? <div className="mt-2 space-y-1">{matches.map((match) => <p key={match.id} className={`rounded-lg px-2 py-1 text-xs font-semibold ${match.kind === "exact" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>{match.kind === "exact" ? "Existing profile" : "Possible match"}: {match.name} · {match.locationName}{match.isArchived ? " · archived" : ""}</p>)}</div> : <p className="mt-1 text-xs text-slate-500">No similar existing profile found.</p>}</div>; })}</div>{pack?.general_notes ? <p className="mt-2 rounded-lg bg-white p-3 text-sm text-slate-700"><strong>Other notes:</strong> {pack.general_notes}</p> : null}</details> : null}
+                  {pack?.status === "submitted" ? <div className="mt-4 space-y-3"><label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-800"><input type="checkbox" className="mt-1" checked={validatedPackIds.has(pack.id)} onChange={(event) => setValidatedPackIds((current) => { const next = new Set(current); if (event.target.checked) next.add(pack.id); else next.delete(pack.id); return next; })} /><span>I have checked every player name, role and possible profile match for this team.</span></label><div className="flex flex-wrap gap-2"><button type="button" disabled={busyId === pack.id || !validatedPackIds.has(pack.id)} onClick={() => void act(pack, "approve")} className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Validate, approve and import</button><button type="button" disabled={busyId === pack.id} onClick={() => void act(pack, "reject")} className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-800 disabled:opacity-50">Return for correction</button></div></div> : null}
                   {pack && (pack.status === "draft" || pack.status === "rejected") ? <button type="button" disabled={busyId === pack.id} onClick={() => void act(pack, "rotate")} className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">Reset browser access</button> : null}
                   {pack?.review_notes ? <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Review note:</strong> {pack.review_notes}</p> : null}
                 </article>;
