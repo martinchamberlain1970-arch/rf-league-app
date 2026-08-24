@@ -69,8 +69,12 @@ export default function LeagueInvoicesPage() {
       setBatches(result.batches ?? []);
       setIssuedInvoices(result.invoices ?? []);
       setMigrationRequired(Boolean(result.migrationRequired));
-      setSeasonIds((current) => current.length ? current : loadedSeasons.filter((season) => season.is_active !== false && season.is_published !== false).map((season) => season.id));
-      setCompetitionIds((current) => current.length ? current : loadedCompetitions.filter((competition) => !competition.is_archived && !competition.is_completed).map((competition) => competition.id));
+      const automaticSeasonIds = loadedSeasons.filter((season) => season.is_active !== false).map((season) => season.id);
+      const automaticCompetitionIds = loadedCompetitions.filter((competition) => !competition.is_archived && !competition.is_completed).map((competition) => competition.id);
+      setSeasonIds(automaticSeasonIds);
+      setCompetitionIds(automaticCompetitionIds);
+      const previewResult = await request(payload("preview", automaticSeasonIds, automaticCompetitionIds));
+      setPreview(previewResult.preview as LeagueInvoicePreviewResult);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Invoice data could not be loaded.");
     } finally {
@@ -83,15 +87,15 @@ export default function LeagueInvoicesPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [admin.loading, admin.canManageLeague]);
 
-  const payload = (action: "preview" | "generate") => ({
+  const payload = (action: "preview" | "generate", selectedSeasonIds = seasonIds, selectedCompetitionIds = competitionIds) => ({
     action,
     leagueName,
     treasurerName,
     issueDate,
     dueDate,
     paymentInstructions,
-    seasonIds,
-    competitionIds,
+    seasonIds: selectedSeasonIds,
+    competitionIds: selectedCompetitionIds,
     teamFeePence: Math.round(Number(teamFee) * 100),
     individualFeePence: Math.round(Number(individualFee) * 100),
     mickWhiteTeamFeePence: Math.round(Number(mickWhiteFee) * 100),
@@ -161,12 +165,16 @@ export default function LeagueInvoicesPage() {
               </div>
             </section>
 
-            <section className="grid gap-4 lg:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h2 className="text-xl font-bold">3. League teams</h2><button type="button" onClick={() => setSeasonIds(seasonIds.length === seasons.length ? [] : seasons.map((season) => season.id))} className="text-sm font-bold text-teal-700">{seasonIds.length === seasons.length ? "Clear" : "Select all"}</button></div><p className="mt-1 text-sm text-slate-600">Each selected team is charged once and combined by club.</p><div className="mt-4 space-y-2">{seasons.map((season) => <label key={season.id} className="flex items-start gap-3 rounded-xl bg-slate-50 p-3"><input type="checkbox" className="mt-1" checked={seasonIds.includes(season.id)} onChange={(event) => setSeasonIds((current) => event.target.checked ? [...current, season.id] : current.filter((id) => id !== season.id))} /><span><strong>{season.name}</strong><span className="block text-xs text-slate-500">{season.is_active === false ? "Completed/closed" : "Active"}{season.is_published ? " · Published" : ""}</span></span></label>)}</div></div>
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex items-center justify-between"><h2 className="text-xl font-bold">4. Competitions</h2><button type="button" onClick={() => setCompetitionIds(competitionIds.length === competitions.length ? [] : competitions.map((competition) => competition.id))} className="text-sm font-bold text-teal-700">{competitionIds.length === competitions.length ? "Clear" : "Select all"}</button></div><p className="mt-1 text-sm text-slate-600">Only approved entries are billed. Open or pending entries block generation.</p><div className="mt-4 max-h-96 space-y-2 overflow-y-auto">{competitions.map((competition) => { const counts = entryCountByCompetition.get(competition.id); return <label key={competition.id} className="flex items-start gap-3 rounded-xl bg-slate-50 p-3"><input type="checkbox" className="mt-1" checked={competitionIds.includes(competition.id)} onChange={(event) => setCompetitionIds((current) => event.target.checked ? [...current, competition.id] : current.filter((id) => id !== competition.id))} /><span className="min-w-0"><strong>{competition.name}</strong><span className="block text-xs text-slate-500">{competition.signup_open ? "Entries open" : "Entries closed"} · {counts?.approved ?? 0} approved{counts?.pending ? ` · ${counts.pending} pending` : ""}</span></span></label>; })}</div></div>
+            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+              <h2 className="text-xl font-bold text-slate-950">3. Automatic entry sources</h2>
+              <p className="mt-1 text-sm text-slate-600">Rack &amp; Frame automatically includes every active league team and every current knockout competition. There are no team or competition boxes to tick.</p>
+              <div className="mt-4 grid gap-4 lg:grid-cols-2">
+                <div className="rounded-xl bg-slate-50 p-4"><h3 className="font-bold">Active leagues</h3><div className="mt-2 space-y-2">{seasons.filter((season) => seasonIds.includes(season.id)).map((season) => <div key={season.id} className="rounded-lg bg-white px-3 py-2 text-sm"><strong>{season.name}</strong><span className="ml-2 text-xs text-slate-500">{season.is_published ? "Published" : "Draft"}</span></div>)}</div></div>
+                <div className="rounded-xl bg-slate-50 p-4"><h3 className="font-bold">Current competitions</h3><p className="mt-1 text-xs text-slate-500">The summary updates as entries arrive and are approved.</p><div className="mt-2 max-h-72 space-y-2 overflow-y-auto">{competitions.filter((competition) => competitionIds.includes(competition.id)).map((competition) => { const counts = entryCountByCompetition.get(competition.id); return <div key={competition.id} className="rounded-lg bg-white px-3 py-2 text-sm"><strong>{competition.name}</strong><span className="block text-xs text-slate-500">{competition.signup_open ? "Accepting entries" : "Entries closed"} · {counts?.approved ?? 0} approved{counts?.pending ? ` · ${counts.pending} awaiting approval` : ""}</span></div>; })}</div></div>
+              </div>
             </section>
 
-            <section className="rounded-2xl border border-teal-200 bg-teal-50 p-5 shadow-sm"><h2 className="text-xl font-bold">5. Preview and generate</h2><p className="mt-1 text-sm text-slate-700">Preview recalculates from the live records. Generate freezes the invoice values and creates shareable print/PDF pages.</p><div className="mt-4 flex flex-wrap gap-3"><button type="button" disabled={Boolean(busy) || loading} onClick={() => void previewInvoices()} className="rounded-xl border border-teal-700 bg-white px-5 py-3 font-bold text-teal-800 disabled:opacity-50">{busy === "preview" ? "Preparing preview…" : "Preview club invoices"}</button><button type="button" disabled={Boolean(busy) || !preview || preview.blockers.length > 0 || migrationRequired} onClick={() => void generateInvoices()} className="rounded-xl bg-teal-700 px-5 py-3 font-bold text-white disabled:opacity-50">{busy === "generate" ? "Generating…" : "Generate invoices"}</button></div></section>
+            <section className="rounded-2xl border border-teal-200 bg-teal-50 p-5 shadow-sm"><h2 className="text-xl font-bold">4. Review and generate</h2><p className="mt-1 text-sm text-slate-700">The summary below is built from the live league and competition records. Refresh it at any time; generating invoices freezes the final values and creates shareable print/PDF pages.</p><div className="mt-4 flex flex-wrap gap-3"><button type="button" disabled={Boolean(busy) || loading} onClick={() => void previewInvoices()} className="rounded-xl border border-teal-700 bg-white px-5 py-3 font-bold text-teal-800 disabled:opacity-50">{busy === "preview" ? "Refreshing summary…" : "Refresh entry summary"}</button><button type="button" disabled={Boolean(busy) || !preview || preview.blockers.length > 0 || migrationRequired} onClick={() => void generateInvoices()} className="rounded-xl bg-teal-700 px-5 py-3 font-bold text-white disabled:opacity-50">{busy === "generate" ? "Generating…" : "Generate club invoices"}</button></div></section>
 
             {preview ? <InvoicePreviewSection preview={preview} /> : null}
 
@@ -179,7 +187,18 @@ export default function LeagueInvoicesPage() {
 }
 
 function InvoicePreviewSection({ preview }: { preview: LeagueInvoicePreviewResult }) {
-  return <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm"><div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wide text-teal-700">Invoice preview</p><h2 className="text-2xl font-black">{preview.totals.clubs} clubs · {preview.totals.teams} teams · {preview.totals.competitionEntries} competition entries</h2></div><p className="text-3xl font-black">{money(preview.totals.amountPence)}</p></div>{preview.blockers.length ? <div className="mt-4 rounded-xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-950"><strong>Resolve before generation</strong><ul className="mt-2 list-disc space-y-1 pl-5">{preview.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul></div> : <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-900">Ready to generate. No open competitions, pending entries or missing club links were found.</p>}{preview.warnings.length ? <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><strong>Check before generation</strong><ul className="mt-2 list-disc pl-5">{preview.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div> : null}<div className="mt-5 grid gap-4 xl:grid-cols-2">{preview.invoices.map((invoice) => <InvoicePreviewCard key={invoice.locationId} invoice={invoice} />)}</div></section>;
+  return <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+    <div className="flex flex-wrap items-end justify-between gap-3"><div><p className="text-xs font-bold uppercase tracking-wide text-teal-700">Live entry summary</p><h2 className="text-2xl font-black">{preview.totals.clubs} clubs · {preview.totals.teams} teams · {preview.totals.competitionEntries} approved competition entries</h2></div><p className="text-3xl font-black">{money(preview.totals.amountPence)}</p></div>
+    {preview.blockers.length ? <div className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm text-amber-950"><strong>Summary in progress—invoice generation is currently locked</strong><ul className="mt-2 list-disc space-y-1 pl-5">{preview.blockers.map((blocker) => <li key={blocker}>{blocker}</li>)}</ul></div> : <p className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm font-bold text-emerald-900">Entries are closed and approved. The club invoices are ready to generate.</p>}
+    {preview.warnings.length ? <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-950"><strong>Check before generation</strong><ul className="mt-2 list-disc pl-5">{preview.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></div> : null}
+    <div className="mt-5 overflow-x-auto rounded-2xl border border-slate-200">
+      <table className="min-w-full divide-y divide-slate-200 text-left text-sm">
+        <thead className="bg-slate-950 text-white"><tr><th className="px-4 py-3">Club</th><th className="px-4 py-3">League teams</th><th className="px-4 py-3">Competition entries recorded</th><th className="px-4 py-3 text-center">Awaiting approval</th><th className="px-4 py-3 text-right">Approved charges</th></tr></thead>
+        <tbody className="divide-y divide-slate-100">{preview.clubSummary.map((club) => <tr key={club.locationId} className="align-top"><td className="px-4 py-4 font-bold text-slate-950">{club.clubName}</td><td className="px-4 py-4"><span className="font-bold">{club.teamNames.length}</span><span className="mt-1 block max-w-xs text-xs text-slate-500">{club.teamNames.join(", ") || "No league teams"}</span></td><td className="min-w-80 px-4 py-4">{club.competitionEntries.length ? <div className="space-y-2">{club.competitionEntries.map((entry) => <div key={entry.entryId} className="rounded-lg bg-slate-50 p-2"><div className="flex flex-wrap items-center gap-2"><strong>{entry.competitionName}</strong><span className={`rounded-full px-2 py-0.5 text-[11px] font-bold ${entry.status === "approved" ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>{entry.status === "approved" ? "Approved" : "Awaiting approval"}</span></div><p className="mt-1 text-xs text-slate-500">{entry.entrantNames.join(", ") || "Entrant name requires checking"}</p></div>)}</div> : <span className="text-slate-400">No competition entries yet</span>}</td><td className="px-4 py-4 text-center"><span className={`inline-flex min-w-8 justify-center rounded-full px-2 py-1 font-bold ${club.pendingCompetitionEntries ? "bg-amber-100 text-amber-900" : "bg-emerald-100 text-emerald-800"}`}>{club.pendingCompetitionEntries}</span></td><td className="px-4 py-4 text-right font-bold">{money(club.approvedChargesPence)}</td></tr>)}</tbody>
+      </table>
+    </div>
+    <details className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4"><summary className="cursor-pointer font-bold text-slate-800">Show full invoice previews</summary><div className="mt-4 grid gap-4 xl:grid-cols-2">{preview.invoices.map((invoice) => <InvoicePreviewCard key={invoice.locationId} invoice={invoice} />)}</div></details>
+  </section>;
 }
 
 function InvoicePreviewCard({ invoice }: { invoice: LeagueInvoicePreview }) {

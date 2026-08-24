@@ -25,8 +25,27 @@ export type LeagueInvoicePreview = {
   totalPence: number;
 };
 
+export type LeagueInvoiceSummaryEntry = {
+  entryId: string;
+  competitionName: string;
+  entrantNames: string[];
+  status: "pending" | "approved";
+  amountPence: number;
+};
+
+export type LeagueInvoiceClubSummary = {
+  locationId: string;
+  clubName: string;
+  teamNames: string[];
+  competitionEntries: LeagueInvoiceSummaryEntry[];
+  approvedCompetitionEntries: number;
+  pendingCompetitionEntries: number;
+  approvedChargesPence: number;
+};
+
 export type LeagueInvoicePreviewResult = {
   invoices: LeagueInvoicePreview[];
+  clubSummary: LeagueInvoiceClubSummary[];
   warnings: string[];
   blockers: string[];
   totals: { clubs: number; teams: number; competitionEntries: number; amountPence: number };
@@ -75,6 +94,7 @@ export function buildLeagueInvoicePreview(input: BuildInvoicePreviewInput): Leag
   const playerById = new Map(input.players.map((player) => [player.id, player]));
   const competitionById = new Map(input.competitions.map((competition) => [competition.id, competition]));
   const invoiceByLocation = new Map<string, LeagueInvoicePreview>();
+  const summaryByLocation = new Map<string, LeagueInvoiceClubSummary>();
   const warnings: string[] = [];
   const blockers: string[] = [];
 
@@ -93,6 +113,22 @@ export function buildLeagueInvoicePreview(input: BuildInvoicePreviewInput): Leag
     return created;
   };
 
+  const getClubSummary = (locationId: string) => {
+    const existing = summaryByLocation.get(locationId);
+    if (existing) return existing;
+    const created: LeagueInvoiceClubSummary = {
+      locationId,
+      clubName: locationById.get(locationId)?.name ?? "Unknown club",
+      teamNames: [],
+      competitionEntries: [],
+      approvedCompetitionEntries: 0,
+      pendingCompetitionEntries: 0,
+      approvedChargesPence: 0,
+    };
+    summaryByLocation.set(locationId, created);
+    return created;
+  };
+
   const selectedTeams = input.teams
     .filter((team) => selectedSeasonIds.has(team.season_id) && team.is_active !== false)
     .sort((left, right) => left.name.localeCompare(right.name));
@@ -103,6 +139,7 @@ export function buildLeagueInvoicePreview(input: BuildInvoicePreviewInput): Leag
     }
     const invoice = getInvoice(team.location_id);
     invoice.teamNames.push(team.name);
+    getClubSummary(team.location_id).teamNames.push(team.name);
   }
 
   const captainNamesByLocation = new Map<string, Set<string>>();
@@ -142,7 +179,7 @@ export function buildLeagueInvoicePreview(input: BuildInvoicePreviewInput): Leag
   if (pendingEntries.length) blockers.push(`${pendingEntries.length} selected competition entr${pendingEntries.length === 1 ? "y is" : "ies are"} still awaiting approval.`);
   const approvedEntries = selectedEntries.filter((entry) => entry.status === "approved");
 
-  for (const entry of approvedEntries) {
+  for (const entry of selectedEntries.filter((candidate) => candidate.status === "approved" || candidate.status === "pending")) {
     const competition = competitionById.get(entry.competition_id);
     if (!competition) continue;
     const note = parseEntryNote(entry.note);
@@ -158,6 +195,23 @@ export function buildLeagueInvoicePreview(input: BuildInvoicePreviewInput): Leag
     const teammates = teammateNamesFromIds.length ? teammateNamesFromIds : (note.teamMemberNames ?? []).filter(Boolean);
     const entrantNames = Array.from(new Set([playerName(primaryPlayer), ...teammates].filter((name) => name !== "Unknown player")));
     if (!entrantNames.length) warnings.push(`${competition.name} entry ${entry.id} has no entrant names in its saved record.`);
+    const amountPence = isMickWhite(competition.name)
+      ? input.mickWhiteTeamFeePence
+      : Math.max(1, entrantNames.length) * input.individualFeePence;
+    const clubSummary = getClubSummary(locationId);
+    clubSummary.competitionEntries.push({
+      entryId: entry.id,
+      competitionName: competition.name,
+      entrantNames,
+      status: entry.status === "approved" ? "approved" : "pending",
+      amountPence,
+    });
+    if (entry.status === "pending") {
+      clubSummary.pendingCompetitionEntries += 1;
+      continue;
+    }
+    clubSummary.approvedCompetitionEntries += 1;
+    clubSummary.approvedChargesPence += amountPence;
     if (isMickWhite(competition.name)) {
       invoice.items.push({
         kind: "mick_white_team",
@@ -186,9 +240,20 @@ export function buildLeagueInvoicePreview(input: BuildInvoicePreviewInput): Leag
     .map((invoice) => ({ ...invoice, totalPence: invoice.items.reduce((sum, item) => sum + item.totalPence, 0) }))
     .filter((invoice) => invoice.totalPence > 0)
     .sort((left, right) => left.clubName.localeCompare(right.clubName));
+  const clubSummary = Array.from(summaryByLocation.values())
+    .map((summary) => ({
+      ...summary,
+      teamNames: Array.from(new Set(summary.teamNames)).sort((left, right) => left.localeCompare(right)),
+      competitionEntries: [...summary.competitionEntries].sort(
+        (left, right) => left.competitionName.localeCompare(right.competitionName) || left.entrantNames.join(" ").localeCompare(right.entrantNames.join(" "))
+      ),
+      approvedChargesPence: summary.approvedChargesPence + summary.teamNames.length * input.teamFeePence,
+    }))
+    .sort((left, right) => left.clubName.localeCompare(right.clubName));
   if (!invoices.length) blockers.push("No billable league teams or approved competition entries were found for the selected records.");
   return {
     invoices,
+    clubSummary,
     warnings: Array.from(new Set(warnings)),
     blockers: Array.from(new Set(blockers)),
     totals: {
