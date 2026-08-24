@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import PwaRegistration from "@/components/PwaRegistration";
 import AppDialogProvider from "@/components/AppDialogProvider";
-import AppCopyrightFooter from "@/components/AppCopyrightFooter";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -48,7 +47,6 @@ export default function RootLayout({
       <body className="antialiased">
         <AppDialogProvider>
           {children}
-          <AppCopyrightFooter />
           <PwaRegistration />
         </AppDialogProvider>
       </body>

@@ -1367,7 +1367,7 @@ export default function HomePage() {
           ) : null}
 
           <section className="rounded-2xl border border-slate-200 bg-white/80 p-3 text-center text-xs text-slate-600 shadow-sm">
-            Product concept and delivery leadership: <span className="font-semibold text-slate-800">Martin Chamberlain</span>
+            Rack &amp; Frame League Manager &copy; {new Date().getFullYear()} <span className="font-semibold text-slate-800">Martin Chamberlain</span>. All rights reserved.
           </section>
         </RequireAuth>
       </div>
