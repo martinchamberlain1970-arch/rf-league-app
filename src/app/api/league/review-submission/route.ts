@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { rebuildLeagueFixtureSnookerRatings } from "@/lib/snooker-rating";
 import { logServerAudit } from "@/lib/server-audit";
 import { requireLeagueManager } from "@/lib/server-role";
+import { sendPushToUserIds } from "@/lib/push-server";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -95,7 +96,7 @@ export async function POST(req: NextRequest) {
 
   const submissionRes = await adminClient
     .from("league_result_submissions")
-    .select("id,fixture_id,status,frame_results")
+    .select("id,fixture_id,submitted_by_user_id,status,frame_results")
     .eq("id", submissionId)
     .maybeSingle();
   if (submissionRes.error || !submissionRes.data) {
@@ -104,6 +105,7 @@ export async function POST(req: NextRequest) {
   const submission = submissionRes.data as {
     id: string;
     fixture_id: string;
+    submitted_by_user_id: string;
     status: "pending" | "approved" | "rejected" | "needs_correction";
     frame_results: SubmissionFrameResult[] | null;
   };
@@ -293,6 +295,15 @@ export async function POST(req: NextRequest) {
       rejection_reason: decision === "rejected" ? rejectionReason || null : null,
     },
   });
+
+  if (submission.submitted_by_user_id) {
+    await sendPushToUserIds(adminClient, [submission.submitted_by_user_id], {
+      title: decision === "approved" ? "League result approved" : "League result needs attention",
+      body: decision === "approved" ? "Your submitted league scorecard has been approved." : rejectionReason || "Your submitted scorecard was not approved. Open Rack & Frame for details.",
+      url: "/results",
+      tag: `league-submission-review-${submission.id}`,
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }

@@ -106,6 +106,20 @@ type CompetitionRoundDeadlineRow = {
   round_no: number;
   deadline_at: string;
 };
+type PushStatus = {
+  configured: boolean;
+  databaseReady: boolean;
+  publicKey: string | null;
+  subscriptionCount: number;
+  enabledOnDevice: boolean;
+  permission: NotificationPermission | "unsupported";
+};
+
+function urlBase64ToUint8Array(value: string) {
+  const padding = "=".repeat((4 - (value.length % 4)) % 4);
+  const raw = window.atob((value + padding).replace(/-/g, "+").replace(/_/g, "/"));
+  return Uint8Array.from([...raw].map((character) => character.charCodeAt(0)));
+}
 
 function isMissingTableError(message?: string | null) {
   const m = (message ?? "").toLowerCase();
@@ -188,6 +202,8 @@ export default function NotificationsPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [dismissed, setDismissed] = useState<Set<string>>(new Set());
   const [serverRead, setServerRead] = useState<Set<string>>(new Set());
+  const [pushStatus, setPushStatus] = useState<PushStatus | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
 
   const dismissedKey = useMemo(
     () => (admin.userId ? `notifications_dismissed_${admin.userId}` : "notifications_dismissed"),
@@ -223,6 +239,101 @@ export default function NotificationsPage() {
       window.localStorage.setItem(dismissedKey, JSON.stringify(Array.from(next)));
     }
   };
+
+  const pushRequest = async (method: "GET" | "POST" | "DELETE", body?: Record<string, unknown>) => {
+    const client = supabase;
+    if (!client) throw new Error("The app connection is unavailable.");
+    const sessionResult = await client.auth.getSession();
+    const accessToken = sessionResult.data.session?.access_token;
+    if (!accessToken) throw new Error("Please sign in again.");
+    const response = await fetch("/api/push/subscriptions", {
+      method,
+      headers: { ...(body ? { "Content-Type": "application/json" } : {}), Authorization: `Bearer ${accessToken}` },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+      cache: "no-store",
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error ?? "Notification settings could not be updated.");
+    return data;
+  };
+
+  const refreshPushStatus = async () => {
+    if (typeof window === "undefined" || !("serviceWorker" in navigator) || !("PushManager" in window) || !("Notification" in window)) {
+      setPushStatus({ configured: false, databaseReady: false, publicKey: null, subscriptionCount: 0, enabledOnDevice: false, permission: "unsupported" });
+      return;
+    }
+    try {
+      const [data, registration] = await Promise.all([pushRequest("GET"), navigator.serviceWorker.ready]);
+      const subscription = await registration.pushManager.getSubscription();
+      setPushStatus({
+        configured: Boolean(data.configured),
+        databaseReady: Boolean(data.databaseReady),
+        publicKey: data.publicKey ?? null,
+        subscriptionCount: Number(data.subscriptionCount ?? 0),
+        enabledOnDevice: Boolean(subscription),
+        permission: Notification.permission,
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Notification status could not be checked.");
+    }
+  };
+
+  const enablePush = async () => {
+    if (!pushStatus?.databaseReady) {
+      setMessage("Mobile notifications need the latest Supabase migration before they can be enabled.");
+      return;
+    }
+    if (!pushStatus.configured || !pushStatus.publicKey) {
+      setMessage("Mobile notifications are awaiting secure server configuration.");
+      return;
+    }
+    setPushBusy(true);
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission !== "granted") throw new Error("Notifications were not allowed. Enable notifications for Rack & Frame in this device's app or browser settings, then try again.");
+      const registration = await navigator.serviceWorker.ready;
+      const existing = await registration.pushManager.getSubscription();
+      const subscription = existing ?? await registration.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(pushStatus.publicKey),
+      });
+      await pushRequest("POST", { subscription: subscription.toJSON() });
+      const test = await pushRequest("POST", { action: "test" });
+      setMessage(Number(test.sent ?? 0) > 0
+        ? "Mobile notifications are enabled. A test notification has been sent to this device."
+        : "Notifications were enabled, but the test notification could not yet be delivered.");
+      await refreshPushStatus();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Notifications could not be enabled.");
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const disablePush = async () => {
+    setPushBusy(true);
+    try {
+      const registration = await navigator.serviceWorker.ready;
+      const subscription = await registration.pushManager.getSubscription();
+      if (subscription) {
+        await pushRequest("DELETE", { endpoint: subscription.endpoint });
+        await subscription.unsubscribe();
+      }
+      setMessage("Notifications disabled on this device.");
+      await refreshPushStatus();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Notifications could not be disabled.");
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  useEffect(() => {
+    if (admin.loading || !admin.userId) return;
+    void refreshPushStatus();
+    // Status is refreshed after each explicit notification setting change.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [admin.loading, admin.userId]);
   const markRead = async (keys: string[]) => {
     const client = supabase;
     if (!client || !admin.userId || keys.length === 0) return;
@@ -986,6 +1097,40 @@ export default function NotificationsPage() {
                   ? "Operational notifications."
                   : "Your notifications."}
             </p>
+          </section>
+          <section className="rounded-2xl border border-violet-200 bg-violet-50 p-5 shadow-sm">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <div>
+                <p className="font-semibold text-violet-950">Mobile notifications</p>
+                <p className="mt-1 max-w-2xl text-sm text-violet-800">
+                  Enable notifications separately on each phone or tablet. On iPhone or iPad, install Rack &amp; Frame to the Home Screen first; Android supports the installed app and compatible browsers.
+                </p>
+                <p className="mt-2 text-xs font-semibold text-violet-700">
+                  {!pushStatus
+                    ? "Checking this device…"
+                    : pushStatus.permission === "unsupported"
+                      ? "Web Push is not available here. Install the PWA or use a supported browser."
+                      : !pushStatus.databaseReady
+                        ? "Database setup required."
+                        : !pushStatus.configured
+                          ? "Secure server setup required."
+                          : pushStatus.enabledOnDevice && pushStatus.permission === "granted"
+                            ? "Enabled on this device"
+                            : pushStatus.permission === "denied"
+                              ? "Blocked in this device's app or browser settings"
+                              : "Not enabled on this device"}
+                </p>
+              </div>
+              {pushStatus?.enabledOnDevice ? (
+                <button type="button" disabled={pushBusy} onClick={() => void disablePush()} className="rounded-xl border border-violet-300 bg-white px-4 py-2 text-sm font-semibold text-violet-900 disabled:opacity-50">
+                  {pushBusy ? "Updating…" : "Disable on this device"}
+                </button>
+              ) : (
+                <button type="button" disabled={pushBusy || !pushStatus?.configured || !pushStatus?.databaseReady || pushStatus?.permission === "unsupported"} onClick={() => void enablePush()} className="rounded-xl bg-violet-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                  {pushBusy ? "Enabling…" : "Enable mobile notifications"}
+                </button>
+              )}
+            </div>
           </section>
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="mb-3 flex items-center justify-between gap-2">

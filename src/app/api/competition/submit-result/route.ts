@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { sendPushToLeagueManagers } from "@/lib/push-server";
 import { canManageLeagueRole } from "@/lib/app-roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -255,6 +256,13 @@ export async function POST(req: NextRequest) {
     reviewed_at: null,
   });
   if (insRes.error) return NextResponse.json({ error: insRes.error.message }, { status: 400 });
+
+  await sendPushToLeagueManagers(adminClient, {
+    title: "Competition result awaiting approval",
+    body: "A knockout competition result has been submitted for review.",
+    url: "/results",
+    tag: `competition-submission-${match.id}`,
+  }, [authData.user.id]);
 
   return NextResponse.json({ ok: true });
 }

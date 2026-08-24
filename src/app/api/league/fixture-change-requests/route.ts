@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { canManageLeagueRole } from "@/lib/app-roles";
 import { resolveServerRole } from "@/lib/server-role";
+import { sendPushToLeagueManagers } from "@/lib/push-server";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -233,6 +234,13 @@ export async function POST(req: NextRequest) {
     }
     return NextResponse.json({ error: ins.error.message }, { status: 400 });
   }
+
+  await sendPushToLeagueManagers(adminClient, {
+    title: "Fixture date request awaiting approval",
+    body: requestType === "play_early" ? "A captain has requested an agreed early fixture date." : "A captain has submitted an exceptional postponement request.",
+    url: "/results",
+    tag: `fixture-change-${fixtureId}`,
+  }, [userId]);
 
   return NextResponse.json({ ok: true });
 }

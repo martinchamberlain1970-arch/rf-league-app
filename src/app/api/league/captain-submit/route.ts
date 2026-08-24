@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { logServerAudit } from "@/lib/server-audit";
+import { sendPushToLeagueManagers } from "@/lib/push-server";
 import { canManageLeagueRole } from "@/lib/app-roles";
 import { resolveServerRole } from "@/lib/server-role";
 
@@ -220,6 +221,13 @@ export async function POST(req: NextRequest) {
       user_agent: req.headers.get("user-agent"),
     },
   });
+
+  await sendPushToLeagueManagers(adminClient, {
+    title: "League result awaiting approval",
+    body: "A captain or vice-captain has submitted a league scorecard for review.",
+    url: "/results",
+    tag: `league-submission-${fixture.id}`,
+  }, [userId]);
 
   return NextResponse.json({ ok: true });
 }

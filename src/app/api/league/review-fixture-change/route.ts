@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireLeagueManager } from "@/lib/server-role";
+import { sendPushToUserIds } from "@/lib/push-server";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -36,7 +37,7 @@ export async function POST(req: NextRequest) {
 
   const requestRes = await adminClient
     .from("league_fixture_change_requests")
-    .select("id,fixture_id,status,request_type,proposed_fixture_date")
+    .select("id,fixture_id,requested_by_user_id,status,request_type,proposed_fixture_date")
     .eq("id", requestId)
     .maybeSingle();
   if (requestRes.error || !requestRes.data) {
@@ -84,6 +85,15 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Fixture date requests are not available until the latest database migration has been run." }, { status: 400 });
     }
     return NextResponse.json({ error: updReq.error.message }, { status: 400 });
+  }
+
+  if (requestRes.data.requested_by_user_id) {
+    await sendPushToUserIds(adminClient, [requestRes.data.requested_by_user_id], {
+      title: decision === "approved" ? "Fixture date request approved" : "Fixture date request declined",
+      body: decision === "approved" ? "Your fixture date request has been approved. Open Rack & Frame for the updated details." : reviewNotes || "Your fixture date request was not approved.",
+      url: "/results",
+      tag: `fixture-change-review-${requestId}`,
+    });
   }
 
   return NextResponse.json({ ok: true });

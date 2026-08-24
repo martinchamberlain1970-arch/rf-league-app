@@ -1,4 +1,4 @@
-const CACHE_VERSION = "rack-and-frame-v1";
+const CACHE_VERSION = "rack-and-frame-v2";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const OFFLINE_URL = "/offline";
 const PRECACHE_URLS = [
@@ -56,4 +56,34 @@ self.addEventListener("fetch", (event) => {
       });
     })
   );
+});
+
+self.addEventListener("push", (event) => {
+  let payload = {
+    title: "Rack & Frame League",
+    body: "You have a new league update.",
+    url: "/notifications",
+    tag: "rack-frame-league-update",
+  };
+  try {
+    payload = { ...payload, ...(event.data ? event.data.json() : {}) };
+  } catch {
+    // Use the safe default payload when a provider sends malformed data.
+  }
+  event.waitUntil(self.registration.showNotification(payload.title, {
+    body: payload.body,
+    icon: "/icons/rack-frame-icon-192-v2.png",
+    badge: "/icons/rack-frame-icon-192-v2.png",
+    tag: payload.tag,
+    data: { url: payload.url || "/notifications" },
+  }));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  const target = new URL(event.notification.data?.url || "/notifications", self.location.origin).href;
+  event.waitUntil(clients.matchAll({ type: "window", includeUncontrolled: true }).then((windows) => {
+    const existing = windows.find((windowClient) => windowClient.url.startsWith(self.location.origin));
+    return existing ? existing.focus().then(() => existing.navigate(target)) : clients.openWindow(target);
+  }));
 });

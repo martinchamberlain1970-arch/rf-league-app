@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireLeagueManager } from "@/lib/server-role";
+import { sendPushToUserIds } from "@/lib/push-server";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -33,7 +34,7 @@ export async function POST(req: NextRequest) {
 
   const subRes = await adminClient
     .from("competition_result_submissions")
-    .select("id,match_id,competition_id,status,payload")
+    .select("id,match_id,competition_id,submitted_by_user_id,status,payload")
     .eq("id", submissionId)
     .maybeSingle();
   if (subRes.error || !subRes.data) return NextResponse.json({ error: "Submission not found." }, { status: 404 });
@@ -41,6 +42,7 @@ export async function POST(req: NextRequest) {
     id: string;
     match_id: string;
     competition_id: string;
+    submitted_by_user_id: string;
     status: string;
     payload: CompetitionSubmissionPayload | null;
   };
@@ -142,6 +144,15 @@ export async function POST(req: NextRequest) {
     })
     .eq("id", submissionId);
   if (updSub.error) return NextResponse.json({ error: updSub.error.message }, { status: 400 });
+
+  if (sub.submitted_by_user_id) {
+    await sendPushToUserIds(adminClient, [sub.submitted_by_user_id], {
+      title: decision === "approved" ? "Competition result approved" : "Competition result needs attention",
+      body: decision === "approved" ? "Your submitted knockout competition result has been approved." : rejectionReason || "Your submitted competition result was not approved. Open Rack & Frame for details.",
+      url: "/results",
+      tag: `competition-submission-review-${sub.id}`,
+    });
+  }
 
   return NextResponse.json({ ok: true });
 }
