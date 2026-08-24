@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 96 96" role="img" aria-label="Rack and Frame League notification badge">
+  <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M18 18v60" stroke-width="10"/>
+    <path d="M23 22h16c12 0 20 7 20 17s-8 17-20 17H23" stroke-width="9"/>
+    <path d="m42 56 17 22" stroke-width="9"/>
+    <path d="M67 18v60M69 22h15M69 47h12" stroke-width="9"/>
+  </g>
+  <circle cx="13" cy="82" r="6" fill="#fff"/>
+</svg>

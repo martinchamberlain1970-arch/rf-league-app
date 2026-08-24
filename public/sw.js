@@ -1,4 +1,4 @@
-const CACHE_VERSION = "rack-and-frame-v2";
+const CACHE_VERSION = "rack-and-frame-v3";
 const STATIC_CACHE = `${CACHE_VERSION}-static`;
 const OFFLINE_URL = "/offline";
 const PRECACHE_URLS = [
@@ -8,6 +8,7 @@ const PRECACHE_URLS = [
   "/icons/icon-512.png",
   "/icons/icon-maskable-512.png",
   "/icons/apple-touch-icon.png",
+  "/icons/rack-frame-notification-badge-96.png",
 ];
 
 self.addEventListener("install", (event) => {
@@ -73,7 +74,7 @@ self.addEventListener("push", (event) => {
   event.waitUntil(self.registration.showNotification(payload.title, {
     body: payload.body,
     icon: "/icons/rack-frame-icon-192-v2.png",
-    badge: "/icons/rack-frame-icon-192-v2.png",
+    badge: "/icons/rack-frame-notification-badge-96.png",
     tag: payload.tag,
     data: { url: payload.url || "/notifications" },
   }));
