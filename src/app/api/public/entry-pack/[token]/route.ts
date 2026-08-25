@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { normalizeEntryPackPayload, validateEntryPackPayload } from "@/lib/league-entry-pack";
 import { normalizePlayerName } from "@/lib/player-name-match";
 import { sendNotificationEmail } from "@/lib/email";
+import { sendPushToLeagueManagers } from "@/lib/push-server";
 
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
@@ -343,6 +344,14 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
     } catch {
       receiptStatus = "failed";
     }
+  }
+  if (action === "submit") {
+    await sendPushToLeagueManagers(client, {
+      title: "Team registration awaiting review",
+      body: `${teamRes.data.name} has submitted its league roster.`,
+      url: `/entry-packs?seasonId=${encodeURIComponent(loaded.pack.season_id)}&packId=${encodeURIComponent(loaded.pack.id)}`,
+      tag: `entry-pack-${loaded.pack.id}`,
+    });
   }
   return NextResponse.json({ ok: true, status: action === "submit" ? "submitted" : "draft", updatedAt: now, receiptStatus }, { headers: noStore });
 }

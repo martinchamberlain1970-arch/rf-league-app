@@ -85,6 +85,7 @@ export default function HomePage() {
   const [openEventsCount, setOpenEventsCount] = useState<number | null>(null);
   const [resultsQueueCount, setResultsQueueCount] = useState<number | null>(null);
   const [pendingRequestsCount, setPendingRequestsCount] = useState<number | null>(null);
+  const [pendingRequestsHref, setPendingRequestsHref] = useState("/notifications");
   const [pendingResultSubmissionsCount, setPendingResultSubmissionsCount] = useState<number>(0);
   const [fixtureChangeActionCount, setFixtureChangeActionCount] = useState<number>(0);
   const [outstandingFixtureCount, setOutstandingFixtureCount] = useState<number>(0);
@@ -179,7 +180,7 @@ export default function HomePage() {
   const leagueRequestsTile =
     admin.canManageLeague && pendingRequestsCount !== null
       ? {
-          href: "/signup-requests",
+          href: pendingRequestsHref,
           title: "Pending League Requests",
           desc: `${pendingRequestsCount} request${pendingRequestsCount === 1 ? "" : "s"} awaiting review.`,
         }
@@ -333,11 +334,11 @@ export default function HomePage() {
           detail: "Review early-play and exceptional postponement requests.",
         },
         {
-          href: "/signup-requests",
+          href: pendingRequestsHref,
           title: "Pending League Requests",
           value: pendingRequestsCount ?? 0,
           tone: "amber",
-          detail: "Profile claims, location requests, and participant updates awaiting review.",
+          detail: "Team registrations, profile claims, location requests, and participant updates awaiting review.",
         },
       ];
     }
@@ -406,6 +407,7 @@ export default function HomePage() {
     openEventsCount,
     outstandingFixtureCount,
     pendingRequestsCount,
+    pendingRequestsHref,
     resultsQueueCount,
     tonightLineupCount,
     tonightLineupHref,
@@ -745,8 +747,16 @@ export default function HomePage() {
         const counts = await Promise.all(
           tables.map((table) => client.from(table).select("id", { count: "exact", head: true }).eq("status", "pending"))
         );
-        const entryPackCount = await client.from("league_entry_packs").select("id", { count: "exact", head: true }).eq("status", "submitted");
-        setPendingRequestsCount(counts.reduce((sum, result) => sum + (result.count ?? 0), 0) + (entryPackCount.count ?? 0));
+        const entryPackResult = await client.from("league_entry_packs").select("id,season_id").eq("status", "submitted").order("updated_at", { ascending: false });
+        const otherRequestCount = counts.reduce((sum, result) => sum + (result.count ?? 0), 0);
+        const entryPacks = (entryPackResult.data ?? []) as Array<{ id: string; season_id: string }>;
+        const totalRequestCount = otherRequestCount + entryPacks.length;
+        setPendingRequestsCount(totalRequestCount);
+        setPendingRequestsHref(
+          totalRequestCount === 1 && entryPacks.length === 1
+            ? `/entry-packs?seasonId=${encodeURIComponent(entryPacks[0].season_id)}&packId=${encodeURIComponent(entryPacks[0].id)}`
+            : "/notifications"
+        );
         setPendingResultSubmissionsCount(0);
         return;
       }

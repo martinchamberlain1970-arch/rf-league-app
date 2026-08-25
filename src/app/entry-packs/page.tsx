@@ -47,6 +47,7 @@ export default function EntryPacksPage() {
   const [message, setMessage] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [validatedPackIds, setValidatedPackIds] = useState<Set<string>>(() => new Set());
+  const [focusPackId, setFocusPackId] = useState("");
 
   const request = async (body?: Record<string, unknown>) => {
     const client = supabase;
@@ -72,8 +73,18 @@ export default function EntryPacksPage() {
       setSeasons((result.seasons ?? []) as Season[]);
       setTeams((result.teams ?? []) as Team[]);
       setLocations((result.locations ?? []) as Location[]);
-      const firstSeason = seasonId && result.seasons?.some((season: Season) => season.id === seasonId) ? seasonId : result.seasons?.[0]?.id || "";
+      const search = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+      const requestedPackId = search?.get("packId") ?? "";
+      const requestedSeasonId = search?.get("seasonId") ?? "";
+      const requestedPack = requestedPackId ? (result.packs ?? []).find((pack: PackRow) => pack.id === requestedPackId) : null;
+      const targetSeasonId = requestedPack?.season_id || requestedSeasonId;
+      const firstSeason = targetSeasonId && result.seasons?.some((season: Season) => season.id === targetSeasonId)
+        ? targetSeasonId
+        : seasonId && result.seasons?.some((season: Season) => season.id === seasonId)
+          ? seasonId
+          : result.seasons?.[0]?.id || "";
       setSeasonId(firstSeason);
+      setFocusPackId(requestedPackId);
       setMessage(null);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Failed to load team registrations.");
@@ -84,6 +95,16 @@ export default function EntryPacksPage() {
     if (!admin.loading && admin.canManageLeague) void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [admin.loading, admin.canManageLeague]);
+
+  useEffect(() => {
+    if (!focusPackId) return;
+    const pack = packs.find((row) => row.id === focusPackId);
+    if (!pack || pack.season_id !== seasonId) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(`entry-pack-${focusPackId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 100);
+    return () => window.clearTimeout(timer);
+  }, [focusPackId, packs, seasonId]);
 
   const seasonName = useMemo(() => new Map(seasons.map((season) => [season.id, season.name])), [seasons]);
   const teamById = useMemo(() => new Map(teams.map((team) => [team.id, team])), [teams]);
@@ -173,7 +194,8 @@ export default function EntryPacksPage() {
                 const matchesByRowId = new Map((pack?.player_matches ?? []).map((entry) => [entry.rowId, entry.matches]));
                 const flaggedPlayerCount = pack?.player_matches?.length ?? 0;
                 const status = pack && !isUnclaimedDraft && (pack.status !== "draft" || players.length > 0) ? pack.status : "not_started";
-                return <article key={team.id} className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+                const isFocusedSubmission = Boolean(pack && pack.id === focusPackId);
+                return <article id={pack ? `entry-pack-${pack.id}` : undefined} key={team.id} className={`rounded-2xl border bg-white p-5 shadow-sm ${isFocusedSubmission ? "border-amber-400 ring-4 ring-amber-200" : "border-slate-200"}`}>
                   <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="text-lg font-bold text-slate-950">{team.name}</p><p className="text-sm text-slate-600">{seasonName.get(team.season_id) ?? "Unknown season"}{team.location_id ? ` · ${locationName.get(team.location_id) ?? "Club"}` : ""}</p></div><span className={`rounded-full border px-3 py-1 text-xs font-bold capitalize ${statusClass(status)}`}>{status.replace("_", " ")}</span></div>
                   <div className="mt-3 grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-slate-200 p-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Players registered</p><p className="mt-1 text-2xl font-black text-slate-950">{players.length}</p></div><div className="rounded-xl border border-slate-200 p-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Last updated</p><p className="mt-1 text-sm font-bold text-slate-950">{status !== "not_started" && pack ? new Date(pack.updated_at).toLocaleString() : "Not started"}</p></div></div>
                   {pack?.status === "submitted" && flaggedPlayerCount > 0 ? <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-950">Profile check: {flaggedPlayerCount} submitted player{flaggedPlayerCount === 1 ? " has" : "s have"} an exact or possible match in the player database. Review the highlighted names below before approving.</p> : null}

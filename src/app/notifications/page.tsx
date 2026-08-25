@@ -565,7 +565,7 @@ export default function NotificationsPage() {
             : Promise.resolve({ data: [] as { id: string; created_at: string; status: string }[], error: null }),
           softQuery<{ id: string; requester_full_name: string; requested_location_name: string; created_at: string; status: string }>(client.from("location_requests").select("id,requester_full_name,requested_location_name,created_at,status").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<CompetitionEntryNotifyRow>(client.from("competition_entries").select("id,competition_id,requester_user_id,player_id,status,created_at").eq("status", "pending").order("created_at", { ascending: false })),
-          softQuery<{ id: string; team_id: string; contact_name: string | null; status: string; updated_at: string }>(client.from("league_entry_packs").select("id,team_id,contact_name,status,updated_at").eq("status", "submitted").order("updated_at", { ascending: false })),
+          softQuery<{ id: string; season_id: string; team_id: string; contact_name: string | null; status: string; updated_at: string }>(client.from("league_entry_packs").select("id,season_id,team_id,contact_name,status,updated_at").eq("status", "submitted").order("updated_at", { ascending: false })),
         ]);
 
         if (leaguePendingRes.error || fixtureChangePendingRes.error || claimRes.error || updateRes.error || adminReqRes.error || locationReqRes.error || competitionPendingRes.error || entryPackRes.error) {
@@ -660,7 +660,7 @@ export default function NotificationsPage() {
             title: "League team registration awaiting review",
             detail: entryPackTeamName.get(row.team_id) ?? "Team",
             created_at: row.updated_at,
-            href: "/entry-packs",
+            href: `/entry-packs?seasonId=${encodeURIComponent(row.season_id)}&packId=${encodeURIComponent(row.id)}`,
             status: row.status,
           });
         });
