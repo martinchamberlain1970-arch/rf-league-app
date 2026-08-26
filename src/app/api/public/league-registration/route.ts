@@ -59,6 +59,7 @@ export async function POST(req: NextRequest) {
     const teamId = String(body?.teamId ?? "").trim();
     const draftToken = String(body?.draftToken ?? "").trim().toLowerCase();
     const startBlank = body?.startBlank === true;
+    const takeOver = body?.takeOver === true;
     if (!teamId) throw new Error("Select your team.");
     if (!/^[a-f0-9]{48}$/.test(draftToken)) throw new Error("The private browser key is invalid. Reload the page and try again.");
 
@@ -112,8 +113,40 @@ export async function POST(req: NextRequest) {
         pack = claimRes.data;
       } else if (pack.status === "submitted" || pack.status === "approved") {
         return NextResponse.json({ error: `This team registration is already ${pack.status}. Contact the League Secretary if it needs changing.` }, { status: 409, headers: noStore });
+      } else if (takeOver && (pack.status === "draft" || pack.status === "rejected")) {
+        const replacementPublicToken = Array.from(crypto.getRandomValues(new Uint8Array(24)), (byte) => byte.toString(16).padStart(2, "0")).join("");
+        const takeOverRes = await client
+          .from("league_entry_packs")
+          .update({
+            public_token: replacementPublicToken,
+            common_draft_token: draftToken,
+            status: "draft",
+            contact_name: null,
+            contact_email: null,
+            contact_phone: null,
+            players: [],
+            competition_notes: null,
+            general_notes: null,
+            phone_sharing_confirmed: false,
+            accuracy_confirmed: false,
+            submitted_at: null,
+            reviewed_at: null,
+            reviewed_by_user_id: null,
+            review_notes: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq("id", pack.id)
+          .eq("common_draft_token", pack.common_draft_token)
+          .select("id,public_token,status,common_draft_token")
+          .single();
+        if (takeOverRes.error) throw new Error(takeOverRes.error.message);
+        pack = takeOverRes.data;
       } else {
-        return NextResponse.json({ error: "This team registration has already been started on another browser. Continue on that browser or ask the League Secretary to reset access." }, { status: 409, headers: noStore });
+        return NextResponse.json({
+          error: "This team registration has already been started on another browser.",
+          code: "DRAFT_SESSION_CONFLICT",
+          canTakeOver: true,
+        }, { status: 409, headers: noStore });
       }
     }
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import MessageModal from "@/components/MessageModal";
+import { useAppDialog } from "@/components/AppDialogProvider";
 
 type Season = { id: string; name: string };
 type Team = {
@@ -15,6 +16,7 @@ type Team = {
 const makeToken = () => Array.from(crypto.getRandomValues(new Uint8Array(24)), (byte) => byte.toString(16).padStart(2, "0")).join("");
 
 export default function SharedLeagueEntryPage() {
+  const { showConfirm } = useAppDialog();
   const [seasons, setSeasons] = useState<Season[]>([]);
   const [teams, setTeams] = useState<Team[]>([]);
   const [seasonId, setSeasonId] = useState("");
@@ -39,7 +41,7 @@ export default function SharedLeagueEntryPage() {
   const availableTeams = useMemo(() => teams.filter((team) => !seasonId || team.seasonId === seasonId), [teams, seasonId]);
   const selectedTeam = teams.find((team) => team.id === teamId);
 
-  const openRegistration = async () => {
+  const openRegistration = async (takeOver = false) => {
     if (!teamId) return setError("Select your team first.");
     setBusy(true); setError("");
     const storageKey = `rf-league-registration-token:${teamId}`;
@@ -49,11 +51,24 @@ export default function SharedLeagueEntryPage() {
     const response = await fetch("/api/public/league-registration", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ teamId, draftToken, startBlank: localStorage.getItem(blankFormMarkerKey) !== "1" }),
+      body: JSON.stringify({ teamId, draftToken, startBlank: localStorage.getItem(blankFormMarkerKey) !== "1", takeOver }),
     });
     const result = await response.json().catch(() => ({}));
     setBusy(false);
-    if (!response.ok) return setError(result.error ?? "The team registration could not be opened.");
+    if (!response.ok) {
+      if (response.status === 409 && result.code === "DRAFT_SESSION_CONFLICT" && result.canTakeOver === true) {
+        const confirmed = await showConfirm({
+          title: `Start a new session for ${selectedTeam?.name ?? "this team"}?`,
+          description: "This registration was started on another browser. Starting a new session will permanently clear any names, roles and notes saved in that unfinished draft. The previous private form link will stop working. A submitted or approved registration cannot be replaced this way.",
+          confirmLabel: "Start new blank session",
+          cancelLabel: "Keep existing session",
+          tone: "danger",
+        });
+        if (confirmed) await openRegistration(true);
+        return;
+      }
+      return setError(result.error ?? "The team registration could not be opened.");
+    }
     localStorage.setItem(blankFormMarkerKey, "1");
     window.location.assign(result.entryUrl);
   };
@@ -73,6 +88,7 @@ export default function SharedLeagueEntryPage() {
         <li>The captain and vice-captain are mandatory. Five optional player fields are provided, with the option to add more.</li>
         <li>Existing players can be selected from the chosen team&apos;s club list; new players can be entered manually.</li>
         <li>No telephone numbers or private match-arranging contact details are collected here.</li>
+        <li>If an unfinished draft is locked to another browser, you may start a new blank session after acknowledging that the earlier saved draft and private link will be lost.</li>
         <li>The captain and vice-captain will later receive team access for line-ups, fixture completion and results. A separate guide will be supplied.</li>
         <li>Competition entries and competition contact details use the separate competition-entry form.</li>
       </ul>
