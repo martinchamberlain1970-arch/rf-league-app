@@ -76,12 +76,12 @@ export async function GET(req: NextRequest) {
     }));
     const packs = (packsRes.data ?? []).filter((pack) => openSeasonIds.has(pack.season_id)).map((pack) => ({
       ...pack,
-      player_matches: pack.status === "submitted" && Array.isArray(pack.players)
+      player_matches: ["submitted", "approved"].includes(pack.status) && Array.isArray(pack.players)
         ? normalizeEntryPackPayload({ players: pack.players }).players.map((player) => ({
             rowId: player.rowId,
             matches: existingPlayers
               .map((candidate) => ({ ...candidate, kind: playerNameMatchKind(player.fullName, candidate.name) }))
-              .filter((candidate) => candidate.kind !== null)
+              .filter((candidate) => candidate.kind !== null && (pack.status !== "approved" || candidate.kind === "exact"))
               .sort((left, right) => (left.kind === "exact" ? -1 : 1) - (right.kind === "exact" ? -1 : 1))
               .slice(0, 5),
           })).filter((entry) => entry.matches.length > 0)
