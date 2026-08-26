@@ -48,6 +48,7 @@ export function playerNameMatchKind(leftValue: string, rightValue: string): Play
     if (leftLast === rightLast && leftFirst[0] === rightFirst[0]) return "possible";
     if (leftFirst === rightFirst && editDistance(leftLast, rightLast) <= 2) return "possible";
     if (sharesFirstNameRoot(leftFirst, rightFirst) && editDistance(leftLast, rightLast) <= 2) return "possible";
+    if (leftFirst[0] === rightFirst[0] && editDistance(leftLast, rightLast) <= 1) return "possible";
   }
 
   const allowedDistance = Math.max(left.length, right.length) >= 12 ? 2 : 1;
