@@ -721,6 +721,7 @@ export default function LeaguePage() {
   const [showUnassignedPlayers, setShowUnassignedPlayers] = useState(false);
   const [showAllRegisteredVenues, setShowAllRegisteredVenues] = useState(false);
   const [profileVenueFilterId, setProfileVenueFilterId] = useState("");
+  const [teamDirectorySearch, setTeamDirectorySearch] = useState("");
   const [seasonRosterTeamId, setSeasonRosterTeamId] = useState("");
   const [seasonRosterPlayerId, setSeasonRosterPlayerId] = useState("");
   const [seasonRosterBulkPlayerIds, setSeasonRosterBulkPlayerIds] = useState<string[]>([]);
@@ -1077,6 +1078,28 @@ export default function LeaguePage() {
         rating: Math.round(Number((p as Player & { rating_snooker?: number | null }).rating_snooker ?? 1000)),
       }));
   }, [players, profileVenueFilterId, locations]);
+  const teamDirectoryRows = useMemo(() => {
+    const query = teamDirectorySearch.trim().toLowerCase();
+    return seasonTeams
+      .map((team) => {
+        const roster = members
+          .filter((member) => member.season_id === seasonId && member.team_id === team.id)
+          .map((member) => ({ ...member, player: playerById.get(member.player_id) ?? null }))
+          .filter((member): member is TeamMember & { player: Player } => Boolean(member.player))
+          .sort((left, right) => {
+            const leftRole = left.is_captain ? 0 : left.is_vice_captain ? 1 : 2;
+            const rightRole = right.is_captain ? 0 : right.is_vice_captain ? 1 : 2;
+            return leftRole - rightRole || named(left.player).localeCompare(named(right.player));
+          });
+        const venue = locationLabel(locationById.get(team.location_id)?.name ?? "Unknown venue");
+        return { team, venue, roster };
+      })
+      .filter(({ team, venue, roster }) => {
+        if (!query) return true;
+        return team.name.toLowerCase().includes(query) || venue.toLowerCase().includes(query) || roster.some((member) => named(member.player).toLowerCase().includes(query));
+      })
+      .sort((left, right) => left.team.name.localeCompare(right.team.name));
+  }, [locationById, members, playerById, seasonId, seasonTeams, teamDirectorySearch]);
   const selectedRegistryTeam = useMemo(
     () => registeredTeams.find((t) => t.id === registryTeamId) ?? null,
     [registeredTeams, registryTeamId]
@@ -1491,7 +1514,7 @@ export default function LeaguePage() {
         : activeView === "venues"
           ? "Register venues and maintain venue contact details."
           : activeView === "profiles"
-            ? "View player profiles and linked team/venue details."
+            ? "Find every team roster, role, playing handicap, and player profile in one place."
             : activeView === "setup"
               ? "Create leagues and add teams into selected leagues."
               : activeView === "knockouts"
@@ -1512,6 +1535,7 @@ export default function LeaguePage() {
         points: [
           "Use the Guided setup panel to work in league-creation order without jumping between tabs.",
           "Use Team Management first to register teams, players, and captain/vice-captain assignments.",
+          "Use Teams & Players for the quickest team-by-team view of live rosters, roles, playing handicaps, and Elo.",
           "Use Venues to maintain club records and contact details.",
           "Use League Setup to create a league season and attach teams.",
           "Use Fixtures to generate, review, and operate weekly league matches.",
@@ -1545,11 +1569,13 @@ export default function LeaguePage() {
     }
     if (view === "profiles") {
       return {
-        title: "Player Profiles Guide",
+        title: "Teams & Players Guide",
         points: [
-          "Review player profile data, team links, and venue links.",
+          "Select a league to see every season team and its current registered roster in one place.",
+          "Captain and vice-captain roles, playing handicaps, recorded handicaps, and Elo are shown together.",
+          "Use the search box to find a team, club, or player immediately.",
           "Open full profile pages for deeper stats and history.",
-          "Use this tab for league-level checks before season launch.",
+          "Use Team Management only when you need to change a roster or role.",
         ],
       };
     }
@@ -6340,7 +6366,7 @@ export default function LeaguePage() {
                         Venues
                       </button>
                       <button type="button" onClick={() => setActiveView("profiles")} className={leagueTabClass("profiles")}>
-                        Player Profiles
+                        Teams &amp; Players
                       </button>
                       <button type="button" onClick={() => setActiveView("setup")} className={leagueTabClass("setup")}>
                         League Setup
@@ -7976,56 +8002,87 @@ export default function LeaguePage() {
 
               {activeView === "profiles" ? (
               <section className="rounded-2xl border border-sky-200 bg-gradient-to-br from-white to-sky-50 p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-sky-900">Player Profiles</h2>
-                <p className="mt-2 text-sm text-slate-600">Open a player profile to view profile details and statistics.</p>
-                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="grid gap-2 sm:grid-cols-3">
-                    <select
-                      className="rounded-xl border border-slate-300 bg-white px-3 py-2"
-                      value={profileVenueFilterId}
-                      onChange={(e) => setProfileVenueFilterId(e.target.value)}
-                    >
-                      <option value="">All venues</option>
-                      {venueLocations.map((location) => (
-                        <option key={location.id} value={location.id}>
-                          {locationLabel(location.name)}
-                        </option>
-                      ))}
+                <h2 className="text-xl font-black text-sky-950">Teams &amp; Players</h2>
+                <p className="mt-1 text-sm text-slate-600">The quickest place to check the selected league&apos;s teams, registered players, roles and current playing handicaps.</p>
+
+                <div className="mt-4 grid gap-3 rounded-xl border border-sky-200 bg-white p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                  <label className="text-xs font-bold uppercase tracking-wide text-slate-600">
+                    League season
+                    <select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-900" value={seasonId} onChange={(event) => setSeasonId(event.target.value)}>
+                      {visibleSeasons.map((season) => <option key={`directory-season-${season.id}`} value={season.id}>{seasonDisplayLabel(season)}</option>)}
                     </select>
-                    <div className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700">
-                      Profiles shown: <span className="font-semibold text-slate-900">{visiblePlayerProfiles.length}</span>
+                  </label>
+                  <label className="text-xs font-bold uppercase tracking-wide text-slate-600">
+                    Find a team or player
+                    <input className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-900" value={teamDirectorySearch} onChange={(event) => setTeamDirectorySearch(event.target.value)} placeholder="Type a team, club or player name" />
+                  </label>
+                  <div className="flex items-end">
+                    <div className="w-full rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-950 lg:min-w-36">
+                      <span className="font-black">{teamDirectoryRows.length}</span> team{teamDirectoryRows.length === 1 ? "" : "s"} shown
                     </div>
                   </div>
-                  <div className="mt-3 rounded-xl border border-slate-200 bg-white p-2">
-                    <ul className="max-h-[28rem] space-y-1 overflow-y-auto">
-                      {visiblePlayerProfiles.map((player) => (
-                        <li key={`profile-row-${player.id}`} className="grid items-center gap-3 rounded-lg border border-slate-200 px-3 py-3 sm:grid-cols-[1fr_auto]">
-                          <div>
-                            <Link
-                              href={`/players/${player.id}`}
-                              className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-2 hover:text-slate-700"
-                            >
-                              {player.name}
-                            </Link>
-                            <p className="mt-1 text-xs text-slate-600">{player.venue}</p>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-2 justify-self-start sm:justify-self-end">
-                            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-800">
-                              Elo {player.rating}
-                            </span>
-                            <span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-800">
-                              Current {player.currentHandicap > 0 ? `+${player.currentHandicap}` : player.currentHandicap}
-                            </span>
-                            <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                              Baseline {player.baselineHandicap > 0 ? `+${player.baselineHandicap}` : player.baselineHandicap}
-                            </span>
-                          </div>
-                        </li>
-                      ))}
-                      {visiblePlayerProfiles.length === 0 ? <li className="px-2 py-1 text-sm text-slate-500">No players found for this venue.</li> : null}
-                    </ul>
-                  </div>
                 </div>
+
+                {currentSeason ? (
+                  <div className={`mt-3 rounded-xl border px-4 py-3 text-sm ${currentSeason.handicap_enabled ? "border-teal-200 bg-teal-50 text-teal-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>
+                    <strong>{currentSeason.handicap_enabled ? "Handicap league:" : "Scratch league:"}</strong>{" "}
+                    {currentSeason.handicap_enabled
+                      ? "the Playing handicap column shows each player's current live handicap."
+                      : "every player starts league frames at 0. Their recorded handicap is still shown for historical tracking."}
+                  </div>
+                ) : null}
+
+                <div className="mt-4 grid gap-4 xl:grid-cols-2">
+                  {teamDirectoryRows.map(({ team, venue, roster }) => (
+                    <article key={`team-directory-${team.id}`} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 bg-gradient-to-r from-slate-950 to-sky-950 px-4 py-3 text-white">
+                        <div>
+                          <h3 className="text-lg font-black">{team.name}</h3>
+                          <p className="mt-0.5 text-xs text-sky-100">{venue}</p>
+                        </div>
+                        <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-bold">{roster.length} registered player{roster.length === 1 ? "" : "s"}</span>
+                      </header>
+                      {roster.length > 0 ? (
+                        <div className="overflow-x-auto">
+                          <table className="min-w-full border-collapse text-sm">
+                            <thead><tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><th className="px-4 py-2">Player</th><th className="px-3 py-2">Role</th><th className="px-3 py-2">Playing handicap</th><th className="px-3 py-2 text-right">Elo</th></tr></thead>
+                            <tbody>
+                              {roster.map((member) => {
+                                const recordedHandicap = Number(member.player.snooker_handicap ?? 0);
+                                const handicapLabel = recordedHandicap > 0 ? `+${recordedHandicap}` : String(recordedHandicap);
+                                return (
+                                  <tr key={`team-directory-member-${member.id}`} className="border-b border-slate-100 last:border-b-0">
+                                    <td className="px-4 py-3"><Link href={`/players/${member.player.id}`} className="font-semibold text-slate-950 underline decoration-slate-300 underline-offset-2 hover:text-sky-800">{named(member.player)}</Link>{member.player.claimed_by ? <span className="mt-1 block text-[11px] text-emerald-700">App account linked</span> : null}</td>
+                                    <td className="px-3 py-3 text-slate-700">{member.is_captain ? <span className="rounded-full bg-indigo-100 px-2 py-1 text-xs font-bold text-indigo-800">Captain</span> : member.is_vice_captain ? <span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-800">Vice-captain</span> : <span className="text-xs">Player</span>}</td>
+                                    <td className="px-3 py-3"><span className="font-black text-slate-950">{currentSeason?.handicap_enabled ? handicapLabel : "0 (scratch)"}</span>{!currentSeason?.handicap_enabled ? <span className="mt-1 block text-[11px] text-slate-500">Recorded: {handicapLabel}</span> : null}</td>
+                                    <td className="px-3 py-3 text-right font-semibold text-slate-700">{Math.round(Number(member.player.rating_snooker ?? 1000))}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      ) : <p className="px-4 py-5 text-sm text-amber-800">No players are currently registered to this season team.</p>}
+                    </article>
+                  ))}
+                  {teamDirectoryRows.length === 0 ? <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900 xl:col-span-2">No team or player matches this search in the selected league.</div> : null}
+                </div>
+
+                <details className="mt-5 rounded-xl border border-slate-200 bg-white p-3">
+                  <summary className="cursor-pointer font-semibold text-slate-900">Browse every player profile by club</summary>
+                  <p className="mt-1 text-xs text-slate-600">This includes club players who may not yet be assigned to the selected season.</p>
+                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                    <select className="rounded-xl border border-slate-300 bg-white px-3 py-2" value={profileVenueFilterId} onChange={(event) => setProfileVenueFilterId(event.target.value)}>
+                      <option value="">All venues</option>
+                      {venueLocations.map((location) => <option key={location.id} value={location.id}>{locationLabel(location.name)}</option>)}
+                    </select>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">Profiles shown: <span className="font-semibold text-slate-900">{visiblePlayerProfiles.length}</span></div>
+                  </div>
+                  <ul className="mt-3 max-h-[28rem] space-y-1 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-2">
+                    {visiblePlayerProfiles.map((player) => <li key={`profile-row-${player.id}`} className="grid items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 sm:grid-cols-[1fr_auto]"><div><Link href={`/players/${player.id}`} className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-2 hover:text-slate-700">{player.name}</Link><p className="mt-1 text-xs text-slate-600">{player.venue}</p></div><div className="flex flex-wrap items-center gap-2 justify-self-start sm:justify-self-end"><span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-800">Elo {player.rating}</span><span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-800">Current {player.currentHandicap > 0 ? `+${player.currentHandicap}` : player.currentHandicap}</span></div></li>)}
+                    {visiblePlayerProfiles.length === 0 ? <li className="px-2 py-1 text-sm text-slate-500">No players found for this venue.</li> : null}
+                  </ul>
+                </details>
               </section>
               ) : null}
 
