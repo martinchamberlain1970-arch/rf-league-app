@@ -34,6 +34,11 @@ type PackRow = {
 type Season = { id: string; name: string; is_published?: boolean | null; is_active?: boolean | null };
 type Team = { id: string; season_id: string; location_id?: string | null; name: string; is_active?: boolean | null };
 type Location = { id: string; name: string };
+type ProfileLinkChoice = { playerId: string; updateFullName: boolean };
+
+function profileLinkKey(packId: string, rowId: string) {
+  return `${packId}:${rowId}`;
+}
 
 export default function EntryPacksPage() {
   const { showConfirm, showPrompt } = useAppDialog();
@@ -48,6 +53,7 @@ export default function EntryPacksPage() {
   const [notice, setNotice] = useState<string | null>(null);
   const [validatedPackIds, setValidatedPackIds] = useState<Set<string>>(() => new Set());
   const [focusPackId, setFocusPackId] = useState("");
+  const [profileLinkChoices, setProfileLinkChoices] = useState<Record<string, ProfileLinkChoice>>({});
 
   const request = async (body?: Record<string, unknown>) => {
     const client = supabase;
@@ -139,7 +145,13 @@ export default function EntryPacksPage() {
     })) return;
     setBusyId(pack.id);
     try {
-      await request({ action, packId: pack.id, reviewNotes });
+      const profileLinks = action === "approve"
+        ? (pack.players ?? []).flatMap((player) => {
+            const choice = profileLinkChoices[profileLinkKey(pack.id, player.rowId)];
+            return choice?.playerId ? [{ rowId: player.rowId, playerId: choice.playerId, updateFullName: choice.updateFullName }] : [];
+          })
+        : [];
+      await request({ action, packId: pack.id, reviewNotes, profileLinks });
       setNotice(action === "approve" ? "Team registration approved and imported." : action === "reject" ? "Team registration returned for correction." : "Team registration browser access reset.");
       await load();
     } catch (error) {
@@ -200,6 +212,7 @@ export default function EntryPacksPage() {
                   <div className="mt-3 grid gap-3 sm:grid-cols-2"><div className="rounded-xl border border-slate-200 p-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Players registered</p><p className="mt-1 text-2xl font-black text-slate-950">{players.length}</p></div><div className="rounded-xl border border-slate-200 p-3"><p className="text-xs font-bold uppercase tracking-wide text-slate-500">Last updated</p><p className="mt-1 text-sm font-bold text-slate-950">{status !== "not_started" && pack ? new Date(pack.updated_at).toLocaleString() : "Not started"}</p></div></div>
                   {pack?.status === "submitted" && flaggedPlayerCount > 0 ? <p className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-3 text-sm font-semibold text-amber-950">Profile check: {flaggedPlayerCount} submitted player{flaggedPlayerCount === 1 ? " has" : "s have"} an exact or possible match in the player database. Review the highlighted names below before approving.</p> : null}
                   {players.length > 0 ? <details className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3" open={pack?.status === "submitted"}><summary className="cursor-pointer text-sm font-bold text-slate-800">{pack?.status === "approved" ? "Approved players and roles" : "Review registered players and roles"}</summary><div className="mt-3 space-y-2">{players.map((player) => { const matches = matchesByRowId.get(player.rowId) ?? []; const isApproved = pack?.status === "approved"; return <div key={player.rowId} className="rounded-lg bg-white p-3 text-sm text-slate-700"><p className="font-bold text-slate-950">{player.fullName}{player.isCaptain ? " · Captain" : ""}{player.isViceCaptain ? " · Vice-captain" : ""}</p>{matches.length > 0 ? <div className="mt-2 space-y-1">{matches.map((match) => <p key={match.id} className={`rounded-lg px-2 py-1 text-xs font-semibold ${isApproved || match.kind === "exact" ? "bg-emerald-50 text-emerald-800" : "bg-amber-50 text-amber-900"}`}>{isApproved ? "Approved and linked profile" : match.kind === "exact" ? "Existing profile" : "Possible match"}: {match.name} · {match.locationName}{match.isArchived ? " · archived" : ""}</p>)}</div> : <p className={`mt-1 text-xs ${isApproved ? "font-semibold text-emerald-700" : "text-slate-500"}`}>{isApproved ? "Approved and added to the team roster." : "No similar existing profile found."}</p>}</div>; })}</div>{pack?.general_notes ? <p className="mt-2 rounded-lg bg-white p-3 text-sm text-slate-700"><strong>Other notes:</strong> {pack.general_notes}</p> : null}</details> : null}
+                  {pack?.status === "submitted" && flaggedPlayerCount > 0 ? <section className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-4"><h3 className="font-bold text-amber-950">Resolve existing player profiles</h3><p className="mt-1 text-sm text-amber-900">For a possible match, choose the existing profile deliberately. Leave the automatic option selected to use an exact match or create a new profile.</p><div className="mt-3 space-y-3">{players.flatMap((player) => { const matches = matchesByRowId.get(player.rowId) ?? []; if (matches.length === 0) return []; const choiceKey = profileLinkKey(pack.id, player.rowId); const choice = profileLinkChoices[choiceKey]; return [<div key={player.rowId} className="rounded-lg border border-amber-200 bg-white p-3"><label className="block text-sm font-bold text-slate-950">{player.fullName}<select value={choice?.playerId ?? ""} onChange={(event) => setProfileLinkChoices((current) => { const next = { ...current }; if (!event.target.value) delete next[choiceKey]; else next[choiceKey] = { playerId: event.target.value, updateFullName: false }; return next; })} className="mt-2 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal text-slate-800"><option value="">Automatic: exact match or create a new profile</option>{matches.map((match) => <option key={match.id} value={match.id}>Link to {match.name} — {match.locationName}{match.kind === "exact" ? " (exact match)" : " (possible match)"}</option>)}</select></label>{choice?.playerId ? <label className="mt-3 flex items-start gap-2 text-sm font-semibold text-slate-800"><input type="checkbox" className="mt-1" checked={choice.updateFullName} onChange={(event) => setProfileLinkChoices((current) => ({ ...current, [choiceKey]: { ...choice, updateFullName: event.target.checked } }))} /><span>Correct the linked profile&apos;s official full name to <strong>{player.fullName}</strong>.</span></label> : null}</div>]; })}</div></section> : null}
                   {pack?.status === "submitted" ? <div className="mt-4 space-y-3"><label className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm font-semibold text-slate-800"><input type="checkbox" className="mt-1" checked={validatedPackIds.has(pack.id)} onChange={(event) => setValidatedPackIds((current) => { const next = new Set(current); if (event.target.checked) next.add(pack.id); else next.delete(pack.id); return next; })} /><span>I have checked every player name, role and possible profile match for this team.</span></label><div className="flex flex-wrap gap-2"><button type="button" disabled={busyId === pack.id || !validatedPackIds.has(pack.id)} onClick={() => void act(pack, "approve")} className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-50">Validate, approve and import</button><button type="button" disabled={busyId === pack.id} onClick={() => void act(pack, "reject")} className="rounded-xl border border-rose-300 bg-rose-50 px-4 py-2 text-sm font-bold text-rose-800 disabled:opacity-50">Return for correction</button></div></div> : null}
                   {pack && (status === "draft" || status === "rejected") ? <button type="button" disabled={busyId === pack.id} onClick={() => void act(pack, "rotate")} className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-700 disabled:opacity-50">Reset browser access</button> : null}
                   {pack?.review_notes ? <p className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900"><strong>Review note:</strong> {pack.review_notes}</p> : null}

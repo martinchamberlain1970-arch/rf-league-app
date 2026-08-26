@@ -152,7 +152,9 @@ async function createOrReturnPack(adminClient: SupabaseClient, user: User, seaso
   return createRes.data;
 }
 
-async function approveAndImport(adminClient: SupabaseClient, user: User, packId: string, reviewNotes: string) {
+type ProfileLinkRequest = { rowId: string; playerId: string; updateFullName: boolean };
+
+async function approveAndImport(adminClient: SupabaseClient, user: User, packId: string, reviewNotes: string, profileLinks: ProfileLinkRequest[]) {
   const packRes = await adminClient
     .from("league_entry_packs")
     .select("id,season_id,team_id,status,players")
@@ -182,14 +184,40 @@ async function approveAndImport(adminClient: SupabaseClient, user: User, packId:
   const allPlayersRes = await adminClient.from("players").select("id,full_name,display_name,location_id,is_archived");
   if (allPlayersRes.error) throw new Error(allPlayersRes.error.message);
   const allPlayers = (allPlayersRes.data ?? []) as Array<{ id: string; full_name: string | null; display_name: string; location_id: string | null; is_archived?: boolean | null }>;
+  const allPlayersById = new Map(allPlayers.map((player) => [player.id, player]));
+  const requestedLinkByRowId = new Map(profileLinks.map((link) => [link.rowId, link]));
   const usedDisplayNames = new Set(allPlayers.map((player) => player.display_name.trim().toLowerCase()));
   const resolved = new Map<string, string>();
+  const resolvedPlayerIds = new Set<string>();
+  let correctedProfileCount = 0;
 
   for (const player of payload.players) {
+    const requestedLink = requestedLinkByRowId.get(player.rowId);
+    if (requestedLink) {
+      const linkedPlayer = allPlayersById.get(requestedLink.playerId);
+      if (!linkedPlayer) throw new Error(`The selected existing profile for ${player.fullName} could not be found.`);
+      if (resolvedPlayerIds.has(linkedPlayer.id)) throw new Error("The same existing player profile cannot be linked to two submitted players.");
+      const updateRes = await adminClient
+        .from("players")
+        .update({
+          ...(requestedLink.updateFullName ? { full_name: player.fullName } : {}),
+          location_id: teamRes.data.location_id,
+          is_archived: false,
+          age_band: "18_plus",
+          guardian_name: null,
+        })
+        .eq("id", linkedPlayer.id);
+      if (updateRes.error) throw new Error(updateRes.error.message);
+      if (requestedLink.updateFullName) correctedProfileCount += 1;
+      resolved.set(player.rowId, linkedPlayer.id);
+      resolvedPlayerIds.add(linkedPlayer.id);
+      continue;
+    }
     const key = normalizePlayerName(player.fullName);
     const exact = allPlayers.filter((candidate) => normalizePlayerName(candidate.full_name?.trim() || candidate.display_name) === key);
     if (exact.length > 1) throw new Error(`More than one historic profile matches ${player.fullName}. Resolve the duplicate before approving this pack.`);
     if (exact.length === 1) {
+      if (resolvedPlayerIds.has(exact[0].id)) throw new Error("The same existing player profile cannot be linked to two submitted players.");
       const updateRes = await adminClient
         .from("players")
         .update({
@@ -201,6 +229,7 @@ async function approveAndImport(adminClient: SupabaseClient, user: User, packId:
         .eq("id", exact[0].id);
       if (updateRes.error) throw new Error(updateRes.error.message);
       resolved.set(player.rowId, exact[0].id);
+      resolvedPlayerIds.add(exact[0].id);
       continue;
     }
 
@@ -227,6 +256,7 @@ async function approveAndImport(adminClient: SupabaseClient, user: User, packId:
       .single();
     if (insertRes.error) throw new Error(insertRes.error.message);
     resolved.set(player.rowId, insertRes.data.id);
+    resolvedPlayerIds.add(insertRes.data.id);
   }
 
   const rosterPlayerIds = Array.from(new Set(resolved.values()));
@@ -312,9 +342,16 @@ async function approveAndImport(adminClient: SupabaseClient, user: User, packId:
       player_count: payload.players.length,
       removed_memberships: staleMembershipIds.length,
       moved_memberships: movedMembershipCount,
+      manually_linked_profiles: profileLinks.length,
+      corrected_profile_names: correctedProfileCount,
+      profile_links: profileLinks.map((link) => ({
+        row_id: link.rowId,
+        player_id: link.playerId,
+        official_name_corrected: link.updateFullName,
+      })),
     },
   });
-  return { importedPlayers: payload.players.length, removedMemberships: staleMembershipIds.length, movedMemberships: movedMembershipCount };
+  return { importedPlayers: payload.players.length, removedMemberships: staleMembershipIds.length, movedMemberships: movedMembershipCount, linkedProfiles: profileLinks.length, correctedProfiles: correctedProfileCount };
 }
 
 export async function POST(req: NextRequest) {
@@ -354,7 +391,16 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true });
     }
     if (action === "approve") {
-      const result = await approveAndImport(adminClient, user, packId, String(body?.reviewNotes ?? "").trim().slice(0, 2000));
+      const profileLinks = Array.isArray(body?.profileLinks)
+        ? body.profileLinks.flatMap((value: unknown) => {
+            if (!value || typeof value !== "object") return [];
+            const link = value as Record<string, unknown>;
+            const rowId = String(link.rowId ?? "").trim();
+            const playerId = String(link.playerId ?? "").trim();
+            return rowId && playerId ? [{ rowId, playerId, updateFullName: link.updateFullName === true }] : [];
+          }).slice(0, 100)
+        : [];
+      const result = await approveAndImport(adminClient, user, packId, String(body?.reviewNotes ?? "").trim().slice(0, 2000), profileLinks);
       return NextResponse.json({ ok: true, ...result });
     }
     throw new Error("Unsupported action.");

@@ -26,6 +26,11 @@ function editDistance(left: string, right: string) {
   return previous[right.length];
 }
 
+function sharesFirstNameRoot(left: string, right: string) {
+  const shorterLength = Math.min(left.length, right.length);
+  return shorterLength >= 3 && (left.startsWith(right) || right.startsWith(left));
+}
+
 export function playerNameMatchKind(leftValue: string, rightValue: string): PlayerNameMatchKind | null {
   const left = normalizePlayerName(leftValue);
   const right = normalizePlayerName(rightValue);
@@ -42,6 +47,7 @@ export function playerNameMatchKind(leftValue: string, rightValue: string): Play
     const rightLast = rightParts[rightParts.length - 1];
     if (leftLast === rightLast && leftFirst[0] === rightFirst[0]) return "possible";
     if (leftFirst === rightFirst && editDistance(leftLast, rightLast) <= 2) return "possible";
+    if (sharesFirstNameRoot(leftFirst, rightFirst) && editDistance(leftLast, rightLast) <= 2) return "possible";
   }
 
   const allowedDistance = Math.max(left.length, right.length) >= 12 ? 2 : 1;
