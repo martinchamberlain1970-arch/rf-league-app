@@ -71,6 +71,7 @@ type Team = {
 type TeamMember = { id: string; season_id: string; team_id: string; player_id: string; is_captain: boolean; is_vice_captain: boolean };
 type RegisteredTeam = { id: string; name: string; location_id: string | null };
 type RegisteredTeamMember = { id: string; team_id: string; player_id: string; is_captain: boolean; is_vice_captain: boolean };
+type LeagueEntryPackSummary = { team_id: string; season_id: string; status: "draft" | "submitted" | "approved" | "rejected" };
 type Fixture = {
   id: string;
   season_id: string;
@@ -660,6 +661,7 @@ export default function LeaguePage() {
   const [members, setMembers] = useState<TeamMember[]>([]);
   const [registeredTeams, setRegisteredTeams] = useState<RegisteredTeam[]>([]);
   const [registeredMembers, setRegisteredMembers] = useState<RegisteredTeamMember[]>([]);
+  const [leagueEntryPacks, setLeagueEntryPacks] = useState<LeagueEntryPackSummary[]>([]);
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [slots, setSlots] = useState<FrameSlot[]>([]);
   const [tableRows, setTableRows] = useState<TableRow[]>([]);
@@ -722,6 +724,7 @@ export default function LeaguePage() {
   const [showAllRegisteredVenues, setShowAllRegisteredVenues] = useState(false);
   const [profileVenueFilterId, setProfileVenueFilterId] = useState("");
   const [teamDirectorySearch, setTeamDirectorySearch] = useState("");
+  const [teamDirectoryStatusFilter, setTeamDirectoryStatusFilter] = useState<"all" | "approved" | "submitted" | "incomplete">("all");
   const [seasonRosterTeamId, setSeasonRosterTeamId] = useState("");
   const [seasonRosterPlayerId, setSeasonRosterPlayerId] = useState("");
   const [seasonRosterBulkPlayerIds, setSeasonRosterBulkPlayerIds] = useState<string[]>([]);
@@ -1080,6 +1083,9 @@ export default function LeaguePage() {
   }, [players, profileVenueFilterId, locations]);
   const teamDirectoryRows = useMemo(() => {
     const query = teamDirectorySearch.trim().toLowerCase();
+    const entryPackStatusByTeamId = new Map(
+      leagueEntryPacks.filter((pack) => pack.season_id === seasonId).map((pack) => [pack.team_id, pack.status])
+    );
     return seasonTeams
       .map((team) => {
         const roster = members
@@ -1092,14 +1098,18 @@ export default function LeaguePage() {
             return leftRole - rightRole || named(left.player).localeCompare(named(right.player));
           });
         const venue = locationLabel(locationById.get(team.location_id)?.name ?? "Unknown venue");
-        return { team, venue, roster };
+        const registrationStatus = entryPackStatusByTeamId.get(team.id) ?? "not_started";
+        const directoryStatus = registrationStatus === "approved" ? "approved" : registrationStatus === "submitted" ? "submitted" : "incomplete";
+        return { team, venue, roster, registrationStatus, directoryStatus };
       })
-      .filter(({ team, venue, roster }) => {
+      .filter(({ team, venue, roster, directoryStatus }) => {
+        if (teamDirectoryStatusFilter !== "all" && directoryStatus !== teamDirectoryStatusFilter) return false;
         if (!query) return true;
-        return team.name.toLowerCase().includes(query) || venue.toLowerCase().includes(query) || roster.some((member) => named(member.player).toLowerCase().includes(query));
+        const confirmedRoster = directoryStatus === "approved" ? roster : [];
+        return team.name.toLowerCase().includes(query) || venue.toLowerCase().includes(query) || confirmedRoster.some((member) => named(member.player).toLowerCase().includes(query));
       })
       .sort((left, right) => left.team.name.localeCompare(right.team.name));
-  }, [locationById, members, playerById, seasonId, seasonTeams, teamDirectorySearch]);
+  }, [leagueEntryPacks, locationById, members, playerById, seasonId, seasonTeams, teamDirectorySearch, teamDirectoryStatusFilter]);
   const selectedRegistryTeam = useMemo(
     () => registeredTeams.find((t) => t.id === registryTeamId) ?? null,
     [registeredTeams, registryTeamId]
@@ -1670,6 +1680,7 @@ export default function LeaguePage() {
       seasonsRes,
       teamsRes,
       membersRes,
+      entryPacksRes,
       fixturesRes,
       slotsRes,
       tableRes,
@@ -1693,6 +1704,7 @@ export default function LeaguePage() {
         .from("league_teams")
         .select("id,season_id,location_id,name,is_active,captain_email,captain_phone,vice_captain_email,vice_captain_phone"),
       client.from("league_team_members").select("id,season_id,team_id,player_id,is_captain,is_vice_captain"),
+      client.from("league_entry_packs").select("team_id,season_id,status"),
       client.from("league_fixtures").select("id,season_id,location_id,week_no,fixture_date,home_team_id,away_team_id,status,home_points,away_points").order("fixture_date", { ascending: true }),
       client.from("league_fixture_frames").select("id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_forfeit,away_forfeit,winner_side,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored"),
       client.from("league_table").select("team_id,team_name,played,points,frames_for,frames_against,frame_diff"),
@@ -1840,6 +1852,7 @@ export default function LeaguePage() {
       seasonErrorMessage ||
       teamErrorMessage ||
       membersRes.error?.message ||
+      entryPacksRes.error?.message ||
       fixturesRes.error?.message ||
       slotsRes.error?.message ||
       tableRes.error?.message ||
@@ -1881,6 +1894,7 @@ export default function LeaguePage() {
     setSeasons(seasonRows as Season[]);
     setTeams(teamRows as Team[]);
     setMembers((membersRes.data ?? []) as TeamMember[]);
+    setLeagueEntryPacks((entryPacksRes.data ?? []) as LeagueEntryPackSummary[]);
     setRegisteredTeams(regTeamsRes.error ? [] : ((regTeamsRes.data ?? []) as RegisteredTeam[]));
     setRegisteredMembers(regMembersRes.error ? [] : ((regMembersRes.data ?? []) as RegisteredTeamMember[]));
     setFixtures((fixturesRes.data ?? []) as Fixture[]);
@@ -8005,7 +8019,7 @@ export default function LeaguePage() {
                 <h2 className="text-xl font-black text-sky-950">Teams &amp; Players</h2>
                 <p className="mt-1 text-sm text-slate-600">The quickest place to check the selected league&apos;s teams, registered players, roles and current playing handicaps.</p>
 
-                <div className="mt-4 grid gap-3 rounded-xl border border-sky-200 bg-white p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto]">
+                <div className="mt-4 grid gap-3 rounded-xl border border-sky-200 bg-white p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,220px)_auto]">
                   <label className="text-xs font-bold uppercase tracking-wide text-slate-600">
                     League season
                     <select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-900" value={seasonId} onChange={(event) => setSeasonId(event.target.value)}>
@@ -8015,6 +8029,15 @@ export default function LeaguePage() {
                   <label className="text-xs font-bold uppercase tracking-wide text-slate-600">
                     Find a team or player
                     <input className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-900" value={teamDirectorySearch} onChange={(event) => setTeamDirectorySearch(event.target.value)} placeholder="Type a team, club or player name" />
+                  </label>
+                  <label className="text-xs font-bold uppercase tracking-wide text-slate-600">
+                    Registration status
+                    <select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-900" value={teamDirectoryStatusFilter} onChange={(event) => setTeamDirectoryStatusFilter(event.target.value as typeof teamDirectoryStatusFilter)}>
+                      <option value="all">All teams</option>
+                      <option value="approved">Roster confirmed</option>
+                      <option value="submitted">Awaiting approval</option>
+                      <option value="incomplete">Not confirmed</option>
+                    </select>
                   </label>
                   <div className="flex items-end">
                     <div className="w-full rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-950 lg:min-w-36">
@@ -8033,16 +8056,20 @@ export default function LeaguePage() {
                 ) : null}
 
                 <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                  {teamDirectoryRows.map(({ team, venue, roster }) => (
-                    <article key={`team-directory-${team.id}`} className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                      <header className="flex flex-wrap items-start justify-between gap-3 border-b border-slate-200 bg-gradient-to-r from-slate-950 to-sky-950 px-4 py-3 text-white">
-                        <div>
-                          <h3 className="text-lg font-black">{team.name}</h3>
-                          <p className="mt-0.5 text-xs text-sky-100">{venue}</p>
+                  {teamDirectoryRows.map(({ team, venue, roster, registrationStatus, directoryStatus }) => {
+                    const statusLabel = directoryStatus === "approved" ? "Roster confirmed" : directoryStatus === "submitted" ? "Awaiting approval" : registrationStatus === "rejected" ? "Changes required" : "Not confirmed";
+                    const statusClass = directoryStatus === "approved" ? "border-emerald-300 bg-emerald-100 text-emerald-900" : directoryStatus === "submitted" ? "border-amber-300 bg-amber-100 text-amber-950" : registrationStatus === "rejected" ? "border-rose-300 bg-rose-100 text-rose-900" : "border-slate-300 bg-slate-100 text-slate-800";
+                    return (
+                    <details key={`team-directory-${team.id}`} className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-slate-950 to-sky-950 px-4 py-3 text-white">
+                        <div><h3 className="text-lg font-black">{team.name}</h3><p className="mt-0.5 text-xs text-sky-100">{venue}</p></div>
+                        <div className="flex flex-wrap items-center justify-end gap-2">
+                          <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusClass}`}>{statusLabel}</span>
+                          {directoryStatus === "approved" ? <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-bold">{roster.length} player{roster.length === 1 ? "" : "s"}</span> : null}
+                          <span className="text-xs font-bold text-sky-100 group-open:hidden">Open roster ▾</span><span className="hidden text-xs font-bold text-sky-100 group-open:inline">Close roster ▴</span>
                         </div>
-                        <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-bold">{roster.length} registered player{roster.length === 1 ? "" : "s"}</span>
-                      </header>
-                      {roster.length > 0 ? (
+                      </summary>
+                      {directoryStatus === "approved" && roster.length > 0 ? (
                         <div className="overflow-x-auto">
                           <table className="min-w-full border-collapse text-sm">
                             <thead><tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><th className="px-4 py-2">Player</th><th className="px-3 py-2">Role</th><th className="px-3 py-2">Playing handicap</th><th className="px-3 py-2 text-right">Elo</th></tr></thead>
@@ -8062,9 +8089,16 @@ export default function LeaguePage() {
                             </tbody>
                           </table>
                         </div>
-                      ) : <p className="px-4 py-5 text-sm text-amber-800">No players are currently registered to this season team.</p>}
-                    </article>
-                  ))}
+                      ) : directoryStatus === "approved" ? (
+                        <p className="px-4 py-5 text-sm text-amber-800">This registration is approved, but no players are currently attached to the season roster.</p>
+                      ) : directoryStatus === "submitted" ? (
+                        <div className="px-4 py-5 text-sm text-amber-900"><p>The new-season roster has been submitted but is not shown here until a league officer approves and imports it.</p><Link href={`/entry-packs?seasonId=${seasonId}&teamId=${team.id}`} className="mt-3 inline-flex rounded-xl bg-amber-700 px-4 py-2 font-bold text-white">Review submitted roster</Link></div>
+                      ) : (
+                        <p className="px-4 py-5 text-sm text-slate-700">This team&apos;s roster has not yet been confirmed for the selected season. Previous-season or reusable template assignments are deliberately not presented as current.</p>
+                      )}
+                    </details>
+                    );
+                  })}
                   {teamDirectoryRows.length === 0 ? <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900 xl:col-span-2">No team or player matches this search in the selected league.</div> : null}
                 </div>
 
