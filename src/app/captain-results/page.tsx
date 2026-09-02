@@ -38,7 +38,7 @@ type Fixture = {
   away_team_id: string;
   fixture_date: string | null;
   week_no: number | null;
-  status: "pending" | "in_progress" | "complete";
+  status: "pending" | "in_progress" | "complete" | "bye";
   pre_match_paper_record?: boolean | null;
   pre_match_paper_at?: string | null;
   pre_match_paper_by_user_id?: string | null;
@@ -1684,8 +1684,8 @@ export default function CaptainResultsPage() {
   const submit = async () => {
     const client = supabase;
     if (!client || !selectedFixture || !currentUserId) return;
-    if (selectedFixture.status === "complete") {
-      setMessage("This fixture is locked because it is complete.");
+    if (selectedFixture.status === "complete" || selectedFixture.status === "bye") {
+      setMessage(selectedFixture.status === "bye" ? "This is a BYE week and no result is required." : "This fixture is locked because it is complete.");
       return;
     }
     if (!canSubmit) {

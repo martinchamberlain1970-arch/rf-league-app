@@ -90,8 +90,8 @@ export async function POST(req: NextRequest) {
     proxy_entry_by_team_side?: "home" | "away" | null;
     proxy_entry_note?: string | null;
   };
-  if (fixture.status === "complete") {
-    return NextResponse.json({ error: "This fixture is already complete." }, { status: 400 });
+  if (fixture.status === "complete" || fixture.status === "bye") {
+    return NextResponse.json({ error: fixture.status === "bye" ? "This is a BYE week and has no result to submit." : "This fixture is already complete." }, { status: 400 });
   }
 
   const seasonRes = await adminClient.from("league_seasons").select("id,is_published,is_active").eq("id", fixture.season_id).maybeSingle();

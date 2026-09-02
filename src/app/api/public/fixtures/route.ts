@@ -24,6 +24,7 @@ type SeasonRow = {
 type TeamRow = {
   id: string;
   name: string;
+  is_active: boolean | null;
 };
 
 type FixtureRow = {
@@ -32,7 +33,7 @@ type FixtureRow = {
   week_no: number | null;
   home_team_id: string;
   away_team_id: string;
-  status: "pending" | "in_progress" | "complete";
+  status: "pending" | "in_progress" | "complete" | "bye";
   home_points: number | null;
   away_points: number | null;
 };
@@ -149,7 +150,7 @@ export async function GET(req: NextRequest) {
   const [teamsRes, fixturesRes] = await Promise.all([
     adminClient
       .from("league_teams")
-      .select("id,name")
+      .select("id,name,is_active")
       .eq("season_id", selectedSeason.id),
     adminClient
       .from("league_fixtures")
@@ -165,10 +166,29 @@ export async function GET(req: NextRequest) {
     return json({ error: firstError }, 500);
   }
 
-  const teamNameById = new Map(
-    ((teamsRes.data ?? []) as TeamRow[]).map((team) => [team.id, team.name])
-  );
+  const teams = (teamsRes.data ?? []) as TeamRow[];
+  const activeTeams = teams.filter((team) => team.is_active !== false);
+  const teamNameById = new Map(teams.map((team) => [team.id, team.name]));
   const fixtures = (fixturesRes.data ?? []) as FixtureRow[];
+
+  const byeFixtures = activeTeams.length % 2 === 1
+    ? Array.from(new Set(fixtures.map((fixture) => fixture.week_no).filter((week): week is number => week !== null))).flatMap((weekNo) => {
+        const weekFixtures = fixtures.filter((fixture) => fixture.week_no === weekNo);
+        const playingTeamIds = new Set(weekFixtures.flatMap((fixture) => [fixture.home_team_id, fixture.away_team_id]));
+        const missingTeams = activeTeams.filter((team) => !playingTeamIds.has(team.id));
+        if (missingTeams.length !== 1) return [];
+        return [{
+          id: `bye-${selectedSeason.id}-${weekNo}-${missingTeams[0].id}`,
+          fixtureDate: weekFixtures.find((fixture) => fixture.fixture_date)?.fixture_date ?? null,
+          weekNo,
+          homeTeam: missingTeams[0].name,
+          awayTeam: "BYE",
+          status: "bye" as const,
+          homePoints: null,
+          awayPoints: null,
+        }];
+      })
+    : [];
 
   return json({
     seasons: isDraftPreview
@@ -176,7 +196,7 @@ export async function GET(req: NextRequest) {
       : seasons.map(({ id, name }) => ({ id, name })),
     season: { id: selectedSeason.id, name: selectedSeason.name },
     isDraftPreview,
-    fixtures: fixtures.map((fixture) => ({
+    fixtures: [...fixtures.map((fixture) => ({
       id: fixture.id,
       fixtureDate: fixture.fixture_date,
       weekNo: fixture.week_no,
@@ -185,6 +205,6 @@ export async function GET(req: NextRequest) {
       status: fixture.status,
       homePoints: fixture.home_points,
       awayPoints: fixture.away_points,
-    })),
+    })), ...byeFixtures].sort((left, right) => (left.weekNo ?? 0) - (right.weekNo ?? 0)),
   });
 }

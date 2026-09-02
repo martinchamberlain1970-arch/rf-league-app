@@ -13,7 +13,7 @@ type PublicFixture = {
   weekNo: number | null;
   homeTeam: string;
   awayTeam: string;
-  status: "pending" | "in_progress" | "complete";
+  status: "pending" | "in_progress" | "complete" | "bye";
   homePoints: number | null;
   awayPoints: number | null;
 };
@@ -199,7 +199,9 @@ export default function PublicFixturesPage() {
                 <article key={fixture.id} className="grid gap-2 px-4 py-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
                   <p className="text-lg font-bold text-white sm:text-right">{fixture.homeTeam}</p>
                   <div className="min-w-20 text-center">
-                    {fixture.status === "complete" ? (
+                    {fixture.status === "bye" ? (
+                      <span className="inline-flex rounded-full bg-cyan-400/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-cyan-100">BYE</span>
+                    ) : fixture.status === "complete" ? (
                       <span className="inline-flex rounded-full bg-emerald-400/15 px-3 py-1 text-sm font-black text-emerald-100">
                         {fixture.homePoints ?? 0}–{fixture.awayPoints ?? 0}
                       </span>

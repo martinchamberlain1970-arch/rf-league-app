@@ -29,7 +29,7 @@ type FixtureRow = {
   week_no: number | null;
   home_team_id: string;
   away_team_id: string;
-  status: "pending" | "in_progress" | "complete";
+  status: "pending" | "in_progress" | "complete" | "bye";
   home_points: number | null;
   away_points: number | null;
 };
@@ -207,7 +207,7 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
       fixtures
         .filter((fixture) => fixture.week_no !== null)
         .map((fixture) => fixture.week_no as number)
-        .filter((week) => fixtures.filter((fixture) => fixture.week_no === week).every((fixture) => fixture.status === "complete"))
+        .filter((week) => fixtures.filter((fixture) => fixture.week_no === week).every((fixture) => fixture.status === "complete" || fixture.status === "bye"))
     )
   ).sort((a, b) => b - a);
   const selectedWeek = weekNo ?? completeWeeks[0] ?? null;
@@ -594,7 +594,7 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
         .filter((week) =>
           fixtures
             .filter((fixture) => fixture.week_no === week)
-            .every((fixture) => fixture.status === "complete")
+            .every((fixture) => fixture.status === "complete" || fixture.status === "bye")
         )
     )
   ).sort((a, b) => b - a);

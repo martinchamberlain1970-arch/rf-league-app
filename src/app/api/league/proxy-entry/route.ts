@@ -80,8 +80,8 @@ export async function POST(req: NextRequest) {
   }
 
   const fixture = fixtureRes.data as FixtureRow;
-  if (fixture.status === "complete") {
-    return NextResponse.json({ error: "This fixture is already complete." }, { status: 400 });
+  if (fixture.status === "complete" || fixture.status === "bye") {
+    return NextResponse.json({ error: fixture.status === "bye" ? "This is a BYE week and has no result to enter." : "This fixture is already complete." }, { status: 400 });
   }
   if (fixture.pre_match_paper_record) {
     return NextResponse.json({ error: "Proxy entry is not available for paper pre-match records." }, { status: 400 });

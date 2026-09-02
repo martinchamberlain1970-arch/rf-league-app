@@ -80,7 +80,7 @@ type Fixture = {
   fixture_date: string | null;
   home_team_id: string;
   away_team_id: string;
-  status: "pending" | "in_progress" | "complete";
+  status: "pending" | "in_progress" | "complete" | "bye";
   home_points: number;
   away_points: number;
 };
@@ -236,7 +236,7 @@ const sortLabelByFirstName = (a: string, b: string) => {
   return a.localeCompare(b);
 };
 const statusLabel = (s: Fixture["status"]) =>
-  s === "in_progress" ? "in progress" : s === "pending" ? "scheduled" : "complete";
+  s === "in_progress" ? "in progress" : s === "pending" ? "scheduled" : s === "bye" ? "BYE" : "complete";
 type UndirectedMatch = { teamAId: string; teamBId: string };
 type DirectedMatch = { homeTeamId: string; awayTeamId: string };
 type HomeGroupLimit = { teamIds: Set<string>; maxHomes: number };
@@ -858,7 +858,7 @@ export default function LeaguePage() {
         .sort((a, b) => a.localeCompare(b)),
     [registeredTeams, manageVenueId]
   );
-  const seasonTeams = useMemo(() => teams.filter((t) => t.season_id === seasonId), [teams, seasonId]);
+  const seasonTeams = useMemo(() => teams.filter((t) => t.season_id === seasonId && t.is_active), [teams, seasonId]);
   const seasonVenueCapacitySummary = useMemo(() => {
     const counts = new Map<string, number>();
     seasonTeams.forEach((team) => {

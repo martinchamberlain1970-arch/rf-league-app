@@ -87,8 +87,8 @@ export async function POST(req: NextRequest) {
     proxy_entry_enabled?: boolean | null;
   };
 
-  if (fixture.status === "complete") {
-    return NextResponse.json({ error: "This fixture is already complete." }, { status: 400 });
+  if (fixture.status === "complete" || fixture.status === "bye") {
+    return NextResponse.json({ error: fixture.status === "bye" ? "This is a BYE week and has no result to save." : "This fixture is already complete." }, { status: 400 });
   }
   if (!fixture.home_lineup_submitted_at || !fixture.away_lineup_submitted_at) {
     return NextResponse.json({ error: "Both lineups must be completed before live score updates can be saved." }, { status: 400 });

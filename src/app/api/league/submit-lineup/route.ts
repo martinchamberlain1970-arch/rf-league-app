@@ -87,8 +87,8 @@ export async function POST(req: NextRequest) {
     proxy_entry_enabled?: boolean | null;
   };
 
-  if (fixture.status === "complete") {
-    return NextResponse.json({ error: "This fixture is already complete." }, { status: 400 });
+  if (fixture.status === "complete" || fixture.status === "bye") {
+    return NextResponse.json({ error: fixture.status === "bye" ? "This is a BYE week and does not need a line-up." : "This fixture is already complete." }, { status: 400 });
   }
   if (fixture.pre_match_paper_record) {
     return NextResponse.json({ error: "This fixture is using a paper pre-match record." }, { status: 400 });
