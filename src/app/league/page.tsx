@@ -283,6 +283,20 @@ const addDays = (dateValue: string, days: number) => {
   dt.setDate(dt.getDate() + days);
   return dt.toISOString().slice(0, 10);
 };
+const buildFixtureRoundSlots = (startDate: string, totalRoundCount: number, breakCalendarWeeks: Set<number>) => {
+  let calendarWeekNo = 0;
+  return Array.from({ length: totalRoundCount }, (_, roundIndex) => {
+    calendarWeekNo += 1;
+    while (breakCalendarWeeks.has(calendarWeekNo)) calendarWeekNo += 1;
+    return {
+      // Fixture rounds remain continuous. Reserved Thursdays affect only the
+      // calendar date, never the number shown to teams.
+      weekNo: roundIndex + 1,
+      calendarWeekNo,
+      fixtureDate: startDate ? addDays(startDate, (calendarWeekNo - 1) * 7) : null,
+    };
+  });
+};
 const buildRoundRobinRounds = (teamIds: string[]) => {
   const ids = [...teamIds];
   const bye = "__BYE__";
@@ -2880,15 +2894,7 @@ export default function LeaguePage() {
       if (Number.isInteger(weekNo) && weekNo > 0) breakWeekSet.add(weekNo);
     }
     const totalRoundCount = firstLegRoundCount * genFixtureCycles;
-    let slotWeekNo = 0;
-    const roundSlots = Array.from({ length: totalRoundCount }, () => {
-      slotWeekNo += 1;
-      while (breakWeekSet.has(slotWeekNo)) slotWeekNo += 1;
-      return {
-        weekNo: slotWeekNo,
-        fixtureDate: addDays(genStartDate, (slotWeekNo - 1) * 7),
-      };
-    });
+    const roundSlots = buildFixtureRoundSlots(genStartDate, totalRoundCount, breakWeekSet);
     const yearLabel = winterSeasons[0].name.match(/\b\d{4}\/\d{4}\b/)?.[0] ?? "";
     const externalFixtures = fixtures.filter((fixture) => {
       if (seasonIds.includes(fixture.season_id)) return false;
@@ -2934,7 +2940,7 @@ export default function LeaguePage() {
         const fairness = evaluateHomeAwayFairness(
           schedules.get(plan.season.id) ?? [],
           plan.teamIds,
-          roundSlots.map((slot) => slot.weekNo)
+          roundSlots.map((slot) => slot.calendarWeekNo)
         );
         return total + fairness.score;
       }, 0);
@@ -3379,7 +3385,7 @@ export default function LeaguePage() {
         fairness: evaluateHomeAwayFairness(
           schedules.get(plan.season.id) ?? [],
           plan.teamIds,
-          roundSlots.map((slot) => slot.weekNo)
+          roundSlots.map((slot) => slot.calendarWeekNo)
         ),
       }));
       const confirmed = await showConfirm({
@@ -3505,15 +3511,7 @@ export default function LeaguePage() {
     const breakWeeks = getBreakWeeksFromDates();
     const breakWeekSet = new Set(breakWeeks);
     const totalRoundCount = firstLegRoundsCount * genFixtureCycles;
-    let slotWeekNo = 0;
-    const roundSlots = Array.from({ length: totalRoundCount }, () => {
-      slotWeekNo += 1;
-      while (breakWeekSet.has(slotWeekNo)) slotWeekNo += 1;
-      return {
-        weekNo: slotWeekNo,
-        fixtureDate: genStartDate ? addDays(genStartDate, (slotWeekNo - 1) * 7) : null,
-      };
-    });
+    const roundSlots = buildFixtureRoundSlots(genStartDate, totalRoundCount, breakWeekSet);
     const seasonYearLabel = currentSeason?.name.match(/\b\d{4}\/\d{4}\b/)?.[0] ?? null;
     const otherScheduledFixtures = fixtures.filter((fixture) => {
       if (fixture.season_id === seasonId) return !genClearExisting;
@@ -3559,7 +3557,7 @@ export default function LeaguePage() {
 
     try {
     const seasonTeamIds = seasonTeams.map((team) => team.id);
-    const scheduledWeekNos = roundSlots.map((slot) => slot.weekNo);
+    const scheduledWeekNos = roundSlots.map((slot) => slot.calendarWeekNo);
     const isFairerSchedule = (candidate: HomeAwayFairness, current: HomeAwayFairness | null) =>
       !current ||
       candidate.score < current.score ||
