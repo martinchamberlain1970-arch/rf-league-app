@@ -115,7 +115,7 @@ export async function GET(req: NextRequest) {
 
   const singlesAppearanceByPlayer = new Map<string, Set<string>>();
   const singlesPlayed = new Map<string, { won: number; lost: number; pointsFor: number; pointsAgainst: number }>();
-  const fixtureIds = new Set(fixtures.map((fixture) => fixture.id));
+  const fixtureIds = new Set(fixtures.filter((fixture) => fixture.status === "complete").map((fixture) => fixture.id));
 
   for (const frame of frames.filter((row) => fixtureIds.has(row.fixture_id) && row.slot_type === "singles")) {
     const homeId = frame.home_player1_id;
