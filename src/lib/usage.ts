@@ -1,11 +1,13 @@
 import { supabase } from "@/lib/supabase";
 
 const THROTTLE_MS = 10 * 60 * 1000;
+const USAGE_CONSENT_KEY = "rf_usage_tracking_consent";
 
 export async function logUsagePageView(path: string): Promise<void> {
   const client = supabase;
   if (!client || !path) return;
   if (typeof window === "undefined") return;
+  if (window.localStorage.getItem(USAGE_CONSENT_KEY) !== "granted") return;
 
   try {
     const { data } = await client.auth.getUser();

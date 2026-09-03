@@ -1,6 +1,7 @@
 const resendApiKey = process.env.RESEND_API_KEY?.trim() ?? "";
 const defaultRecipient = process.env.NOTIFICATION_EMAIL_TO?.trim() || process.env.SUPER_ADMIN_EMAIL?.trim() || "";
-const defaultSender = process.env.EMAIL_FROM?.trim() || "Rack & Frame League <onboarding@resend.dev>";
+const configuredSender = process.env.EMAIL_FROM?.trim() ?? "";
+const defaultSender = configuredSender || "Rack & Frame League <onboarding@resend.dev>";
 
 type SendEmailOptions = {
   to?: string | null;
@@ -13,6 +14,9 @@ export async function sendNotificationEmail(options: SendEmailOptions): Promise<
   const to = options.to?.trim() || defaultRecipient;
   if (!resendApiKey) return { sent: false, reason: "RESEND_API_KEY not configured" };
   if (!to) return { sent: false, reason: "No notification recipient configured" };
+  if (options.to?.trim() && !configuredSender) {
+    return { sent: false, reason: "EMAIL_FROM is not configured with a Resend-verified sender domain" };
+  }
 
   const res = await fetch("https://api.resend.com/emails", {
     method: "POST",

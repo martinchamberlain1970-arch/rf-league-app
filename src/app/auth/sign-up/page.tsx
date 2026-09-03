@@ -21,7 +21,7 @@ type PlayerOption = {
   is_archived?: boolean | null;
 };
 const SIGNUP_DRAFT_KEY = "signup_draft_v1";
-const LEGAL_VERSION = "2026-03-11";
+const LEGAL_VERSION = "2026-09-03";
 
 function mapSignUpError(message: string, code?: string, status?: number) {
   const detail = [code, status ? String(status) : null].filter(Boolean).join(" · ");

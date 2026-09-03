@@ -341,6 +341,7 @@ export async function POST(req: NextRequest, context: { params: Promise<{ token:
         html: content.html,
       });
       receiptStatus = emailResult.sent ? "sent" : "failed";
+      if (!emailResult.sent) console.warn("Registration receipt email failed:", emailResult.reason ?? "Unknown email provider error");
     } catch {
       receiptStatus = "failed";
     }
