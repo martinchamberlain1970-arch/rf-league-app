@@ -416,19 +416,18 @@ export default function LeagueHubPage() {
         ) : null}
 
         {!error && !loading && data.season && activeTab === "handicaps" ? (
-          /division 1/i.test(data.season.name) ? (
-            <section className="rounded-3xl border border-emerald-300/20 bg-emerald-400/10 p-8 text-center">
-              <h2 className="text-2xl font-black text-white">Division 1 is played off scratch</h2>
-              <p className="mt-2 text-slate-200">Every player starts each frame on 0. Player ratings may still be recorded for historical statistics.</p>
-            </section>
-          ) : (
-            <section className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/80 shadow-xl shadow-black/10">
+          <section className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/80 shadow-xl shadow-black/10">
+            {/division 1/i.test(data.season.name) ? (
+              <div className="border-b border-amber-300/20 bg-amber-400/10 px-4 py-4 text-sm text-amber-100">
+                <strong>Information only:</strong> Division 1 is played entirely off scratch, so every player starts each frame on 0. The recorded figures below are retained for player history and are not used on Division 1 match nights.
+              </div>
+            ) : (
               <div className="border-b border-white/10 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">The <strong>current handicap</strong> is the figure used on match night. Handicaps are reviewed periodically from approved results.</div>
-              {data.handicaps.length === 0 ? <p className="p-8 text-center text-slate-300">No handicap list is currently available.</p> : (
-                <div className="overflow-x-auto"><table className="min-w-full text-sm sm:text-base"><thead className="bg-white/5 text-left text-slate-300"><tr><th className="px-3 py-3">#</th><th className="px-3 py-3">Player</th><th className="px-3 py-3 text-center">Current handicap</th><th className="px-3 py-3 text-center">Elo</th><th className="px-3 py-3 text-center">Rated matches</th></tr></thead><tbody>{data.handicaps.map((row) => <tr key={row.player_id} className="border-t border-white/5 text-slate-100"><td className="px-3 py-3 font-semibold text-cyan-300">{row.rank}</td><td className="px-3 py-3 font-medium">{row.player_name}</td><td className="px-3 py-3 text-center text-lg font-black text-emerald-300">{formatHandicap(row.current_handicap)}</td><td className="px-3 py-3 text-center">{row.elo}</td><td className="px-3 py-3 text-center">{row.rated_matches}</td></tr>)}</tbody></table></div>
-              )}
-            </section>
-          )
+            )}
+            {data.handicaps.length === 0 ? <p className="p-8 text-center text-slate-300">No handicap information is currently available.</p> : (
+              <div className="overflow-x-auto"><table className="min-w-full text-sm sm:text-base"><thead className="bg-white/5 text-left text-slate-300"><tr><th className="px-3 py-3">#</th><th className="px-3 py-3">Player</th><th className="px-3 py-3 text-center">{/division 1/i.test(data.season.name) ? "Recorded handicap" : "Current handicap"}</th><th className="px-3 py-3 text-center">Elo</th><th className="px-3 py-3 text-center">Rated matches</th></tr></thead><tbody>{data.handicaps.map((row) => <tr key={row.player_id} className="border-t border-white/5 text-slate-100"><td className="px-3 py-3 font-semibold text-cyan-300">{row.rank}</td><td className="px-3 py-3 font-medium">{row.player_name}</td><td className="px-3 py-3 text-center text-lg font-black text-emerald-300">{formatHandicap(row.current_handicap)}</td><td className="px-3 py-3 text-center">{row.elo}</td><td className="px-3 py-3 text-center">{row.rated_matches}</td></tr>)}</tbody></table></div>
+            )}
+          </section>
         ) : null}
 
         {!error && !loading && data.season && activeTab === "notices" ? (
