@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import useAdminStatus from "@/components/useAdminStatus";
 import { appRoleLabel } from "@/lib/app-roles";
@@ -128,9 +129,9 @@ export default function AppNavigationMenu({ open, onClose, onSignOut }: AppNavig
         .map((item) => ({ ...item, groupTitle: group.title })))
     : (activeGroup?.items ?? []).map((item) => ({ ...item, groupTitle: activeGroup.title }));
 
-  if (!open) return null;
+  if (!open || typeof document === "undefined") return null;
 
-  return (
+  return createPortal(
     <div className="fixed inset-0 z-[80] overflow-y-auto bg-slate-950/55 p-0 backdrop-blur-md sm:p-4 lg:p-7" role="dialog" aria-modal="true" aria-label="Rack & Frame navigation">
       <button type="button" className="fixed inset-0 cursor-default" aria-label="Close navigation" onClick={onClose} />
       <aside className="relative mx-auto flex min-h-full w-full max-w-5xl flex-col overflow-hidden bg-[#f7f9fc] shadow-2xl sm:min-h-0 sm:rounded-3xl sm:border sm:border-white/25 lg:h-[calc(100vh-3.5rem)]">
@@ -245,6 +246,7 @@ export default function AppNavigationMenu({ open, onClose, onSignOut }: AppNavig
           </button>
         </div>
       </aside>
-    </div>
+    </div>,
+    document.body
   );
 }
