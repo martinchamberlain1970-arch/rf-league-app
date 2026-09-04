@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
@@ -1943,13 +1944,24 @@ export default function CaptainResultsPage() {
           <ScreenHeader title="Captain Lineups & Results" eyebrow="League" subtitle="Enter pre-match lineups first, then submit your team result for league-officer approval." />
           {loading ? <section className={`${sectionCardClass} text-slate-600`}>Loading...</section> : null}
 
-          {!linkedPlayerId && !loading ? (
+          {!linkedPlayerId && !admin.canManageLeague && !loading ? (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm">
               Your account must be linked to a player profile to submit results.
             </section>
           ) : null}
 
-          {linkedPlayerId && captainTeamIds.size === 0 && !loading ? (
+          {admin.canManageLeague && captainTeamIds.size === 0 && !loading ? (
+            <section className="rounded-2xl border border-teal-200 bg-teal-50 p-4 text-teal-950 shadow-sm">
+              <p className="font-semibold">League officer view</p>
+              <p className="mt-1 text-sm">A player-profile link is not required for your officer account. Captains and vice-captains enter line-ups and scores here; officers review results or enter an agreed proxy result through League Manager.</p>
+              <div className="mt-3 flex flex-wrap gap-2">
+                <Link href="/results" className="rounded-xl bg-teal-800 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-900">Open result approvals</Link>
+                <Link href="/league" className="rounded-xl border border-teal-300 bg-white px-4 py-2 text-sm font-semibold text-teal-900 hover:bg-teal-100">Open League Manager</Link>
+              </div>
+            </section>
+          ) : null}
+
+          {linkedPlayerId && captainTeamIds.size === 0 && !admin.canManageLeague && !loading ? (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm">
               You are not currently assigned as captain or vice-captain.
             </section>
