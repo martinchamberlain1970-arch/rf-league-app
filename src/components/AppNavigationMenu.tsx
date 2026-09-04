@@ -110,21 +110,21 @@ export default function AppNavigationMenu({ open, onClose, onSignOut }: AppNavig
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[80] flex bg-slate-950/45 backdrop-blur-sm" role="dialog" aria-modal="true" aria-label="Rack & Frame navigation">
-      <button type="button" className="min-w-0 flex-1 cursor-default" aria-label="Close navigation" onClick={onClose} />
-      <aside className="flex h-full w-full max-w-[540px] flex-col border-l border-white/20 bg-[#f7f9fc] shadow-2xl">
-        <div className="bg-gradient-to-br from-[#0b1730] via-[#102746] to-[#073f43] px-5 pb-5 pt-[max(1.25rem,env(safe-area-inset-top))] text-white">
+    <div className="fixed inset-0 z-[80] overflow-y-auto bg-slate-950/55 p-0 backdrop-blur-md sm:p-4 lg:p-7" role="dialog" aria-modal="true" aria-label="Rack & Frame navigation">
+      <button type="button" className="fixed inset-0 cursor-default" aria-label="Close navigation" onClick={onClose} />
+      <aside className="relative mx-auto flex min-h-full w-full max-w-6xl flex-col overflow-hidden bg-[#f7f9fc] shadow-2xl sm:min-h-0 sm:rounded-3xl sm:border sm:border-white/25 lg:h-[calc(100vh-3.5rem)]">
+        <div className="shrink-0 bg-gradient-to-br from-[#0b1730] via-[#102746] to-[#073f43] px-5 pb-5 pt-[max(1.25rem,env(safe-area-inset-top))] text-white sm:px-7 sm:pt-6">
           <div className="flex items-start justify-between gap-4">
             <div>
               <p className="text-xs font-bold uppercase tracking-[0.24em] text-cyan-300">Rack & Frame</p>
-              <h2 className="mt-1 text-2xl font-semibold">App menu</h2>
-              <p className="mt-1 text-sm text-slate-300">{appRoleLabel(admin.role)} workspace</p>
+              <h2 className="mt-1 text-2xl font-semibold sm:text-3xl">Where would you like to go?</h2>
+              <p className="mt-1 text-sm text-slate-300">Choose a task from your {appRoleLabel(admin.role).toLowerCase()} workspace.</p>
             </div>
             <button type="button" onClick={onClose} className="grid h-10 w-10 place-items-center rounded-lg border border-white/20 bg-white/10 text-xl hover:bg-white/20" aria-label="Close navigation">
               ×
             </button>
           </div>
-          <label className="mt-5 flex items-center gap-3 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 shadow-inner focus-within:border-cyan-300">
+          <label className="mt-5 flex max-w-2xl items-center gap-3 rounded-xl border border-white/15 bg-white/10 px-4 py-3 shadow-inner focus-within:border-cyan-300 focus-within:bg-white/15">
             <span aria-hidden="true" className="text-slate-300">⌕</span>
             <input
               autoFocus
@@ -136,23 +136,23 @@ export default function AppNavigationMenu({ open, onClose, onSignOut }: AppNavig
           </label>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-4 py-4">
-          <Link href="/" onClick={onClose} className={`mb-4 flex items-center gap-3 rounded-xl border px-3 py-3 transition ${pathname === "/" ? "border-cyan-300 bg-cyan-50" : "border-slate-200 bg-white hover:bg-slate-50"}`}>
-            <span className="grid h-10 w-10 place-items-center rounded-lg bg-[#0f1a31] text-sm font-bold text-cyan-300">HM</span>
+        <div className="flex-1 overflow-y-auto px-4 py-5 sm:px-7 sm:py-6">
+          <Link href="/" onClick={onClose} className={`mb-6 flex items-center gap-4 rounded-2xl border px-4 py-4 transition sm:max-w-xl ${pathname === "/" ? "border-cyan-300 bg-cyan-50 shadow-sm" : "border-slate-200 bg-white hover:border-teal-300 hover:shadow-md"}`}>
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl bg-[#0f1a31] text-sm font-bold text-cyan-300">HM</span>
             <span>
               <span className="block text-sm font-semibold text-slate-950">Home dashboard</span>
               <span className="block text-xs text-slate-500">Return to priorities and current work.</span>
             </span>
           </Link>
 
-          <div className="space-y-5">
+          <div className="space-y-8">
             {visibleGroups.map((group) => (
               <section key={group.title}>
-                <div className="mb-2 px-1">
-                  <h3 className="text-sm font-bold text-slate-900">{group.title}</h3>
-                  <p className="text-xs text-slate-500">{group.description}</p>
+                <div className="mb-3 border-b border-slate-200 pb-2">
+                  <h3 className="text-base font-bold text-slate-950">{group.title}</h3>
+                  <p className="mt-0.5 text-sm text-slate-500">{group.description}</p>
                 </div>
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
                   {group.items.map((item) => {
                     const selected = pathname === item.href || (item.href !== "/" && pathname?.startsWith(`${item.href}/`));
                     return (
@@ -160,12 +160,12 @@ export default function AppNavigationMenu({ open, onClose, onSignOut }: AppNavig
                         key={item.href}
                         href={item.href}
                         onClick={onClose}
-                        className={`group flex min-h-24 items-start gap-3 rounded-xl border p-3 transition ${selected ? "border-cyan-400 bg-cyan-50 shadow-sm" : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"}`}
+                        className={`group flex min-h-[6.5rem] items-start gap-3 rounded-2xl border p-4 transition ${selected ? "border-cyan-400 bg-cyan-50 shadow-sm ring-1 ring-cyan-200" : "border-slate-200 bg-white hover:-translate-y-0.5 hover:border-teal-300 hover:shadow-md"}`}
                       >
                         <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg text-xs font-black ${selected ? "bg-teal-700 text-white" : "bg-slate-100 text-slate-700 group-hover:bg-slate-200"}`}>{item.mark}</span>
                         <span className="min-w-0">
-                          <span className="block text-sm font-semibold text-slate-950">{item.title}</span>
-                          <span className="mt-0.5 block text-xs leading-4 text-slate-500">{item.description}</span>
+                          <span className="block text-sm font-bold text-slate-950">{item.title}</span>
+                          <span className="mt-1 block text-sm leading-5 text-slate-500">{item.description}</span>
                         </span>
                       </Link>
                     );
@@ -179,7 +179,7 @@ export default function AppNavigationMenu({ open, onClose, onSignOut }: AppNavig
             <div className="rounded-xl border border-slate-200 bg-white p-5 text-center text-sm text-slate-600">No screens match “{query}”.</div>
           ) : null}
         </div>
-        <div className="flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3">
+        <div className="sticky bottom-0 flex items-center justify-between gap-3 border-t border-slate-200 bg-white px-4 py-3 sm:px-7">
           <div className="min-w-0">
             <p className="truncate text-xs font-semibold text-slate-900">{appRoleLabel(admin.role)}</p>
             <p className="text-[11px] text-slate-500">Rack &amp; Frame account</p>

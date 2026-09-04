@@ -727,7 +727,11 @@ export default function ResultsQueuePage() {
           <MessageModal message={message} onClose={() => setMessage(null)} />
           {admin.isAdmin ? (
             <section className={tintedCardClass}>
-              <div className="flex flex-wrap items-center gap-2">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Approval workspace</p>
+                <p className="hidden text-xs text-slate-400 sm:block">Choose one queue at a time</p>
+              </div>
+              <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:thin] [&>button]:shrink-0">
                 <button
                   type="button"
                   onClick={() => setQueueTab("league")}

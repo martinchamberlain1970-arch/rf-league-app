@@ -1518,7 +1518,7 @@ export default function LeaguePage() {
   };
   const leagueTabClass = (view: "guide" | "teamManagement" | "venues" | "profiles" | "setup" | "knockouts" | "fixtures" | "table" | "playerTable" | "handicaps") => {
     const active = activeView === view;
-    const base = "w-full rounded-full border px-3 py-2 text-center text-sm font-semibold transition";
+    const base = "min-h-10 shrink-0 rounded-xl border px-4 py-2 text-center text-sm font-semibold transition";
     if (view === "guide") return `${base} ${active ? "border-slate-800 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`;
     if (view === "teamManagement") return `${base} ${active ? "border-indigo-700 bg-indigo-700 text-white" : "border-indigo-300 bg-indigo-50 text-indigo-900 hover:bg-indigo-100"}`;
     if (view === "venues") return `${base} ${active ? "border-teal-700 bg-teal-700 text-white" : "border-teal-300 bg-teal-50 text-teal-900 hover:bg-teal-100"}`;
@@ -6365,7 +6365,11 @@ export default function LeaguePage() {
           {canViewLeague ? (
             <>
               <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                <div className={canManage ? "grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-10" : "grid grid-cols-2 gap-2 sm:grid-cols-4"}>
+                <div className="mb-2 flex items-center justify-between gap-3 px-1">
+                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">League workspace</p>
+                  <p className="hidden text-xs text-slate-400 sm:block">Scroll sideways to see every area</p>
+                </div>
+                <div className="flex gap-2 overflow-x-auto pb-2 [scrollbar-width:thin]">
                   {canManage ? (
                     <>
                       <button type="button" onClick={() => setActiveView("guide")} className={leagueTabClass("guide")}>

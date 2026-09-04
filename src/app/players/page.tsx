@@ -2062,7 +2062,11 @@ export default function PlayersPage() {
 
           {canRegisterPlayers || isSuperAdmin ? (
             <section className={sectionCardTintClass}>
-              <div className="flex flex-wrap gap-2">
+              <div className="mb-2 flex items-center justify-between gap-3">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">Player workspace</p>
+                <p className="hidden text-xs text-slate-400 sm:block">Registration, records and approvals</p>
+              </div>
+              <div className="flex gap-2 overflow-x-auto pb-1 [scrollbar-width:thin] [&>button]:shrink-0">
                 {canRegisterPlayers ? (
                   <button
                     type="button"

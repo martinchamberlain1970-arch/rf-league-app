@@ -198,11 +198,11 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
       <button
         type="button"
         onClick={() => setMenuOpen(true)}
-        className="inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800 hover:border-teal-300 hover:bg-teal-50"
+        className="inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-[#0f1a31] bg-[#0f1a31] px-3 text-sm font-semibold text-white shadow-sm hover:border-teal-700 hover:bg-teal-800"
         aria-label="Open app menu"
       >
         <span aria-hidden="true" className="text-base leading-none">☰</span>
-        <span className="hidden sm:inline">Menu</span>
+        <span>Menu</span>
       </button>
       <button
         type="button"
