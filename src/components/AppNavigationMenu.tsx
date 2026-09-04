@@ -31,14 +31,18 @@ const groups: NavGroup[] = [
       { href: "/captain-results", title: "Line-ups & results", description: "Enter line-ups, frame scores and the final result.", mark: "LR" },
       { href: "/reschedule-fixture", title: "Fixture date requests", description: "Request an agreed early date or exceptional postponement.", mark: "FD" },
       { href: "/live-matches", title: "Live matches", description: "Follow league scorecards currently in progress.", mark: "LM" },
-      { href: "/league", title: "Fixtures & tables", description: "Find fixtures, standings and player tables.", mark: "FT" },
+      { href: "/league?view=fixtures", title: "Fixtures & tables", description: "Find fixtures, standings and player tables.", mark: "FT" },
+      { href: "/league-hub", title: "Public league hub", description: "View the public fixtures, results and statistics pages.", mark: "PH" },
     ],
   },
   {
     title: "League administration",
     description: "Set up and run the league season.",
     items: [
-      { href: "/league-hub", title: "League control centre", description: "Open the guided league-management workspace.", mark: "LC", leagueOfficerOnly: true },
+      { href: "/league?view=guide", title: "League overview", description: "Open the private league-management summary.", mark: "LO", leagueOfficerOnly: true },
+      { href: "/league?view=setup", title: "League setup", description: "Create seasons, configure rules and publish leagues.", mark: "LS", leagueOfficerOnly: true },
+      { href: "/league?view=teamManagement", title: "Teams & roles", description: "Add teams, assign players, captains and vice-captains.", mark: "TM", leagueOfficerOnly: true },
+      { href: "/league?view=venues", title: "Venues", description: "Maintain clubs, addresses and table capacities.", mark: "VN", leagueOfficerOnly: true },
       { href: "/results", title: "Results queue", description: "Review results and fixture-date requests.", mark: "RQ", leagueOfficerOnly: true },
       { href: "/entry-packs", title: "Team registrations", description: "Review and approve current-season team registrations.", mark: "TR", leagueOfficerOnly: true },
       { href: "/players", title: "Players & teams", description: "Find player records, team membership and handicaps.", mark: "PT", leagueOfficerOnly: true },
@@ -87,6 +91,15 @@ type AppNavigationMenuProps = {
   onSignOut: () => void | Promise<void>;
 };
 
+function isSelectedPath(pathname: string, href: string) {
+  const [hrefPath, query = ""] = href.split("?");
+  const pathMatches = pathname === hrefPath || (hrefPath !== "/" && pathname.startsWith(`${hrefPath}/`));
+  if (!pathMatches) return false;
+  if (!query || typeof window === "undefined") return !query;
+  const expectedView = new URLSearchParams(query).get("view");
+  return !expectedView || new URLSearchParams(window.location.search).get("view") === expectedView;
+}
+
 export default function AppNavigationMenu({ open, onClose, onSignOut }: AppNavigationMenuProps) {
   const pathname = usePathname();
   const admin = useAdminStatus();
@@ -110,7 +123,7 @@ export default function AppNavigationMenu({ open, onClose, onSignOut }: AppNavig
   useEffect(() => {
     if (!open || visibleGroups.length === 0) return;
     const routeGroup = visibleGroups.find((group) =>
-      group.items.some((item) => pathname === item.href || pathname?.startsWith(`${item.href}/`))
+      group.items.some((item) => isSelectedPath(pathname, item.href))
     );
     if (routeGroup) {
       setSelectedGroupTitle(routeGroup.title);
@@ -208,7 +221,7 @@ export default function AppNavigationMenu({ open, onClose, onSignOut }: AppNavig
 
             <div className="divide-y divide-slate-200">
               {visibleItems.map((item) => {
-                const selected = pathname === item.href || (item.href !== "/" && pathname?.startsWith(`${item.href}/`));
+                const selected = isSelectedPath(pathname, item.href);
                 return (
                   <Link
                     key={`${item.groupTitle}-${item.href}`}

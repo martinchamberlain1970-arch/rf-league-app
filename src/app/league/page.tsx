@@ -1439,6 +1439,16 @@ export default function LeaguePage() {
       setActiveView("fixtures");
     }
   }, [admin.loading, canManage, activeView]);
+  useEffect(() => {
+    if (admin.loading || typeof window === "undefined") return;
+    const requestedView = new URLSearchParams(window.location.search).get("view");
+    const permittedViews = canManage
+      ? ["guide", "teamManagement", "venues", "profiles", "setup", "knockouts", "fixtures", "table", "playerTable", "handicaps"]
+      : ["knockouts", "fixtures", "table", "playerTable"];
+    if (requestedView && permittedViews.includes(requestedView)) {
+      setActiveView(requestedView as typeof activeView);
+    }
+  }, [admin.loading, canManage]);
   const pendingFixtureSubmission = useMemo(
     () => submissions.find((s) => s.fixture_id === fixtureId && s.status === "pending") ?? null,
     [submissions, fixtureId]
