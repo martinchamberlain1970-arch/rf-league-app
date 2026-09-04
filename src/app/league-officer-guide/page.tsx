@@ -85,6 +85,7 @@ export default function LeagueOfficerGuidePage() {
             <div className="mt-4 flex flex-wrap gap-2">
               <Link href="/results" className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-bold text-white">Open Results Queue</Link>
               <Link href="/league-invoices" className="rounded-xl border border-teal-300 bg-white px-4 py-2 text-sm font-bold text-teal-900">Open Club Invoices</Link>
+              <Link href="/handicap-consultation-review" className="rounded-xl border border-teal-300 bg-white px-4 py-2 text-sm font-bold text-teal-900">Review Handicap Consultation</Link>
               <Link href="/league" className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700">Open League Manager</Link>
             </div>
           </section>
