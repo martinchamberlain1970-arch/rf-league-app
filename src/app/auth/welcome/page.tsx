@@ -33,6 +33,7 @@ function WelcomePageInner() {
   const [dobInput, setDobInput] = useState("");
   const [savingDob, setSavingDob] = useState(false);
   const promptDob = search.get("prompt") === "dob";
+  const incompleteRegistration = search.get("incomplete") === "1";
   const returnTo = search.get("returnTo")?.trim() || null;
   const playerAge = useMemo(() => calculateAge(linkedPlayer?.date_of_birth), [linkedPlayer?.date_of_birth]);
 
@@ -155,8 +156,16 @@ function WelcomePageInner() {
                     {new Date(pendingClaim.created_at).toLocaleString()}.
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-slate-700">
-                    No profile link request found. Create an account request from the registration page.
+                  <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-rose-900">
+                    <p className="font-semibold">Registration incomplete</p>
+                    <p className="mt-1">
+                      This account has no player-profile request or club association. It cannot use the member areas of Rack &amp; Frame until a league officer resolves it.
+                    </p>
+                    {incompleteRegistration ? (
+                      <p className="mt-2 text-xs">
+                        Please contact the League Secretary or Chairman. They can remove this incomplete account so you can register again using the full club and player-profile process.
+                      </p>
+                    ) : null}
                   </div>
                 )}
                 <div className="flex flex-wrap gap-2">
@@ -186,12 +195,9 @@ function WelcomePageInner() {
                       Return to profile
                     </Link>
                   ) : null}
-                  <Link href="/" className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-medium text-white">
-                    Go to dashboard
-                  </Link>
-                  {!linkedPlayer ? (
-                    <Link href="/auth/register" className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-700">
-                      Open registration
+                  {linkedPlayer ? (
+                    <Link href="/" className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-medium text-white">
+                      Go to dashboard
                     </Link>
                   ) : null}
                 </div>

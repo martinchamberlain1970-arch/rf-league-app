@@ -47,7 +47,7 @@ export default function RequireAuth({ children }: RequireAuthProps) {
         if (userId) {
           const { data: appUser, error } = await client
             .from("app_users")
-            .select("id")
+            .select("id,role,linked_player_id")
             .eq("id", userId)
             .maybeSingle();
           if (!active) return;
@@ -56,6 +56,13 @@ export default function RequireAuth({ children }: RequireAuthProps) {
             const query = typeof window !== "undefined" ? window.location.search.replace(/^\?/, "") : "";
             const next = `${pathname}${query ? `?${query}` : ""}`;
             router.replace(`/auth/sign-in?next=${encodeURIComponent(next)}`);
+            setAllowed(false);
+            setReady(true);
+            return;
+          }
+          const isStandardUser = !appUser.role || appUser.role === "user";
+          if (isStandardUser && !appUser.linked_player_id && pathname !== "/auth/welcome") {
+            router.replace("/auth/welcome");
             setAllowed(false);
             setReady(true);
             return;
