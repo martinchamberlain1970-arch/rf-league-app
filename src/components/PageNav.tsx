@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
 import ConfirmModal from "@/components/ConfirmModal";
+import AppNavigationMenu from "@/components/AppNavigationMenu";
 import { logAudit } from "@/lib/audit";
 
 type PageNavProps = {
@@ -14,10 +15,10 @@ type PageNavProps = {
 
 export default function PageNav({ warnOnNavigate = false, warnMessage = "You have unsaved changes. Leave this screen?" }: PageNavProps) {
   const router = useRouter();
-  const pathname = usePathname();
   const admin = useAdminStatus();
   const [pendingCount, setPendingCount] = useState(0);
   const [pendingNav, setPendingNav] = useState<"back" | "home" | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const storageKey = useMemo(() => (admin.userId ? `notifications_last_read_${admin.userId}` : "notifications_last_read"), [admin.userId]);
   const dismissedKey = useMemo(
     () => (admin.userId ? `notifications_dismissed_${admin.userId}` : "notifications_dismissed"),
@@ -58,14 +59,6 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
     }
     router.push("/notifications");
   };
-
-  const leagueManagementRoutes = ["/players", "/signup-requests", "/entry-packs", "/league-invoices", "/league-officer-guide", "/locations", "/results", "/rating-audit"];
-  const ownerManagementRoutes = ["/backup", "/audit", "/usage"];
-  const isManagementPage = Boolean(
-    pathname &&
-      ((admin.canManageLeague && leagueManagementRoutes.includes(pathname)) ||
-        (admin.isSuper && ownerManagementRoutes.includes(pathname)))
-  );
 
   const showBack = true;
 
@@ -202,44 +195,18 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
 
   return (
     <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-      {isManagementPage ? (
-        <>
-          <button
-            type="button"
-            onClick={() => router.push("/players")}
-            className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-          >
-            Users
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push("/results")}
-            className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-          >
-            Results
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push("/league-officer-guide")}
-            className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-          >
-            Officer Guide
-          </button>
-          {admin.isSuper ? (
-            <button
-              type="button"
-              onClick={() => router.push("/audit")}
-              className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-            >
-              Audit
-            </button>
-          ) : null}
-        </>
-      ) : null}
+      <button
+        type="button"
+        onClick={() => setMenuOpen(true)}
+        className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+      >
+        <span aria-hidden="true" className="text-base leading-none">☰</span>
+        Menu
+      </button>
       <button
         type="button"
         onClick={onNotifications}
-        className="relative whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+        className="relative grid h-10 w-10 place-items-center whitespace-nowrap rounded-lg border border-slate-300 bg-white text-sm text-slate-700 shadow-sm hover:bg-slate-50"
         aria-label="Notifications"
       >
         🔔
@@ -250,14 +217,14 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
         ) : null}
       </button>
       {showBack ? (
-        <button type="button" onClick={() => requestNavigation("back")} className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
+        <button type="button" onClick={() => requestNavigation("back")} className="whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm hover:bg-slate-50">
           Back
         </button>
       ) : null}
-      <button type="button" onClick={() => requestNavigation("home")} className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
+      <button type="button" onClick={() => requestNavigation("home")} className="whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm hover:bg-slate-50">
         Home
       </button>
-      <button type="button" onClick={onSignOut} className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
+      <button type="button" onClick={onSignOut} className="whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm hover:bg-slate-50">
         Sign out
       </button>
       <ConfirmModal
@@ -272,6 +239,7 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
         }}
         onCancel={() => setPendingNav(null)}
       />
+      <AppNavigationMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
     </div>
   );
 }
