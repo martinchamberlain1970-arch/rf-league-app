@@ -287,6 +287,25 @@ export default function SignUpPage() {
       setMessage("Select an existing club to continue.");
       return;
     }
+    let profileIntent:
+      | {
+          version: 1;
+          type: "existing";
+          playerId: string;
+          fullName: string;
+          dateOfBirth: string;
+          locationId: string;
+          teamId: string | null;
+        }
+      | {
+          version: 1;
+          type: "create";
+          firstName: string;
+          secondName: string;
+          dateOfBirth: string;
+          locationId: string;
+          teamId: string | null;
+        };
     if (matchMode === "existing") {
       if (!selectedPlayer) {
         setBusy(false);
@@ -294,17 +313,15 @@ export default function SignUpPage() {
         return;
       }
       const fullName = selectedPlayer.full_name?.trim() || selectedPlayer.display_name;
-      window.localStorage.setItem(
-        "pending_claim",
-        JSON.stringify({
-          type: "existing",
-          playerId: selectedPlayer.id,
-          fullName,
-          dateOfBirth,
-          locationId: selectedLocation,
-          teamId: selectedTeam || null,
-        })
-      );
+      profileIntent = {
+        version: 1,
+        type: "existing",
+        playerId: selectedPlayer.id,
+        fullName,
+        dateOfBirth,
+        locationId: selectedLocation,
+        teamId: selectedTeam || null,
+      };
     } else {
       const first = firstName.trim();
       const second = secondName.trim();
@@ -323,18 +340,20 @@ export default function SignUpPage() {
         setBusy(false);
         return;
       }
-      window.localStorage.setItem(
-        "pending_claim",
-        JSON.stringify({
-          type: "create",
-          firstName: first,
-          secondName: second,
-          dateOfBirth,
-          locationId: selectedLocation,
-          teamId: selectedTeam || null,
-        })
-      );
+      profileIntent = {
+        version: 1,
+        type: "create",
+        firstName: first,
+        secondName: second,
+        dateOfBirth,
+        locationId: selectedLocation,
+        teamId: selectedTeam || null,
+      };
     }
+
+    // Keep the local copy for older browser sessions, but also store the intent
+    // with the Auth user so email confirmation can finish on another device.
+    window.localStorage.setItem("pending_claim", JSON.stringify(profileIntent));
 
     const preflight = await fetch("/api/auth/preflight-signup", {
       method: "POST",
@@ -351,16 +370,14 @@ export default function SignUpPage() {
       setMessage("An account already exists for this email address. Please sign in instead of registering again.");
       return;
     }
-    if (preflight?.status === "pending_request_exists" || preflight?.status === "unlinked_account_exists") {
+    if (preflight?.status === "pending_request_exists") {
       setBusy(false);
       setMessage("A registration for this email address has already been received and is awaiting approval. Please sign in rather than registering again.");
       return;
     }
-
-    const pending = typeof window !== "undefined" ? window.localStorage.getItem("pending_claim") : null;
-    if (!pending) {
+    if (preflight?.status === "unlinked_account_exists") {
       setBusy(false);
-      setMessage("You must claim or create a profile before signing up.");
+      setMessage("An incomplete account already exists for this email address, but it has no player-profile request. Please contact the League Secretary or Chairman so it can be removed before registering again.");
       return;
     }
 
@@ -375,6 +392,7 @@ export default function SignUpPage() {
           terms_accepted: true,
           terms_version: LEGAL_VERSION,
           legal_accepted_at: acceptedAt,
+          signup_profile_intent: profileIntent,
         },
       },
     });
@@ -389,7 +407,7 @@ export default function SignUpPage() {
     await logAudit("auth_sign_up", { entityType: "auth", summary: "User account created." });
     setInfoModal({
       title: "Account created",
-      body: "Your account was created successfully. Your profile request will now be reviewed. Once approved, sign in to continue.",
+      body: "Your account was created successfully. Confirm your email if asked, then sign in. Rack & Frame will submit your saved club and player-profile request for league-officer approval.",
       closeLabel: "Go to sign in",
       redirectTo: "/auth/sign-in?signup=created&next=%2Fauth%2Fwelcome",
     });

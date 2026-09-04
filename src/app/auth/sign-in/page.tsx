@@ -62,7 +62,8 @@ export default function SignInPage() {
       return;
     }
     const authUserRes = await client.auth.getUser();
-    const signedInUserId = authUserRes.data.user?.id ?? null;
+    const signedInUser = authUserRes.data.user ?? null;
+    const signedInUserId = signedInUser?.id ?? null;
     if (signedInUserId) {
       const { data: appUser } = await client.from("app_users").select("linked_player_id").eq("id", signedInUserId).maybeSingle();
       const linkedPlayerId = appUser?.linked_player_id ?? null;
@@ -88,7 +89,9 @@ export default function SignInPage() {
       }
     }
     await logAudit("auth_sign_in", { entityType: "auth", summary: "User signed in." });
-    const pending = typeof window !== "undefined" ? window.localStorage.getItem("pending_claim") : null;
+    const localPending = typeof window !== "undefined" ? window.localStorage.getItem("pending_claim") : null;
+    const metadataIntent = signedInUser?.user_metadata?.signup_profile_intent;
+    const pending = localPending ?? (metadataIntent && typeof metadataIntent === "object" ? JSON.stringify(metadataIntent) : null);
     if (pending) {
       try {
         const parsed = JSON.parse(pending) as {
@@ -107,13 +110,20 @@ export default function SignInPage() {
           guardianEmail?: string;
           guardianUserId?: string;
         };
-        const { data } = await client.auth.getUser();
-        const userId = data.user?.id;
+        const userId = signedInUserId;
         if (!userId) {
           window.localStorage.removeItem("pending_claim");
-          router.replace(nextPath);
+          router.replace("/auth/welcome?incomplete=1");
           return;
         }
+        const activeClaim = await client
+          .from("player_claim_requests")
+          .select("id,status")
+          .eq("requester_user_id", userId)
+          .in("status", ["pending", "approved"])
+          .order("created_at", { ascending: false })
+          .limit(1);
+        const alreadyHasClaim = Boolean(activeClaim.data?.[0]?.id);
         const submitClaim = async (playerId: string, fullName: string, requestedDateOfBirth?: string | null) => {
           const existingClaim = await client
             .from("player_claim_requests")
@@ -123,13 +133,14 @@ export default function SignInPage() {
             .in("status", ["pending", "approved"])
             .maybeSingle();
           if (existingClaim.data?.id) return false;
-          await client.from("player_claim_requests").insert({
+          const insertClaim = await client.from("player_claim_requests").insert({
             player_id: playerId,
             requester_user_id: userId,
             requested_full_name: fullName,
             requested_date_of_birth: requestedDateOfBirth ?? null,
             status: "pending",
           });
+          if (insertClaim.error) throw insertClaim.error;
           return true;
         };
         const notifySignupRequest = async (subject: string, text: string) => {
@@ -155,10 +166,10 @@ export default function SignInPage() {
             "Your account was created, but no club was saved with the signup request. Please contact a league officer so your club can be assigned before your profile is linked."
           );
           window.localStorage.removeItem("pending_claim");
-          router.replace(nextPath);
+          router.replace("/auth/welcome?incomplete=1");
           return;
         }
-        if (parsed.type === "existing" && parsed.playerId && parsed.fullName) {
+        if (parsed.type === "existing" && parsed.playerId && parsed.fullName && !alreadyHasClaim) {
           const claimCreated = await submitClaim(parsed.playerId, parsed.fullName, parsed.dateOfBirth ?? null);
           setMessage(
             claimCreated
@@ -189,14 +200,14 @@ export default function SignInPage() {
           if (claimCreated) {
             await notifySignupRequest(
               "New league signup approval request",
-              `A new profile-link request is waiting for review.\n\nName: ${parsed.fullName}\nEmail: ${data.user?.email ?? "Unknown"}\nClub ID: ${validLocationId}\nRoute: Existing player profile`
+              `A new profile-link request is waiting for review.\n\nName: ${parsed.fullName}\nEmail: ${signedInUser?.email ?? "Unknown"}\nClub ID: ${validLocationId}\nRoute: Existing player profile`
             );
           }
         }
-        if (parsed.type === "create" && parsed.firstName) {
+        if (parsed.type === "create" && parsed.firstName && !alreadyHasClaim) {
           const effectiveAgeBand = parsed.ageBand ?? "18_plus";
           const fullName = effectiveAgeBand === "18_plus" ? `${parsed.firstName} ${parsed.secondName ?? ""}`.trim() : parsed.firstName;
-          const { data: created } = await client
+          const { data: created, error: createPlayerError } = await client
             .from("players")
             .insert({
               display_name: parsed.firstName,
@@ -215,6 +226,7 @@ export default function SignInPage() {
             })
             .select("id")
             .single();
+          if (createPlayerError) throw createPlayerError;
           if (created?.id) {
             if (parsed.teamId) {
               const existingMember = await client
@@ -241,15 +253,34 @@ export default function SignInPage() {
             if (claimCreated) {
               await notifySignupRequest(
                 "New league player registration awaiting approval",
-                `A new player registration is waiting for review.\n\nName: ${fullName}\nEmail: ${data.user?.email ?? "Unknown"}\nClub ID: ${validLocationId}\nRoute: New player profile request`
+                `A new player registration is waiting for review.\n\nName: ${fullName}\nEmail: ${signedInUser?.email ?? "Unknown"}\nClub ID: ${validLocationId}\nRoute: New player profile request`
               );
             }
           }
         }
-      } catch {
-        // ignore parse/side-effect errors here
+        await client.auth.updateUser({ data: { signup_profile_intent: null } });
+      } catch (claimError) {
+        console.error("Failed to complete signup profile request", claimError);
       }
       window.localStorage.removeItem("pending_claim");
+    }
+
+    if (signedInUserId) {
+      const finalAppUser = await client
+        .from("app_users")
+        .select("linked_player_id")
+        .eq("id", signedInUserId)
+        .maybeSingle();
+      if (!finalAppUser.data?.linked_player_id) {
+        const finalClaim = await client
+          .from("player_claim_requests")
+          .select("id")
+          .eq("requester_user_id", signedInUserId)
+          .in("status", ["pending", "approved"])
+          .limit(1);
+        router.replace(finalClaim.data?.[0]?.id ? "/auth/welcome" : "/auth/welcome?incomplete=1");
+        return;
+      }
     }
     router.replace(nextPath);
   };
