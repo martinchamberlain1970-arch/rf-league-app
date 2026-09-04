@@ -2,12 +2,13 @@
 
 import Link from "next/link";
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import DobSelect from "@/components/DobSelect";
 import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
 import { supabase } from "@/lib/supabase";
+import { isAdministratorRole } from "@/lib/app-roles";
 
 type Claim = { id: string; status: "pending" | "approved" | "rejected"; requested_full_name: string | null; created_at: string };
 type Player = { id: string; full_name: string | null; display_name: string; date_of_birth?: string | null };
@@ -25,6 +26,7 @@ function calculateAge(dob: string | null | undefined): number | null {
 
 function WelcomePageInner() {
   const search = useSearchParams();
+  const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState<string | null>(null);
   const [email, setEmail] = useState<string | null>(null);
@@ -54,10 +56,18 @@ function WelcomePageInner() {
       setEmail(user.email ?? null);
       const appUserRes = await client
         .from("app_users")
-        .select("linked_player_id")
+        .select("linked_player_id,role")
         .eq("id", user.id)
         .maybeSingle();
       const linkedPlayerId = appUserRes.data?.linked_player_id ?? null;
+      const ownerEmail = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL?.trim().toLowerCase()
+        ?? process.env.NEXT_PUBLIC_OWNER_EMAIL?.trim().toLowerCase()
+        ?? "";
+      const isOwnerEmail = Boolean(ownerEmail && user.email?.trim().toLowerCase() === ownerEmail);
+      if (!linkedPlayerId && (isOwnerEmail || isAdministratorRole(appUserRes.data?.role))) {
+        router.replace("/");
+        return;
+      }
       if (linkedPlayerId) {
         const playerRes = await client
           .from("players")
@@ -83,7 +93,7 @@ function WelcomePageInner() {
       setLoading(false);
     };
     void run();
-  }, []);
+  }, [router]);
 
   const saveDob = async () => {
     const client = supabase;

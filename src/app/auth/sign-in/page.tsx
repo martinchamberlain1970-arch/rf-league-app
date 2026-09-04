@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { logAudit } from "@/lib/audit";
 import MessageModal from "@/components/MessageModal";
+import { isAdministratorRole } from "@/lib/app-roles";
 
 function readNextPath(): string {
   if (typeof window === "undefined") return "/";
@@ -268,10 +269,15 @@ export default function SignInPage() {
     if (signedInUserId) {
       const finalAppUser = await client
         .from("app_users")
-        .select("linked_player_id")
+        .select("linked_player_id,role")
         .eq("id", signedInUserId)
         .maybeSingle();
-      if (!finalAppUser.data?.linked_player_id) {
+      const ownerEmail = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL?.trim().toLowerCase()
+        ?? process.env.NEXT_PUBLIC_OWNER_EMAIL?.trim().toLowerCase()
+        ?? "";
+      const isOwnerEmail = Boolean(ownerEmail && signedInUser?.email?.trim().toLowerCase() === ownerEmail);
+      const bypassPlayerOnboarding = isOwnerEmail || isAdministratorRole(finalAppUser.data?.role);
+      if (!finalAppUser.data?.linked_player_id && !bypassPlayerOnboarding) {
         const finalClaim = await client
           .from("player_claim_requests")
           .select("id")
