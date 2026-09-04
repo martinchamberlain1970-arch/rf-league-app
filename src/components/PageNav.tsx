@@ -194,19 +194,20 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
   }, [admin.loading, admin.isAdmin, admin.isSuper, admin.canManageLeague, admin.userId, storageKey, dismissedKey]);
 
   return (
-    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
+    <div className="flex w-auto items-center justify-end gap-1.5 sm:gap-2">
       <button
         type="button"
         onClick={() => setMenuOpen(true)}
-        className="inline-flex items-center gap-2 whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-800 shadow-sm hover:bg-slate-50"
+        className="inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm font-semibold text-slate-800 hover:border-teal-300 hover:bg-teal-50"
+        aria-label="Open app menu"
       >
         <span aria-hidden="true" className="text-base leading-none">☰</span>
-        Menu
+        <span className="hidden sm:inline">Menu</span>
       </button>
       <button
         type="button"
         onClick={onNotifications}
-        className="relative grid h-10 w-10 place-items-center whitespace-nowrap rounded-lg border border-slate-300 bg-white text-sm text-slate-700 shadow-sm hover:bg-slate-50"
+        className="relative grid h-10 w-10 place-items-center whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 hover:border-teal-300 hover:bg-teal-50"
         aria-label="Notifications"
       >
         🔔
@@ -217,15 +218,15 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
         ) : null}
       </button>
       {showBack ? (
-        <button type="button" onClick={() => requestNavigation("back")} className="whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm hover:bg-slate-50">
-          Back
+        <button type="button" aria-label="Go back" onClick={() => requestNavigation("back")} className="hidden h-10 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 hover:border-teal-300 hover:bg-teal-50 sm:inline-flex">
+          <span aria-hidden="true">←</span><span className="hidden lg:inline">Back</span>
         </button>
       ) : null}
-      <button type="button" onClick={() => requestNavigation("home")} className="whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm hover:bg-slate-50">
-        Home
+      <button type="button" aria-label="Go home" onClick={() => requestNavigation("home")} className="hidden h-10 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 hover:border-teal-300 hover:bg-teal-50 sm:inline-flex">
+        <span aria-hidden="true">⌂</span><span className="hidden lg:inline">Home</span>
       </button>
-      <button type="button" onClick={onSignOut} className="whitespace-nowrap rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 shadow-sm hover:bg-slate-50">
-        Sign out
+      <button type="button" aria-label="Sign out" onClick={onSignOut} className="hidden h-10 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 sm:inline-flex">
+        <span aria-hidden="true">↪</span><span className="hidden lg:inline">Sign out</span>
       </button>
       <ConfirmModal
         open={Boolean(pendingNav)}
@@ -239,7 +240,7 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
         }}
         onCancel={() => setPendingNav(null)}
       />
-      <AppNavigationMenu open={menuOpen} onClose={() => setMenuOpen(false)} />
+      <AppNavigationMenu open={menuOpen} onClose={() => setMenuOpen(false)} onSignOut={onSignOut} />
     </div>
   );
 }
