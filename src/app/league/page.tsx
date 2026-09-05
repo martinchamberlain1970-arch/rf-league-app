@@ -2122,12 +2122,19 @@ function LeaguePageContent() {
   useEffect(() => {
     if (!seasonId || typeof window === "undefined") return;
     window.localStorage.setItem("rf_selected_league_season", seasonId);
-    if (searchParams.get("seasonId") !== seasonId) {
+    const requestedSeasonId = searchParams.get("seasonId");
+    const requestedSeasonIsValid = Boolean(
+      requestedSeasonId && visibleSeasons.some((season) => season.id === requestedSeasonId)
+    );
+    // A valid URL selection is authoritative. The effect above will bring
+    // local state into line; replacing it here with the previous state would
+    // make Premier League and Division 1 continually swap back and forth.
+    if (!requestedSeasonIsValid && requestedSeasonId !== seasonId) {
       const requestedView = searchParams.get("view");
       const permittedViews = canManage ? MANAGED_LEAGUE_VIEWS : MEMBER_LEAGUE_VIEWS;
       updateLeagueUrl(requestedView && permittedViews.includes(requestedView as LeagueView) ? requestedView as LeagueView : activeView, seasonId);
     }
-  }, [seasonId, activeView, canManage, searchParams]);
+  }, [seasonId, activeView, canManage, searchParams, visibleSeasons]);
 
   useEffect(() => {
     if (!seasonTeams.length) {
