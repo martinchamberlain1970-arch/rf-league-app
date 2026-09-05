@@ -1,7 +1,8 @@
 "use client";
 
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import { supabase } from "@/lib/supabase";
@@ -128,9 +129,12 @@ function isMissingColumnError(message?: string | null) {
   return text.includes("column") && (text.includes("does not exist") || text.includes("schema cache"));
 }
 
-export default function PlayersPage() {
+function PlayersPageContent() {
   const { showPrompt } = useAppDialog();
   const admin = useAdminStatus();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [players, setPlayers] = useState<Player[]>([]);
   const [claims, setClaims] = useState<ClaimRequest[]>([]);
   const [updateRequests, setUpdateRequests] = useState<PlayerUpdateRequest[]>([]);
@@ -168,6 +172,12 @@ export default function PlayersPage() {
   const [claimSecondName, setClaimSecondName] = useState("");
   const [claimMode, setClaimMode] = useState<"existing" | "new">("existing");
   const [tab, setTab] = useState<PlayerTab>("register");
+  const selectPlayerTab = (nextTab: PlayerTab) => {
+    setTab(nextTab);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", nextTab);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -196,6 +206,14 @@ export default function PlayersPage() {
   const sectionCardClass = "rounded-2xl border border-slate-200 bg-white p-5 shadow-sm";
   const sectionCardTintClass = "rounded-2xl border border-slate-200 bg-gradient-to-br from-white to-slate-50 p-5 shadow-sm";
   const sectionTitleClass = "text-lg font-semibold text-slate-900";
+
+  useEffect(() => {
+    if (admin.loading) return;
+    const requestedTab = searchParams.get("tab");
+    if (requestedTab === "register" || requestedTab === "profiles" || requestedTab === "claims" || (requestedTab === "archived" && isSuperAdmin)) {
+      setTab(requestedTab);
+    }
+  }, [admin.loading, isSuperAdmin, searchParams]);
 
   const activePlayers = useMemo(() => players.filter((p) => !p.is_archived), [players]);
   const archivedPlayers = useMemo(() => players.filter((p) => p.is_archived), [players]);
@@ -2070,7 +2088,7 @@ export default function PlayersPage() {
                 {canRegisterPlayers ? (
                   <button
                     type="button"
-                    onClick={() => setTab("register")}
+                    onClick={() => selectPlayerTab("register")}
                     className={tab === "register" ? pillActiveClass : pillInactiveClass}
                   >
                     Register
@@ -2078,14 +2096,14 @@ export default function PlayersPage() {
                 ) : null}
                 <button
                   type="button"
-                  onClick={() => setTab("profiles")}
+                  onClick={() => selectPlayerTab("profiles")}
                   className={tab === "profiles" ? pillActiveClass : pillInactiveClass}
                 >
                   Player Profiles ({activePlayers.length})
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTab("archived")}
+                  onClick={() => selectPlayerTab("archived")}
                   className={tab === "archived" ? pillActiveClass : pillInactiveClass}
                   disabled={!isSuperAdmin}
                 >
@@ -2093,7 +2111,7 @@ export default function PlayersPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setTab("claims")}
+                  onClick={() => selectPlayerTab("claims")}
                   className={tab === "claims" ? pillActiveClass : pillInactiveClass}
                 >
                   Claims & Updates ({pendingClaims.length + visibleUpdates.length})
@@ -2571,4 +2589,8 @@ export default function PlayersPage() {
       </div>
     </main>
   );
+}
+
+export default function PlayersPage() {
+  return <Suspense fallback={<main className="min-h-screen bg-slate-100 p-6"><div className="mx-auto max-w-6xl rounded-2xl border border-slate-200 bg-white p-5 text-slate-600">Loading players…</div></main>}><PlayersPageContent /></Suspense>;
 }

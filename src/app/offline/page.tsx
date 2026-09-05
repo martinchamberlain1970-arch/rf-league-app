@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function OfflinePage() {
   return (
     <main className="flex min-h-screen items-center justify-center bg-slate-100 p-6">
@@ -11,12 +13,12 @@ export default function OfflinePage() {
         <p className="mt-2 text-sm leading-6 text-slate-600">
           Rack & Frame needs a connection to load current fixtures and safely submit results. Your league data has not been replaced with an old cached copy.
         </p>
-        <a
+        <Link
           href="/"
           className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white"
         >
           Try again
-        </a>
+        </Link>
       </section>
     </main>
   );

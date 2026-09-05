@@ -31,7 +31,8 @@ const groups: NavGroup[] = [
       { href: "/captain-results", title: "Line-ups & results", description: "Enter line-ups, frame scores and the final result.", mark: "LR" },
       { href: "/reschedule-fixture", title: "Fixture date requests", description: "Request an agreed early date or exceptional postponement.", mark: "FD" },
       { href: "/live-matches", title: "Live matches", description: "Follow league scorecards currently in progress.", mark: "LM" },
-      { href: "/league?view=fixtures", title: "Fixtures & tables", description: "Find fixtures, standings and player tables.", mark: "FT" },
+      { href: "/league?view=fixtures", title: "League fixtures", description: "Find the selected league's fixtures and results.", mark: "FT" },
+      { href: "/handicaps", title: "Published handicaps", description: "View playing handicaps and current starts.", mark: "HC" },
       { href: "/league-hub", title: "Public league hub", description: "View the public fixtures, results and statistics pages.", mark: "PH" },
     ],
   },
@@ -43,10 +44,11 @@ const groups: NavGroup[] = [
       { href: "/league?view=setup", title: "League setup", description: "Create seasons, configure rules and publish leagues.", mark: "LS", leagueOfficerOnly: true },
       { href: "/league?view=teamManagement", title: "Teams & roles", description: "Add teams, assign players, captains and vice-captains.", mark: "TM", leagueOfficerOnly: true },
       { href: "/league?view=venues", title: "Venues", description: "Maintain clubs, addresses and table capacities.", mark: "VN", leagueOfficerOnly: true },
+      { href: "/league?view=knockouts", title: "Knockout competitions", description: "Create and manage league knockout competitions.", mark: "KC", leagueOfficerOnly: true },
+      { href: "/league?view=handicaps", title: "Manage handicaps", description: "Review Elo alignment and administer playing handicaps.", mark: "MH", leagueOfficerOnly: true },
       { href: "/results", title: "Results queue", description: "Review results and fixture-date requests.", mark: "RQ", leagueOfficerOnly: true },
       { href: "/entry-packs", title: "Team registrations", description: "Review and approve current-season team registrations.", mark: "TR", leagueOfficerOnly: true },
       { href: "/players", title: "Players & teams", description: "Find player records, team membership and handicaps.", mark: "PT", leagueOfficerOnly: true },
-      { href: "/handicaps", title: "Handicaps", description: "Review published handicaps and playing starts.", mark: "HC" },
       { href: "/rating-audit", title: "Elo review", description: "Audit Elo movement and handicap alignment.", mark: "ER", leagueOfficerOnly: true },
       { href: "/league-invoices", title: "Club invoices", description: "Preview combined league and competition fees.", mark: "CI", leagueOfficerOnly: true },
       { href: "/handicap-consultation-review", title: "Handicap consultation", description: "Review club attestations for the expedited handicap decision.", mark: "HV", leagueOfficerOnly: true },
@@ -72,6 +74,7 @@ const groups: NavGroup[] = [
       { href: "/league-officer-guide", title: "Officer guides", description: "Responsibilities and operational workflows.", mark: "OG", leagueOfficerOnly: true },
       { href: "/help", title: "Help & user guides", description: "Instructions for using Rack & Frame.", mark: "HG" },
       { href: "/announcements", title: "Announcements", description: "Create and manage league notices.", mark: "AN", leagueOfficerOnly: true },
+      { href: "/legal", title: "Legal & privacy", description: "Privacy, terms, copyright and support details.", mark: "LG" },
     ],
   },
   {
@@ -81,7 +84,6 @@ const groups: NavGroup[] = [
       { href: "/audit", title: "Audit log", description: "Review the system-owner action trail.", mark: "AL", ownerOnly: true },
       { href: "/usage", title: "Usage analytics", description: "See which areas of the platform are being used.", mark: "UA", ownerOnly: true },
       { href: "/backup", title: "Data management", description: "Backups, restore points and controlled reset.", mark: "DM", ownerOnly: true },
-      { href: "/legal", title: "Legal & credits", description: "Privacy, terms, copyright and support details.", mark: "LG" },
     ],
   },
 ];
@@ -90,6 +92,7 @@ type AppNavigationMenuProps = {
   open: boolean;
   onClose: () => void;
   onSignOut: () => void | Promise<void>;
+  onNavigate?: (href: string) => boolean;
 };
 
 function isSelectedPath(pathname: string, href: string) {
@@ -101,17 +104,20 @@ function isSelectedPath(pathname: string, href: string) {
   return !expectedView || new URLSearchParams(window.location.search).get("view") === expectedView;
 }
 
-export default function AppNavigationMenu({ open, onClose, onSignOut }: AppNavigationMenuProps) {
+export default function AppNavigationMenu({ open, onClose, onSignOut, onNavigate }: AppNavigationMenuProps) {
   const pathname = usePathname();
   const admin = useAdminStatus();
   const [query, setQuery] = useState("");
   const [selectedGroupTitle, setSelectedGroupTitle] = useState(groups[0].title);
+  const [selectedSeasonId, setSelectedSeasonId] = useState("");
 
   const visibleGroups = useMemo(() => {
     return groups
       .map((group) => ({
         ...group,
-        items: group.items.filter((item) => {
+        items: group.items.map((item) => admin.canManageLeague && item.href === "/reschedule-fixture"
+          ? { ...item, href: "/results?tab=fixture_changes", title: "Fixture date approvals", description: "Review, approve and schedule fixture-date requests." }
+          : item).filter((item) => {
           if (item.ownerOnly && !admin.isSuper) return false;
           if (item.leagueOfficerOnly && !admin.canManageLeague) return false;
           if (item.administratorOnly && !admin.isAdmin) return false;
@@ -120,6 +126,20 @@ export default function AppNavigationMenu({ open, onClose, onSignOut }: AppNavig
       }))
       .filter((group) => group.items.length > 0);
   }, [admin.canManageLeague, admin.isAdmin, admin.isSuper]);
+
+  useEffect(() => {
+    if (!open || typeof window === "undefined") return;
+    const currentSeasonId = new URLSearchParams(window.location.search).get("seasonId");
+    setSelectedSeasonId(currentSeasonId || window.localStorage.getItem("rf_selected_league_season") || "");
+  }, [open, pathname]);
+
+  const hrefWithLeagueContext = (href: string) => {
+    if (!selectedSeasonId || !href.startsWith("/league")) return href;
+    const [path, queryString = ""] = href.split("?");
+    const params = new URLSearchParams(queryString);
+    params.set("seasonId", selectedSeasonId);
+    return `${path}?${params.toString()}`;
+  };
 
   useEffect(() => {
     if (!open || visibleGroups.length === 0) return;
@@ -222,12 +242,19 @@ export default function AppNavigationMenu({ open, onClose, onSignOut }: AppNavig
 
             <div className="divide-y divide-slate-200">
               {visibleItems.map((item) => {
-                const selected = isSelectedPath(pathname, item.href);
+                const resolvedHref = hrefWithLeagueContext(item.href);
+                const selected = isSelectedPath(pathname, resolvedHref);
                 return (
                   <Link
                     key={`${item.groupTitle}-${item.href}`}
-                    href={item.href}
-                    onClick={onClose}
+                    href={resolvedHref}
+                    onClick={(event) => {
+                      if (onNavigate && !onNavigate(resolvedHref)) {
+                        event.preventDefault();
+                        return;
+                      }
+                      onClose();
+                    }}
                     className={`group grid grid-cols-[minmax(0,1fr)_auto] gap-4 px-1 py-4 transition sm:px-3 ${selected ? "bg-teal-50/80" : "hover:bg-white"}`}
                   >
                     <span className="min-w-0">

@@ -35,8 +35,6 @@ const links = [
   { href: "/usage", title: "Usage Analytics", desc: "System Owner page-usage summary." },
   { href: "/results", title: "Results Queue", desc: "Review and approve submitted results." },
   { href: "/notifications", title: "Notifications", desc: "Read and manage your inbox notifications." },
-  { href: "/live", title: "Live Overview", desc: "In-progress overview of active events." },
-  { href: "/stats", title: "Stats", desc: "Player and matchup stats." },
   { href: "/announcements", title: "Announcements", desc: "League-officer control for banner notices." },
   { href: "/help", title: "User Guide", desc: "How to use the app." },
   { href: "/legal", title: "Legal & Credits", desc: "Legal and support information." },
@@ -172,7 +170,7 @@ export default function HomePage() {
   const quickAccessHrefs = admin.isSuper
     ? ["/audit", "/rating-audit", "/usage"]
     : admin.isAdmin
-      ? ["/results", "/notifications", "/live", "/stats"]
+      ? ["/results", "/notifications"]
       : [];
   const primaryLinks = visibleLinks.filter((item) => primaryHrefs.includes(item.href));
   const quickAccessLinks = visibleLinks.filter((item) => quickAccessHrefs.includes(item.href));

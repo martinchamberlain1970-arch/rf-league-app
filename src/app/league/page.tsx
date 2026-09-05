@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import useAdminStatus from "@/components/useAdminStatus";
@@ -48,6 +49,21 @@ type Season = {
   singles_count?: number | null;
   doubles_count?: number | null;
 };
+type LeagueView = "guide" | "teamManagement" | "venues" | "profiles" | "setup" | "knockouts" | "fixtures" | "table" | "playerTable" | "handicaps";
+const MANAGED_LEAGUE_VIEWS: LeagueView[] = ["guide", "teamManagement", "venues", "profiles", "setup", "knockouts", "fixtures", "table", "playerTable", "handicaps"];
+const MEMBER_LEAGUE_VIEWS: LeagueView[] = ["knockouts", "fixtures", "table", "playerTable"];
+const LEAGUE_VIEW_OPTIONS: Array<{ value: LeagueView; label: string; officerOnly?: boolean }> = [
+  { value: "guide", label: "Overview", officerOnly: true },
+  { value: "teamManagement", label: "Teams & roles", officerOnly: true },
+  { value: "venues", label: "Venues", officerOnly: true },
+  { value: "profiles", label: "Teams & players", officerOnly: true },
+  { value: "setup", label: "League setup", officerOnly: true },
+  { value: "fixtures", label: "Fixtures & results" },
+  { value: "table", label: "League table" },
+  { value: "playerTable", label: "Player table" },
+  { value: "knockouts", label: "Knockout competitions" },
+  { value: "handicaps", label: "Handicap management", officerOnly: true },
+];
 type PremierResetPreview = {
   season: Season;
   totalPlayers: number;
@@ -660,9 +676,12 @@ const describeFixtureReschedule = (request?: FixtureChangeRequest | null) => {
   };
 };
 
-export default function LeaguePage() {
+function LeaguePageContent() {
   const { showConfirm } = useAppDialog();
   const admin = useAdminStatus();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [guidedTarget, setGuidedTarget] = useState<null | "create-league" | "add-league-teams" | "assign-players" | "generate-fixtures" | "publish-league">(null);
   const [highlightedGuidedTarget, setHighlightedGuidedTarget] = useState<null | "create-league" | "add-league-teams" | "assign-players" | "generate-fixtures" | "publish-league">(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -706,7 +725,7 @@ export default function LeaguePage() {
   >({});
   const [competitionClubEntryDrafts, setCompetitionClubEntryDrafts] = useState<Record<string, string[]>>({});
   const [competitionClubEntryBusyKey, setCompetitionClubEntryBusyKey] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<"guide" | "teamManagement" | "venues" | "profiles" | "setup" | "knockouts" | "fixtures" | "table" | "playerTable" | "handicaps">("guide");
+  const [activeView, setActiveView] = useState<LeagueView>("guide");
   const [playerTableView, setPlayerTableView] = useState<PlayerTableView>("all");
 
   const [selectedLeagueTeamNames, setSelectedLeagueTeamNames] = useState<string[]>([]);
@@ -803,6 +822,25 @@ export default function LeaguePage() {
     () => (canManage ? seasons : seasons.filter((s) => Boolean(s.is_published))),
     [canManage, seasons]
   );
+  const updateLeagueUrl = (nextView: LeagueView, nextSeasonId = seasonId) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", nextView);
+    if (nextSeasonId) params.set("seasonId", nextSeasonId);
+    else params.delete("seasonId");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+  const selectLeagueView = (nextView: LeagueView) => {
+    setActiveView(nextView);
+    updateLeagueUrl(nextView);
+  };
+  const selectLeagueSeason = (nextSeasonId: string) => {
+    setSeasonId(nextSeasonId);
+    if (typeof window !== "undefined") {
+      if (nextSeasonId) window.localStorage.setItem("rf_selected_league_season", nextSeasonId);
+      else window.localStorage.removeItem("rf_selected_league_season");
+    }
+    updateLeagueUrl(activeView, nextSeasonId);
+  };
   const seasonById = useMemo(() => new Map(seasons.map((s) => [s.id, s])), [seasons]);
   const currentSeasonSinglesCount = Math.max(1, Math.min(10, currentSeason?.singles_count ?? 4));
   const currentSeasonDoublesCount = Math.max(0, Math.min(4, currentSeason?.doubles_count ?? 1));
@@ -1441,14 +1479,12 @@ export default function LeaguePage() {
   }, [admin.loading, canManage, activeView]);
   useEffect(() => {
     if (admin.loading || typeof window === "undefined") return;
-    const requestedView = new URLSearchParams(window.location.search).get("view");
-    const permittedViews = canManage
-      ? ["guide", "teamManagement", "venues", "profiles", "setup", "knockouts", "fixtures", "table", "playerTable", "handicaps"]
-      : ["knockouts", "fixtures", "table", "playerTable"];
-    if (requestedView && permittedViews.includes(requestedView)) {
-      setActiveView(requestedView as typeof activeView);
+    const requestedView = searchParams.get("view");
+    const permittedViews = canManage ? MANAGED_LEAGUE_VIEWS : MEMBER_LEAGUE_VIEWS;
+    if (requestedView && permittedViews.includes(requestedView as LeagueView)) {
+      setActiveView(requestedView as LeagueView);
     }
-  }, [admin.loading, canManage]);
+  }, [admin.loading, canManage, searchParams]);
   const pendingFixtureSubmission = useMemo(
     () => submissions.find((s) => s.fixture_id === fixtureId && s.status === "pending") ?? null,
     [submissions, fixtureId]
@@ -2071,6 +2107,13 @@ export default function LeaguePage() {
       if (seasonId) setSeasonId("");
       return;
     }
+    const requestedSeasonId = searchParams.get("seasonId");
+    const rememberedSeasonId = typeof window !== "undefined" ? window.localStorage.getItem("rf_selected_league_season") : null;
+    const preferredRequestedId = requestedSeasonId || rememberedSeasonId;
+    if (preferredRequestedId && visibleSeasons.some((season) => season.id === preferredRequestedId)) {
+      if (preferredRequestedId !== seasonId) setSeasonId(preferredRequestedId);
+      return;
+    }
     if (!canManage && currentUserPlayerId) {
       const memberSeasonIds = new Set(
         members.filter((m) => m.player_id === currentUserPlayerId).map((m) => m.season_id)
@@ -2084,7 +2127,17 @@ export default function LeaguePage() {
     if (!visibleSeasons.some((s) => s.id === seasonId)) {
       setSeasonId(visibleSeasons[0].id);
     }
-  }, [visibleSeasons, seasonId, canManage, currentUserPlayerId, members]);
+  }, [visibleSeasons, seasonId, canManage, currentUserPlayerId, members, searchParams]);
+
+  useEffect(() => {
+    if (!seasonId || typeof window === "undefined") return;
+    window.localStorage.setItem("rf_selected_league_season", seasonId);
+    if (searchParams.get("seasonId") !== seasonId) {
+      const requestedView = searchParams.get("view");
+      const permittedViews = canManage ? MANAGED_LEAGUE_VIEWS : MEMBER_LEAGUE_VIEWS;
+      updateLeagueUrl(requestedView && permittedViews.includes(requestedView as LeagueView) ? requestedView as LeagueView : activeView, seasonId);
+    }
+  }, [seasonId, activeView, canManage, searchParams]);
 
   useEffect(() => {
     if (!seasonTeams.length) {
@@ -2230,7 +2283,7 @@ export default function LeaguePage() {
     setSeasonName("2026/2027");
     setSeasonTemplate("premier");
     setSeasonHandicapEnabled(true);
-    setSeasonId(ins.data.id);
+    selectLeagueSeason(ins.data.id);
     await loadAll();
     setInfoModal({
       title: "League Created",
@@ -5511,7 +5564,7 @@ export default function LeaguePage() {
       return;
     }
     setConfirmDeleteOpen(false);
-    setSeasonId("");
+    selectLeagueSeason("");
     await loadAll();
     setInfoModal({ title: "League Deleted", description: "League and related data were deleted." });
   };
@@ -6374,50 +6427,38 @@ export default function LeaguePage() {
 
           {canViewLeague ? (
             <>
-              <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                <div className="mb-2 flex items-center justify-between gap-3 px-1">
-                  <p className="text-xs font-bold uppercase tracking-[0.16em] text-slate-500">League workspace</p>
-                  <p className="hidden text-xs text-slate-400 sm:block">Scroll sideways to see every area</p>
+              <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <div className="bg-gradient-to-r from-[#0f1a31] via-[#12304a] to-teal-800 px-4 py-3 text-white">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-cyan-300">League workspace</p>
+                      <p className="mt-0.5 text-sm font-semibold">Choose the league first, then the area you need.</p>
+                    </div>
+                    {currentSeason ? (
+                      <span className={`rounded-full border px-3 py-1 text-xs font-bold ${currentSeason.is_active === false ? "border-slate-400/60 bg-slate-700/70 text-slate-100" : currentSeason.is_published ? "border-emerald-300/60 bg-emerald-400/15 text-emerald-100" : "border-amber-300/60 bg-amber-400/15 text-amber-100"}`}>
+                        {currentSeason.is_active === false ? "Completed" : currentSeason.is_published ? "Published & active" : "Draft"}
+                      </span>
+                    ) : null}
+                  </div>
                 </div>
-                <div className="flex gap-2 overflow-x-auto pb-2 [scrollbar-width:thin]">
-                  {canManage ? (
-                    <>
-                      <button type="button" onClick={() => setActiveView("guide")} className={leagueTabClass("guide")}>
-                        Summary
-                      </button>
-                      <button type="button" onClick={() => setActiveView("teamManagement")} className={leagueTabClass("teamManagement")}>
-                        Team Management
-                      </button>
-                      <button type="button" onClick={() => setActiveView("venues")} className={leagueTabClass("venues")}>
-                        Venues
-                      </button>
-                      <button type="button" onClick={() => setActiveView("profiles")} className={leagueTabClass("profiles")}>
-                        Teams &amp; Players
-                      </button>
-                      <button type="button" onClick={() => setActiveView("setup")} className={leagueTabClass("setup")}>
-                        League Setup
-                      </button>
-                    </>
-                  ) : null}
-                  <button type="button" onClick={() => setActiveView("fixtures")} className={leagueTabClass("fixtures")}>
-                    Fixtures
-                  </button>
-                  <button type="button" onClick={() => setActiveView("table")} className={leagueTabClass("table")}>
-                    League Table
-                  </button>
-                  <button type="button" onClick={() => setActiveView("playerTable")} className={leagueTabClass("playerTable")}>
-                    Player Table
-                  </button>
-                  <button type="button" onClick={() => setActiveView("knockouts")} className={leagueTabClass("knockouts")}>
-                    Knockout Cups
-                  </button>
-                  {canManage ? (
-                    <button type="button" onClick={() => setActiveView("handicaps")} className={leagueTabClass("handicaps")}>
-                      Handicaps
-                    </button>
-                  ) : null}
+                <div className="grid gap-3 p-4 md:grid-cols-[minmax(0,1.4fr)_minmax(220px,1fr)]">
+                  <label className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                    League
+                    <select className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal text-slate-950" value={seasonId} onChange={(event) => selectLeagueSeason(event.target.value)}>
+                      <option value="">Select a league</option>
+                      {visibleSeasons.some((season) => season.is_active !== false && season.is_published) ? <optgroup label="Published and active">{visibleSeasons.filter((season) => season.is_active !== false && season.is_published).map((season) => <option key={`active-${season.id}`} value={season.id}>{seasonDisplayLabel(season)}</option>)}</optgroup> : null}
+                      {visibleSeasons.some((season) => season.is_active !== false && !season.is_published) ? <optgroup label="Draft leagues">{visibleSeasons.filter((season) => season.is_active !== false && !season.is_published).map((season) => <option key={`draft-${season.id}`} value={season.id}>{seasonDisplayLabel(season)}</option>)}</optgroup> : null}
+                      {visibleSeasons.some((season) => season.is_active === false) ? <optgroup label="Completed leagues">{visibleSeasons.filter((season) => season.is_active === false).map((season) => <option key={`complete-${season.id}`} value={season.id}>{seasonDisplayLabel(season)}</option>)}</optgroup> : null}
+                    </select>
+                  </label>
+                  <label className="text-xs font-bold uppercase tracking-wide text-slate-500">
+                    League area
+                    <select className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal text-slate-950" value={activeView} onChange={(event) => selectLeagueView(event.target.value as LeagueView)}>
+                      {LEAGUE_VIEW_OPTIONS.filter((option) => canManage || !option.officerOnly).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+                    </select>
+                  </label>
                 </div>
-                <p className="mt-2 text-xs text-slate-600">{activeViewDescription}</p>
+                <div className="border-t border-slate-100 bg-slate-50 px-4 py-2.5 text-xs text-slate-600">{activeViewDescription}</div>
               </section>
               {canManage ? (
                 <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
@@ -6606,23 +6647,6 @@ export default function LeaguePage() {
                     </div>
                   </section>
                 )
-              ) : null}
-              {!canManage ? (
-                <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-slate-500">Published League</label>
-                  <select
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
-                    value={seasonId}
-                    onChange={(e) => setSeasonId(e.target.value)}
-                  >
-                    <option value="">Select published league</option>
-                    {visibleSeasons.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {seasonDisplayLabel(s)}
-                      </option>
-                    ))}
-                  </select>
-                </section>
               ) : null}
               {!seasonId && (activeView === "fixtures" || activeView === "table" || activeView === "playerTable") ? (
                 <section className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
@@ -6911,7 +6935,7 @@ export default function LeaguePage() {
                           key={league.id}
                           type="button"
                           onClick={() => {
-                            setSeasonId(league.id);
+                            selectLeagueSeason(league.id);
                             setInfoModal({
                               title: "League Selected",
                               description: `"${league.name}" selected. You can now add teams here or open Fixtures when ready.`,
@@ -8034,7 +8058,7 @@ export default function LeaguePage() {
                 <div className="mt-4 grid gap-3 rounded-xl border border-sky-200 bg-white p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,220px)_auto]">
                   <label className="text-xs font-bold uppercase tracking-wide text-slate-600">
                     League season
-                    <select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-900" value={seasonId} onChange={(event) => setSeasonId(event.target.value)}>
+                    <select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-900" value={seasonId} onChange={(event) => selectLeagueSeason(event.target.value)}>
                       {visibleSeasons.map((season) => <option key={`directory-season-${season.id}`} value={season.id}>{seasonDisplayLabel(season)}</option>)}
                     </select>
                   </label>
@@ -10106,7 +10130,7 @@ export default function LeaguePage() {
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setSeasonId(f.season_id);
+                                    selectLeagueSeason(f.season_id);
                                     setActiveView("fixtures");
                                     setFixtureId(f.id);
                                     setResultEntryOpen(true);
@@ -10702,4 +10726,8 @@ export default function LeaguePage() {
       </div>
     </main>
   );
+}
+
+export default function LeaguePage() {
+  return <Suspense fallback={<main className="min-h-screen bg-slate-100 p-6"><div className="mx-auto max-w-6xl rounded-2xl border border-slate-200 bg-white p-5 text-slate-600">Loading League Manager…</div></main>}><LeaguePageContent /></Suspense>;
 }

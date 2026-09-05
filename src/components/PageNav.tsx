@@ -18,6 +18,7 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
   const admin = useAdminStatus();
   const [pendingCount, setPendingCount] = useState(0);
   const [pendingNav, setPendingNav] = useState<"back" | "home" | null>(null);
+  const [pendingMenuHref, setPendingMenuHref] = useState<string | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
   const storageKey = useMemo(() => (admin.userId ? `notifications_last_read_${admin.userId}` : "notifications_last_read"), [admin.userId]);
   const dismissedKey = useMemo(
@@ -35,6 +36,13 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
       return;
     }
     setPendingNav(target);
+  };
+
+  const requestMenuNavigation = (href: string) => {
+    if (!warnOnNavigate) return true;
+    setPendingMenuHref(href);
+    setMenuOpen(false);
+    return false;
   };
 
   const onSignOut = async () => {
@@ -229,18 +237,23 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
         <span aria-hidden="true">↪</span><span className="hidden lg:inline">Sign out</span>
       </button>
       <ConfirmModal
-        open={Boolean(pendingNav)}
+        open={Boolean(pendingNav || pendingMenuHref)}
         title="Unsaved changes"
         description={warnMessage}
         confirmLabel="Leave screen"
         cancelLabel="Stay"
         onConfirm={() => {
-          if (pendingNav) performNavigation(pendingNav);
+          if (pendingMenuHref) router.push(pendingMenuHref);
+          else if (pendingNav) performNavigation(pendingNav);
           setPendingNav(null);
+          setPendingMenuHref(null);
         }}
-        onCancel={() => setPendingNav(null)}
+        onCancel={() => {
+          setPendingNav(null);
+          setPendingMenuHref(null);
+        }}
       />
-      <AppNavigationMenu open={menuOpen} onClose={() => setMenuOpen(false)} onSignOut={onSignOut} />
+      <AppNavigationMenu open={menuOpen} onClose={() => setMenuOpen(false)} onSignOut={onSignOut} onNavigate={requestMenuNavigation} />
     </div>
   );
 }

@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import useAdminStatus from "@/components/useAdminStatus";
 import { supabase } from "@/lib/supabase";
@@ -110,8 +111,11 @@ type FixtureChangeRequest = {
 
 const named = (p?: PlayerRow | null) => (p ? (p.full_name?.trim() ? p.full_name : p.display_name) : "Unknown");
 
-export default function ResultsQueuePage() {
+function ResultsQueuePageContent() {
   const admin = useAdminStatus();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [submissions, setSubmissions] = useState<LeagueSubmission[]>([]);
   const [fixtures, setFixtures] = useState<FixtureRow[]>([]);
   const [teams, setTeams] = useState<TeamRow[]>([]);
@@ -131,6 +135,12 @@ export default function ResultsQueuePage() {
   const [expandedPending, setExpandedPending] = useState<Set<string>>(new Set());
   const [reviewedLimit, setReviewedLimit] = useState(20);
   const [queueTab, setQueueTab] = useState<"league" | "competition" | "fixture_changes">("league");
+  const selectQueueTab = (tab: "league" | "competition" | "fixture_changes") => {
+    setQueueTab(tab);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", tab);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
 
   const load = async () => {
     const client = supabase;
@@ -260,13 +270,12 @@ export default function ResultsQueuePage() {
   }, [admin.loading, admin.isAdmin, admin.userId]);
 
   useEffect(() => {
-    if (typeof window === "undefined" || !admin.isAdmin) return;
-    const params = new URLSearchParams(window.location.search);
-    const tab = params.get("tab");
+    if (!admin.isAdmin) return;
+    const tab = searchParams.get("tab");
     if (tab === "fixture_changes" || tab === "competition" || tab === "league") {
       setQueueTab(tab);
     }
-  }, [admin.isAdmin]);
+  }, [admin.isAdmin, searchParams]);
 
   const fixtureById = useMemo(() => new Map(fixtures.map((f) => [f.id, f])), [fixtures]);
   const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t.name])), [teams]);
@@ -734,21 +743,21 @@ export default function ResultsQueuePage() {
               <div className="flex items-center gap-2 overflow-x-auto pb-1 [scrollbar-width:thin] [&>button]:shrink-0">
                 <button
                   type="button"
-                  onClick={() => setQueueTab("league")}
+                  onClick={() => selectQueueTab("league")}
                   className={`rounded-full border px-4 py-1.5 text-sm ${queueTab === "league" ? "border-teal-700 bg-teal-700 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
                 >
                   League-Night Submissions ({leaguePendingCount})
                 </button>
                 <button
                   type="button"
-                  onClick={() => setQueueTab("competition")}
+                  onClick={() => selectQueueTab("competition")}
                   className={`rounded-full border px-4 py-1.5 text-sm ${queueTab === "competition" ? "border-fuchsia-700 bg-fuchsia-700 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
                 >
                   Competition Submissions ({competitionPendingCount})
                 </button>
                 <button
                   type="button"
-                  onClick={() => setQueueTab("fixture_changes")}
+                  onClick={() => selectQueueTab("fixture_changes")}
                   className={`rounded-full border px-4 py-1.5 text-sm ${queueTab === "fixture_changes" ? "border-indigo-700 bg-indigo-700 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
                 >
                   Fixture Date Requests ({fixtureChangePendingCount})
@@ -990,4 +999,8 @@ export default function ResultsQueuePage() {
       </div>
     </main>
   );
+}
+
+export default function ResultsQueuePage() {
+  return <Suspense fallback={<main className="min-h-screen bg-slate-100 p-6"><div className="mx-auto max-w-6xl rounded-2xl border border-slate-200 bg-white p-5 text-slate-600">Loading results…</div></main>}><ResultsQueuePageContent /></Suspense>;
 }

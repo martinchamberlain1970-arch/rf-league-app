@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import PageNav from "@/components/PageNav";
+import useAdminStatus from "@/components/useAdminStatus";
 
 type ScreenHeaderProps = {
   title: string;
@@ -23,6 +24,7 @@ export default function ScreenHeader({
   actions,
 }: ScreenHeaderProps) {
   const pathname = usePathname();
+  const admin = useAdminStatus();
   const relatedLinks = pathname.startsWith("/events") || pathname.startsWith("/competitions") || pathname === "/signups"
     ? [
         { href: "/events", label: "Match centre" },
@@ -38,8 +40,8 @@ export default function ScreenHeader({
       : [
           { href: "/league", label: "League manager" },
           { href: "/captain-results", label: "Line-ups & results" },
-          { href: "/results", label: "Approvals" },
-          { href: "/players", label: "Players & teams" },
+          { href: "/results", label: admin.isAdmin ? "Approvals" : "My submissions" },
+          { href: "/players", label: admin.canManageLeague ? "Players & teams" : "My player profile" },
         ];
 
   return (
