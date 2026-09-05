@@ -24,6 +24,9 @@ import {
   PublishedLeagueStatus,
 } from "@/components/league/LeagueOverviewPanels";
 import TeamsPlayersView from "@/components/league/TeamsPlayersView";
+import VenueRegistryPanel from "@/components/league/VenueRegistryPanel";
+import LeagueCreationPanel, { type LeagueTemplateOption } from "@/components/league/LeagueCreationPanel";
+import SeasonRosterEditor from "@/components/league/SeasonRosterEditor";
 import { useAppDialog } from "@/components/AppDialogProvider";
 import { supabase } from "@/lib/supabase";
 import { calculateAdjustedScoresWithCap, MAX_SNOOKER_START } from "@/lib/snooker-handicap";
@@ -6470,185 +6473,30 @@ function LeaguePageContent() {
               {activeView === "setup" ? (
               <section className="rounded-2xl border border-teal-200 bg-gradient-to-br from-white to-teal-50 p-4 shadow-sm">
                 <h2 className="text-lg font-semibold text-teal-900">League Setup</h2>
-                <div className="mt-3 rounded-xl border border-teal-200 bg-white p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Current setup position</p>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {currentSeason?.is_published
-                          ? "This league is already published. Use the tabs below for maintenance, fixture management, and any live updates."
-                          : nextGuidedStep
-                          ? `Next recommended step: ${nextGuidedStep.title.replace(/^\d+\.\s*/, "")}.`
-                          : "This league setup is complete. You can still return here to edit league details or publish status."}
-                      </p>
-                    </div>
-                    {currentSeason?.is_published ? (
-                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-                        currentSeason.is_active === false
-                          ? "border-slate-300 bg-slate-100 text-slate-800"
-                          : "border-emerald-300 bg-emerald-100 text-emerald-900"
-                      }`}>
-                        {currentSeason.is_active === false ? "League completed" : "League published"}
-                      </span>
-                    ) : nextGuidedStep ? (
-                      <button
-                        type="button"
-                        onClick={() => openGuidedTarget(nextGuidedStep.view, nextGuidedStep.target)}
-                        className="rounded-xl border border-teal-300 bg-teal-50 px-4 py-2 text-sm font-medium text-teal-900"
-                      >
-                        Go to {nextGuidedStep.actionLabel}
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">League body</p>
-                  <p className="text-sm font-semibold text-slate-900">{LEAGUE_BODY_NAME}</p>
-                </div>
-                <div
-                  className={`mt-3 rounded-2xl border p-3 ${
-                    currentSeason?.is_published
-                      ? "border-slate-200 bg-slate-50/80"
-                      : "border-slate-200 bg-white"
-                  }`}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Create a new league</p>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {currentSeason?.is_published
-                          ? "The selected league is already live. These creation controls are softened so the tab reads as maintenance-first. Use them only when you are creating the next league."
-                          : "Use these controls to create the next draft league before you move on to teams, fixtures, and publishing."}
-                      </p>
-                    </div>
-                    {currentSeason?.is_published ? (
-                      <span className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
-                        Creation controls softened
-                      </span>
-                    ) : null}
-                  </div>
-                  <div
-                    id="guided-create-league"
-                    className={`mt-3 grid gap-2 sm:grid-cols-4 scroll-mt-24 ${guidedSectionClass("create-league")} ${
-                      currentSeason?.is_published ? "opacity-60" : ""
-                    }`}
-                  >
-                    <select
-                      className="rounded-xl border border-slate-300 bg-white px-3 py-2"
-                      value={seasonTemplate}
-                      onChange={(e) => {
-                        const nextTemplate = e.target.value as LeagueTemplateKey;
-                        setSeasonTemplate(nextTemplate);
-                        setSeasonHandicapEnabled(LEAGUE_TEMPLATES[nextTemplate].handicapEnabled);
-                      }}
-                    >
-                      <option value="premier">{LEAGUE_TEMPLATES.premier.label} 2026/2027 ({formatLabel(LEAGUE_TEMPLATES.premier.singlesCount, LEAGUE_TEMPLATES.premier.doublesCount)})</option>
-                      <option value="division1">{LEAGUE_TEMPLATES.division1.label} 2026/2027 ({formatLabel(LEAGUE_TEMPLATES.division1.singlesCount, LEAGUE_TEMPLATES.division1.doublesCount)})</option>
-                      <option value="summer">{LEAGUE_BODY_NAME} - {LEAGUE_TEMPLATES.summer.label} ({formatLabel(LEAGUE_TEMPLATES.summer.singlesCount, LEAGUE_TEMPLATES.summer.doublesCount)})</option>
-                    </select>
-                    <input
-                      className="rounded-xl border border-slate-300 bg-white px-3 py-2 sm:col-span-2"
-                      placeholder="Season label (optional, e.g. 2026/2027)"
-                      value={seasonName}
-                      onChange={(e) => setSeasonName(e.target.value)}
-                    />
-                    <button type="button" onClick={createSeason} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">
-                      Create league
-                    </button>
-                  </div>
-                  <p className="mt-2 text-xs text-slate-600">
-                    Selected format:{" "}
-                    <span className="font-semibold text-slate-800">
-                      {formatLabel(LEAGUE_TEMPLATES[seasonTemplate].singlesCount, LEAGUE_TEMPLATES[seasonTemplate].doublesCount)}
-                    </span>
-                  </p>
-                  {seasonTemplate === "summer" ? (
-                    <div className={`mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 ${currentSeason?.is_published ? "opacity-70" : ""}`}>
-                      <p className="font-semibold">Summer League rules applied</p>
-                      <ul className="mt-1 space-y-1 text-xs text-amber-800">
-                        <li>6 singles frames and no doubles.</li>
-                        <li>Each player can play a maximum of 2 singles frames.</li>
-                        <li>If a side only has 2 players, frames 5 and 6 should be recorded as No Show.</li>
-                        <li>No Show on both sides gives no frame point and no player stats.</li>
-                      </ul>
-                    </div>
-                  ) : seasonTemplate === "premier" ? (
-                    <div className={`mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900 ${currentSeason?.is_published ? "opacity-70" : ""}`}>
-                      <p className="font-semibold">Premier League 2026/2027 rules applied automatically</p>
-                      <ul className="mt-1 space-y-1 text-xs text-sky-800">
-                        <li>4 singles frames and 1 doubles frame.</li>
-                        <li>A team must field at least 2 players. With only 2 players, frame 3 is forfeited, the system randomly nominates one of them for frame 4, and both play the doubles.</li>
-                        <li>Players begin at Elo 1000 and handicap 0; handicaps are reviewed at least every 4 weeks.</li>
-                        <li>Handicap match play is enabled with no maximum start.</li>
-                        <li>On the third miss attempt while snookered, the balls remain where they lie.</li>
-                        <li>Teams play each other three times.</li>
-                      </ul>
-                    </div>
-                  ) : (
-                    <div className={`mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-950 ${currentSeason?.is_published ? "opacity-70" : ""}`}>
-                      <p className="font-semibold">Division 1 2026/2027 rules applied automatically</p>
-                      <ul className="mt-1 space-y-1 text-xs text-violet-900">
-                        <li>4 singles frames and 1 doubles frame.</li>
-                        <li>A team must field at least 2 players. With only 2 players, frame 3 is forfeited, the system randomly nominates one of them for frame 4, and both play the doubles.</li>
-                        <li>All matches are played off scratch with no handicap start.</li>
-                        <li>Elo is still recorded in the background for player history.</li>
-                        <li>The miss rule is not used.</li>
-                        <li>Teams play each other three times.</li>
-                      </ul>
-                    </div>
-                  )}
-                  {seasonTemplate === "summer" ? (
-                    <label className={`mt-2 inline-flex items-center gap-2 text-sm text-slate-700 ${currentSeason?.is_published ? "opacity-70" : ""}`}>
-                      <input
-                        type="checkbox"
-                        checked={seasonHandicapEnabled}
-                        onChange={(e) => setSeasonHandicapEnabled(e.target.checked)}
-                      />
-                      Handicap league (no maximum start)
-                    </label>
-                  ) : (
-                    <p className="mt-2 text-xs font-medium text-slate-700">
-                      Handicap mode, Elo tracking, fixture cycles and miss rule are locked to the selected division template.
-                    </p>
-                  )}
-                </div>
-                <div id="guided-publish-league" className={`mt-3 scroll-mt-24 ${guidedSectionClass("publish-league")}`}>
-                  <button
-                    type="button"
-                    onClick={deleteSeason}
-                    disabled={!seasonId}
-                    className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Delete selected league
-                  </button>
-                  <button
-                    type="button"
-                    onClick={publishLeague}
-                    disabled={!seasonId || Boolean(currentSeason?.is_published) || publishBlockers.length > 0}
-                    className="ml-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {currentSeason?.is_published ? "League published" : "Publish selected league"}
-                  </button>
-                  {currentSeason?.is_published ? (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmCompletionOpen(true)}
-                      disabled={!seasonId}
-                      className={`ml-2 rounded-xl border bg-white px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
-                        currentSeason.is_active === false
-                          ? "border-teal-300 text-teal-800"
-                          : "border-slate-400 text-slate-800"
-                      }`}
-                    >
-                      {currentSeason.is_active === false ? "Reopen this league" : "Mark league as completed"}
-                    </button>
-                  ) : null}
-                </div>
-                {!currentSeason?.is_published && publishBlockers.length > 0 ? (
-                  <p className="mt-2 text-xs text-slate-600">
-                    Publish is disabled until the checklist above is complete.
-                  </p>
-                ) : null}
+                <LeagueCreationPanel
+                  bodyName={LEAGUE_BODY_NAME}
+                  seasonId={seasonId}
+                  currentSeason={currentSeason}
+                  nextStep={nextGuidedStep}
+                  templates={LEAGUE_TEMPLATES}
+                  template={seasonTemplate}
+                  seasonName={seasonName}
+                  summerHandicapEnabled={seasonHandicapEnabled}
+                  publishBlockers={publishBlockers}
+                  createHighlightClass={guidedSectionClass("create-league")}
+                  publishHighlightClass={guidedSectionClass("publish-league")}
+                  onOpenNext={(step) => openGuidedTarget(step.view, step.target)}
+                  onTemplateChange={(nextTemplate: LeagueTemplateOption) => {
+                    setSeasonTemplate(nextTemplate);
+                    setSeasonHandicapEnabled(LEAGUE_TEMPLATES[nextTemplate].handicapEnabled);
+                  }}
+                  onSeasonNameChange={setSeasonName}
+                  onSummerHandicapChange={setSeasonHandicapEnabled}
+                  onCreate={() => void createSeason()}
+                  onDelete={() => void deleteSeason()}
+                  onPublish={() => void publishLeague()}
+                  onToggleCompletion={() => setConfirmCompletionOpen(true)}
+                />
                 <div id="guided-add-league-teams" className={`mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 scroll-mt-24 ${guidedSectionClass("add-league-teams")}`}>
                   <h3 className="text-sm font-semibold text-slate-900">Created leagues</h3>
                   <div className="mt-2 space-y-2">
@@ -7415,123 +7263,32 @@ function LeaguePageContent() {
               <section className="rounded-2xl border border-cyan-200 bg-gradient-to-br from-white to-cyan-50 p-4 shadow-sm">
                 <h2 className="text-lg font-semibold text-cyan-900">Venues</h2>
                 <p className="mt-2 text-sm text-slate-600">Register venues and maintain contact details.</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-4">
-                  <input
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2 sm:col-span-3"
-                    placeholder="New venue name"
-                    value={newVenueName}
-                    onChange={(e) => setNewVenueName(e.target.value)}
-                  />
-                  <button type="button" onClick={createVenue} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">
-                    Register venue
-                  </button>
-                </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-6">
-                  <input
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2"
-                    placeholder="Venue name"
-                    value={manageVenueName}
-                    onChange={(e) => setManageVenueName(e.target.value)}
-                  />
-                  <input
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2"
-                    placeholder="Address"
-                    value={manageVenueAddress}
-                    onChange={(e) => setManageVenueAddress(e.target.value)}
-                  />
-                  <input
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2"
-                    placeholder="Postcode"
-                    value={manageVenuePostcode}
-                    onChange={(e) => setManageVenuePostcode(e.target.value)}
-                  />
-                  <input
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2"
-                    placeholder="Contact phone"
-                    value={manageVenuePhone}
-                    onChange={(e) => setManageVenuePhone(e.target.value)}
-                  />
-                  <input
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2"
-                    placeholder="Contact email"
-                    value={manageVenueEmail}
-                    onChange={(e) => setManageVenueEmail(e.target.value)}
-                  />
-                  <input
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2"
-                    type="number"
-                    min={1}
-                    max={12}
-                    placeholder="Snooker tables"
-                    value={manageVenueTableCount}
-                    onChange={(e) => setManageVenueTableCount(e.target.value)}
-                  />
-                </div>
-                <p className="mt-2 text-xs text-slate-600">
-                  Fixture generation respects snooker table count. One table allows one home fixture at a time, so a one-table venue will normally support up to two league teams.
-                </p>
-                {!manageVenueId ? (
-                  <p className="mt-2 text-xs text-slate-600">Click a venue in “All Registered Venues” to edit details.</p>
-                ) : null}
-                <div className="mt-2">
-                  <button type="button" onClick={saveVenueDetails} className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700">
-                    Save venue details
-                  </button>
-                </div>
-                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-slate-900">All Registered Venues ({venueLocations.length})</p>
-                    <button
-                      type="button"
-                      className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700"
-                      onClick={() => setShowAllRegisteredVenues((prev) => !prev)}
-                    >
-                      {showAllRegisteredVenues ? "Collapse" : "Expand"}
-                    </button>
-                  </div>
-                  {showAllRegisteredVenues ? (
-                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                      {venueLocations
-                        .slice()
-                        .sort((a, b) => a.name.localeCompare(b.name))
-                        .map((location) => (
-                          <button
-                            type="button"
-                            key={`venue-list-${location.id}`}
-                            onClick={() => setManageVenueId(location.id)}
-                            className={`rounded-lg border px-3 py-2 text-left text-sm ${
-                              manageVenueId === location.id
-                                ? "border-slate-900 bg-slate-900 text-white"
-                                : "border-slate-200 bg-white text-slate-800"
-                            }`}
-                          >
-                            {(() => {
-                              const capacity = seasonVenueCapacityByLocationId.get(location.id) ?? null;
-                              const atCapacity = capacity ? capacity.remainingSlots === 0 : false;
-                              return (
-                                <>
-                            <div className="font-medium">{locationLabel(location.name)}</div>
-                            <div className={`mt-1 text-xs ${manageVenueId === location.id ? "text-cyan-100" : "text-slate-500"}`}>
-                              {Math.max(1, Number(location.snooker_table_count ?? 1))} snooker table
-                              {Math.max(1, Number(location.snooker_table_count ?? 1)) === 1 ? "" : "s"}
-                            </div>
-                                  {seasonId && capacity ? (
-                                    <div className={`mt-1 text-xs ${manageVenueId === location.id ? "text-cyan-100" : atCapacity ? "text-rose-600" : "text-amber-700"}`}>
-                                      {capacity.teamCount} team{capacity.teamCount === 1 ? "" : "s"} in selected league · max {capacity.maxTeams}
-                                      {atCapacity ? " · full" : ` · ${capacity.remainingSlots} slot${capacity.remainingSlots === 1 ? "" : "s"} left`}
-                                    </div>
-                                  ) : null}
-                                </>
-                              );
-                            })()}
-                          </button>
-                        ))}
-                      {venueLocations.length === 0 ? (
-                        <p className="text-sm text-slate-600">No venues registered yet.</p>
-                      ) : null}
-                    </div>
-                  ) : null}
-                </div>
+                <VenueRegistryPanel
+                  seasonId={seasonId}
+                  venues={venueLocations}
+                  selectedVenueId={manageVenueId}
+                  expanded={showAllRegisteredVenues}
+                  newVenueName={newVenueName}
+                  venueName={manageVenueName}
+                  address={manageVenueAddress}
+                  postcode={manageVenuePostcode}
+                  phone={manageVenuePhone}
+                  email={manageVenueEmail}
+                  tableCount={manageVenueTableCount}
+                  capacityByVenueId={seasonVenueCapacityByLocationId}
+                  formatVenueLabel={locationLabel}
+                  onNewVenueNameChange={setNewVenueName}
+                  onVenueNameChange={setManageVenueName}
+                  onAddressChange={setManageVenueAddress}
+                  onPostcodeChange={setManageVenuePostcode}
+                  onPhoneChange={setManageVenuePhone}
+                  onEmailChange={setManageVenueEmail}
+                  onTableCountChange={setManageVenueTableCount}
+                  onCreateVenue={() => void createVenue()}
+                  onSaveVenue={() => void saveVenueDetails()}
+                  onToggleExpanded={() => setShowAllRegisteredVenues((previous) => !previous)}
+                  onSelectVenue={setManageVenueId}
+                />
                 {manageVenueId ? (
                   <div className="mt-3 space-y-3">
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -7797,289 +7554,44 @@ function LeaguePageContent() {
               <section className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-white to-indigo-50 p-4 shadow-sm">
                 <h2 className="text-lg font-semibold text-indigo-900">Team Management</h2>
                 <p className="mt-2 text-sm text-slate-600">Follow steps in order. You can skip and return later.</p>
-                <div className="mt-3 rounded-xl border border-indigo-200 bg-white p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Season roster editor</p>
-                      <p className="mt-1 text-xs text-slate-600">
-                        Edit the live roster for the selected league season directly. This is separate from the reusable registered-team template.
-                      </p>
-                    </div>
-                    <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-800">
-                      One team per player in this season
-                    </span>
-                  </div>
-                  {!seasonId ? (
-                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-                      Select a league season in <strong>League Setup</strong> first, then return here to manage the live season roster.
-                    </div>
-                  ) : (
-                    <>
-                    {teamsMissingCaptainRegistration.length > 0 ? (
-                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                        <p className="text-sm font-semibold text-amber-900">Captain / vice-captain app registration check</p>
-                        <p className="mt-1 text-xs text-amber-800">
-                          These teams have a captain or vice-captain assigned in the roster, but at least one of those role holders has not yet registered and linked to the app.
-                        </p>
-                        <ul className="mt-2 space-y-1 text-sm text-amber-900">
-                          {teamsMissingCaptainRegistration.map((team) => {
-                            const state = seasonRoleRegistrationByTeam.get(team.id);
-                            const issues = [
-                              state?.hasCaptainAssigned && !state?.captainRegistered ? "captain not registered" : null,
-                              state?.hasViceAssigned && !state?.viceRegistered ? "vice-captain not registered" : null,
-                            ].filter(Boolean);
-                            return (
-                              <li key={`role-registration-${team.id}`} className="rounded-lg border border-amber-200 bg-white px-3 py-2">
-                                <strong>{team.name}</strong>: {issues.join(" and ")}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </div>
-                    ) : null}
-                    <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,240px)_minmax(0,1fr)_auto]">
-                      <select
-                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                        value={seasonRosterTeamId}
-                        onChange={(e) => {
-                          setSeasonRosterTeamId(e.target.value);
-                          setSeasonRosterPlayerId("");
-                        }}
-                      >
-                        <option value="">Select league team</option>
-                        {seasonTeams.map((team) => (
-                          <option key={team.id} value={team.id}>
-                            {team.name}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                        value={seasonRosterPlayerId}
-                        onChange={(e) => setSeasonRosterPlayerId(e.target.value)}
-                        disabled={!selectedSeasonRosterTeam}
-                      >
-                        <option value="">
-                          {selectedSeasonRosterTeam ? "Select player to add to this season roster" : "Select league team first"}
-                        </option>
-                        {availableSeasonRosterPlayers.map((player) => (
-                          <option key={player.id} value={player.id}>
-                            {named(player)}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => void addSeasonRosterPlayer()}
-                        className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white"
-                        disabled={!selectedSeasonRosterTeam || !seasonRosterPlayerId}
-                      >
-                        Add to season roster
-                      </button>
-                    </div>
-                    {selectedSeasonRosterTeam ? (
-                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">Bulk add existing players</p>
-                            <p className="mt-1 text-xs text-slate-600">
-                              Choose existing players from the same venue and add them to this season team in one action.
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700"
-                              onClick={() => setSeasonRosterBulkPlayerIds(availableSeasonRosterPlayers.map((player) => player.id))}
-                              disabled={availableSeasonRosterPlayers.length === 0}
-                            >
-                              Select all available
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700"
-                              onClick={() => setSeasonRosterBulkPlayerIds([])}
-                              disabled={seasonRosterBulkPlayerIds.length === 0}
-                            >
-                              Clear
-                            </button>
-                          </div>
-                        </div>
-                        <div className="mt-3 max-h-48 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
-                          {availableSeasonRosterPlayers.map((player) => (
-                            <label key={`season-roster-bulk-${player.id}`} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800">
-                              <input
-                                type="checkbox"
-                                checked={seasonRosterBulkPlayerIds.includes(player.id)}
-                                onChange={(e) =>
-                                  setSeasonRosterBulkPlayerIds((prev) =>
-                                    e.target.checked ? Array.from(new Set([...prev, player.id])) : prev.filter((id) => id !== player.id)
-                                  )
-                                }
-                              />
-                              <span>{named(player)}</span>
-                            </label>
-                          ))}
-                          {availableSeasonRosterPlayers.length === 0 ? (
-                            <p className="text-sm text-slate-500">No eligible existing players are currently available for this season team.</p>
-                          ) : null}
-                        </div>
-                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-xs text-slate-600">{seasonRosterBulkPlayerIds.length} player(s) selected.</p>
-                          <button
-                            type="button"
-                            onClick={() => void addSeasonRosterPlayersBulk()}
-                            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700"
-                            disabled={seasonRosterBulkPlayerIds.length === 0}
-                          >
-                            Add selected existing players
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-                    {selectedSeasonRosterTeam ? (
-                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">Captain contact details</p>
-                            <p className="mt-1 text-xs text-slate-600">
-                              Store the season-specific captain and vice-captain contact details for this team.
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => void saveSeasonTeamContacts()}
-                            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700"
-                          >
-                            Save contacts
-                          </button>
-                        </div>
-                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                          <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Captain</p>
-                            <input
-                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                              placeholder="Captain email"
-                              value={seasonCaptainEmail}
-                              onChange={(e) => setSeasonCaptainEmail(e.target.value)}
-                            />
-                            <input
-                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                              placeholder="Captain phone"
-                              value={seasonCaptainPhone}
-                              onChange={(e) => setSeasonCaptainPhone(e.target.value)}
-                            />
-                          </div>
-                          <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Vice-captain</p>
-                            <input
-                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                              placeholder="Vice-captain email"
-                              value={seasonViceCaptainEmail}
-                              onChange={(e) => setSeasonViceCaptainEmail(e.target.value)}
-                            />
-                            <input
-                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                              placeholder="Vice-captain phone"
-                              value={seasonViceCaptainPhone}
-                              onChange={(e) => setSeasonViceCaptainPhone(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
-                    {selectedSeasonRosterTeam ? (
-                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">{selectedSeasonRosterTeam.name}</p>
-                            <p className="mt-1 text-xs text-slate-600">
-                              Changes here affect this selected league season only.
-                              {selectedSeasonRosterVenueId ? ` Venue: ${locationLabel(locationById.get(selectedSeasonRosterVenueId)?.name ?? "Unknown venue")}.` : ""}
-                            </p>
-                          </div>
-                          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
-                            {selectedSeasonRosterMembers.length} player(s)
-                          </span>
-                        </div>
-                        {(() => {
-                          const registrationState = seasonRoleRegistrationByTeam.get(selectedSeasonRosterTeam.id);
-                          const issues = [
-                            registrationState?.hasCaptainAssigned && !registrationState?.captainRegistered ? "captain not registered in app" : null,
-                            registrationState?.hasViceAssigned && !registrationState?.viceRegistered ? "vice-captain not registered in app" : null,
-                          ].filter(Boolean);
-                          if (issues.length === 0) return null;
-                          return (
-                            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                              <strong>Registration warning:</strong> {issues.join(" and ")}.
-                            </div>
-                          );
-                        })()}
-                        <ul className="mt-3 space-y-2 text-sm text-slate-700">
-                          {selectedSeasonRosterMembers.map((member) => (
-                            <li key={member.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
-                              <div>
-                                <span className="font-medium text-slate-900">{named(member.player)}</span>
-                                {member.is_captain ? <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">Captain</span> : null}
-                                {member.is_vice_captain ? <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800">Vice-captain</span> : null}
-                                {(member.is_captain || member.is_vice_captain) ? (
-                                  <span className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                                    member.player?.claimed_by ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
-                                  }`}>
-                                    {member.player?.claimed_by ? "App registered" : "Not yet registered"}
-                                  </span>
-                                ) : null}
-                              </div>
-                              <div className="flex flex-wrap items-center gap-2 text-xs">
-                                <label className="inline-flex items-center gap-1">
-                                  <input
-                                    type="checkbox"
-                                    checked={member.is_captain}
-                                    onChange={(e) =>
-                                      void setSeasonRosterRole(
-                                        member,
-                                        { is_captain: e.target.checked, is_vice_captain: e.target.checked ? false : member.is_vice_captain },
-                                        e.target.checked ? "is_captain" : null
-                                      )
-                                    }
-                                  />
-                                  Captain
-                                </label>
-                                <label className="inline-flex items-center gap-1">
-                                  <input
-                                    type="checkbox"
-                                    checked={member.is_vice_captain}
-                                    onChange={(e) =>
-                                      void setSeasonRosterRole(
-                                        member,
-                                        { is_vice_captain: e.target.checked, is_captain: e.target.checked ? false : member.is_captain },
-                                        e.target.checked ? "is_vice_captain" : null
-                                      )
-                                    }
-                                  />
-                                  Vice-captain
-                                </label>
-                                <button
-                                  type="button"
-                                  className="rounded border border-rose-300 bg-white px-2 py-1 text-xs text-rose-700"
-                                  onClick={() => void removeSeasonRosterMember(member.id)}
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                            </li>
-                          ))}
-                          {selectedSeasonRosterMembers.length === 0 ? (
-                            <li className="text-slate-500">No players assigned to this season team yet.</li>
-                          ) : null}
-                        </ul>
-                      </div>
-                    ) : (
-                      <p className="mt-3 text-sm text-slate-600">Select a league team above to edit its live season roster.</p>
-                    )}
-                    </>
+                <SeasonRosterEditor
+                  seasonId={seasonId}
+                  teams={seasonTeams}
+                  teamsMissingRegistration={teamsMissingCaptainRegistration}
+                  registrationByTeam={seasonRoleRegistrationByTeam}
+                  selectedTeamId={seasonRosterTeamId}
+                  selectedPlayerId={seasonRosterPlayerId}
+                  selectedTeam={selectedSeasonRosterTeam}
+                  selectedVenueName={selectedSeasonRosterVenueId ? locationLabel(locationById.get(selectedSeasonRosterVenueId)?.name ?? "Unknown venue") : ""}
+                  availablePlayers={availableSeasonRosterPlayers}
+                  selectedBulkPlayerIds={seasonRosterBulkPlayerIds}
+                  members={selectedSeasonRosterMembers}
+                  captainEmail={seasonCaptainEmail}
+                  captainPhone={seasonCaptainPhone}
+                  viceCaptainEmail={seasonViceCaptainEmail}
+                  viceCaptainPhone={seasonViceCaptainPhone}
+                  onTeamChange={(teamId) => {
+                    setSeasonRosterTeamId(teamId);
+                    setSeasonRosterPlayerId("");
+                  }}
+                  onPlayerChange={setSeasonRosterPlayerId}
+                  onBulkSelectionChange={setSeasonRosterBulkPlayerIds}
+                  onAddPlayer={() => void addSeasonRosterPlayer()}
+                  onAddBulkPlayers={() => void addSeasonRosterPlayersBulk()}
+                  onSaveContacts={() => void saveSeasonTeamContacts()}
+                  onCaptainEmailChange={setSeasonCaptainEmail}
+                  onCaptainPhoneChange={setSeasonCaptainPhone}
+                  onViceCaptainEmailChange={setSeasonViceCaptainEmail}
+                  onViceCaptainPhoneChange={setSeasonViceCaptainPhone}
+                  onRoleChange={(member, role, checked) => void setSeasonRosterRole(
+                    member,
+                    role === "captain"
+                      ? { is_captain: checked, is_vice_captain: checked ? false : member.is_vice_captain }
+                      : { is_vice_captain: checked, is_captain: checked ? false : member.is_captain },
+                    checked ? (role === "captain" ? "is_captain" : "is_vice_captain") : null
                   )}
-                </div>
+                  onRemoveMember={(memberId) => void removeSeasonRosterMember(memberId)}
+                />
                 <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm font-semibold text-slate-900">Step 1: Register venue</p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-4">
