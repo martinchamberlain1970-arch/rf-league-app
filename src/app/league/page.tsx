@@ -9,6 +9,20 @@ import useAdminStatus from "@/components/useAdminStatus";
 import MessageModal from "@/components/MessageModal";
 import InfoModal from "@/components/InfoModal";
 import ConfirmModal from "@/components/ConfirmModal";
+import LeagueWorkspaceSwitcher, {
+  type LeagueWorkspaceView,
+} from "@/components/league/LeagueWorkspaceSwitcher";
+import {
+  LeaguePlayerTable,
+  LeagueStandings,
+  type PlayerTableMode,
+} from "@/components/league/LeagueTables";
+import {
+  GuidedSetup,
+  LeagueAreaGuide,
+  LeagueSnapshot,
+  PublishedLeagueStatus,
+} from "@/components/league/LeagueOverviewPanels";
 import { useAppDialog } from "@/components/AppDialogProvider";
 import { supabase } from "@/lib/supabase";
 import { calculateAdjustedScoresWithCap, MAX_SNOOKER_START } from "@/lib/snooker-handicap";
@@ -49,21 +63,9 @@ type Season = {
   singles_count?: number | null;
   doubles_count?: number | null;
 };
-type LeagueView = "guide" | "teamManagement" | "venues" | "profiles" | "setup" | "knockouts" | "fixtures" | "table" | "playerTable" | "handicaps";
+type LeagueView = LeagueWorkspaceView;
 const MANAGED_LEAGUE_VIEWS: LeagueView[] = ["guide", "teamManagement", "venues", "profiles", "setup", "knockouts", "fixtures", "table", "playerTable", "handicaps"];
 const MEMBER_LEAGUE_VIEWS: LeagueView[] = ["knockouts", "fixtures", "table", "playerTable"];
-const LEAGUE_VIEW_OPTIONS: Array<{ value: LeagueView; label: string; officerOnly?: boolean }> = [
-  { value: "guide", label: "Overview", officerOnly: true },
-  { value: "teamManagement", label: "Teams & roles", officerOnly: true },
-  { value: "venues", label: "Venues", officerOnly: true },
-  { value: "profiles", label: "Teams & players", officerOnly: true },
-  { value: "setup", label: "League setup", officerOnly: true },
-  { value: "fixtures", label: "Fixtures & results" },
-  { value: "table", label: "League table" },
-  { value: "playerTable", label: "Player table" },
-  { value: "knockouts", label: "Knockout competitions" },
-  { value: "handicaps", label: "Handicap management", officerOnly: true },
-];
 type PremierResetPreview = {
   season: Season;
   totalPlayers: number;
@@ -156,7 +158,7 @@ type PlayerTableRow = {
   points_against: number;
   win_pct: number;
 };
-type PlayerTableView = "all" | "singles" | "doubles" | "total";
+type PlayerTableView = PlayerTableMode;
 type SubmissionBreakEntry = {
   player_id: string | null;
   entered_player_name: string | null;
@@ -1562,22 +1564,7 @@ function LeaguePageContent() {
     const doublesNo = slotNo - cfg.singles;
     return cfg.doubles === 1 ? "Doubles" : `Doubles ${doublesNo}`;
   };
-  const leagueTabClass = (view: "guide" | "teamManagement" | "venues" | "profiles" | "setup" | "knockouts" | "fixtures" | "table" | "playerTable" | "handicaps") => {
-    const active = activeView === view;
-    const base = "min-h-10 shrink-0 rounded-xl border px-4 py-2 text-center text-sm font-semibold transition";
-    if (view === "guide") return `${base} ${active ? "border-slate-800 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`;
-    if (view === "teamManagement") return `${base} ${active ? "border-indigo-700 bg-indigo-700 text-white" : "border-indigo-300 bg-indigo-50 text-indigo-900 hover:bg-indigo-100"}`;
-    if (view === "venues") return `${base} ${active ? "border-teal-700 bg-teal-700 text-white" : "border-teal-300 bg-teal-50 text-teal-900 hover:bg-teal-100"}`;
-    if (view === "profiles") return `${base} ${active ? "border-sky-700 bg-sky-700 text-white" : "border-sky-300 bg-sky-50 text-sky-900 hover:bg-sky-100"}`;
-    if (view === "setup") return `${base} ${active ? "border-cyan-700 bg-cyan-700 text-white" : "border-cyan-300 bg-cyan-50 text-cyan-900 hover:bg-cyan-100"}`;
-    if (view === "knockouts") return `${base} ${active ? "border-fuchsia-700 bg-fuchsia-700 text-white" : "border-fuchsia-300 bg-fuchsia-50 text-fuchsia-900 hover:bg-fuchsia-100"}`;
-    if (view === "handicaps") return `${base} ${active ? "border-violet-700 bg-violet-700 text-white" : "border-violet-300 bg-violet-50 text-violet-900 hover:bg-violet-100"}`;
-    if (view === "fixtures") return `${base} ${active ? "border-amber-700 bg-amber-700 text-white" : "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"}`;
-    if (view === "table") return `${base} ${active ? "border-emerald-700 bg-emerald-700 text-white" : "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"}`;
-    return `${base} ${active ? "border-fuchsia-700 bg-fuchsia-700 text-white" : "border-fuchsia-300 bg-fuchsia-50 text-fuchsia-900 hover:bg-fuchsia-100"}`;
-  };
-  const activeViewDescription =
-    activeView === "guide"
+  const activeViewDescription = activeView === "guide"
       ? "League-wide summary and operating overview."
       : activeView === "teamManagement"
         ? "Register teams and players, assign captains, and handle transfers."
@@ -6427,225 +6414,34 @@ function LeaguePageContent() {
 
           {canViewLeague ? (
             <>
-              <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                <div className="bg-gradient-to-r from-[#0f1a31] via-[#12304a] to-teal-800 px-4 py-3 text-white">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-cyan-300">League workspace</p>
-                      <p className="mt-0.5 text-sm font-semibold">Choose the league first, then the area you need.</p>
-                    </div>
-                    {currentSeason ? (
-                      <span className={`rounded-full border px-3 py-1 text-xs font-bold ${currentSeason.is_active === false ? "border-slate-400/60 bg-slate-700/70 text-slate-100" : currentSeason.is_published ? "border-emerald-300/60 bg-emerald-400/15 text-emerald-100" : "border-amber-300/60 bg-amber-400/15 text-amber-100"}`}>
-                        {currentSeason.is_active === false ? "Completed" : currentSeason.is_published ? "Published & active" : "Draft"}
-                      </span>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="grid gap-3 p-4 md:grid-cols-[minmax(0,1.4fr)_minmax(220px,1fr)]">
-                  <label className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                    League
-                    <select className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal text-slate-950" value={seasonId} onChange={(event) => selectLeagueSeason(event.target.value)}>
-                      <option value="">Select a league</option>
-                      {visibleSeasons.some((season) => season.is_active !== false && season.is_published) ? <optgroup label="Published and active">{visibleSeasons.filter((season) => season.is_active !== false && season.is_published).map((season) => <option key={`active-${season.id}`} value={season.id}>{seasonDisplayLabel(season)}</option>)}</optgroup> : null}
-                      {visibleSeasons.some((season) => season.is_active !== false && !season.is_published) ? <optgroup label="Draft leagues">{visibleSeasons.filter((season) => season.is_active !== false && !season.is_published).map((season) => <option key={`draft-${season.id}`} value={season.id}>{seasonDisplayLabel(season)}</option>)}</optgroup> : null}
-                      {visibleSeasons.some((season) => season.is_active === false) ? <optgroup label="Completed leagues">{visibleSeasons.filter((season) => season.is_active === false).map((season) => <option key={`complete-${season.id}`} value={season.id}>{seasonDisplayLabel(season)}</option>)}</optgroup> : null}
-                    </select>
-                  </label>
-                  <label className="text-xs font-bold uppercase tracking-wide text-slate-500">
-                    League area
-                    <select className="mt-1.5 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 text-sm font-semibold normal-case tracking-normal text-slate-950" value={activeView} onChange={(event) => selectLeagueView(event.target.value as LeagueView)}>
-                      {LEAGUE_VIEW_OPTIONS.filter((option) => canManage || !option.officerOnly).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
-                    </select>
-                  </label>
-                </div>
-                <div className="border-t border-slate-100 bg-slate-50 px-4 py-2.5 text-xs text-slate-600">{activeViewDescription}</div>
-              </section>
-              {canManage ? (
-                <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                  <details className="group" open={activeView === "guide"}>
-                    <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
-                      {activeGuide.title}
-                      <span className="ml-2 text-xs font-medium text-slate-500 group-open:hidden">Show guide</span>
-                      <span className="ml-2 text-xs font-medium text-slate-500 hidden group-open:inline">Hide guide</span>
-                    </summary>
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-700">
-                      {activeGuide.points.map((point) => (
-                        <li key={point}>{point}</li>
-                      ))}
-                    </ul>
-                  </details>
-                </section>
-              ) : null}
+              <LeagueWorkspaceSwitcher
+                seasons={visibleSeasons}
+                selectedSeasonId={seasonId}
+                selectedView={activeView}
+                currentSeason={currentSeason}
+                canManage={canManage}
+                description={activeViewDescription}
+                formatSeasonLabel={seasonDisplayLabel}
+                onSeasonChange={selectLeagueSeason}
+                onViewChange={selectLeagueView}
+              />
+              {canManage ? <LeagueAreaGuide title={activeGuide.title} points={activeGuide.points} expanded={activeView === "guide"} /> : null}
               {canManage ? (
                 currentSeason?.is_published ? (
-                  <section className={`rounded-2xl border p-4 shadow-sm ${
-                    currentSeason.is_active === false
-                      ? "border-slate-300 bg-gradient-to-br from-white via-slate-100 to-slate-50"
-                      : "border-emerald-300 bg-gradient-to-br from-white via-emerald-50 to-sky-50"
-                  }`}>
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">League status</p>
-                        <h2 className="mt-1 text-xl font-black text-slate-950">
-                          {currentSeason.is_active === false ? "This league is completed" : "This league is active"}
-                        </h2>
-                        <p className="mt-1 text-sm text-slate-600">
-                          <span className="font-semibold text-slate-800">{currentSeason.name}</span>
-                          {currentSeason.is_active === false
-                            ? " is retained as history. Fixtures, results and tables remain visible, but captains cannot submit new results."
-                            : " is published and open for fixtures, administration and captain result submissions."}
-                        </p>
-                      </div>
-                      <span className={`rounded-full border px-4 py-1.5 text-sm font-bold ${
-                        currentSeason.is_active === false
-                          ? "border-slate-400 bg-slate-200 text-slate-900"
-                          : "border-emerald-400 bg-emerald-100 text-emerald-900"
-                      }`}>
-                        {currentSeason.is_active === false ? "Completed" : "Active"}
-                      </span>
-                    </div>
-                    <div className={`mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${
-                      currentSeason.is_active === false
-                        ? "border-teal-200 bg-white"
-                        : "border-amber-300 bg-amber-50"
-                    }`}>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-950">
-                          {currentSeason.is_active === false ? "Need to accept more results?" : "Has the league season finished?"}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-600">
-                          {currentSeason.is_active === false
-                            ? "Reopening restores league activity and captain result submissions."
-                            : "Mark it completed to close result submissions without deleting any league history."}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmCompletionOpen(true)}
-                        className={`rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-sm ${
-                          currentSeason.is_active === false ? "bg-teal-700 hover:bg-teal-800" : "bg-slate-900 hover:bg-slate-800"
-                        }`}
-                      >
-                        {currentSeason.is_active === false ? "Reopen this league" : "Mark league as completed"}
-                      </button>
-                    </div>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                      <button
-                        type="button"
-                        onClick={() => openLeagueSnapshotTarget("teamManagement", "assign-players")}
-                        className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                      >
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-700">Teams</p>
-                        <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.teams}</p>
-                        <p className="mt-1 text-xs text-slate-600">League teams currently assigned.</p>
-                        <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">Open Team Management</p>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "all")}
-                        className="rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                      >
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Fixtures</p>
-                        <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.fixtures}</p>
-                        <p className="mt-1 text-xs text-slate-600">Generated and available in the published season.</p>
-                        <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-sky-700">Open Fixtures</p>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "in_progress")}
-                        className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                      >
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">In Progress</p>
-                        <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.inProgress}</p>
-                        <p className="mt-1 text-xs text-slate-600">Fixtures currently carrying live admin or captain activity.</p>
-                        <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Review Active Fixtures</p>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "pending_review")}
-                        className="rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                      >
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Pending Approvals</p>
-                        <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.pendingApprovals}</p>
-                        <p className="mt-1 text-xs text-slate-600">Use Fixtures and Results Queue for any remaining actions.</p>
-                        <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-amber-700">Open Fixture Actions</p>
-                      </button>
-                    </div>
-                  </section>
+                  <PublishedLeagueStatus
+                    season={currentSeason}
+                    summary={seasonSummary}
+                    onToggleCompletion={() => setConfirmCompletionOpen(true)}
+                    onOpen={openLeagueSnapshotTarget}
+                  />
                 ) : (
-                  <section className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-white via-indigo-50 to-sky-50 p-4 shadow-sm">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h2 className="text-lg font-semibold text-slate-900">Guided setup</h2>
-                        <p className="mt-1 text-sm text-slate-600">
-                          Follow the league creation flow in order. The existing tabs still work for direct editing, but this checklist keeps the setup sequence clear.
-                        </p>
-                      </div>
-                      {nextGuidedStep ? (
-                        <button
-                          type="button"
-                          onClick={() => openGuidedTarget(nextGuidedStep.view, nextGuidedStep.target)}
-                          className="rounded-xl border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-900"
-                        >
-                          Next: {nextGuidedStep.actionLabel}
-                        </button>
-                      ) : (
-                        <span className="rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-900">
-                          Setup complete
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-4 grid gap-3 lg:grid-cols-5">
-                      {guidedSetupSteps.map((step) => (
-                        <div key={step.key} className="rounded-xl border border-slate-200 bg-white p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-sm font-semibold text-slate-900">{step.title}</p>
-                            <span
-                              className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                                step.done
-                                  ? "border-emerald-300 bg-emerald-100 text-emerald-900"
-                                  : "border-amber-300 bg-amber-100 text-amber-900"
-                              }`}
-                            >
-                              {step.done ? "Complete" : "Needs attention"}
-                            </span>
-                          </div>
-                          <p className="mt-2 text-xs text-slate-600">{step.detail}</p>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (step.key === "publish" && !step.done && publishBlockers.length === 0) {
-                                void publishLeague();
-                                return;
-                              }
-                              openGuidedTarget(step.view, step.target);
-                            }}
-                            disabled={step.key === "publish" && !step.done && publishBlockers.length > 0}
-                            className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {step.actionLabel}
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
-                      <p className="text-sm font-semibold text-slate-900">Publish checklist</p>
-                      {publishBlockers.length === 0 ? (
-                        <p className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
-                          This league is ready to publish.
-                        </p>
-                      ) : (
-                        <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                          <p className="text-sm font-semibold text-amber-900">Action still required before publish</p>
-                          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900">
-                            {publishBlockers.map((blocker) => (
-                              <li key={blocker}>{blocker}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  </section>
+                  <GuidedSetup
+                    steps={guidedSetupSteps}
+                    nextStep={nextGuidedStep}
+                    blockers={publishBlockers}
+                    onOpen={openGuidedTarget}
+                    onPublish={() => void publishLeague()}
+                  />
                 )
               ) : null}
               {!seasonId && (activeView === "fixtures" || activeView === "table" || activeView === "playerTable") ? (
@@ -6654,95 +6450,13 @@ function LeaguePageContent() {
                 </section>
               ) : null}
               {seasonId && activeView === "guide" ? (
-                <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                  <div className="flex flex-wrap items-end justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">League Snapshot</p>
-                      <h2 className="mt-1 text-xl font-black text-slate-950">{seasonDisplayLabel(currentSeason ?? { name: "League", handicap_enabled: false })}</h2>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {currentSeason?.is_active === false
-                          ? "This league has finished. Its fixtures, results and tables are retained as league history."
-                          : "Use this as the operating summary for setup progress, fixture completion, and review workload."}
-                      </p>
-                    </div>
-                    {currentSeason?.is_active === false ? (
-                      <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-800">
-                        League completed
-                      </span>
-                    ) : null}
-                    <div
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                        seasonSummary.pendingApprovals > 0 ? "border border-amber-300 bg-amber-100 text-amber-900" : "border border-emerald-300 bg-emerald-100 text-emerald-900"
-                      }`}
-                    >
-                      {seasonSummary.pendingApprovals > 0 ? `${seasonSummary.pendingApprovals} approval${seasonSummary.pendingApprovals === 1 ? "" : "s"} require attention` : "No approval backlog"}
-                    </div>
-                  </div>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-                    <button
-                      type="button"
-                      onClick={() => openLeagueSnapshotTarget("teamManagement", "assign-players")}
-                      className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                    >
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-700">Teams</p>
-                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.teams}</p>
-                      <p className="mt-1 text-xs text-slate-600">League entries in the selected season.</p>
-                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">Review Team Setup</p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "all")}
-                      className="rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                    >
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Fixtures</p>
-                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.fixtures}</p>
-                      <p className="mt-1 text-xs text-slate-600">Scheduled matches generated so far.</p>
-                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-sky-700">Open Fixtures</p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "complete")}
-                      className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                    >
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Complete</p>
-                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.complete}</p>
-                      <p className="mt-1 text-xs text-slate-600">Fixtures with approved results.</p>
-                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Review Completed Fixtures</p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "in_progress")}
-                      className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                    >
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-700">In Progress</p>
-                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.inProgress}</p>
-                      <p className="mt-1 text-xs text-slate-600">Fixtures with a live submission or partial entry.</p>
-                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">Review Active Fixtures</p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "pending")}
-                      className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                    >
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-600">Pending Fixtures</p>
-                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.pending}</p>
-                      <p className="mt-1 text-xs text-slate-600">Still waiting to be played or submitted.</p>
-                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600">Open Fixture Schedule</p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "pending_review")}
-                      className="rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                    >
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Pending Approvals</p>
-                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.pendingApprovals}</p>
-                      <p className="mt-1 text-xs text-slate-600">Results or fixture requests awaiting action.</p>
-                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-amber-700">Open Review Work</p>
-                    </button>
-                  </div>
-                </section>
+                <LeagueSnapshot
+                  seasonLabel={seasonDisplayLabel(currentSeason ?? { name: "League", handicap_enabled: false })}
+                  completed={currentSeason?.is_active === false}
+                  summary={seasonSummary}
+                  onOpen={openLeagueSnapshotTarget}
+                />
               ) : null}
-
               {activeView === "setup" ? (
               <section className="rounded-2xl border border-teal-200 bg-gradient-to-br from-white to-teal-50 p-4 shadow-sm">
                 <h2 className="text-lg font-semibold text-teal-900">League Setup</h2>
@@ -9600,230 +9314,20 @@ function LeaguePageContent() {
               ) : null}
 
               {activeView === "table" ? (
-              <section className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50 p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-emerald-900">League Table</h2>
-                <div className="mt-3 overflow-x-auto">
-                  <table className="min-w-full border-collapse text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-left text-slate-600">
-                        <th className="px-2 py-2">#</th>
-                        <th className="px-2 py-2">Team</th>
-                        <th className="px-2 py-2">P</th>
-                        <th className="px-2 py-2">W</th>
-                        <th className="px-2 py-2">D</th>
-                        <th className="px-2 py-2">L</th>
-                        <th className="px-2 py-2">FF</th>
-                        <th className="px-2 py-2">FA</th>
-                        <th className="px-2 py-2">FD</th>
-                        <th className="px-2 py-2">Points</th>
-                        <th className="px-2 py-2">Streak</th>
-                        <th className="px-2 py-2">Last 5</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {seasonTable.map((r, idx) => (
-                        <tr key={r.team_id} className="border-b border-slate-100 text-slate-800">
-                          <td className="px-2 py-2">{idx + 1}</td>
-                          <td className="px-2 py-2">
-                            <button
-                              type="button"
-                              className="text-left underline decoration-slate-300 underline-offset-2 hover:text-slate-900"
-                              onClick={() => setSelectedTableTeamId(r.team_id)}
-                            >
-                              {r.team_name}
-                            </button>
-                          </td>
-                          <td className="px-2 py-2">{r.played}</td>
-                          <td className="px-2 py-2">{r.won}</td>
-                          <td className="px-2 py-2">{r.drawn}</td>
-                          <td className="px-2 py-2">{r.lost}</td>
-                          <td className="px-2 py-2">{r.frames_for}</td>
-                          <td className="px-2 py-2">{r.frames_against}</td>
-                          <td className="px-2 py-2">{r.frame_diff}</td>
-                          <td className="px-2 py-2 font-semibold">{r.points}</td>
-                          <td className="px-2 py-2">{r.streak}</td>
-                          <td className="px-2 py-2">{r.last_five}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {!seasonTable.length ? <p className="mt-2 text-sm text-slate-600">No table rows yet for this league.</p> : null}
-                </div>
-              </section>
+                <LeagueStandings rows={seasonTable} onSelectTeam={setSelectedTableTeamId} />
               ) : null}
-
               {activeView === "playerTable" ? (
-              <section className="rounded-2xl border border-violet-200 bg-gradient-to-br from-white to-violet-50 p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-violet-900">Player Table</h2>
-                {seasonId ? (
-                  <>
-                    <p className="mt-1 text-[11px] text-slate-600">Ranking is based on Singles results.</p>
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-medium text-violet-900">
-                        {currentSeason?.name ?? "Selected league"}
-                      </span>
-                      <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700">
-                        {currentSeasonDoublesCount > 0 ? `${currentSeasonSinglesCount} singles + ${currentSeasonDoublesCount} doubles` : `${currentSeasonSinglesCount} singles only`}
-                      </span>
-                      <div className="ml-auto flex flex-wrap gap-2">
-                        {([
-                          { key: "all", label: "Full table", hidden: currentSeasonDoublesCount === 0 },
-                          { key: "singles", label: "Singles" },
-                          { key: "doubles", label: "Doubles", hidden: currentSeasonDoublesCount === 0 },
-                          { key: "total", label: "Overall", hidden: currentSeasonDoublesCount === 0 },
-                        ] as Array<{ key: PlayerTableView; label: string; hidden?: boolean }>).map((option) =>
-                          option.hidden ? null : (
-                            <button
-                              key={option.key}
-                              type="button"
-                              onClick={() => setPlayerTableView(option.key)}
-                              className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                                playerTableView === option.key
-                                  ? "border-violet-700 bg-violet-700 text-white"
-                                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                              }`}
-                            >
-                              {option.label}
-                            </button>
-                          )
-                        )}
-                      </div>
-                    </div>
-                    <div className="mt-3 overflow-auto rounded-xl border border-slate-200 bg-white">
-                      <table className={`${playerTableView === "all" ? "min-w-[1380px]" : "w-full table-fixed"} border-collapse text-xs`}>
-                        <thead>
-                          {playerTableView === "all" ? (
-                            <>
-                              <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-500">
-                                <th className="w-14 px-3 py-2 text-center" rowSpan={2}>Rank</th>
-                                <th className="w-[180px] px-2 py-2" rowSpan={2}>Player</th>
-                                <th className="w-[140px] whitespace-nowrap px-2 py-2" rowSpan={2}>Team</th>
-                                <th className="px-3 py-2 text-center text-violet-800" colSpan={7}>Singles</th>
-                                <th className="px-3 py-2 text-center text-indigo-800" colSpan={7}>Doubles</th>
-                                <th className="px-3 py-2 text-center text-emerald-800" colSpan={7}>Total</th>
-                              </tr>
-                              <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-600">
-                                <th className="w-16 px-3 py-1.5 text-center">App</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Played</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Won</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Lost</th>
-                                <th className="w-16 px-3 py-1.5 text-center">PF</th>
-                                <th className="w-16 px-3 py-1.5 text-center">PA</th>
-                                <th className="w-20 px-3 py-1.5 text-center">Win %</th>
-                                <th className="w-16 px-3 py-1.5 text-center">App</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Played</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Won</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Lost</th>
-                                <th className="w-16 px-3 py-1.5 text-center">PF</th>
-                                <th className="w-16 px-3 py-1.5 text-center">PA</th>
-                                <th className="w-20 px-3 py-1.5 text-center">Win %</th>
-                                <th className="w-16 px-3 py-1.5 text-center">App</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Played</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Won</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Lost</th>
-                                <th className="w-16 px-3 py-1.5 text-center">PF</th>
-                                <th className="w-16 px-3 py-1.5 text-center">PA</th>
-                                <th className="w-20 px-3 py-1.5 text-center">Win %</th>
-                              </tr>
-                            </>
-                          ) : (
-                            <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-600">
-                              <th className="w-12 px-2 py-2 text-center">Rank</th>
-                              <th className="w-[170px] px-2 py-2">Player</th>
-                              <th className="w-[240px] px-2 py-2">Team</th>
-                              <th className="w-12 px-2 py-2 text-center">App</th>
-                              <th className="w-14 px-2 py-2 text-center">Played</th>
-                              <th className="w-12 px-2 py-2 text-center">Won</th>
-                              <th className="w-12 px-2 py-2 text-center">Lost</th>
-                              <th className="w-12 px-2 py-2 text-center">PF</th>
-                              <th className="w-12 px-2 py-2 text-center">PA</th>
-                              <th className="w-14 px-2 py-2 text-center">Win %</th>
-                            </tr>
-                          )}
-                        </thead>
-                        <tbody>
-                          {playerSummaryRows.map((r) => (
-                            <tr key={r.player_id} className="border-b border-slate-100 text-slate-800">
-                              <td className="px-3 py-2 text-center font-semibold">{r.rank ?? "-"}</td>
-                              <td className="px-2 py-2">
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedPlayerTablePlayerId(r.player_id)}
-                                  className="block truncate text-left underline decoration-violet-200 underline-offset-2 hover:text-violet-800"
-                                  title={r.player_name}
-                                >
-                                  {r.player_name}
-                                </button>
-                              </td>
-                              <td className="truncate whitespace-nowrap px-2 py-2" title={r.team_name}>{r.team_name}</td>
-                              {playerTableView === "all" ? (
-                                <>
-                                  <td className="px-3 py-2 text-center">{r.singles?.appearances ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.singles?.played ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.singles?.won ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.singles?.lost ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.singles?.points_for ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.singles?.points_against ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{(r.singles?.win_pct ?? 0).toFixed(1)}%</td>
-                                  <td className="px-3 py-2 text-center">{r.doubles?.appearances ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.doubles?.played ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.doubles?.won ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.doubles?.lost ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.doubles?.points_for ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.doubles?.points_against ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{(r.doubles?.win_pct ?? 0).toFixed(1)}%</td>
-                                  <td className="px-3 py-2 text-center">{r.total?.appearances ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.total?.played ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.total?.won ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.total?.lost ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.total?.points_for ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.total?.points_against ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{(r.total?.win_pct ?? 0).toFixed(1)}%</td>
-                                </>
-                              ) : (
-                                <>
-                                  <td className="px-2 py-2 text-center">
-                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.appearances ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-center">
-                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.played ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-center">
-                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.won ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-center">
-                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.lost ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-center">
-                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.points_for ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-center">
-                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.points_against ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-center">
-                                    {((playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.win_pct ?? 0).toFixed(1)}%
-                                  </td>
-                                </>
-                              )}
-                            </tr>
-                          ))}
-                          {playerSummaryRows.length === 0 ? (
-                            <tr>
-                              <td className="px-2 py-2 text-slate-500" colSpan={playerTableView === "all" ? 24 : 10}>
-                                No player data yet.
-                              </td>
-                            </tr>
-                          ) : null}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                ) : (
-                  <p className="mt-2 text-sm text-slate-600">Select a published league to view player statistics.</p>
-                )}
-              </section>
+                <LeaguePlayerTable
+                  hasSeason={Boolean(seasonId)}
+                  seasonName={currentSeason?.name ?? "Selected league"}
+                  singlesCount={currentSeasonSinglesCount}
+                  doublesCount={currentSeasonDoublesCount}
+                  mode={playerTableView}
+                  rows={playerSummaryRows}
+                  onModeChange={setPlayerTableView}
+                  onSelectPlayer={setSelectedPlayerTablePlayerId}
+                />
               ) : null}
-
               {activeView === "handicaps" && canManage ? (
               <section className="rounded-2xl border border-fuchsia-200 bg-gradient-to-br from-white to-fuchsia-50 p-4 shadow-sm">
                 <h2 className="text-lg font-semibold text-fuchsia-900">Handicap Management</h2>
