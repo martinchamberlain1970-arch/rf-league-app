@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import useAdminStatus from "@/components/useAdminStatus";
@@ -110,6 +110,7 @@ export default function AppNavigationMenu({ open, onClose, onSignOut, onNavigate
   const [query, setQuery] = useState("");
   const [selectedGroupTitle, setSelectedGroupTitle] = useState(groups[0].title);
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
+  const openedPathname = useRef(pathname);
 
   const visibleGroups = useMemo(() => {
     return groups
@@ -129,9 +130,28 @@ export default function AppNavigationMenu({ open, onClose, onSignOut, onNavigate
 
   useEffect(() => {
     if (!open || typeof window === "undefined") return;
+    openedPathname.current = pathname;
     const currentSeasonId = new URLSearchParams(window.location.search).get("seasonId");
     setSelectedSeasonId(currentSeasonId || window.localStorage.getItem("rf_selected_league_season") || "");
   }, [open, pathname]);
+
+  useEffect(() => {
+    if (!open || typeof document === "undefined") return;
+    const previousOverflow = document.body.style.overflow;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.body.style.overflow = "hidden";
+    document.addEventListener("keydown", closeOnEscape);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      document.removeEventListener("keydown", closeOnEscape);
+    };
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (open && pathname !== openedPathname.current) onClose();
+  }, [open, onClose, pathname]);
 
   const hrefWithLeagueContext = (href: string) => {
     if (!selectedSeasonId || !href.startsWith("/league")) return href;
@@ -150,10 +170,10 @@ export default function AppNavigationMenu({ open, onClose, onSignOut, onNavigate
       setSelectedGroupTitle(routeGroup.title);
       return;
     }
-    if (!visibleGroups.some((group) => group.title === selectedGroupTitle)) {
-      setSelectedGroupTitle(visibleGroups[0].title);
-    }
-  }, [open, pathname, selectedGroupTitle, visibleGroups]);
+    setSelectedGroupTitle((currentTitle) =>
+      visibleGroups.some((group) => group.title === currentTitle) ? currentTitle : visibleGroups[0].title
+    );
+  }, [open, pathname, visibleGroups]);
 
   const activeGroup = visibleGroups.find((group) => group.title === selectedGroupTitle) ?? visibleGroups[0];
   const searchTerm = query.trim().toLowerCase();
@@ -166,9 +186,9 @@ export default function AppNavigationMenu({ open, onClose, onSignOut, onNavigate
   if (!open || typeof document === "undefined") return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[80] overflow-y-auto bg-slate-950/55 p-0 backdrop-blur-md sm:p-4 lg:p-7" role="dialog" aria-modal="true" aria-label="Rack & Frame navigation">
-      <button type="button" className="fixed inset-0 cursor-default" aria-label="Close navigation" onClick={onClose} />
-      <aside className="relative mx-auto flex min-h-full w-full max-w-5xl flex-col overflow-hidden bg-[#f7f9fc] shadow-2xl sm:min-h-0 sm:rounded-3xl sm:border sm:border-white/25 lg:h-[calc(100vh-3.5rem)]">
+    <div className="fixed inset-0 z-[80] overflow-hidden bg-slate-950/55 p-0 backdrop-blur-md sm:p-4 lg:p-7" role="dialog" aria-modal="true" aria-label="Rack & Frame navigation">
+      <button type="button" className="fixed inset-0 z-0 cursor-default" aria-label="Close navigation" onClick={onClose} />
+      <aside className="relative z-10 mx-auto flex h-[100dvh] max-h-[100dvh] w-full max-w-5xl flex-col overflow-hidden bg-[#f7f9fc] shadow-2xl sm:h-[calc(100dvh-2rem)] sm:max-h-[calc(100dvh-2rem)] sm:rounded-3xl sm:border sm:border-white/25 lg:h-[calc(100dvh-3.5rem)] lg:max-h-[calc(100dvh-3.5rem)]">
         <div className="shrink-0 bg-gradient-to-br from-[#0b1730] via-[#102746] to-[#073f43] px-5 pb-5 pt-[max(1.25rem,env(safe-area-inset-top))] text-white sm:px-7 sm:pt-6">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -192,7 +212,7 @@ export default function AppNavigationMenu({ open, onClose, onSignOut, onNavigate
           </label>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto md:grid md:grid-cols-[260px_minmax(0,1fr)] md:overflow-hidden">
+        <div className="grid min-h-0 flex-1 grid-cols-1 overflow-y-auto md:grid-cols-[260px_minmax(0,1fr)] md:overflow-hidden">
           <nav className="border-b border-slate-200 bg-white p-4 md:overflow-y-auto md:border-b-0 md:border-r md:p-5" aria-label="Main menu sections">
             <Link href="/" onClick={onClose} className={`flex items-center justify-between rounded-xl px-3 py-3 text-sm font-bold transition ${pathname === "/" ? "bg-teal-50 text-teal-900" : "text-slate-800 hover:bg-slate-100"}`}>
               <span>Home dashboard</span>
@@ -233,7 +253,7 @@ export default function AppNavigationMenu({ open, onClose, onSignOut, onNavigate
             </div>
           </nav>
 
-          <section className="min-w-0 p-4 md:overflow-y-auto md:p-6 lg:p-7">
+          <section className="min-h-0 min-w-0 p-4 md:overflow-y-auto md:p-6 lg:p-7">
             <div className="border-b border-slate-200 pb-4">
               <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-teal-700">{searchTerm ? "Search results" : "Selected section"}</p>
               <h3 className="mt-1 text-xl font-bold text-slate-950">{searchTerm ? `Results for “${query.trim()}”` : activeGroup?.title}</h3>
@@ -262,7 +282,7 @@ export default function AppNavigationMenu({ open, onClose, onSignOut, onNavigate
                       <span className="block text-sm font-bold text-slate-950 sm:text-base">{item.title}</span>
                       <span className="mt-1 block text-sm leading-5 text-slate-500">{item.description}</span>
                     </span>
-                    <span className={`self-center text-2xl ${selected ? "text-teal-700" : "text-slate-300 group-hover:text-teal-600"}`} aria-hidden="true">›</span>
+                    <span className={`self-center rounded-full border px-2.5 py-1 text-[11px] font-bold ${selected ? "border-teal-300 bg-white text-teal-800" : "border-slate-200 bg-white text-slate-600 group-hover:border-teal-300 group-hover:text-teal-700"}`}>Open <span aria-hidden="true">›</span></span>
                   </Link>
                 );
               })}
