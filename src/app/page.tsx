@@ -35,8 +35,6 @@ const links = [
   { href: "/usage", title: "Usage Analytics", desc: "System Owner page-usage summary." },
   { href: "/results", title: "Results Queue", desc: "Review and approve submitted results." },
   { href: "/notifications", title: "Notifications", desc: "Read and manage your inbox notifications." },
-  { href: "/live", title: "Live Overview", desc: "In-progress overview of active events." },
-  { href: "/stats", title: "Stats", desc: "Player and matchup stats." },
   { href: "/announcements", title: "Announcements", desc: "League-officer control for banner notices." },
   { href: "/help", title: "User Guide", desc: "How to use the app." },
   { href: "/legal", title: "Legal & Credits", desc: "Legal and support information." },
@@ -101,6 +99,7 @@ export default function HomePage() {
   const [showProfilePrompt, setShowProfilePrompt] = useState(false);
   const [showCaptainGuidePrompt, setShowCaptainGuidePrompt] = useState(false);
   const [announcement, setAnnouncement] = useState<SiteAnnouncement | null>(null);
+  const [dashboardQuery, setDashboardQuery] = useState("");
   const [confirmState, setConfirmState] = useState<{
     open: boolean;
     title: string;
@@ -171,7 +170,7 @@ export default function HomePage() {
   const quickAccessHrefs = admin.isSuper
     ? ["/audit", "/rating-audit", "/usage"]
     : admin.isAdmin
-      ? ["/results", "/notifications", "/live", "/stats"]
+      ? ["/results", "/notifications"]
       : [];
   const primaryLinks = visibleLinks.filter((item) => primaryHrefs.includes(item.href));
   const quickAccessLinks = visibleLinks.filter((item) => quickAccessHrefs.includes(item.href));
@@ -187,47 +186,8 @@ export default function HomePage() {
       : null;
   const mainTabLinksWithGovernance = leagueRequestsTile ? [leagueRequestsTile, ...mainTabLinks] : mainTabLinks;
   const compactSuper = admin.isSuper;
-  const cardBaseClass = `rounded-2xl border border-slate-200 bg-white shadow-sm ${compactSuper ? "p-2.5" : "p-3 sm:p-4"}`;
-  const subtleCardClass = `rounded-2xl border border-slate-200 bg-white shadow-sm ${compactSuper ? "p-3" : "p-3 sm:p-4"}`;
-  const pillBaseClass = "rounded-full border px-3 py-1 text-sm transition";
-  const pillSecondaryClass = `${pillBaseClass} border-slate-300 bg-white text-slate-700 hover:bg-slate-50`;
-  const pillPrimaryClass = `${pillBaseClass} border-teal-700 bg-teal-700 text-white hover:bg-teal-800`;
-  const pillWarningClass = `${pillBaseClass} border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100`;
-  const actionLinkClass = "mt-2 inline-flex items-center rounded-full border border-teal-700 bg-teal-700 px-3 py-1 text-sm font-medium text-white transition hover:bg-teal-800";
-
-  const quickAccessChipClass = (href: string) => {
-    if (admin.isSuper) {
-      if (href === "/signup-requests" || href === "/notifications") return pillPrimaryClass;
-      return pillSecondaryClass;
-    }
-    if (href === "/notifications" || href === "/results") return pillPrimaryClass;
-    return pillSecondaryClass;
-  };
-  const primaryTileClass = (href: string) => {
-    const base = `rounded-2xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${compactSuper ? "p-2.5 min-h-[112px]" : "p-4 min-h-[160px]"}`;
-    if (href === "/league") return `${base} border-indigo-200 bg-gradient-to-br from-indigo-50 to-white`;
-    if (href === "/live-matches") return `${base} border-sky-200 bg-gradient-to-br from-sky-50 to-white`;
-    if (href === "/captain-results") return `${base} border-emerald-200 bg-gradient-to-br from-emerald-50 to-white`;
-    if (href === "/reschedule-fixture") return `${base} border-indigo-200 bg-gradient-to-br from-indigo-50 to-white`;
-    if (href === "/results?tab=fixture_changes") return `${base} border-indigo-200 bg-gradient-to-br from-indigo-50 to-white`;
-    if (href === "/quick-match") return `${base} border-teal-200 bg-gradient-to-br from-teal-50 to-white`;
-    if (href === "/events/new") return `${base} border-amber-200 bg-gradient-to-br from-amber-50 to-white`;
-    if (href === "/events") return `${base} border-sky-200 bg-gradient-to-br from-sky-50 to-white`;
-    if (href === "/notifications") return `${base} border-violet-200 bg-gradient-to-br from-violet-50 to-white`;
-    return `${base} border-slate-200 bg-gradient-to-br from-slate-50 to-white`;
-  };
-  const primaryTileBadgeClass = (href: string) => {
-    if (href === "/league") return "border-indigo-300 bg-indigo-100 text-indigo-900";
-    if (href === "/live-matches") return "border-sky-300 bg-sky-100 text-sky-900";
-    if (href === "/captain-results") return "border-emerald-300 bg-emerald-100 text-emerald-900";
-    if (href === "/reschedule-fixture") return "border-indigo-300 bg-indigo-100 text-indigo-900";
-    if (href === "/results?tab=fixture_changes") return "border-indigo-300 bg-indigo-100 text-indigo-900";
-    if (href === "/quick-match") return "border-teal-300 bg-teal-100 text-teal-900";
-    if (href === "/events/new") return "border-amber-300 bg-amber-100 text-amber-900";
-    if (href === "/events") return "border-sky-300 bg-sky-100 text-sky-900";
-    if (href === "/notifications") return "border-violet-300 bg-violet-100 text-violet-900";
-    return "border-slate-300 bg-slate-100 text-slate-800";
-  };
+  const cardBaseClass = `mx-4 rounded-2xl border border-slate-200 bg-white shadow-sm sm:mx-0 ${compactSuper ? "p-2.5" : "p-3 sm:p-4"}`;
+  const subtleCardClass = `mx-4 rounded-2xl border border-slate-200 bg-white shadow-sm sm:mx-0 ${compactSuper ? "p-3" : "p-3 sm:p-4"}`;
   const primaryTileBadgeText = (href: string) => {
     if (href === "/results?tab=fixture_changes" && admin.canManageLeague) {
       return fixtureChangeActionCount > 0 ? `${fixtureChangeActionCount} to review` : "Open";
@@ -260,6 +220,53 @@ export default function HomePage() {
       }),
     [mainTabLinksWithGovernance, admin.canManageLeague, fixtureChangeActionCount, outstandingFixtureCount]
   );
+  const groupedDashboardLinks = useMemo(() => {
+    const term = dashboardQuery.trim().toLowerCase();
+    const unique = new Map<string, (typeof resolvedMainTabLinks)[number]>();
+    [...resolvedMainTabLinks, ...quickAccessLinks].forEach((item) => unique.set(`${item.href}|${item.title}`, item));
+    const allItems = Array.from(unique.values()).filter((item) =>
+      !term || `${item.title} ${item.desc}`.toLowerCase().includes(term)
+    );
+    const matches = (item: (typeof resolvedMainTabLinks)[number], prefixes: string[]) =>
+      prefixes.some((prefix) => item.href === prefix || item.href.startsWith(`${prefix}?`) || item.href.startsWith(`${prefix}/`));
+    const definitions = [
+      {
+        title: "Run the league",
+        description: "Seasons, teams, fixtures, results, players, handicaps and finance.",
+        prefixes: ["/league", "/entry-packs", "/results", "/players", "/handicaps", "/rating-audit"],
+      },
+      {
+        title: "Competitions & match information",
+        description: "Competition entries, live play, published records and documents.",
+        prefixes: ["/signups", "/events", "/live-matches", "/high-breaks", "/documents", "/quick-match"],
+      },
+      {
+        title: "People & communications",
+        description: "Requests, notifications, announcements and role guidance.",
+        prefixes: ["/signup-requests", "/notifications", "/announcements", "/league-officer-guide", "/help"],
+      },
+      {
+        title: "System owner",
+        description: "Protected audit, usage, data-management and legal controls.",
+        prefixes: ["/audit", "/usage", "/backup", "/legal"],
+      },
+    ];
+    const assigned = new Set<string>();
+    const grouped = definitions.map((definition) => {
+      const items = allItems.filter((item) => {
+        const key = `${item.href}|${item.title}`;
+        if (assigned.has(key) || !matches(item, definition.prefixes)) return false;
+        assigned.add(key);
+        return true;
+      });
+      return { ...definition, items };
+    });
+    const remaining = allItems.filter((item) => !assigned.has(`${item.href}|${item.title}`));
+    if (remaining.length) {
+      grouped.push({ title: "More tools", description: "Additional tools available to your account.", prefixes: [], items: remaining });
+    }
+    return grouped.filter((group) => group.items.length > 0);
+  }, [dashboardQuery, quickAccessLinks, resolvedMainTabLinks]);
   const cardDescription = (href: string, fallback: string) => {
     if (href === "/league") {
       if (admin.canManageLeague) return "Set up leagues, teams, venues, fixtures, and approvals.";
@@ -349,7 +356,7 @@ export default function HomePage() {
           title: "Tonight's Lineup",
           value: tonightLineupCount,
           tone: "emerald",
-          displayValue: tonightLineupCount > 0 ? tonightLineupLabel ?? String(tonightLineupCount) : null,
+          displayValue: tonightLineupCount > 0 ? tonightLineupLabel ?? String(tonightLineupCount) : "Ready",
           compactDisplay: true,
           detail:
             tonightLineupCount > 0
@@ -361,7 +368,7 @@ export default function HomePage() {
           title: "Fixture Date Requests",
           value: outstandingFixtureCount,
           tone: "indigo",
-          displayValue: outstandingFixtureCount > 0 ? String(outstandingFixtureCount) : null,
+          displayValue: outstandingFixtureCount > 0 ? String(outstandingFixtureCount) : "None",
           detail:
             outstandingFixtureCount > 0
               ? "A fixture is waiting for review or a new agreed date."
@@ -372,7 +379,7 @@ export default function HomePage() {
           title: "Match Centre",
           value: openEventsCount ?? 0,
           tone: "sky",
-          displayValue: (openEventsCount ?? 0) > 0 ? String(openEventsCount ?? 0) : null,
+          displayValue: (openEventsCount ?? 0) > 0 ? String(openEventsCount ?? 0) : "View",
           detail: "Check next fixtures, reports, and competition activity.",
         },
       ];
@@ -383,6 +390,8 @@ export default function HomePage() {
         title: "Published League",
         value: openEventsCount ?? 0,
         tone: "indigo",
+        displayValue: "View",
+        compactDisplay: true,
         detail: "View the latest league fixtures, table, and player standings.",
       },
       {
@@ -390,6 +399,8 @@ export default function HomePage() {
         title: "Notifications",
         value: pendingResultSubmissionsCount,
         tone: "violet",
+        displayValue: pendingResultSubmissionsCount > 0 ? String(pendingResultSubmissionsCount) : "None",
+        compactDisplay: true,
         detail: "Track profile, result, and competition updates in one place.",
       },
       {
@@ -397,6 +408,8 @@ export default function HomePage() {
         title: "Match Centre",
         value: openEventsCount ?? 0,
         tone: "sky",
+        displayValue: "View",
+        compactDisplay: true,
         detail: "See your upcoming fixtures and published competition activity.",
       },
     ];
@@ -408,6 +421,7 @@ export default function HomePage() {
     outstandingFixtureCount,
     pendingRequestsCount,
     pendingRequestsHref,
+    pendingResultSubmissionsCount,
     resultsQueueCount,
     tonightLineupCount,
     tonightLineupHref,
@@ -434,6 +448,9 @@ export default function HomePage() {
     : pendingClaim
       ? "Your profile claim is pending review."
       : "No linked player profile yet. Complete profile check to continue.";
+  const welcomeName = admin.isSuper
+    ? "Martin"
+    : userName?.trim().split(/\s+/)[0] || appRoleLabel(admin.role);
 
   const handleNavClick = async (e: React.MouseEvent, href: string) => {
     void e;
@@ -742,7 +759,7 @@ export default function HomePage() {
       }
 
       if (admin.canManageLeague) {
-        const tables = ["player_claim_requests", "player_update_requests", "location_requests"];
+        const tables = ["player_claim_requests", "player_update_requests", "location_requests", "league_player_addition_requests"];
         if (admin.isSuper) tables.push("admin_requests", "profile_merge_requests", "player_deletion_requests");
         const counts = await Promise.all(
           tables.map((table) => client.from(table).select("id", { count: "exact", head: true }).eq("status", "pending"))
@@ -750,12 +767,15 @@ export default function HomePage() {
         const entryPackResult = await client.from("league_entry_packs").select("id,season_id").eq("status", "submitted").order("updated_at", { ascending: false });
         const otherRequestCount = counts.reduce((sum, result) => sum + (result.count ?? 0), 0);
         const entryPacks = (entryPackResult.data ?? []) as Array<{ id: string; season_id: string }>;
+        const playerAdditionCount = counts[3]?.count ?? 0;
         const totalRequestCount = otherRequestCount + entryPacks.length;
         setPendingRequestsCount(totalRequestCount);
         setPendingRequestsHref(
           totalRequestCount === 1 && entryPacks.length === 1
             ? `/entry-packs?seasonId=${encodeURIComponent(entryPacks[0].season_id)}&packId=${encodeURIComponent(entryPacks[0].id)}`
-            : "/notifications"
+            : totalRequestCount === 1 && playerAdditionCount === 1
+              ? "/player-additions"
+              : "/notifications"
         );
         setPendingResultSubmissionsCount(0);
         return;
@@ -1014,100 +1034,90 @@ export default function HomePage() {
   };
 
   return (
-    <main className={`min-h-screen bg-slate-100 ${compactSuper ? "p-3 sm:p-4" : "p-4 sm:p-6"}`}>
-      <div className={`mx-auto max-w-5xl ${compactSuper ? "space-y-3" : "space-y-3 sm:space-y-4"}`}>
+    <main className="min-h-screen bg-[#f3f5f7] pb-6 sm:px-4 sm:pt-4">
+      <div className="mx-auto max-w-6xl space-y-4">
         <RequireAuth>
-          <section className="rounded-2xl border border-slate-200 bg-gradient-to-r from-teal-50 via-slate-50 to-amber-50 p-3 sm:p-4 shadow-sm">
+          <header className="sticky top-0 z-20 border-b border-slate-200 bg-white/95 px-4 py-3 shadow-sm backdrop-blur sm:rounded-2xl sm:border">
             <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Dashboard</p>
-                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900">
-                  {admin.isSuper
-                    ? "Rack & Frame - System Owner Control Centre"
-                    : "Rack & Frame - League Management Platform"}
-                </h1>
-              </div>
+              <Link href="/" className="flex min-w-0 items-center gap-3">
+                <span className="grid h-11 w-11 shrink-0 place-items-center overflow-hidden rounded-xl bg-[#08172b] p-1.5 shadow-sm">
+                  <img src="/rf-logo.png" alt="Rack & Frame League" className="h-full w-full object-contain" />
+                </span>
+                <span className="min-w-0">
+                  <span className="block truncate text-sm font-black tracking-[0.16em] text-slate-950">RACK &amp; FRAME</span>
+                  <span className="block truncate text-[10px] font-semibold uppercase tracking-[0.2em] text-teal-700">League Manager</span>
+                </span>
+              </Link>
               <PageNav />
             </div>
-          </section>
-          {completionMessage ? (
-            <section className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-900">
-              {completionMessage}
-            </section>
-          ) : null}
-          <ImportantAnnouncementBanner announcement={announcement} />
-          <section className={subtleCardClass}>
-            <p className="text-sm text-slate-600">{admin.isSuper ? "Account" : "User Profile"}</p>
-            <div className="flex flex-wrap items-center gap-2">
-              <p className="text-lg font-semibold text-slate-900">
-                {admin.isSuper
-                  ? `System Owner Account${userName ? ` · ${userName}` : " · Martin Chamberlain"}`
-                  : admin.canManageLeague
-                    ? `${appRoleLabel(admin.role)} account`
-                    : admin.isAdmin
-                      ? "Administrator account"
-                    : userName
-                      ? `Logged in as ${userName}`
-                      : "No player profile linked"}
-              </p>
-              <span
-                className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
-                  admin.isSuper
-                    ? "bg-amber-100 text-amber-800"
-                    : admin.isAdmin
-                      ? "bg-emerald-100 text-emerald-700"
-                      : "bg-slate-100 text-slate-600"
-                }`}
-              >
-                {appRoleLabel(admin.role)}
-              </span>
+          </header>
+
+          <section className="relative overflow-hidden bg-gradient-to-br from-[#08172b] via-[#0b353c] to-[#087b78] px-5 py-7 text-white shadow-lg sm:rounded-3xl sm:px-8 sm:py-9">
+            <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full border border-white/10" />
+            <div className="pointer-events-none absolute -bottom-28 right-20 h-64 w-64 rounded-full border border-white/10" />
+            <div className="relative grid gap-6 md:grid-cols-[1fr_auto] md:items-center">
+              <div>
+                <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-cyan-200">Welcome back</p>
+                <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">Hi, {welcomeName}</h1>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-200">
+                  {admin.canManageLeague
+                    ? "Here’s what needs your attention across the league today."
+                    : hasCaptainRole
+                      ? "Your fixtures, lineup actions and league updates are ready below."
+                      : "Your league fixtures, results and player information are ready below."}
+                </p>
+                <div className="mt-5 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-white">
+                    {appRoleLabel(admin.role)}
+                  </span>
+                  {leagueRole.teamNames.map((teamName) => (
+                    <span key={teamName} className="rounded-full border border-cyan-200/30 bg-cyan-100/10 px-3 py-1 text-xs font-semibold text-cyan-50">
+                      {teamName}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="min-w-0 rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm md:min-w-64">
+                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-200">Your account</p>
+                <p className="mt-1 truncate text-sm font-semibold text-white">
+                  {admin.isSuper ? "System Owner · Martin Chamberlain" : userName || appRoleLabel(admin.role)}
+                </p>
+                {userEmail ? <p className="mt-1 truncate text-xs text-slate-300">{userEmail}</p> : null}
+                {!admin.isSuper && userPlayerId ? (
+                  <Link href={`/players/${userPlayerId}`} className="mt-3 inline-flex rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-950 hover:bg-cyan-50">
+                    View my profile
+                  </Link>
+                ) : null}
+                {!admin.isAdmin && !userName ? (
+                  <button type="button" onClick={() => setProfileModalOpen(true)} className="mt-3 rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-950 hover:bg-cyan-50">
+                    Complete profile check
+                  </button>
+                ) : null}
+              </div>
             </div>
-            {userEmail ? <p className="text-sm text-slate-600">Logged in: {userEmail}</p> : null}
-            {admin.isSuper ? (
-              <p className="mt-2 text-xs text-slate-700">
-                Platform ownership: backups, protected access, security oversight, audit and destructive system controls. League operations remain available as an owner fallback.
-              </p>
-            ) : admin.canManageLeague ? (
-              <p className="mt-2 text-xs text-slate-700">
-                League operations: seasons, teams, fixtures, results, competitions, handicaps, documents, announcements and participant approvals.
-              </p>
-            ) : null}
-            {!admin.isSuper && userPlayerId ? (
-              <Link href={`/players/${userPlayerId}`} className={actionLinkClass}>
-                View my profile
-              </Link>
-            ) : null}
-            {!admin.isAdmin && !userName ? (
-              <button
-                type="button"
-                onClick={() => setProfileModalOpen(true)}
-                className={actionLinkClass}
-              >
-                Complete the profile check to link your player profile.
-              </button>
-            ) : null}
             {!admin.isAdmin && !userName && pendingClaim ? (
-              <div className="mt-2 flex flex-wrap items-center gap-2">
-                <p className="text-sm text-amber-700">Claim pending approval for {pendingClaim.name}.</p>
-                <button
-                  type="button"
-                  onClick={() => setClaimStatusOpen(true)}
-                  className="text-sm text-teal-700 underline underline-offset-4"
-                >
-                  View claim status
-                </button>
+              <div className="relative mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200/30 bg-amber-100/10 px-4 py-3 text-sm text-amber-50">
+                <span>Claim pending approval for {pendingClaim.name}.</span>
+                <button type="button" onClick={() => setClaimStatusOpen(true)} className="font-semibold underline underline-offset-4">View status</button>
               </div>
             ) : null}
             {!admin.isAdmin && pendingResultSubmissionsCount > 0 ? (
-              <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
+              <div className="relative mt-4 rounded-xl border border-amber-200/30 bg-amber-100/10 px-4 py-3 text-sm text-amber-50">
                 Result submission pending approval ({pendingResultSubmissionsCount}).
-                <Link href="/notifications" className="ml-2 underline underline-offset-2">
-                  View status
-                </Link>
+                <Link href="/notifications" className="ml-2 font-semibold underline underline-offset-4">View status</Link>
               </div>
             ) : null}
-            {profileMessage ? <p className="mt-2 text-sm text-slate-700">{profileMessage}</p> : null}
+            {profileMessage ? <p className="relative mt-3 text-sm text-cyan-50">{profileMessage}</p> : null}
           </section>
+
+          {completionMessage ? (
+            <section className="mx-4 rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-900 shadow-sm sm:mx-0">
+              {completionMessage}
+            </section>
+          ) : null}
+          <div className="mx-4 sm:mx-0">
+            <ImportantAnnouncementBanner announcement={announcement} />
+          </div>
           {!admin.isSuper ? (
             <section className={subtleCardClass}>
               <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1193,13 +1203,13 @@ export default function HomePage() {
             </section>
           ) : null}
 
-          <section className={subtleCardClass}>
+          <section className={`${subtleCardClass} p-4 sm:p-5`}>
             <div className="flex flex-wrap items-end justify-between gap-3">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Operational Focus</p>
-                <h2 className="mt-1 text-xl font-black text-slate-950">Start Here</h2>
+                <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-teal-700">Your workspace</p>
+                <h2 className="mt-1 text-xl font-black text-slate-950">Needs your attention</h2>
                 <p className="mt-1 text-sm text-slate-600">
-                  The highest-priority actions are surfaced first so setup, approvals, and fixture admin do not get buried in the full dashboard.
+                  Start with these live actions. Everything else remains available from Menu or the management catalogue below.
                 </p>
               </div>
               <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
@@ -1222,7 +1232,7 @@ export default function HomePage() {
                           : "text-4xl font-black leading-none"
                       }`}
                     >
-                      {card.displayValue ?? (card.value > 0 ? String(card.value) : "")}
+                      {card.displayValue ?? (card.value > 0 ? String(card.value) : "Clear")}
                     </p>
                     <span className="rounded-full border border-white/70 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700">
                       Open
@@ -1234,79 +1244,92 @@ export default function HomePage() {
             </div>
           </section>
 
-          <section className="space-y-2">
-            <div className={cardBaseClass}>
-              <div className="flex flex-wrap items-start justify-between gap-3">
+          <details className={`${cardBaseClass} overflow-hidden p-0`}>
+            <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 marker:hidden sm:px-5">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-teal-700">Management catalogue</p>
+                <h2 className="mt-1 text-base font-bold text-slate-950">All Rack &amp; Frame areas</h2>
+                <p className="mt-1 text-xs text-slate-500">Open this only when the task you need is not shown above.</p>
+              </div>
+              <span className="shrink-0 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-bold text-slate-700">Browse tools</span>
+            </summary>
+            <div className="border-b border-slate-200 bg-gradient-to-r from-[#0f1a31] via-[#132847] to-[#0b4246] p-4 text-white sm:p-5">
+              <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
                 <div>
-                  <p className="text-sm font-semibold text-slate-900">Main Tabs</p>
-                  <p className="mt-1 text-xs text-slate-600">
-                    Central controls for league operations, competitions, governance, reporting, and platform administration.
+                  <p className="text-xs font-bold uppercase tracking-[0.22em] text-cyan-300">All areas</p>
+                  <h2 className="mt-1 text-xl font-semibold">Find the work you need</h2>
+                  <p className="mt-1 max-w-2xl text-sm text-slate-300">
+                    Screens are grouped by purpose, so league operations are kept separate from competitions, communications and protected system controls.
                   </p>
                 </div>
-                {quickAccessLinks.length ? (
-                  <div className="flex flex-wrap items-center gap-2">
-                    {quickAccessLinks.map((item) => (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        onClick={(e) => handleNavClick(e, item.href)}
-                        className={quickAccessChipClass(item.href)}
-                      >
-                        {item.title}
-                      </Link>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-              <div
-                className={
-                  admin.isSuper
-                    ? "mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5"
-                    : "mt-3 grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"
-                }
-              >
-                {resolvedMainTabLinks.map((item) => (
-                  isDisabledAdminFeature(item.href) ? (
-                    <div
-                      key={`${item.href}|${item.title}`}
-                      className={`${primaryTileClass(item.href)} opacity-90`}
-                    >
-                      <h2 className="text-base font-semibold text-slate-900">{item.title}</h2>
-                      <p className="mt-1 text-sm text-slate-600">{cardDescription(item.href, item.desc)}</p>
-                      <div className="mt-3">
-                        {hasPendingFeatureRequest(item.href) ? (
-                          <span className="inline-flex rounded-full border border-amber-300 bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">
-                            Requested
-                          </span>
-                        ) : (
-                          <button
-                            type="button"
-                            onClick={() => requestFeatureAccess(item.href === "/quick-match" ? "quick_match" : "competition_create")}
-                            className="rounded-full border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100"
-                          >
-                            Request Access
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  ) : (
-                    <Link
-                      key={`${item.href}|${item.title}`}
-                      href={item.href}
-                      onClick={(e) => handleNavClick(e, item.href)}
-                      className={primaryTileClass(item.href)}
-                    >
-                      <h2 className="text-base font-semibold text-slate-900">{item.title}</h2>
-                      <p className="mt-1 text-sm text-slate-600">{cardDescription(item.href, item.desc)}</p>
-                      <span className={`mt-3 inline-flex rounded-full border px-2.5 py-1 text-xs font-semibold ${primaryTileBadgeClass(item.href)}`}>
-                        {primaryTileBadgeText(item.href)}
-                      </span>
-                    </Link>
-                  )
-                ))}
+                <label className="flex w-full items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 py-2.5 shadow-inner focus-within:border-cyan-300 md:max-w-sm">
+                  <span aria-hidden="true" className="text-slate-300">⌕</span>
+                  <input
+                    value={dashboardQuery}
+                    onChange={(event) => setDashboardQuery(event.target.value)}
+                    placeholder="Find a screen or task"
+                    className="min-w-0 flex-1 bg-transparent text-sm text-white outline-none placeholder:text-slate-400"
+                  />
+                </label>
               </div>
             </div>
-          </section>
+
+            <div className="space-y-5 bg-[#f7f9fc] p-4 sm:p-5">
+              {groupedDashboardLinks.map((group) => (
+                <section key={group.title} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <div className="mb-3">
+                    <h3 className="text-base font-bold text-slate-950">{group.title}</h3>
+                    <p className="mt-0.5 text-xs text-slate-500">{group.description}</p>
+                  </div>
+                  <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+                    {group.items.map((item) => (
+                      isDisabledAdminFeature(item.href) ? (
+                        <div key={`${item.href}|${item.title}`} className="rounded-xl border border-slate-200 bg-slate-50 p-3 opacity-90">
+                          <h4 className="text-sm font-semibold text-slate-900">{item.title}</h4>
+                          <p className="mt-1 text-xs leading-5 text-slate-600">{cardDescription(item.href, item.desc)}</p>
+                          <div className="mt-3">
+                            {hasPendingFeatureRequest(item.href) ? (
+                              <span className="inline-flex rounded-lg border border-amber-300 bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-900">Requested</span>
+                            ) : (
+                              <button
+                                type="button"
+                                onClick={() => requestFeatureAccess(item.href === "/quick-match" ? "quick_match" : "competition_create")}
+                                className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-1 text-xs font-semibold text-amber-900 hover:bg-amber-100"
+                              >
+                                Request access
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      ) : (
+                        <Link
+                          key={`${item.href}|${item.title}`}
+                          href={item.href}
+                          onClick={(event) => handleNavClick(event, item.href)}
+                          className="group flex min-h-28 flex-col rounded-xl border border-slate-200 bg-white p-3 transition hover:-translate-y-0.5 hover:border-cyan-400 hover:shadow-md"
+                        >
+                          <div className="flex items-start justify-between gap-3">
+                            <h4 className="text-sm font-semibold text-slate-950">{item.title}</h4>
+                            <span className="grid h-7 w-7 shrink-0 place-items-center rounded-lg bg-slate-100 text-sm text-slate-500 transition group-hover:bg-teal-700 group-hover:text-white">→</span>
+                          </div>
+                          <p className="mt-1 text-xs leading-5 text-slate-600">{cardDescription(item.href, item.desc)}</p>
+                          <span className={`mt-auto pt-3 text-xs font-semibold ${item.href.includes("results") && primaryTileBadgeText(item.href) !== "Open" ? "text-rose-700" : "text-teal-700"}`}>
+                            {primaryTileBadgeText(item.href)}
+                          </span>
+                        </Link>
+                      )
+                    ))}
+                  </div>
+                </section>
+              ))}
+              {groupedDashboardLinks.length === 0 ? (
+                <div className="rounded-2xl border border-slate-200 bg-white p-8 text-center">
+                  <p className="font-semibold text-slate-900">No screens match “{dashboardQuery}”.</p>
+                  <button type="button" onClick={() => setDashboardQuery("")} className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">Clear search</button>
+                </div>
+              ) : null}
+            </div>
+          </details>
 
           {profileModalOpen && !admin.isAdmin ? (
             <div className="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/50 p-4">
@@ -1376,7 +1399,7 @@ export default function HomePage() {
             </div>
           ) : null}
 
-          <section className="rounded-2xl border border-slate-200 bg-white/80 p-3 text-center text-xs text-slate-600 shadow-sm">
+          <section className="mx-4 rounded-2xl border border-slate-200 bg-white/80 p-3 text-center text-xs text-slate-600 shadow-sm sm:mx-0">
             Rack &amp; Frame League Manager &copy; {new Date().getFullYear()} <span className="font-semibold text-slate-800">Martin Chamberlain</span>. All rights reserved.
           </section>
         </RequireAuth>

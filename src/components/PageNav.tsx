@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
 import ConfirmModal from "@/components/ConfirmModal";
+import AppNavigationMenu from "@/components/AppNavigationMenu";
 import { logAudit } from "@/lib/audit";
 
 type PageNavProps = {
@@ -14,10 +15,11 @@ type PageNavProps = {
 
 export default function PageNav({ warnOnNavigate = false, warnMessage = "You have unsaved changes. Leave this screen?" }: PageNavProps) {
   const router = useRouter();
-  const pathname = usePathname();
   const admin = useAdminStatus();
   const [pendingCount, setPendingCount] = useState(0);
   const [pendingNav, setPendingNav] = useState<"back" | "home" | null>(null);
+  const [pendingMenuHref, setPendingMenuHref] = useState<string | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
   const storageKey = useMemo(() => (admin.userId ? `notifications_last_read_${admin.userId}` : "notifications_last_read"), [admin.userId]);
   const dismissedKey = useMemo(
     () => (admin.userId ? `notifications_dismissed_${admin.userId}` : "notifications_dismissed"),
@@ -34,6 +36,13 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
       return;
     }
     setPendingNav(target);
+  };
+
+  const requestMenuNavigation = (href: string) => {
+    if (!warnOnNavigate) return true;
+    setPendingMenuHref(href);
+    setMenuOpen(false);
+    return false;
   };
 
   const onSignOut = async () => {
@@ -58,14 +67,6 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
     }
     router.push("/notifications");
   };
-
-  const leagueManagementRoutes = ["/players", "/signup-requests", "/entry-packs", "/league-invoices", "/league-officer-guide", "/locations", "/results", "/rating-audit"];
-  const ownerManagementRoutes = ["/backup", "/audit", "/usage"];
-  const isManagementPage = Boolean(
-    pathname &&
-      ((admin.canManageLeague && leagueManagementRoutes.includes(pathname)) ||
-        (admin.isSuper && ownerManagementRoutes.includes(pathname)))
-  );
 
   const showBack = true;
 
@@ -122,6 +123,9 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
         const { data: entryPackRows } = await applyCreatedFilter(
           client.from("league_entry_packs").select("id,created_at").eq("status", "submitted")
         );
+        const { data: playerAdditionRows } = await applyCreatedFilter(
+          client.from("league_player_addition_requests").select("id,created_at").eq("status", "pending")
+        );
         const ids = [
           ...(resultRows ?? []).map((r: { id: string }) => `result:${r.id}`),
           ...(claimRows ?? []).map((r: { id: string }) => `claim:${r.id}`),
@@ -129,6 +133,7 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
           ...(adminReqRows ?? []).map((r: { id: string }) => `admin:${r.id}`),
           ...(locationReqRows ?? []).map((r: { id: string }) => `location:${r.id}`),
           ...(entryPackRows ?? []).map((r: { id: string }) => `entry-pack:${r.id}`),
+          ...(playerAdditionRows ?? []).map((r: { id: string }) => `player-addition:${r.id}`),
         ];
         setPendingCount(ids.filter((id) => !dismissed.has(id)).length);
       } else if (admin.isAdmin) {
@@ -156,12 +161,16 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
         const { data: entryPackRows } = admin.canManageLeague
           ? await applyCreatedFilter(client.from("league_entry_packs").select("id,created_at").eq("status", "submitted"))
           : { data: [] as Array<{ id: string }> };
+        const { data: playerAdditionRows } = admin.canManageLeague
+          ? await applyCreatedFilter(client.from("league_player_addition_requests").select("id,created_at").eq("status", "pending"))
+          : { data: [] as Array<{ id: string }> };
         const ids = [
           ...(resultRows ?? []).map((r: { id: string }) => `result:${r.id}`),
           ...updateRows.map((r: { id: string }) => `update:${r.id}`),
           ...(claimRows ?? []).map((r: { id: string }) => `claim:${r.id}`),
           ...(locationRows ?? []).map((r: { id: string }) => `location:${r.id}`),
           ...(entryPackRows ?? []).map((r: { id: string }) => `entry-pack:${r.id}`),
+          ...(playerAdditionRows ?? []).map((r: { id: string }) => `player-addition:${r.id}`),
         ];
         setPendingCount(ids.filter((id) => !dismissed.has(id)).length);
       } else {
@@ -201,45 +210,20 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
   }, [admin.loading, admin.isAdmin, admin.isSuper, admin.canManageLeague, admin.userId, storageKey, dismissedKey]);
 
   return (
-    <div className="flex w-full flex-wrap items-center gap-2 sm:w-auto sm:justify-end">
-      {isManagementPage ? (
-        <>
-          <button
-            type="button"
-            onClick={() => router.push("/players")}
-            className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-          >
-            Users
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push("/results")}
-            className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-          >
-            Results
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push("/league-officer-guide")}
-            className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-          >
-            Officer Guide
-          </button>
-          {admin.isSuper ? (
-            <button
-              type="button"
-              onClick={() => router.push("/audit")}
-              className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-            >
-              Audit
-            </button>
-          ) : null}
-        </>
-      ) : null}
+    <div className="flex w-auto items-center justify-end gap-1.5 sm:gap-2">
+      <button
+        type="button"
+        onClick={() => setMenuOpen(true)}
+        className="inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-[#0f1a31] bg-[#0f1a31] px-3 text-sm font-semibold text-white shadow-sm hover:border-teal-700 hover:bg-teal-800"
+        aria-label="Open app menu"
+      >
+        <span aria-hidden="true" className="text-base leading-none">☰</span>
+        <span>Menu</span>
+      </button>
       <button
         type="button"
         onClick={onNotifications}
-        className="relative whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
+        className="relative grid h-10 w-10 place-items-center whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 text-sm text-slate-700 hover:border-teal-300 hover:bg-teal-50"
         aria-label="Notifications"
       >
         🔔
@@ -250,28 +234,34 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
         ) : null}
       </button>
       {showBack ? (
-        <button type="button" onClick={() => requestNavigation("back")} className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
-          Back
+        <button type="button" aria-label="Go back" onClick={() => requestNavigation("back")} className="hidden h-10 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 hover:border-teal-300 hover:bg-teal-50 sm:inline-flex">
+          <span aria-hidden="true">←</span><span className="hidden lg:inline">Back</span>
         </button>
       ) : null}
-      <button type="button" onClick={() => requestNavigation("home")} className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
-        Home
+      <button type="button" aria-label="Go home" onClick={() => requestNavigation("home")} className="hidden h-10 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 hover:border-teal-300 hover:bg-teal-50 sm:inline-flex">
+        <span aria-hidden="true">⌂</span><span className="hidden lg:inline">Home</span>
       </button>
-      <button type="button" onClick={onSignOut} className="whitespace-nowrap rounded-full border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700">
-        Sign out
+      <button type="button" aria-label="Sign out" onClick={onSignOut} className="hidden h-10 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 sm:inline-flex">
+        <span aria-hidden="true">↪</span><span className="hidden lg:inline">Sign out</span>
       </button>
       <ConfirmModal
-        open={Boolean(pendingNav)}
+        open={Boolean(pendingNav || pendingMenuHref)}
         title="Unsaved changes"
         description={warnMessage}
         confirmLabel="Leave screen"
         cancelLabel="Stay"
         onConfirm={() => {
-          if (pendingNav) performNavigation(pendingNav);
+          if (pendingMenuHref) router.push(pendingMenuHref);
+          else if (pendingNav) performNavigation(pendingNav);
           setPendingNav(null);
+          setPendingMenuHref(null);
         }}
-        onCancel={() => setPendingNav(null)}
+        onCancel={() => {
+          setPendingNav(null);
+          setPendingMenuHref(null);
+        }}
       />
+      <AppNavigationMenu open={menuOpen} onClose={() => setMenuOpen(false)} onSignOut={onSignOut} onNavigate={requestMenuNavigation} />
     </div>
   );
 }

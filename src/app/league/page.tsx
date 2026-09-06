@@ -1,13 +1,33 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import useAdminStatus from "@/components/useAdminStatus";
 import MessageModal from "@/components/MessageModal";
 import InfoModal from "@/components/InfoModal";
 import ConfirmModal from "@/components/ConfirmModal";
+import LeagueWorkspaceSwitcher, {
+  type LeagueWorkspaceView,
+} from "@/components/league/LeagueWorkspaceSwitcher";
+import LeagueAreaWorkbench from "@/components/league/LeagueAreaWorkbench";
+import {
+  LeaguePlayerTable,
+  LeagueStandings,
+  type PlayerTableMode,
+} from "@/components/league/LeagueTables";
+import {
+  GuidedSetup,
+  LeagueAreaGuide,
+  LeagueSnapshot,
+  PublishedLeagueStatus,
+} from "@/components/league/LeagueOverviewPanels";
+import TeamsPlayersView from "@/components/league/TeamsPlayersView";
+import VenueRegistryPanel from "@/components/league/VenueRegistryPanel";
+import LeagueCreationPanel, { type LeagueTemplateOption } from "@/components/league/LeagueCreationPanel";
+import SeasonRosterEditor from "@/components/league/SeasonRosterEditor";
 import { useAppDialog } from "@/components/AppDialogProvider";
 import { supabase } from "@/lib/supabase";
 import { calculateAdjustedScoresWithCap, MAX_SNOOKER_START } from "@/lib/snooker-handicap";
@@ -48,6 +68,9 @@ type Season = {
   singles_count?: number | null;
   doubles_count?: number | null;
 };
+type LeagueView = LeagueWorkspaceView;
+const MANAGED_LEAGUE_VIEWS: LeagueView[] = ["guide", "teamManagement", "venues", "profiles", "setup", "knockouts", "fixtures", "table", "playerTable", "handicaps"];
+const MEMBER_LEAGUE_VIEWS: LeagueView[] = ["knockouts", "fixtures", "table", "playerTable"];
 type PremierResetPreview = {
   season: Season;
   totalPlayers: number;
@@ -140,7 +163,7 @@ type PlayerTableRow = {
   points_against: number;
   win_pct: number;
 };
-type PlayerTableView = "all" | "singles" | "doubles" | "total";
+type PlayerTableView = PlayerTableMode;
 type SubmissionBreakEntry = {
   player_id: string | null;
   entered_player_name: string | null;
@@ -660,9 +683,12 @@ const describeFixtureReschedule = (request?: FixtureChangeRequest | null) => {
   };
 };
 
-export default function LeaguePage() {
+function LeaguePageContent() {
   const { showConfirm } = useAppDialog();
   const admin = useAdminStatus();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [guidedTarget, setGuidedTarget] = useState<null | "create-league" | "add-league-teams" | "assign-players" | "generate-fixtures" | "publish-league">(null);
   const [highlightedGuidedTarget, setHighlightedGuidedTarget] = useState<null | "create-league" | "add-league-teams" | "assign-players" | "generate-fixtures" | "publish-league">(null);
   const [message, setMessage] = useState<string | null>(null);
@@ -706,7 +732,7 @@ export default function LeaguePage() {
   >({});
   const [competitionClubEntryDrafts, setCompetitionClubEntryDrafts] = useState<Record<string, string[]>>({});
   const [competitionClubEntryBusyKey, setCompetitionClubEntryBusyKey] = useState<string | null>(null);
-  const [activeView, setActiveView] = useState<"guide" | "teamManagement" | "venues" | "profiles" | "setup" | "knockouts" | "fixtures" | "table" | "playerTable" | "handicaps">("guide");
+  const [activeView, setActiveView] = useState<LeagueView>("guide");
   const [playerTableView, setPlayerTableView] = useState<PlayerTableView>("all");
 
   const [selectedLeagueTeamNames, setSelectedLeagueTeamNames] = useState<string[]>([]);
@@ -803,6 +829,27 @@ export default function LeaguePage() {
     () => (canManage ? seasons : seasons.filter((s) => Boolean(s.is_published))),
     [canManage, seasons]
   );
+  const updateLeagueUrl = (nextView: LeagueView, nextSeasonId = seasonId) => {
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("view", nextView);
+    if (nextSeasonId) params.set("seasonId", nextSeasonId);
+    else params.delete("seasonId");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+  const selectLeagueView = (nextView: LeagueView) => {
+    setActiveView(nextView);
+    updateLeagueUrl(nextView);
+  };
+  const selectLeagueSeason = (nextSeasonId: string) => {
+    if (typeof window !== "undefined") {
+      if (nextSeasonId) window.localStorage.setItem("rf_selected_league_season", nextSeasonId);
+      else window.localStorage.removeItem("rf_selected_league_season");
+    }
+    // Let the URL synchronization effect apply the selection. Updating local
+    // state first allows the still-stale search params to restore the previous
+    // league and causes the two league values to repeatedly replace each other.
+    updateLeagueUrl(activeView, nextSeasonId);
+  };
   const seasonById = useMemo(() => new Map(seasons.map((s) => [s.id, s])), [seasons]);
   const currentSeasonSinglesCount = Math.max(1, Math.min(10, currentSeason?.singles_count ?? 4));
   const currentSeasonDoublesCount = Math.max(0, Math.min(4, currentSeason?.doubles_count ?? 1));
@@ -1439,6 +1486,14 @@ export default function LeaguePage() {
       setActiveView("fixtures");
     }
   }, [admin.loading, canManage, activeView]);
+  useEffect(() => {
+    if (admin.loading || typeof window === "undefined") return;
+    const requestedView = searchParams.get("view");
+    const permittedViews = canManage ? MANAGED_LEAGUE_VIEWS : MEMBER_LEAGUE_VIEWS;
+    if (requestedView && permittedViews.includes(requestedView as LeagueView)) {
+      setActiveView(requestedView as LeagueView);
+    }
+  }, [admin.loading, canManage, searchParams]);
   const pendingFixtureSubmission = useMemo(
     () => submissions.find((s) => s.fixture_id === fixtureId && s.status === "pending") ?? null,
     [submissions, fixtureId]
@@ -1516,22 +1571,7 @@ export default function LeaguePage() {
     const doublesNo = slotNo - cfg.singles;
     return cfg.doubles === 1 ? "Doubles" : `Doubles ${doublesNo}`;
   };
-  const leagueTabClass = (view: "guide" | "teamManagement" | "venues" | "profiles" | "setup" | "knockouts" | "fixtures" | "table" | "playerTable" | "handicaps") => {
-    const active = activeView === view;
-    const base = "w-full rounded-full border px-3 py-2 text-center text-sm font-semibold transition";
-    if (view === "guide") return `${base} ${active ? "border-slate-800 bg-slate-900 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`;
-    if (view === "teamManagement") return `${base} ${active ? "border-indigo-700 bg-indigo-700 text-white" : "border-indigo-300 bg-indigo-50 text-indigo-900 hover:bg-indigo-100"}`;
-    if (view === "venues") return `${base} ${active ? "border-teal-700 bg-teal-700 text-white" : "border-teal-300 bg-teal-50 text-teal-900 hover:bg-teal-100"}`;
-    if (view === "profiles") return `${base} ${active ? "border-sky-700 bg-sky-700 text-white" : "border-sky-300 bg-sky-50 text-sky-900 hover:bg-sky-100"}`;
-    if (view === "setup") return `${base} ${active ? "border-cyan-700 bg-cyan-700 text-white" : "border-cyan-300 bg-cyan-50 text-cyan-900 hover:bg-cyan-100"}`;
-    if (view === "knockouts") return `${base} ${active ? "border-fuchsia-700 bg-fuchsia-700 text-white" : "border-fuchsia-300 bg-fuchsia-50 text-fuchsia-900 hover:bg-fuchsia-100"}`;
-    if (view === "handicaps") return `${base} ${active ? "border-violet-700 bg-violet-700 text-white" : "border-violet-300 bg-violet-50 text-violet-900 hover:bg-violet-100"}`;
-    if (view === "fixtures") return `${base} ${active ? "border-amber-700 bg-amber-700 text-white" : "border-amber-300 bg-amber-50 text-amber-900 hover:bg-amber-100"}`;
-    if (view === "table") return `${base} ${active ? "border-emerald-700 bg-emerald-700 text-white" : "border-emerald-300 bg-emerald-50 text-emerald-900 hover:bg-emerald-100"}`;
-    return `${base} ${active ? "border-fuchsia-700 bg-fuchsia-700 text-white" : "border-fuchsia-300 bg-fuchsia-50 text-fuchsia-900 hover:bg-fuchsia-100"}`;
-  };
-  const activeViewDescription =
-    activeView === "guide"
+  const activeViewDescription = activeView === "guide"
       ? "League-wide summary and operating overview."
       : activeView === "teamManagement"
         ? "Register teams and players, assign captains, and handle transfers."
@@ -2061,6 +2101,13 @@ export default function LeaguePage() {
       if (seasonId) setSeasonId("");
       return;
     }
+    const requestedSeasonId = searchParams.get("seasonId");
+    const rememberedSeasonId = typeof window !== "undefined" ? window.localStorage.getItem("rf_selected_league_season") : null;
+    const preferredRequestedId = requestedSeasonId || rememberedSeasonId;
+    if (preferredRequestedId && visibleSeasons.some((season) => season.id === preferredRequestedId)) {
+      if (preferredRequestedId !== seasonId) setSeasonId(preferredRequestedId);
+      return;
+    }
     if (!canManage && currentUserPlayerId) {
       const memberSeasonIds = new Set(
         members.filter((m) => m.player_id === currentUserPlayerId).map((m) => m.season_id)
@@ -2074,7 +2121,24 @@ export default function LeaguePage() {
     if (!visibleSeasons.some((s) => s.id === seasonId)) {
       setSeasonId(visibleSeasons[0].id);
     }
-  }, [visibleSeasons, seasonId, canManage, currentUserPlayerId, members]);
+  }, [visibleSeasons, seasonId, canManage, currentUserPlayerId, members, searchParams]);
+
+  useEffect(() => {
+    if (!seasonId || typeof window === "undefined") return;
+    window.localStorage.setItem("rf_selected_league_season", seasonId);
+    const requestedSeasonId = searchParams.get("seasonId");
+    const requestedSeasonIsValid = Boolean(
+      requestedSeasonId && visibleSeasons.some((season) => season.id === requestedSeasonId)
+    );
+    // A valid URL selection is authoritative. The effect above will bring
+    // local state into line; replacing it here with the previous state would
+    // make Premier League and Division 1 continually swap back and forth.
+    if (!requestedSeasonIsValid && requestedSeasonId !== seasonId) {
+      const requestedView = searchParams.get("view");
+      const permittedViews = canManage ? MANAGED_LEAGUE_VIEWS : MEMBER_LEAGUE_VIEWS;
+      updateLeagueUrl(requestedView && permittedViews.includes(requestedView as LeagueView) ? requestedView as LeagueView : activeView, seasonId);
+    }
+  }, [seasonId, activeView, canManage, searchParams, visibleSeasons]);
 
   useEffect(() => {
     if (!seasonTeams.length) {
@@ -2220,7 +2284,7 @@ export default function LeaguePage() {
     setSeasonName("2026/2027");
     setSeasonTemplate("premier");
     setSeasonHandicapEnabled(true);
-    setSeasonId(ins.data.id);
+    selectLeagueSeason(ins.data.id);
     await loadAll();
     setInfoModal({
       title: "League Created",
@@ -2430,6 +2494,7 @@ export default function LeaguePage() {
     }
     let created = 0;
     let addedToTeam = 0;
+    let addedToCurrentSeason = 0;
     const issues: string[] = [];
     const seenFullNames = new Set<string>();
     for (const row of parsed) {
@@ -2468,6 +2533,7 @@ export default function LeaguePage() {
       }
       created += 1;
       if (registryTeamId) {
+        const selectedRegisteredTeam = registeredTeams.find((team) => team.id === registryTeamId) ?? null;
         const memberInsert = await client.from("league_registered_team_members").insert({
           team_id: registryTeamId,
           player_id: playerInsert.data.id,
@@ -2478,6 +2544,24 @@ export default function LeaguePage() {
           issues.push(`${fullName}: created, team add failed`);
         } else {
           addedToTeam += 1;
+          const matchingSeasonTeam = selectedRegisteredTeam
+            ? seasonTeams.find(
+                (team) =>
+                  team.location_id === selectedRegisteredTeam.location_id &&
+                  team.name.trim().toLowerCase() === selectedRegisteredTeam.name.trim().toLowerCase()
+              )
+            : null;
+          if (matchingSeasonTeam && seasonId) {
+            const seasonInsert = await client.from("league_team_members").insert({
+              season_id: seasonId,
+              team_id: matchingSeasonTeam.id,
+              player_id: playerInsert.data.id,
+              is_captain: false,
+              is_vice_captain: false,
+            });
+            if (seasonInsert.error) issues.push(`${fullName}: created and added to reusable team, current season roster add failed`);
+            else addedToCurrentSeason += 1;
+          }
         }
       }
     }
@@ -2487,8 +2571,8 @@ export default function LeaguePage() {
       title: "Bulk Player Register Complete",
       description:
         issues.length > 0
-          ? `Created ${created}. Added to team ${addedToTeam}.\n\nThe following names were not created:\n- ${issues.slice(0, 5).join("\n- ")}${issues.length > 5 ? `\n- ${issues.length - 5} more issue(s)` : ""}\n\nIf a player already exists, use the existing player record and add them to the required team.`
-          : `Created ${created} player(s)${registryTeamId ? ` and added ${addedToTeam} to selected team` : ""}.`,
+          ? `Created ${created}. Added ${addedToTeam} to the reusable team and ${addedToCurrentSeason} to the matching current season roster.\n\nThe following names need attention:\n- ${issues.slice(0, 5).join("\n- ")}${issues.length > 5 ? `\n- ${issues.length - 5} more issue(s)` : ""}\n\nIf a player already exists, use the existing player record and add them to the required team.`
+          : `Created ${created} player(s)${registryTeamId ? `, added ${addedToTeam} to the reusable team and ${addedToCurrentSeason} to the matching current season roster` : ""}.`,
     });
   };
 
@@ -2633,6 +2717,51 @@ export default function LeaguePage() {
     const displayName = fullName;
     const existingPlayer = findExistingPlayerRecord(fullName);
     if (existingPlayer) {
+      if (addToSelectedTeam && registryTeamId) {
+        const selectedTeam = registeredTeams.find((team) => team.id === registryTeamId) ?? null;
+        if (!selectedTeam || selectedTeam.location_id !== newPlayerLocationId || existingPlayer.location_id !== newPlayerLocationId) {
+          setInfoModal({
+            title: "Player Already Exists",
+            description: `${describeExistingPlayerPlacement(existingPlayer)} Select that player's existing club and team before adding them.`,
+          });
+          return;
+        }
+        const matchingSeasonTeam = seasonTeams.find(
+          (team) =>
+            team.location_id === selectedTeam.location_id &&
+            team.name.trim().toLowerCase() === selectedTeam.name.trim().toLowerCase()
+        ) ?? null;
+        const seasonConflicts = members.filter(
+          (member) => member.season_id === seasonId && member.player_id === existingPlayer.id && member.team_id !== matchingSeasonTeam?.id
+        );
+        if (seasonConflicts.length > 0) {
+          setInfoModal({
+            title: "Season Roster Conflict",
+            description: `${named(existingPlayer)} is already assigned to another team in the selected league. Remove or transfer that season assignment before continuing.`,
+          });
+          return;
+        }
+        const alreadyInTemplate = (registeredMembersByTeam.get(selectedTeam.id) ?? []).some((member) => member.player_id === existingPlayer.id);
+        if (!alreadyInTemplate) {
+          const templateInsert = await client.from("league_registered_team_members").insert({ team_id: selectedTeam.id, player_id: existingPlayer.id, is_captain: false, is_vice_captain: false });
+          if (templateInsert.error) return setMessage(templateInsert.error.message);
+        }
+        const alreadyInSeason = matchingSeasonTeam
+          ? members.some((member) => member.season_id === seasonId && member.team_id === matchingSeasonTeam.id && member.player_id === existingPlayer.id)
+          : false;
+        if (matchingSeasonTeam && seasonId && !alreadyInSeason) {
+          const seasonInsert = await client.from("league_team_members").insert({ season_id: seasonId, team_id: matchingSeasonTeam.id, player_id: existingPlayer.id, is_captain: false, is_vice_captain: false });
+          if (seasonInsert.error) return setMessage(seasonInsert.error.message);
+        }
+        await loadAll();
+        setInfoModal({
+          title: "Existing Player Added",
+          description: matchingSeasonTeam
+            ? `${named(existingPlayer)} was already registered and has now been added to ${matchingSeasonTeam.name}'s current season roster and reusable team list.`
+            : `${named(existingPlayer)} was already registered and has now been added to the reusable team list. The team is not in the currently selected league, so no season roster was changed.`,
+        });
+        return;
+      }
       setInfoModal({
         title: "Player Already Exists",
         description: `${describeExistingPlayerPlacement(existingPlayer)} Use the existing player record instead of creating a new one.`,
@@ -2662,6 +2791,7 @@ export default function LeaguePage() {
       setMessage(`Failed to register player: ${playerInsert.error.message}`);
       return;
     }
+    let addedToCurrentSeasonTeam: Team | null = null;
     if (addToSelectedTeam) {
       if (!registryTeamId) {
         setMessage("Player created for club. Select a team to add them.");
@@ -2684,6 +2814,28 @@ export default function LeaguePage() {
         setMessage(`Player was created, but could not be added to team: ${memberInsert.error.message}`);
         return;
       }
+      const matchingSeasonTeam = seasonTeams.find(
+        (team) =>
+          team.location_id === selectedTeam.location_id &&
+          team.name.trim().toLowerCase() === selectedTeam.name.trim().toLowerCase()
+      );
+      if (matchingSeasonTeam && seasonId) {
+        const seasonMemberInsert = await client.from("league_team_members").insert({
+          season_id: seasonId,
+          team_id: matchingSeasonTeam.id,
+          player_id: playerInsert.data.id,
+          is_captain: false,
+          is_vice_captain: false,
+        });
+        if (seasonMemberInsert.error) {
+          setMessage(
+            `${fullName} was created and added to the registered-team template, but could not be added to the current ${matchingSeasonTeam.name} season roster: ${seasonMemberInsert.error.message}`
+          );
+          await loadAll();
+          return;
+        }
+        addedToCurrentSeasonTeam = matchingSeasonTeam;
+      }
     }
     setNewPlayerFirstName("");
     setNewPlayerSecondName("");
@@ -2692,7 +2844,9 @@ export default function LeaguePage() {
     setInfoModal({
       title: "Player Registered",
       description: addToSelectedTeam
-        ? `${fullName} was created for the club and added to the selected team.`
+        ? addedToCurrentSeasonTeam
+          ? `${fullName} was created and added to ${addedToCurrentSeasonTeam.name}'s current season roster and reusable team list.`
+          : `${fullName} was created for the club and added to the reusable team list. That team is not in the currently selected league, so no season roster was changed.`
         : `${fullName} was created for the selected club.`,
     });
   };
@@ -5501,7 +5655,7 @@ export default function LeaguePage() {
       return;
     }
     setConfirmDeleteOpen(false);
-    setSeasonId("");
+    selectLeagueSeason("");
     await loadAll();
     setInfoModal({ title: "League Deleted", description: "League and related data were deleted." });
   };
@@ -6364,251 +6518,35 @@ export default function LeaguePage() {
 
           {canViewLeague ? (
             <>
-              <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                <div className={canManage ? "grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-10" : "grid grid-cols-2 gap-2 sm:grid-cols-4"}>
-                  {canManage ? (
-                    <>
-                      <button type="button" onClick={() => setActiveView("guide")} className={leagueTabClass("guide")}>
-                        Summary
-                      </button>
-                      <button type="button" onClick={() => setActiveView("teamManagement")} className={leagueTabClass("teamManagement")}>
-                        Team Management
-                      </button>
-                      <button type="button" onClick={() => setActiveView("venues")} className={leagueTabClass("venues")}>
-                        Venues
-                      </button>
-                      <button type="button" onClick={() => setActiveView("profiles")} className={leagueTabClass("profiles")}>
-                        Teams &amp; Players
-                      </button>
-                      <button type="button" onClick={() => setActiveView("setup")} className={leagueTabClass("setup")}>
-                        League Setup
-                      </button>
-                    </>
-                  ) : null}
-                  <button type="button" onClick={() => setActiveView("fixtures")} className={leagueTabClass("fixtures")}>
-                    Fixtures
-                  </button>
-                  <button type="button" onClick={() => setActiveView("table")} className={leagueTabClass("table")}>
-                    League Table
-                  </button>
-                  <button type="button" onClick={() => setActiveView("playerTable")} className={leagueTabClass("playerTable")}>
-                    Player Table
-                  </button>
-                  <button type="button" onClick={() => setActiveView("knockouts")} className={leagueTabClass("knockouts")}>
-                    Knockout Cups
-                  </button>
-                  {canManage ? (
-                    <button type="button" onClick={() => setActiveView("handicaps")} className={leagueTabClass("handicaps")}>
-                      Handicaps
-                    </button>
-                  ) : null}
-                </div>
-                <p className="mt-2 text-xs text-slate-600">{activeViewDescription}</p>
-              </section>
-              {canManage ? (
-                <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                  <details className="group" open={activeView === "guide"}>
-                    <summary className="cursor-pointer list-none text-sm font-semibold text-slate-900">
-                      {activeGuide.title}
-                      <span className="ml-2 text-xs font-medium text-slate-500 group-open:hidden">Show guide</span>
-                      <span className="ml-2 text-xs font-medium text-slate-500 hidden group-open:inline">Hide guide</span>
-                    </summary>
-                    <ul className="mt-2 list-disc space-y-1 pl-5 text-xs text-slate-700">
-                      {activeGuide.points.map((point) => (
-                        <li key={point}>{point}</li>
-                      ))}
-                    </ul>
-                  </details>
-                </section>
-              ) : null}
+              <LeagueWorkspaceSwitcher
+                seasons={visibleSeasons}
+                selectedSeasonId={seasonId}
+                selectedView={activeView}
+                currentSeason={currentSeason}
+                canManage={canManage}
+                description={activeViewDescription}
+                formatSeasonLabel={seasonDisplayLabel}
+                onSeasonChange={selectLeagueSeason}
+                onViewChange={selectLeagueView}
+              />
+              {canManage ? <LeagueAreaGuide title={activeGuide.title} points={activeGuide.points} expanded={activeView === "guide"} /> : null}
               {canManage ? (
                 currentSeason?.is_published ? (
-                  <section className={`rounded-2xl border p-4 shadow-sm ${
-                    currentSeason.is_active === false
-                      ? "border-slate-300 bg-gradient-to-br from-white via-slate-100 to-slate-50"
-                      : "border-emerald-300 bg-gradient-to-br from-white via-emerald-50 to-sky-50"
-                  }`}>
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">League status</p>
-                        <h2 className="mt-1 text-xl font-black text-slate-950">
-                          {currentSeason.is_active === false ? "This league is completed" : "This league is active"}
-                        </h2>
-                        <p className="mt-1 text-sm text-slate-600">
-                          <span className="font-semibold text-slate-800">{currentSeason.name}</span>
-                          {currentSeason.is_active === false
-                            ? " is retained as history. Fixtures, results and tables remain visible, but captains cannot submit new results."
-                            : " is published and open for fixtures, administration and captain result submissions."}
-                        </p>
-                      </div>
-                      <span className={`rounded-full border px-4 py-1.5 text-sm font-bold ${
-                        currentSeason.is_active === false
-                          ? "border-slate-400 bg-slate-200 text-slate-900"
-                          : "border-emerald-400 bg-emerald-100 text-emerald-900"
-                      }`}>
-                        {currentSeason.is_active === false ? "Completed" : "Active"}
-                      </span>
-                    </div>
-                    <div className={`mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border p-3 ${
-                      currentSeason.is_active === false
-                        ? "border-teal-200 bg-white"
-                        : "border-amber-300 bg-amber-50"
-                    }`}>
-                      <div>
-                        <p className="text-sm font-semibold text-slate-950">
-                          {currentSeason.is_active === false ? "Need to accept more results?" : "Has the league season finished?"}
-                        </p>
-                        <p className="mt-1 text-xs text-slate-600">
-                          {currentSeason.is_active === false
-                            ? "Reopening restores league activity and captain result submissions."
-                            : "Mark it completed to close result submissions without deleting any league history."}
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setConfirmCompletionOpen(true)}
-                        className={`rounded-xl px-5 py-2.5 text-sm font-bold text-white shadow-sm ${
-                          currentSeason.is_active === false ? "bg-teal-700 hover:bg-teal-800" : "bg-slate-900 hover:bg-slate-800"
-                        }`}
-                      >
-                        {currentSeason.is_active === false ? "Reopen this league" : "Mark league as completed"}
-                      </button>
-                    </div>
-                    <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                      <button
-                        type="button"
-                        onClick={() => openLeagueSnapshotTarget("teamManagement", "assign-players")}
-                        className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                      >
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-700">Teams</p>
-                        <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.teams}</p>
-                        <p className="mt-1 text-xs text-slate-600">League teams currently assigned.</p>
-                        <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">Open Team Management</p>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "all")}
-                        className="rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                      >
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Fixtures</p>
-                        <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.fixtures}</p>
-                        <p className="mt-1 text-xs text-slate-600">Generated and available in the published season.</p>
-                        <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-sky-700">Open Fixtures</p>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "in_progress")}
-                        className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                      >
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">In Progress</p>
-                        <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.inProgress}</p>
-                        <p className="mt-1 text-xs text-slate-600">Fixtures currently carrying live admin or captain activity.</p>
-                        <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Review Active Fixtures</p>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "pending_review")}
-                        className="rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                      >
-                        <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Pending Approvals</p>
-                        <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.pendingApprovals}</p>
-                        <p className="mt-1 text-xs text-slate-600">Use Fixtures and Results Queue for any remaining actions.</p>
-                        <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-amber-700">Open Fixture Actions</p>
-                      </button>
-                    </div>
-                  </section>
+                  <PublishedLeagueStatus
+                    season={currentSeason}
+                    summary={seasonSummary}
+                    onToggleCompletion={() => setConfirmCompletionOpen(true)}
+                    onOpen={openLeagueSnapshotTarget}
+                  />
                 ) : (
-                  <section className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-white via-indigo-50 to-sky-50 p-4 shadow-sm">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <h2 className="text-lg font-semibold text-slate-900">Guided setup</h2>
-                        <p className="mt-1 text-sm text-slate-600">
-                          Follow the league creation flow in order. The existing tabs still work for direct editing, but this checklist keeps the setup sequence clear.
-                        </p>
-                      </div>
-                      {nextGuidedStep ? (
-                        <button
-                          type="button"
-                          onClick={() => openGuidedTarget(nextGuidedStep.view, nextGuidedStep.target)}
-                          className="rounded-xl border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-900"
-                        >
-                          Next: {nextGuidedStep.actionLabel}
-                        </button>
-                      ) : (
-                        <span className="rounded-full border border-emerald-300 bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-900">
-                          Setup complete
-                        </span>
-                      )}
-                    </div>
-                    <div className="mt-4 grid gap-3 lg:grid-cols-5">
-                      {guidedSetupSteps.map((step) => (
-                        <div key={step.key} className="rounded-xl border border-slate-200 bg-white p-3">
-                          <div className="flex items-center justify-between gap-2">
-                            <p className="text-sm font-semibold text-slate-900">{step.title}</p>
-                            <span
-                              className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${
-                                step.done
-                                  ? "border-emerald-300 bg-emerald-100 text-emerald-900"
-                                  : "border-amber-300 bg-amber-100 text-amber-900"
-                              }`}
-                            >
-                              {step.done ? "Complete" : "Needs attention"}
-                            </span>
-                          </div>
-                          <p className="mt-2 text-xs text-slate-600">{step.detail}</p>
-                          <button
-                            type="button"
-                            onClick={() => {
-                              if (step.key === "publish" && !step.done && publishBlockers.length === 0) {
-                                void publishLeague();
-                                return;
-                              }
-                              openGuidedTarget(step.view, step.target);
-                            }}
-                            disabled={step.key === "publish" && !step.done && publishBlockers.length > 0}
-                            className="mt-3 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-medium text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
-                          >
-                            {step.actionLabel}
-                          </button>
-                        </div>
-                      ))}
-                    </div>
-                    <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
-                      <p className="text-sm font-semibold text-slate-900">Publish checklist</p>
-                      {publishBlockers.length === 0 ? (
-                        <p className="mt-2 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-sm font-medium text-emerald-800">
-                          This league is ready to publish.
-                        </p>
-                      ) : (
-                        <div className="mt-2 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                          <p className="text-sm font-semibold text-amber-900">Action still required before publish</p>
-                          <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-amber-900">
-                            {publishBlockers.map((blocker) => (
-                              <li key={blocker}>{blocker}</li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                    </div>
-                  </section>
+                  <GuidedSetup
+                    steps={guidedSetupSteps}
+                    nextStep={nextGuidedStep}
+                    blockers={publishBlockers}
+                    onOpen={openGuidedTarget}
+                    onPublish={() => void publishLeague()}
+                  />
                 )
-              ) : null}
-              {!canManage ? (
-                <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                  <label className="mb-1 block text-xs uppercase tracking-wide text-slate-500">Published League</label>
-                  <select
-                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
-                    value={seasonId}
-                    onChange={(e) => setSeasonId(e.target.value)}
-                  >
-                    <option value="">Select published league</option>
-                    {visibleSeasons.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {seasonDisplayLabel(s)}
-                      </option>
-                    ))}
-                  </select>
-                </section>
               ) : null}
               {!seasonId && (activeView === "fixtures" || activeView === "table" || activeView === "playerTable") ? (
                 <section className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-amber-900">
@@ -6616,278 +6554,52 @@ export default function LeaguePage() {
                 </section>
               ) : null}
               {seasonId && activeView === "guide" ? (
-                <section className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm">
-                  <div className="flex flex-wrap items-end justify-between gap-3">
-                    <div>
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">League Snapshot</p>
-                      <h2 className="mt-1 text-xl font-black text-slate-950">{seasonDisplayLabel(currentSeason ?? { name: "League", handicap_enabled: false })}</h2>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {currentSeason?.is_active === false
-                          ? "This league has finished. Its fixtures, results and tables are retained as league history."
-                          : "Use this as the operating summary for setup progress, fixture completion, and review workload."}
-                      </p>
-                    </div>
-                    {currentSeason?.is_active === false ? (
-                      <span className="rounded-full border border-slate-300 bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-800">
-                        League completed
-                      </span>
-                    ) : null}
-                    <div
-                      className={`rounded-full px-3 py-1 text-xs font-semibold ${
-                        seasonSummary.pendingApprovals > 0 ? "border border-amber-300 bg-amber-100 text-amber-900" : "border border-emerald-300 bg-emerald-100 text-emerald-900"
-                      }`}
-                    >
-                      {seasonSummary.pendingApprovals > 0 ? `${seasonSummary.pendingApprovals} approval${seasonSummary.pendingApprovals === 1 ? "" : "s"} require attention` : "No approval backlog"}
-                    </div>
-                  </div>
-                  <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
-                    <button
-                      type="button"
-                      onClick={() => openLeagueSnapshotTarget("teamManagement", "assign-players")}
-                      className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                    >
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-700">Teams</p>
-                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.teams}</p>
-                      <p className="mt-1 text-xs text-slate-600">League entries in the selected season.</p>
-                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">Review Team Setup</p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "all")}
-                      className="rounded-xl border border-sky-200 bg-gradient-to-br from-sky-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                    >
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-sky-700">Fixtures</p>
-                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.fixtures}</p>
-                      <p className="mt-1 text-xs text-slate-600">Scheduled matches generated so far.</p>
-                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-sky-700">Open Fixtures</p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "complete")}
-                      className="rounded-xl border border-emerald-200 bg-gradient-to-br from-emerald-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                    >
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-700">Complete</p>
-                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.complete}</p>
-                      <p className="mt-1 text-xs text-slate-600">Fixtures with approved results.</p>
-                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-emerald-700">Review Completed Fixtures</p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "in_progress")}
-                      className="rounded-xl border border-indigo-200 bg-gradient-to-br from-indigo-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                    >
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-700">In Progress</p>
-                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.inProgress}</p>
-                      <p className="mt-1 text-xs text-slate-600">Fixtures with a live submission or partial entry.</p>
-                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">Review Active Fixtures</p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "pending")}
-                      className="rounded-xl border border-slate-200 bg-gradient-to-br from-slate-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                    >
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-600">Pending Fixtures</p>
-                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.pending}</p>
-                      <p className="mt-1 text-xs text-slate-600">Still waiting to be played or submitted.</p>
-                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-slate-600">Open Fixture Schedule</p>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => openLeagueSnapshotTarget("fixtures", undefined, "pending_review")}
-                      className="rounded-xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-3 text-left shadow-sm transition hover:-translate-y-0.5 hover:shadow-md"
-                    >
-                      <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Pending Approvals</p>
-                      <p className="mt-2 text-2xl font-black text-slate-950">{seasonSummary.pendingApprovals}</p>
-                      <p className="mt-1 text-xs text-slate-600">Results or fixture requests awaiting action.</p>
-                      <p className="mt-3 text-[11px] font-semibold uppercase tracking-wide text-amber-700">Open Review Work</p>
-                    </button>
-                  </div>
-                </section>
+                <LeagueSnapshot
+                  seasonLabel={seasonDisplayLabel(currentSeason ?? { name: "League", handicap_enabled: false })}
+                  completed={currentSeason?.is_active === false}
+                  summary={seasonSummary}
+                  onOpen={openLeagueSnapshotTarget}
+                />
               ) : null}
-
               {activeView === "setup" ? (
               <section className="rounded-2xl border border-teal-200 bg-gradient-to-br from-white to-teal-50 p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-teal-900">League Setup</h2>
-                <div className="mt-3 rounded-xl border border-teal-200 bg-white p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Current setup position</p>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {currentSeason?.is_published
-                          ? "This league is already published. Use the tabs below for maintenance, fixture management, and any live updates."
-                          : nextGuidedStep
-                          ? `Next recommended step: ${nextGuidedStep.title.replace(/^\d+\.\s*/, "")}.`
-                          : "This league setup is complete. You can still return here to edit league details or publish status."}
-                      </p>
-                    </div>
-                    {currentSeason?.is_published ? (
-                      <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${
-                        currentSeason.is_active === false
-                          ? "border-slate-300 bg-slate-100 text-slate-800"
-                          : "border-emerald-300 bg-emerald-100 text-emerald-900"
-                      }`}>
-                        {currentSeason.is_active === false ? "League completed" : "League published"}
-                      </span>
-                    ) : nextGuidedStep ? (
-                      <button
-                        type="button"
-                        onClick={() => openGuidedTarget(nextGuidedStep.view, nextGuidedStep.target)}
-                        className="rounded-xl border border-teal-300 bg-teal-50 px-4 py-2 text-sm font-medium text-teal-900"
-                      >
-                        Go to {nextGuidedStep.actionLabel}
-                      </button>
-                    ) : null}
-                  </div>
-                </div>
-                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">League body</p>
-                  <p className="text-sm font-semibold text-slate-900">{LEAGUE_BODY_NAME}</p>
-                </div>
-                <div
-                  className={`mt-3 rounded-2xl border p-3 ${
-                    currentSeason?.is_published
-                      ? "border-slate-200 bg-slate-50/80"
-                      : "border-slate-200 bg-white"
-                  }`}
-                >
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Create a new league</p>
-                      <p className="mt-1 text-sm text-slate-600">
-                        {currentSeason?.is_published
-                          ? "The selected league is already live. These creation controls are softened so the tab reads as maintenance-first. Use them only when you are creating the next league."
-                          : "Use these controls to create the next draft league before you move on to teams, fixtures, and publishing."}
-                      </p>
-                    </div>
-                    {currentSeason?.is_published ? (
-                      <span className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
-                        Creation controls softened
-                      </span>
-                    ) : null}
-                  </div>
-                  <div
-                    id="guided-create-league"
-                    className={`mt-3 grid gap-2 sm:grid-cols-4 scroll-mt-24 ${guidedSectionClass("create-league")} ${
-                      currentSeason?.is_published ? "opacity-60" : ""
-                    }`}
-                  >
-                    <select
-                      className="rounded-xl border border-slate-300 bg-white px-3 py-2"
-                      value={seasonTemplate}
-                      onChange={(e) => {
-                        const nextTemplate = e.target.value as LeagueTemplateKey;
-                        setSeasonTemplate(nextTemplate);
-                        setSeasonHandicapEnabled(LEAGUE_TEMPLATES[nextTemplate].handicapEnabled);
-                      }}
-                    >
-                      <option value="premier">{LEAGUE_TEMPLATES.premier.label} 2026/2027 ({formatLabel(LEAGUE_TEMPLATES.premier.singlesCount, LEAGUE_TEMPLATES.premier.doublesCount)})</option>
-                      <option value="division1">{LEAGUE_TEMPLATES.division1.label} 2026/2027 ({formatLabel(LEAGUE_TEMPLATES.division1.singlesCount, LEAGUE_TEMPLATES.division1.doublesCount)})</option>
-                      <option value="summer">{LEAGUE_BODY_NAME} - {LEAGUE_TEMPLATES.summer.label} ({formatLabel(LEAGUE_TEMPLATES.summer.singlesCount, LEAGUE_TEMPLATES.summer.doublesCount)})</option>
-                    </select>
-                    <input
-                      className="rounded-xl border border-slate-300 bg-white px-3 py-2 sm:col-span-2"
-                      placeholder="Season label (optional, e.g. 2026/2027)"
-                      value={seasonName}
-                      onChange={(e) => setSeasonName(e.target.value)}
-                    />
-                    <button type="button" onClick={createSeason} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">
-                      Create league
-                    </button>
-                  </div>
-                  <p className="mt-2 text-xs text-slate-600">
-                    Selected format:{" "}
-                    <span className="font-semibold text-slate-800">
-                      {formatLabel(LEAGUE_TEMPLATES[seasonTemplate].singlesCount, LEAGUE_TEMPLATES[seasonTemplate].doublesCount)}
-                    </span>
-                  </p>
-                  {seasonTemplate === "summer" ? (
-                    <div className={`mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900 ${currentSeason?.is_published ? "opacity-70" : ""}`}>
-                      <p className="font-semibold">Summer League rules applied</p>
-                      <ul className="mt-1 space-y-1 text-xs text-amber-800">
-                        <li>6 singles frames and no doubles.</li>
-                        <li>Each player can play a maximum of 2 singles frames.</li>
-                        <li>If a side only has 2 players, frames 5 and 6 should be recorded as No Show.</li>
-                        <li>No Show on both sides gives no frame point and no player stats.</li>
-                      </ul>
-                    </div>
-                  ) : seasonTemplate === "premier" ? (
-                    <div className={`mt-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900 ${currentSeason?.is_published ? "opacity-70" : ""}`}>
-                      <p className="font-semibold">Premier League 2026/2027 rules applied automatically</p>
-                      <ul className="mt-1 space-y-1 text-xs text-sky-800">
-                        <li>4 singles frames and 1 doubles frame.</li>
-                        <li>A team must field at least 2 players. With only 2 players, frame 3 is forfeited, the system randomly nominates one of them for frame 4, and both play the doubles.</li>
-                        <li>Players begin at Elo 1000 and handicap 0; handicaps are reviewed at least every 4 weeks.</li>
-                        <li>Handicap match play is enabled with no maximum start.</li>
-                        <li>On the third miss attempt while snookered, the balls remain where they lie.</li>
-                        <li>Teams play each other three times.</li>
-                      </ul>
-                    </div>
-                  ) : (
-                    <div className={`mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-950 ${currentSeason?.is_published ? "opacity-70" : ""}`}>
-                      <p className="font-semibold">Division 1 2026/2027 rules applied automatically</p>
-                      <ul className="mt-1 space-y-1 text-xs text-violet-900">
-                        <li>4 singles frames and 1 doubles frame.</li>
-                        <li>A team must field at least 2 players. With only 2 players, frame 3 is forfeited, the system randomly nominates one of them for frame 4, and both play the doubles.</li>
-                        <li>All matches are played off scratch with no handicap start.</li>
-                        <li>Elo is still recorded in the background for player history.</li>
-                        <li>The miss rule is not used.</li>
-                        <li>Teams play each other three times.</li>
-                      </ul>
-                    </div>
-                  )}
-                  {seasonTemplate === "summer" ? (
-                    <label className={`mt-2 inline-flex items-center gap-2 text-sm text-slate-700 ${currentSeason?.is_published ? "opacity-70" : ""}`}>
-                      <input
-                        type="checkbox"
-                        checked={seasonHandicapEnabled}
-                        onChange={(e) => setSeasonHandicapEnabled(e.target.checked)}
-                      />
-                      Handicap league (no maximum start)
-                    </label>
-                  ) : (
-                    <p className="mt-2 text-xs font-medium text-slate-700">
-                      Handicap mode, Elo tracking, fixture cycles and miss rule are locked to the selected division template.
-                    </p>
-                  )}
-                </div>
-                <div id="guided-publish-league" className={`mt-3 scroll-mt-24 ${guidedSectionClass("publish-league")}`}>
-                  <button
-                    type="button"
-                    onClick={deleteSeason}
-                    disabled={!seasonId}
-                    className="rounded-xl border border-rose-300 bg-white px-4 py-2 text-sm text-rose-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    Delete selected league
-                  </button>
-                  <button
-                    type="button"
-                    onClick={publishLeague}
-                    disabled={!seasonId || Boolean(currentSeason?.is_published) || publishBlockers.length > 0}
-                    className="ml-2 rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm text-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {currentSeason?.is_published ? "League published" : "Publish selected league"}
-                  </button>
-                  {currentSeason?.is_published ? (
-                    <button
-                      type="button"
-                      onClick={() => setConfirmCompletionOpen(true)}
-                      disabled={!seasonId}
-                      className={`ml-2 rounded-xl border bg-white px-4 py-2 text-sm disabled:cursor-not-allowed disabled:opacity-50 ${
-                        currentSeason.is_active === false
-                          ? "border-teal-300 text-teal-800"
-                          : "border-slate-400 text-slate-800"
-                      }`}
-                    >
-                      {currentSeason.is_active === false ? "Reopen this league" : "Mark league as completed"}
-                    </button>
-                  ) : null}
-                </div>
-                {!currentSeason?.is_published && publishBlockers.length > 0 ? (
-                  <p className="mt-2 text-xs text-slate-600">
-                    Publish is disabled until the checklist above is complete.
-                  </p>
-                ) : null}
-                <div id="guided-add-league-teams" className={`mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 scroll-mt-24 ${guidedSectionClass("add-league-teams")}`}>
+                <LeagueAreaWorkbench
+                  eyebrow="League administration"
+                  title="League Setup"
+                  description="Create, prepare and publish a season from one workspace. Work through the shortcuts in order, or jump directly to the task you need."
+                  tone="teal"
+                  tasks={[
+                    { href: "#guided-create-league", label: "Create league", description: "Choose the format and create a new season.", badge: currentSeason ? "Created" : "Start here" },
+                    { href: "#guided-add-league-teams", label: "Choose league", description: "Review drafts, live leagues and completed seasons.", badge: `${visibleSeasons.length} leagues` },
+                    { href: "#league-team-entries", label: "Add teams", description: "Copy registered teams into this season.", badge: `${seasonTeams.length} entered` },
+                    { href: "#guided-publish-league", label: "Publish or close", description: "Publish, complete, reopen or remove a league.", badge: currentSeason?.is_published ? "Published" : "Draft" },
+                  ]}
+                />
+                <LeagueCreationPanel
+                  bodyName={LEAGUE_BODY_NAME}
+                  seasonId={seasonId}
+                  currentSeason={currentSeason}
+                  nextStep={nextGuidedStep}
+                  templates={LEAGUE_TEMPLATES}
+                  template={seasonTemplate}
+                  seasonName={seasonName}
+                  summerHandicapEnabled={seasonHandicapEnabled}
+                  publishBlockers={publishBlockers}
+                  createHighlightClass={guidedSectionClass("create-league")}
+                  publishHighlightClass={guidedSectionClass("publish-league")}
+                  onOpenNext={(step) => openGuidedTarget(step.view, step.target)}
+                  onTemplateChange={(nextTemplate: LeagueTemplateOption) => {
+                    setSeasonTemplate(nextTemplate);
+                    setSeasonHandicapEnabled(LEAGUE_TEMPLATES[nextTemplate].handicapEnabled);
+                  }}
+                  onSeasonNameChange={setSeasonName}
+                  onSummerHandicapChange={setSeasonHandicapEnabled}
+                  onCreate={() => void createSeason()}
+                  onDelete={() => void deleteSeason()}
+                  onPublish={() => void publishLeague()}
+                  onToggleCompletion={() => setConfirmCompletionOpen(true)}
+                />
+                <div id="guided-add-league-teams" className={`mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 scroll-mt-40 ${guidedSectionClass("add-league-teams")}`}>
                   <h3 className="text-sm font-semibold text-slate-900">Created leagues</h3>
                   <div className="mt-2 space-y-2">
                     {seasons
@@ -6897,7 +6609,7 @@ export default function LeaguePage() {
                           key={league.id}
                           type="button"
                           onClick={() => {
-                            setSeasonId(league.id);
+                            selectLeagueSeason(league.id);
                             setInfoModal({
                               title: "League Selected",
                               description: `"${league.name}" selected. You can now add teams here or open Fixtures when ready.`,
@@ -7031,7 +6743,7 @@ export default function LeaguePage() {
                     )}
                   </div>
                 </div>
-                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div id="league-team-entries" className="mt-4 scroll-mt-40 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm font-semibold text-slate-900">Add registered team into selected league</p>
                   <p className="mt-1 text-xs text-slate-600">
                     Registered teams are reusable templates. Adding them here creates the season-specific team entry and copies the current template roster into this league only.
@@ -7133,15 +6845,21 @@ export default function LeaguePage() {
 
               {activeView === "knockouts" ? (
                 <section className="rounded-2xl border border-fuchsia-200 bg-gradient-to-br from-white to-fuchsia-50 p-4 shadow-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h2 className="text-lg font-semibold text-fuchsia-900">Knockout Cups / Competitions</h2>
-                    {canManage ? <Link href="/league-invoices" className="rounded-xl border border-fuchsia-300 bg-white px-4 py-2 text-sm font-bold text-fuchsia-900">Club invoices</Link> : null}
-                  </div>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Published knockout competitions and entries are managed here.
-                  </p>
+                  <LeagueAreaWorkbench
+                    eyebrow="Competition administration"
+                    title="Knockout Competitions"
+                    description="Create cups, control entry windows, review entrants and manage draws, deadlines and finals."
+                    tone="fuchsia"
+                    tasks={[
+                      { href: "#create-knockout", label: "Create competition", description: "Open a new cup from an approved format.", badge: canManage ? "Officer" : "View" },
+                      { href: "#active-knockouts", label: "Manage competitions", description: "Open draws, deadlines, formats and final details.", badge: `${knockoutCompetitions.length} active` },
+                      { href: "#active-knockouts", label: "Review entries", description: "Approve or reject entrants awaiting a decision.", badge: `${knockoutCompetitions.reduce((total, competition) => total + (competitionEntriesByCompetitionId.get(competition.id) ?? []).filter((entry) => entry.status === "pending").length, 0)} pending` },
+                      { href: "/league-invoices", label: "Club invoices", description: "Preview entry charges and prepare club invoices.", badge: "Finance" },
+                    ]}
+                    aside={canManage ? <Link href="/league-invoices" className="rounded-xl border border-fuchsia-300/60 bg-white/10 px-4 py-2 text-sm font-bold text-white hover:bg-white/20">Open invoices</Link> : null}
+                  />
                   {canManage ? (
-                    <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                    <div id="create-knockout" className="mt-3 grid scroll-mt-40 gap-2 rounded-xl border border-fuchsia-200 bg-white p-3 sm:grid-cols-4">
                       <label className="space-y-1">
                         <span className="block text-xs font-medium text-slate-600">Competition</span>
                         <select
@@ -7201,7 +6919,7 @@ export default function LeaguePage() {
                       </button>
                     </div>
                   ) : null}
-                  <div className="mt-3 space-y-3">
+                  <div id="active-knockouts" className="mt-3 scroll-mt-40 space-y-3">
                     {knockoutCompetitions.map((c) => {
                       const isHodgeComp = isHodgeCompetitionName(c.name);
                       const isHamiltonComp = isHamiltonCompetitionName(c.name);
@@ -7651,127 +7369,48 @@ export default function LeaguePage() {
 
               {activeView === "venues" ? (
               <section className="rounded-2xl border border-cyan-200 bg-gradient-to-br from-white to-cyan-50 p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-cyan-900">Venues</h2>
-                <p className="mt-2 text-sm text-slate-600">Register venues and maintain contact details.</p>
-                <div className="mt-3 grid gap-2 sm:grid-cols-4">
-                  <input
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2 sm:col-span-3"
-                    placeholder="New venue name"
-                    value={newVenueName}
-                    onChange={(e) => setNewVenueName(e.target.value)}
-                  />
-                  <button type="button" onClick={createVenue} className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white">
-                    Register venue
-                  </button>
-                </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-6">
-                  <input
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2"
-                    placeholder="Venue name"
-                    value={manageVenueName}
-                    onChange={(e) => setManageVenueName(e.target.value)}
-                  />
-                  <input
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2"
-                    placeholder="Address"
-                    value={manageVenueAddress}
-                    onChange={(e) => setManageVenueAddress(e.target.value)}
-                  />
-                  <input
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2"
-                    placeholder="Postcode"
-                    value={manageVenuePostcode}
-                    onChange={(e) => setManageVenuePostcode(e.target.value)}
-                  />
-                  <input
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2"
-                    placeholder="Contact phone"
-                    value={manageVenuePhone}
-                    onChange={(e) => setManageVenuePhone(e.target.value)}
-                  />
-                  <input
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2"
-                    placeholder="Contact email"
-                    value={manageVenueEmail}
-                    onChange={(e) => setManageVenueEmail(e.target.value)}
-                  />
-                  <input
-                    className="rounded-xl border border-slate-300 bg-white px-3 py-2"
-                    type="number"
-                    min={1}
-                    max={12}
-                    placeholder="Snooker tables"
-                    value={manageVenueTableCount}
-                    onChange={(e) => setManageVenueTableCount(e.target.value)}
-                  />
-                </div>
-                <p className="mt-2 text-xs text-slate-600">
-                  Fixture generation respects snooker table count. One table allows one home fixture at a time, so a one-table venue will normally support up to two league teams.
-                </p>
-                {!manageVenueId ? (
-                  <p className="mt-2 text-xs text-slate-600">Click a venue in “All Registered Venues” to edit details.</p>
-                ) : null}
-                <div className="mt-2">
-                  <button type="button" onClick={saveVenueDetails} className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700">
-                    Save venue details
-                  </button>
-                </div>
-                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <p className="text-sm font-semibold text-slate-900">All Registered Venues ({venueLocations.length})</p>
-                    <button
-                      type="button"
-                      className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700"
-                      onClick={() => setShowAllRegisteredVenues((prev) => !prev)}
-                    >
-                      {showAllRegisteredVenues ? "Collapse" : "Expand"}
-                    </button>
-                  </div>
-                  {showAllRegisteredVenues ? (
-                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
-                      {venueLocations
-                        .slice()
-                        .sort((a, b) => a.name.localeCompare(b.name))
-                        .map((location) => (
-                          <button
-                            type="button"
-                            key={`venue-list-${location.id}`}
-                            onClick={() => setManageVenueId(location.id)}
-                            className={`rounded-lg border px-3 py-2 text-left text-sm ${
-                              manageVenueId === location.id
-                                ? "border-slate-900 bg-slate-900 text-white"
-                                : "border-slate-200 bg-white text-slate-800"
-                            }`}
-                          >
-                            {(() => {
-                              const capacity = seasonVenueCapacityByLocationId.get(location.id) ?? null;
-                              const atCapacity = capacity ? capacity.remainingSlots === 0 : false;
-                              return (
-                                <>
-                            <div className="font-medium">{locationLabel(location.name)}</div>
-                            <div className={`mt-1 text-xs ${manageVenueId === location.id ? "text-cyan-100" : "text-slate-500"}`}>
-                              {Math.max(1, Number(location.snooker_table_count ?? 1))} snooker table
-                              {Math.max(1, Number(location.snooker_table_count ?? 1)) === 1 ? "" : "s"}
-                            </div>
-                                  {seasonId && capacity ? (
-                                    <div className={`mt-1 text-xs ${manageVenueId === location.id ? "text-cyan-100" : atCapacity ? "text-rose-600" : "text-amber-700"}`}>
-                                      {capacity.teamCount} team{capacity.teamCount === 1 ? "" : "s"} in selected league · max {capacity.maxTeams}
-                                      {atCapacity ? " · full" : ` · ${capacity.remainingSlots} slot${capacity.remainingSlots === 1 ? "" : "s"} left`}
-                                    </div>
-                                  ) : null}
-                                </>
-                              );
-                            })()}
-                          </button>
-                        ))}
-                      {venueLocations.length === 0 ? (
-                        <p className="text-sm text-slate-600">No venues registered yet.</p>
-                      ) : null}
-                    </div>
-                  ) : null}
+                <LeagueAreaWorkbench
+                  eyebrow="Club and venue records"
+                  title="Venues"
+                  description="Maintain venue details, table capacity, associated teams and players without leaving the league workspace."
+                  tone="cyan"
+                  tasks={[
+                    { href: "#venue-register", label: "Register venue", description: "Add a new club or playing venue.", badge: `${venueLocations.length} venues` },
+                    { href: "#venue-register", label: "Edit details", description: "Update address, contacts and table capacity." },
+                    { href: "#venue-profile", label: "Venue profile", description: "Review teams, captains and linked players.", badge: manageVenueId ? "Selected" : "Choose venue" },
+                    { href: "#venue-unassigned", label: "Unassigned players", description: "Find club players who are not on a team." },
+                  ]}
+                />
+                <div id="venue-register" className="scroll-mt-40">
+                <VenueRegistryPanel
+                  seasonId={seasonId}
+                  venues={venueLocations}
+                  selectedVenueId={manageVenueId}
+                  expanded={showAllRegisteredVenues}
+                  newVenueName={newVenueName}
+                  venueName={manageVenueName}
+                  address={manageVenueAddress}
+                  postcode={manageVenuePostcode}
+                  phone={manageVenuePhone}
+                  email={manageVenueEmail}
+                  tableCount={manageVenueTableCount}
+                  capacityByVenueId={seasonVenueCapacityByLocationId}
+                  formatVenueLabel={locationLabel}
+                  onNewVenueNameChange={setNewVenueName}
+                  onVenueNameChange={setManageVenueName}
+                  onAddressChange={setManageVenueAddress}
+                  onPostcodeChange={setManageVenuePostcode}
+                  onPhoneChange={setManageVenuePhone}
+                  onEmailChange={setManageVenueEmail}
+                  onTableCountChange={setManageVenueTableCount}
+                  onCreateVenue={() => void createVenue()}
+                  onSaveVenue={() => void saveVenueDetails()}
+                  onToggleExpanded={() => setShowAllRegisteredVenues((previous) => !previous)}
+                  onSelectVenue={setManageVenueId}
+                />
                 </div>
                 {manageVenueId ? (
-                  <div className="mt-3 space-y-3">
+                  <div id="venue-profile" className="mt-3 scroll-mt-40 space-y-3">
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <p className="text-sm font-semibold text-slate-900">Venue Profile</p>
                       <p className="mt-1 text-base font-semibold text-slate-900">
@@ -7977,7 +7616,7 @@ export default function LeaguePage() {
                         ) : null}
                       </div>
                     </div>
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div id="venue-unassigned" className="scroll-mt-40 rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-sm font-semibold text-slate-900">
                           Unassigned players at this venue ({selectedVenueUnassignedPlayers.length})
@@ -8013,399 +7652,79 @@ export default function LeaguePage() {
               ) : null}
 
               {activeView === "profiles" ? (
-              <section className="rounded-2xl border border-sky-200 bg-gradient-to-br from-white to-sky-50 p-4 shadow-sm">
-                <h2 className="text-xl font-black text-sky-950">Teams &amp; Players</h2>
-                <p className="mt-1 text-sm text-slate-600">The quickest place to check the selected league&apos;s teams, registered players, roles and current playing handicaps.</p>
-
-                <div className="mt-4 grid gap-3 rounded-xl border border-sky-200 bg-white p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_minmax(0,220px)_auto]">
-                  <label className="text-xs font-bold uppercase tracking-wide text-slate-600">
-                    League season
-                    <select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-900" value={seasonId} onChange={(event) => setSeasonId(event.target.value)}>
-                      {visibleSeasons.map((season) => <option key={`directory-season-${season.id}`} value={season.id}>{seasonDisplayLabel(season)}</option>)}
-                    </select>
-                  </label>
-                  <label className="text-xs font-bold uppercase tracking-wide text-slate-600">
-                    Find a team or player
-                    <input className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-900" value={teamDirectorySearch} onChange={(event) => setTeamDirectorySearch(event.target.value)} placeholder="Type a team, club or player name" />
-                  </label>
-                  <label className="text-xs font-bold uppercase tracking-wide text-slate-600">
-                    Registration status
-                    <select className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-normal normal-case tracking-normal text-slate-900" value={teamDirectoryStatusFilter} onChange={(event) => setTeamDirectoryStatusFilter(event.target.value as typeof teamDirectoryStatusFilter)}>
-                      <option value="all">All teams</option>
-                      <option value="approved">Roster confirmed</option>
-                      <option value="submitted">Awaiting approval</option>
-                      <option value="incomplete">Not confirmed</option>
-                    </select>
-                  </label>
-                  <div className="flex items-end">
-                    <div className="w-full rounded-xl border border-sky-200 bg-sky-50 px-4 py-2 text-sm text-sky-950 lg:min-w-36">
-                      <span className="font-black">{teamDirectoryRows.length}</span> team{teamDirectoryRows.length === 1 ? "" : "s"} shown
-                    </div>
-                  </div>
-                </div>
-
-                {currentSeason ? (
-                  <div className={`mt-3 rounded-xl border px-4 py-3 text-sm ${currentSeason.handicap_enabled ? "border-teal-200 bg-teal-50 text-teal-950" : "border-amber-200 bg-amber-50 text-amber-950"}`}>
-                    <strong>{currentSeason.handicap_enabled ? "Handicap league:" : "Scratch league:"}</strong>{" "}
-                    {currentSeason.handicap_enabled
-                      ? "the Playing handicap column shows each player's current live handicap."
-                      : "every player starts league frames at 0. Their recorded handicap is still shown for historical tracking."}
-                  </div>
-                ) : null}
-
-                <div className="mt-4 grid gap-4 xl:grid-cols-2">
-                  {teamDirectoryRows.map(({ team, venue, roster, registrationStatus, directoryStatus }) => {
-                    const statusLabel = directoryStatus === "approved" ? "Roster confirmed" : directoryStatus === "submitted" ? "Awaiting approval" : registrationStatus === "rejected" ? "Changes required" : "Not confirmed";
-                    const statusClass = directoryStatus === "approved" ? "border-emerald-300 bg-emerald-100 text-emerald-900" : directoryStatus === "submitted" ? "border-amber-300 bg-amber-100 text-amber-950" : registrationStatus === "rejected" ? "border-rose-300 bg-rose-100 text-rose-900" : "border-slate-300 bg-slate-100 text-slate-800";
-                    return (
-                    <details key={`team-directory-${team.id}`} className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-                      <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-slate-950 to-sky-950 px-4 py-3 text-white">
-                        <div><h3 className="text-lg font-black">{team.name}</h3><p className="mt-0.5 text-xs text-sky-100">{venue}</p></div>
-                        <div className="flex flex-wrap items-center justify-end gap-2">
-                          <span className={`rounded-full border px-3 py-1 text-xs font-bold ${statusClass}`}>{statusLabel}</span>
-                          {directoryStatus === "approved" ? <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-bold">{roster.length} player{roster.length === 1 ? "" : "s"}</span> : null}
-                          <span className="text-xs font-bold text-sky-100 group-open:hidden">Open roster ▾</span><span className="hidden text-xs font-bold text-sky-100 group-open:inline">Close roster ▴</span>
-                        </div>
-                      </summary>
-                      {directoryStatus === "approved" && roster.length > 0 ? (
-                        <div className="overflow-x-auto">
-                          <table className="min-w-full border-collapse text-sm">
-                            <thead><tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500"><th className="px-4 py-2">Player</th><th className="px-3 py-2">Role</th><th className="px-3 py-2">Playing handicap</th><th className="px-3 py-2 text-right">Elo</th></tr></thead>
-                            <tbody>
-                              {roster.map((member) => {
-                                const recordedHandicap = Number(member.player.snooker_handicap ?? 0);
-                                const handicapLabel = recordedHandicap > 0 ? `+${recordedHandicap}` : String(recordedHandicap);
-                                return (
-                                  <tr key={`team-directory-member-${member.id}`} className="border-b border-slate-100 last:border-b-0">
-                                    <td className="px-4 py-3"><Link href={`/players/${member.player.id}`} className="font-semibold text-slate-950 underline decoration-slate-300 underline-offset-2 hover:text-sky-800">{named(member.player)}</Link>{member.player.claimed_by ? <span className="mt-1 block text-[11px] text-emerald-700">App account linked</span> : null}</td>
-                                    <td className="px-3 py-3 text-slate-700">{member.is_captain ? <span className="rounded-full bg-indigo-100 px-2 py-1 text-xs font-bold text-indigo-800">Captain</span> : member.is_vice_captain ? <span className="rounded-full bg-violet-100 px-2 py-1 text-xs font-bold text-violet-800">Vice-captain</span> : <span className="text-xs">Player</span>}</td>
-                                    <td className="px-3 py-3"><span className="font-black text-slate-950">{currentSeason?.handicap_enabled ? handicapLabel : "0 (scratch)"}</span>{!currentSeason?.handicap_enabled ? <span className="mt-1 block text-[11px] text-slate-500">Recorded: {handicapLabel}</span> : null}</td>
-                                    <td className="px-3 py-3 text-right font-semibold text-slate-700">{Math.round(Number(member.player.rating_snooker ?? 1000))}</td>
-                                  </tr>
-                                );
-                              })}
-                            </tbody>
-                          </table>
-                        </div>
-                      ) : directoryStatus === "approved" ? (
-                        <p className="px-4 py-5 text-sm text-amber-800">This registration is approved, but no players are currently attached to the season roster.</p>
-                      ) : directoryStatus === "submitted" ? (
-                        <div className="px-4 py-5 text-sm text-amber-900"><p>The new-season roster has been submitted but is not shown here until a league officer approves and imports it.</p><Link href={`/entry-packs?seasonId=${seasonId}&teamId=${team.id}`} className="mt-3 inline-flex rounded-xl bg-amber-700 px-4 py-2 font-bold text-white">Review submitted roster</Link></div>
-                      ) : (
-                        <p className="px-4 py-5 text-sm text-slate-700">This team&apos;s roster has not yet been confirmed for the selected season. Previous-season or reusable template assignments are deliberately not presented as current.</p>
-                      )}
-                    </details>
-                    );
-                  })}
-                  {teamDirectoryRows.length === 0 ? <div className="rounded-2xl border border-amber-200 bg-amber-50 p-5 text-sm text-amber-900 xl:col-span-2">No team or player matches this search in the selected league.</div> : null}
-                </div>
-
-                <details className="mt-5 rounded-xl border border-slate-200 bg-white p-3">
-                  <summary className="cursor-pointer font-semibold text-slate-900">Browse every player profile by club</summary>
-                  <p className="mt-1 text-xs text-slate-600">This includes club players who may not yet be assigned to the selected season.</p>
-                  <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                    <select className="rounded-xl border border-slate-300 bg-white px-3 py-2" value={profileVenueFilterId} onChange={(event) => setProfileVenueFilterId(event.target.value)}>
-                      <option value="">All venues</option>
-                      {venueLocations.map((location) => <option key={location.id} value={location.id}>{locationLabel(location.name)}</option>)}
-                    </select>
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">Profiles shown: <span className="font-semibold text-slate-900">{visiblePlayerProfiles.length}</span></div>
-                  </div>
-                  <ul className="mt-3 max-h-[28rem] space-y-1 overflow-y-auto rounded-xl border border-slate-200 bg-slate-50 p-2">
-                    {visiblePlayerProfiles.map((player) => <li key={`profile-row-${player.id}`} className="grid items-center gap-3 rounded-lg border border-slate-200 bg-white px-3 py-3 sm:grid-cols-[1fr_auto]"><div><Link href={`/players/${player.id}`} className="font-medium text-slate-900 underline decoration-slate-300 underline-offset-2 hover:text-slate-700">{player.name}</Link><p className="mt-1 text-xs text-slate-600">{player.venue}</p></div><div className="flex flex-wrap items-center gap-2 justify-self-start sm:justify-self-end"><span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-semibold text-indigo-800">Elo {player.rating}</span><span className="rounded-full border border-teal-200 bg-teal-50 px-2 py-0.5 text-xs font-semibold text-teal-800">Current {player.currentHandicap > 0 ? `+${player.currentHandicap}` : player.currentHandicap}</span></div></li>)}
-                    {visiblePlayerProfiles.length === 0 ? <li className="px-2 py-1 text-sm text-slate-500">No players found for this venue.</li> : null}
-                  </ul>
-                </details>
-              </section>
+                <TeamsPlayersView
+                  seasonId={seasonId}
+                  seasons={visibleSeasons}
+                  currentSeason={currentSeason}
+                  rows={teamDirectoryRows}
+                  search={teamDirectorySearch}
+                  statusFilter={teamDirectoryStatusFilter}
+                  venueFilterId={profileVenueFilterId}
+                  venues={venueLocations}
+                  playerProfiles={visiblePlayerProfiles}
+                  formatSeasonLabel={(season) => seasonDisplayLabel(season as Season)}
+                  formatVenueLabel={locationLabel}
+                  onSeasonChange={selectLeagueSeason}
+                  onSearchChange={setTeamDirectorySearch}
+                  onStatusFilterChange={setTeamDirectoryStatusFilter}
+                  onVenueFilterChange={setProfileVenueFilterId}
+                />
               ) : null}
-
               {activeView === "teamManagement" ? (
               <section className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-white to-indigo-50 p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-indigo-900">Team Management</h2>
-                <p className="mt-2 text-sm text-slate-600">Follow steps in order. You can skip and return later.</p>
-                <div className="mt-3 rounded-xl border border-indigo-200 bg-white p-3">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <div>
-                      <p className="text-sm font-semibold text-slate-900">Season roster editor</p>
-                      <p className="mt-1 text-xs text-slate-600">
-                        Edit the live roster for the selected league season directly. This is separate from the reusable registered-team template.
-                      </p>
-                    </div>
-                    <span className="rounded-full border border-indigo-200 bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-800">
-                      One team per player in this season
-                    </span>
-                  </div>
-                  {!seasonId ? (
-                    <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">
-                      Select a league season in <strong>League Setup</strong> first, then return here to manage the live season roster.
-                    </div>
-                  ) : (
-                    <>
-                    {teamsMissingCaptainRegistration.length > 0 ? (
-                      <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3">
-                        <p className="text-sm font-semibold text-amber-900">Captain / vice-captain app registration check</p>
-                        <p className="mt-1 text-xs text-amber-800">
-                          These teams have a captain or vice-captain assigned in the roster, but at least one of those role holders has not yet registered and linked to the app.
-                        </p>
-                        <ul className="mt-2 space-y-1 text-sm text-amber-900">
-                          {teamsMissingCaptainRegistration.map((team) => {
-                            const state = seasonRoleRegistrationByTeam.get(team.id);
-                            const issues = [
-                              state?.hasCaptainAssigned && !state?.captainRegistered ? "captain not registered" : null,
-                              state?.hasViceAssigned && !state?.viceRegistered ? "vice-captain not registered" : null,
-                            ].filter(Boolean);
-                            return (
-                              <li key={`role-registration-${team.id}`} className="rounded-lg border border-amber-200 bg-white px-3 py-2">
-                                <strong>{team.name}</strong>: {issues.join(" and ")}
-                              </li>
-                            );
-                          })}
-                        </ul>
-                      </div>
-                    ) : null}
-                    <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,240px)_minmax(0,1fr)_auto]">
-                      <select
-                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                        value={seasonRosterTeamId}
-                        onChange={(e) => {
-                          setSeasonRosterTeamId(e.target.value);
-                          setSeasonRosterPlayerId("");
-                        }}
-                      >
-                        <option value="">Select league team</option>
-                        {seasonTeams.map((team) => (
-                          <option key={team.id} value={team.id}>
-                            {team.name}
-                          </option>
-                        ))}
-                      </select>
-                      <select
-                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                        value={seasonRosterPlayerId}
-                        onChange={(e) => setSeasonRosterPlayerId(e.target.value)}
-                        disabled={!selectedSeasonRosterTeam}
-                      >
-                        <option value="">
-                          {selectedSeasonRosterTeam ? "Select player to add to this season roster" : "Select league team first"}
-                        </option>
-                        {availableSeasonRosterPlayers.map((player) => (
-                          <option key={player.id} value={player.id}>
-                            {named(player)}
-                          </option>
-                        ))}
-                      </select>
-                      <button
-                        type="button"
-                        onClick={() => void addSeasonRosterPlayer()}
-                        className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-medium text-white"
-                        disabled={!selectedSeasonRosterTeam || !seasonRosterPlayerId}
-                      >
-                        Add to season roster
-                      </button>
-                    </div>
-                    {selectedSeasonRosterTeam ? (
-                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">Bulk add existing players</p>
-                            <p className="mt-1 text-xs text-slate-600">
-                              Choose existing players from the same venue and add them to this season team in one action.
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <button
-                              type="button"
-                              className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700"
-                              onClick={() => setSeasonRosterBulkPlayerIds(availableSeasonRosterPlayers.map((player) => player.id))}
-                              disabled={availableSeasonRosterPlayers.length === 0}
-                            >
-                              Select all available
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs text-slate-700"
-                              onClick={() => setSeasonRosterBulkPlayerIds([])}
-                              disabled={seasonRosterBulkPlayerIds.length === 0}
-                            >
-                              Clear
-                            </button>
-                          </div>
-                        </div>
-                        <div className="mt-3 max-h-48 space-y-2 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2">
-                          {availableSeasonRosterPlayers.map((player) => (
-                            <label key={`season-roster-bulk-${player.id}`} className="flex items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm text-slate-800">
-                              <input
-                                type="checkbox"
-                                checked={seasonRosterBulkPlayerIds.includes(player.id)}
-                                onChange={(e) =>
-                                  setSeasonRosterBulkPlayerIds((prev) =>
-                                    e.target.checked ? Array.from(new Set([...prev, player.id])) : prev.filter((id) => id !== player.id)
-                                  )
-                                }
-                              />
-                              <span>{named(player)}</span>
-                            </label>
-                          ))}
-                          {availableSeasonRosterPlayers.length === 0 ? (
-                            <p className="text-sm text-slate-500">No eligible existing players are currently available for this season team.</p>
-                          ) : null}
-                        </div>
-                        <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
-                          <p className="text-xs text-slate-600">{seasonRosterBulkPlayerIds.length} player(s) selected.</p>
-                          <button
-                            type="button"
-                            onClick={() => void addSeasonRosterPlayersBulk()}
-                            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700"
-                            disabled={seasonRosterBulkPlayerIds.length === 0}
-                          >
-                            Add selected existing players
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
-                    {selectedSeasonRosterTeam ? (
-                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">Captain contact details</p>
-                            <p className="mt-1 text-xs text-slate-600">
-                              Store the season-specific captain and vice-captain contact details for this team.
-                            </p>
-                          </div>
-                          <button
-                            type="button"
-                            onClick={() => void saveSeasonTeamContacts()}
-                            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm text-slate-700"
-                          >
-                            Save contacts
-                          </button>
-                        </div>
-                        <div className="mt-3 grid gap-3 sm:grid-cols-2">
-                          <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Captain</p>
-                            <input
-                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                              placeholder="Captain email"
-                              value={seasonCaptainEmail}
-                              onChange={(e) => setSeasonCaptainEmail(e.target.value)}
-                            />
-                            <input
-                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                              placeholder="Captain phone"
-                              value={seasonCaptainPhone}
-                              onChange={(e) => setSeasonCaptainPhone(e.target.value)}
-                            />
-                          </div>
-                          <div className="space-y-2 rounded-xl border border-slate-200 bg-white p-3">
-                            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Vice-captain</p>
-                            <input
-                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                              placeholder="Vice-captain email"
-                              value={seasonViceCaptainEmail}
-                              onChange={(e) => setSeasonViceCaptainEmail(e.target.value)}
-                            />
-                            <input
-                              className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
-                              placeholder="Vice-captain phone"
-                              value={seasonViceCaptainPhone}
-                              onChange={(e) => setSeasonViceCaptainPhone(e.target.value)}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    ) : null}
-                    {selectedSeasonRosterTeam ? (
-                      <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div>
-                            <p className="text-sm font-semibold text-slate-900">{selectedSeasonRosterTeam.name}</p>
-                            <p className="mt-1 text-xs text-slate-600">
-                              Changes here affect this selected league season only.
-                              {selectedSeasonRosterVenueId ? ` Venue: ${locationLabel(locationById.get(selectedSeasonRosterVenueId)?.name ?? "Unknown venue")}.` : ""}
-                            </p>
-                          </div>
-                          <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700">
-                            {selectedSeasonRosterMembers.length} player(s)
-                          </span>
-                        </div>
-                        {(() => {
-                          const registrationState = seasonRoleRegistrationByTeam.get(selectedSeasonRosterTeam.id);
-                          const issues = [
-                            registrationState?.hasCaptainAssigned && !registrationState?.captainRegistered ? "captain not registered in app" : null,
-                            registrationState?.hasViceAssigned && !registrationState?.viceRegistered ? "vice-captain not registered in app" : null,
-                          ].filter(Boolean);
-                          if (issues.length === 0) return null;
-                          return (
-                            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">
-                              <strong>Registration warning:</strong> {issues.join(" and ")}.
-                            </div>
-                          );
-                        })()}
-                        <ul className="mt-3 space-y-2 text-sm text-slate-700">
-                          {selectedSeasonRosterMembers.map((member) => (
-                            <li key={member.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
-                              <div>
-                                <span className="font-medium text-slate-900">{named(member.player)}</span>
-                                {member.is_captain ? <span className="ml-2 rounded-full bg-emerald-100 px-2 py-0.5 text-[11px] font-semibold text-emerald-800">Captain</span> : null}
-                                {member.is_vice_captain ? <span className="ml-2 rounded-full bg-sky-100 px-2 py-0.5 text-[11px] font-semibold text-sky-800">Vice-captain</span> : null}
-                                {(member.is_captain || member.is_vice_captain) ? (
-                                  <span className={`ml-2 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
-                                    member.player?.claimed_by ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-800"
-                                  }`}>
-                                    {member.player?.claimed_by ? "App registered" : "Not yet registered"}
-                                  </span>
-                                ) : null}
-                              </div>
-                              <div className="flex flex-wrap items-center gap-2 text-xs">
-                                <label className="inline-flex items-center gap-1">
-                                  <input
-                                    type="checkbox"
-                                    checked={member.is_captain}
-                                    onChange={(e) =>
-                                      void setSeasonRosterRole(
-                                        member,
-                                        { is_captain: e.target.checked, is_vice_captain: e.target.checked ? false : member.is_vice_captain },
-                                        e.target.checked ? "is_captain" : null
-                                      )
-                                    }
-                                  />
-                                  Captain
-                                </label>
-                                <label className="inline-flex items-center gap-1">
-                                  <input
-                                    type="checkbox"
-                                    checked={member.is_vice_captain}
-                                    onChange={(e) =>
-                                      void setSeasonRosterRole(
-                                        member,
-                                        { is_vice_captain: e.target.checked, is_captain: e.target.checked ? false : member.is_captain },
-                                        e.target.checked ? "is_vice_captain" : null
-                                      )
-                                    }
-                                  />
-                                  Vice-captain
-                                </label>
-                                <button
-                                  type="button"
-                                  className="rounded border border-rose-300 bg-white px-2 py-1 text-xs text-rose-700"
-                                  onClick={() => void removeSeasonRosterMember(member.id)}
-                                >
-                                  Remove
-                                </button>
-                              </div>
-                            </li>
-                          ))}
-                          {selectedSeasonRosterMembers.length === 0 ? (
-                            <li className="text-slate-500">No players assigned to this season team yet.</li>
-                          ) : null}
-                        </ul>
-                      </div>
-                    ) : (
-                      <p className="mt-3 text-sm text-slate-600">Select a league team above to edit its live season roster.</p>
-                    )}
-                    </>
+                <LeagueAreaWorkbench
+                  eyebrow="People and team administration"
+                  title="Teams & Roles"
+                  description="Build current-season squads, assign captain access, register new people and manage transfers."
+                  tone="indigo"
+                  tasks={[
+                    { href: "#season-roster", label: "Season squad", description: "Choose the team and maintain its current roster.", badge: `${seasonTeams.length} teams` },
+                    { href: "#registered-team", label: "Registered team", description: "Create reusable club and team records." },
+                    { href: "#guided-assign-players", label: "New players", description: "Create one player or import several names." },
+                    { href: "#player-transfer", label: "Transfers", description: "Move a player to a different club or team." },
+                  ]}
+                />
+                <div id="season-roster" className="scroll-mt-40">
+                <SeasonRosterEditor
+                  seasonId={seasonId}
+                  teams={seasonTeams}
+                  teamsMissingRegistration={teamsMissingCaptainRegistration}
+                  registrationByTeam={seasonRoleRegistrationByTeam}
+                  selectedTeamId={seasonRosterTeamId}
+                  selectedPlayerId={seasonRosterPlayerId}
+                  selectedTeam={selectedSeasonRosterTeam}
+                  selectedVenueName={selectedSeasonRosterVenueId ? locationLabel(locationById.get(selectedSeasonRosterVenueId)?.name ?? "Unknown venue") : ""}
+                  availablePlayers={availableSeasonRosterPlayers}
+                  selectedBulkPlayerIds={seasonRosterBulkPlayerIds}
+                  members={selectedSeasonRosterMembers}
+                  captainEmail={seasonCaptainEmail}
+                  captainPhone={seasonCaptainPhone}
+                  viceCaptainEmail={seasonViceCaptainEmail}
+                  viceCaptainPhone={seasonViceCaptainPhone}
+                  onTeamChange={(teamId) => {
+                    setSeasonRosterTeamId(teamId);
+                    setSeasonRosterPlayerId("");
+                  }}
+                  onPlayerChange={setSeasonRosterPlayerId}
+                  onBulkSelectionChange={setSeasonRosterBulkPlayerIds}
+                  onAddPlayer={() => void addSeasonRosterPlayer()}
+                  onAddBulkPlayers={() => void addSeasonRosterPlayersBulk()}
+                  onSaveContacts={() => void saveSeasonTeamContacts()}
+                  onCaptainEmailChange={setSeasonCaptainEmail}
+                  onCaptainPhoneChange={setSeasonCaptainPhone}
+                  onViceCaptainEmailChange={setSeasonViceCaptainEmail}
+                  onViceCaptainPhoneChange={setSeasonViceCaptainPhone}
+                  onRoleChange={(member, role, checked) => void setSeasonRosterRole(
+                    member,
+                    role === "captain"
+                      ? { is_captain: checked, is_vice_captain: checked ? false : member.is_vice_captain }
+                      : { is_vice_captain: checked, is_captain: checked ? false : member.is_captain },
+                    checked ? (role === "captain" ? "is_captain" : "is_vice_captain") : null
                   )}
+                  onRemoveMember={(memberId) => void removeSeasonRosterMember(memberId)}
+                />
                 </div>
-                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div id="registered-team" className="mt-3 scroll-mt-40 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm font-semibold text-slate-900">Step 1: Register venue</p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-4">
                     <select className="rounded-xl border border-slate-300 bg-white px-3 py-2" value={LEAGUE_BODY_NAME} disabled>
@@ -8488,7 +7807,7 @@ export default function LeaguePage() {
                     <div id="guided-assign-players" className={`mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 scroll-mt-24 ${guidedSectionClass("assign-players")}`}>
                       <p className="text-sm font-semibold text-slate-900">Step 3: Register new player for team/club (first-time creation)</p>
                       <p className="mt-2 text-xs text-slate-600">
-                        This step creates brand-new player records only. If the player already exists, use the existing record. Team selection here updates the reusable registered-team template, not historical season rosters.
+                        This step creates brand-new player records only. If the player already exists, use the existing record. “Register + add to team” updates both the reusable team list and the matching team roster in the league currently selected above.
                       </p>
                       <div className="mt-2 grid gap-2 sm:grid-cols-6">
                         <input
@@ -8550,7 +7869,7 @@ export default function LeaguePage() {
                           Register + add to team
                         </button>
                       </div>
-                      {!registryTeamId ? <p className="mt-2 text-xs text-slate-600">Select a team only if using "Register + add to team".</p> : null}
+                      {!registryTeamId ? <p className="mt-2 text-xs text-slate-600">Select a team when using “Register + add to team”. The player will appear in that team’s current season roster immediately when the team belongs to the selected league.</p> : null}
                       <div className="mt-3">
                         <label className="mb-1 block text-xs font-medium text-slate-600">
                           Bulk create players (one per line: First Last or First,Last)
@@ -8617,7 +7936,7 @@ export default function LeaguePage() {
                     </ul>
                   </div>
                 ) : null}
-                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div id="player-transfer" className="mt-3 scroll-mt-40 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm font-semibold text-slate-900">Step 4: Transfer player club/team</p>
                   <p className="mt-1 text-xs text-slate-600">
                     This updates the player&apos;s club and registered-team template for future league setup. Published season team memberships remain season-specific and are not rewritten.
@@ -8698,8 +8017,20 @@ export default function LeaguePage() {
 
               {activeView === "fixtures" ? (
               <section className="rounded-2xl border border-amber-200 bg-gradient-to-br from-white to-amber-50 p-4 shadow-sm">
+                <LeagueAreaWorkbench
+                  eyebrow="Match operations"
+                  title="Fixtures & Results"
+                  description="Generate and share the fixture list, find a match quickly, then open the guided frame-by-frame result journey."
+                  tone="amber"
+                  tasks={[
+                    { href: "#fixture-sharing", label: "Share fixtures", description: "Open or copy the public or officer preview link.", badge: currentSeason?.is_published ? "Public" : "Draft" },
+                    { href: "#fixture-generation", label: "Generate fixtures", description: "Build the schedule and manage reserved weeks.", badge: `${seasonFixtures.length} fixtures` },
+                    { href: "#fixture-list", label: "Find a fixture", description: "Filter by team, status or fixture week.", badge: `${visibleFixtures.length} shown` },
+                    { href: "#fixture-list", label: "Enter a result", description: "Open a fixture to record frames, breaks and submit.", badge: `${allPendingSubmissions.filter((submission) => submission.season_id === seasonId && submission.status === "pending").length} reviews` },
+                  ]}
+                />
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-lg font-semibold text-amber-900">Fixtures</h2>
+                  <span className="text-xs font-black uppercase tracking-wide text-slate-500">Selected league settings</span>
                   {currentSeason ? (
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -8725,7 +8056,7 @@ export default function LeaguePage() {
                   </div>
                 ) : null}
                 {currentSeason ? (
-                  <div className={`mt-3 rounded-xl border p-3 ${currentSeason.is_published ? "border-cyan-200 bg-cyan-50" : "border-amber-200 bg-amber-50"}`}>
+                  <div id="fixture-sharing" className={`mt-3 scroll-mt-40 rounded-xl border p-3 ${currentSeason.is_published ? "border-cyan-200 bg-cyan-50" : "border-amber-200 bg-amber-50"}`}>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <p className="text-sm font-semibold text-slate-900">Fixture sharing</p>
@@ -8781,7 +8112,7 @@ export default function LeaguePage() {
                     ) : null}
                   </div>
                 ) : null}
-                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div id="fixture-generation" className="mt-3 scroll-mt-40 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   {isSummerFormat ? (
                     <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                       <p className="font-semibold">Summer League result entry</p>
@@ -8991,7 +8322,7 @@ export default function LeaguePage() {
                     </div>
                   </>
                 ) : null}
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <div id="fixture-list" className="mt-3 grid scroll-mt-40 gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-2">
                   <select
                     className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
                     value={fixtureTeamFilter}
@@ -9182,18 +8513,35 @@ export default function LeaguePage() {
 
               {activeView === "fixtures" && fixtureId && resultEntryOpen && (canManage || canSubmitCurrentFixture) ? (
                 <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/40 p-4">
-                  <div className="max-h-[92vh] w-full max-w-5xl overflow-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
-                    <div className="flex items-center justify-between">
-                      <h2 className="text-lg font-semibold text-slate-900">Weekly Result Entry</h2>
+                  <div id="result-entry" className="max-h-[92vh] w-full max-w-5xl overflow-auto rounded-2xl border border-slate-200 bg-white shadow-xl">
+                    <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-700 bg-gradient-to-r from-[#081426] to-[#064e4a] px-4 py-3 text-white shadow-sm">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Match-night scoring</p>
+                        <h2 className="text-lg font-bold">Weekly Result Entry</h2>
+                        {currentFixture ? (
+                          <p className="mt-0.5 text-xs text-slate-200">
+                            {teamById.get(currentFixture.home_team_id)?.name ?? "Home"} vs {teamById.get(currentFixture.away_team_id)?.name ?? "Away"}
+                          </p>
+                        ) : null}
+                      </div>
                       <button
                         type="button"
                         onClick={() => setResultEntryOpen(false)}
-                        className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700"
+                        className="rounded-xl border border-white/30 bg-white/10 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/20"
                       >
                         Close
                       </button>
                     </div>
-                    <p className="mt-1 text-xs text-slate-600">
+                    <div className="grid grid-cols-2 gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:grid-cols-4">
+                      {["Confirm line-ups", "Enter frame scores", "Record breaks", canManage ? "Save result" : "Submit result"].map((step, index) => (
+                        <div key={step} className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-slate-900 text-[11px] text-white">{index + 1}</span>
+                          <span>{step}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="p-4">
+                    <p className="text-xs text-slate-600">
                       {`Format: ${currentSeasonSinglesCount} singles${currentSeasonDoublesCount > 0 ? ` + ${currentSeasonDoublesCount} doubles` : ""}. Winner is derived automatically from frame points.`}
                     </p>
                     {isHodgeTriplesFormat ? (
@@ -9557,242 +8905,41 @@ export default function LeaguePage() {
                           : "Changes save automatically for league officers."}
                       </p>
                     )}
+                    </div>
                   </div>
                 </div>
               ) : null}
 
               {activeView === "table" ? (
-              <section className="rounded-2xl border border-emerald-200 bg-gradient-to-br from-white to-emerald-50 p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-emerald-900">League Table</h2>
-                <div className="mt-3 overflow-x-auto">
-                  <table className="min-w-full border-collapse text-sm">
-                    <thead>
-                      <tr className="border-b border-slate-200 text-left text-slate-600">
-                        <th className="px-2 py-2">#</th>
-                        <th className="px-2 py-2">Team</th>
-                        <th className="px-2 py-2">P</th>
-                        <th className="px-2 py-2">W</th>
-                        <th className="px-2 py-2">D</th>
-                        <th className="px-2 py-2">L</th>
-                        <th className="px-2 py-2">FF</th>
-                        <th className="px-2 py-2">FA</th>
-                        <th className="px-2 py-2">FD</th>
-                        <th className="px-2 py-2">Points</th>
-                        <th className="px-2 py-2">Streak</th>
-                        <th className="px-2 py-2">Last 5</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {seasonTable.map((r, idx) => (
-                        <tr key={r.team_id} className="border-b border-slate-100 text-slate-800">
-                          <td className="px-2 py-2">{idx + 1}</td>
-                          <td className="px-2 py-2">
-                            <button
-                              type="button"
-                              className="text-left underline decoration-slate-300 underline-offset-2 hover:text-slate-900"
-                              onClick={() => setSelectedTableTeamId(r.team_id)}
-                            >
-                              {r.team_name}
-                            </button>
-                          </td>
-                          <td className="px-2 py-2">{r.played}</td>
-                          <td className="px-2 py-2">{r.won}</td>
-                          <td className="px-2 py-2">{r.drawn}</td>
-                          <td className="px-2 py-2">{r.lost}</td>
-                          <td className="px-2 py-2">{r.frames_for}</td>
-                          <td className="px-2 py-2">{r.frames_against}</td>
-                          <td className="px-2 py-2">{r.frame_diff}</td>
-                          <td className="px-2 py-2 font-semibold">{r.points}</td>
-                          <td className="px-2 py-2">{r.streak}</td>
-                          <td className="px-2 py-2">{r.last_five}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {!seasonTable.length ? <p className="mt-2 text-sm text-slate-600">No table rows yet for this league.</p> : null}
-                </div>
-              </section>
+                <LeagueStandings rows={seasonTable} onSelectTeam={setSelectedTableTeamId} />
               ) : null}
-
               {activeView === "playerTable" ? (
-              <section className="rounded-2xl border border-violet-200 bg-gradient-to-br from-white to-violet-50 p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-violet-900">Player Table</h2>
-                {seasonId ? (
-                  <>
-                    <p className="mt-1 text-[11px] text-slate-600">Ranking is based on Singles results.</p>
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <span className="rounded-full border border-violet-200 bg-violet-50 px-3 py-1 text-xs font-medium text-violet-900">
-                        {currentSeason?.name ?? "Selected league"}
-                      </span>
-                      <span className="rounded-full border border-slate-200 bg-white px-3 py-1 text-xs text-slate-700">
-                        {currentSeasonDoublesCount > 0 ? `${currentSeasonSinglesCount} singles + ${currentSeasonDoublesCount} doubles` : `${currentSeasonSinglesCount} singles only`}
-                      </span>
-                      <div className="ml-auto flex flex-wrap gap-2">
-                        {([
-                          { key: "all", label: "Full table", hidden: currentSeasonDoublesCount === 0 },
-                          { key: "singles", label: "Singles" },
-                          { key: "doubles", label: "Doubles", hidden: currentSeasonDoublesCount === 0 },
-                          { key: "total", label: "Overall", hidden: currentSeasonDoublesCount === 0 },
-                        ] as Array<{ key: PlayerTableView; label: string; hidden?: boolean }>).map((option) =>
-                          option.hidden ? null : (
-                            <button
-                              key={option.key}
-                              type="button"
-                              onClick={() => setPlayerTableView(option.key)}
-                              className={`rounded-full border px-3 py-1 text-xs font-medium transition ${
-                                playerTableView === option.key
-                                  ? "border-violet-700 bg-violet-700 text-white"
-                                  : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
-                              }`}
-                            >
-                              {option.label}
-                            </button>
-                          )
-                        )}
-                      </div>
-                    </div>
-                    <div className="mt-3 overflow-auto rounded-xl border border-slate-200 bg-white">
-                      <table className={`${playerTableView === "all" ? "min-w-[1380px]" : "w-full table-fixed"} border-collapse text-xs`}>
-                        <thead>
-                          {playerTableView === "all" ? (
-                            <>
-                              <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-500">
-                                <th className="w-14 px-3 py-2 text-center" rowSpan={2}>Rank</th>
-                                <th className="w-[180px] px-2 py-2" rowSpan={2}>Player</th>
-                                <th className="w-[140px] whitespace-nowrap px-2 py-2" rowSpan={2}>Team</th>
-                                <th className="px-3 py-2 text-center text-violet-800" colSpan={7}>Singles</th>
-                                <th className="px-3 py-2 text-center text-indigo-800" colSpan={7}>Doubles</th>
-                                <th className="px-3 py-2 text-center text-emerald-800" colSpan={7}>Total</th>
-                              </tr>
-                              <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-600">
-                                <th className="w-16 px-3 py-1.5 text-center">App</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Played</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Won</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Lost</th>
-                                <th className="w-16 px-3 py-1.5 text-center">PF</th>
-                                <th className="w-16 px-3 py-1.5 text-center">PA</th>
-                                <th className="w-20 px-3 py-1.5 text-center">Win %</th>
-                                <th className="w-16 px-3 py-1.5 text-center">App</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Played</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Won</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Lost</th>
-                                <th className="w-16 px-3 py-1.5 text-center">PF</th>
-                                <th className="w-16 px-3 py-1.5 text-center">PA</th>
-                                <th className="w-20 px-3 py-1.5 text-center">Win %</th>
-                                <th className="w-16 px-3 py-1.5 text-center">App</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Played</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Won</th>
-                                <th className="w-16 px-3 py-1.5 text-center">Lost</th>
-                                <th className="w-16 px-3 py-1.5 text-center">PF</th>
-                                <th className="w-16 px-3 py-1.5 text-center">PA</th>
-                                <th className="w-20 px-3 py-1.5 text-center">Win %</th>
-                              </tr>
-                            </>
-                          ) : (
-                            <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-600">
-                              <th className="w-12 px-2 py-2 text-center">Rank</th>
-                              <th className="w-[170px] px-2 py-2">Player</th>
-                              <th className="w-[240px] px-2 py-2">Team</th>
-                              <th className="w-12 px-2 py-2 text-center">App</th>
-                              <th className="w-14 px-2 py-2 text-center">Played</th>
-                              <th className="w-12 px-2 py-2 text-center">Won</th>
-                              <th className="w-12 px-2 py-2 text-center">Lost</th>
-                              <th className="w-12 px-2 py-2 text-center">PF</th>
-                              <th className="w-12 px-2 py-2 text-center">PA</th>
-                              <th className="w-14 px-2 py-2 text-center">Win %</th>
-                            </tr>
-                          )}
-                        </thead>
-                        <tbody>
-                          {playerSummaryRows.map((r) => (
-                            <tr key={r.player_id} className="border-b border-slate-100 text-slate-800">
-                              <td className="px-3 py-2 text-center font-semibold">{r.rank ?? "-"}</td>
-                              <td className="px-2 py-2">
-                                <button
-                                  type="button"
-                                  onClick={() => setSelectedPlayerTablePlayerId(r.player_id)}
-                                  className="block truncate text-left underline decoration-violet-200 underline-offset-2 hover:text-violet-800"
-                                  title={r.player_name}
-                                >
-                                  {r.player_name}
-                                </button>
-                              </td>
-                              <td className="truncate whitespace-nowrap px-2 py-2" title={r.team_name}>{r.team_name}</td>
-                              {playerTableView === "all" ? (
-                                <>
-                                  <td className="px-3 py-2 text-center">{r.singles?.appearances ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.singles?.played ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.singles?.won ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.singles?.lost ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.singles?.points_for ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.singles?.points_against ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{(r.singles?.win_pct ?? 0).toFixed(1)}%</td>
-                                  <td className="px-3 py-2 text-center">{r.doubles?.appearances ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.doubles?.played ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.doubles?.won ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.doubles?.lost ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.doubles?.points_for ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.doubles?.points_against ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{(r.doubles?.win_pct ?? 0).toFixed(1)}%</td>
-                                  <td className="px-3 py-2 text-center">{r.total?.appearances ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.total?.played ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.total?.won ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.total?.lost ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.total?.points_for ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{r.total?.points_against ?? 0}</td>
-                                  <td className="px-3 py-2 text-center">{(r.total?.win_pct ?? 0).toFixed(1)}%</td>
-                                </>
-                              ) : (
-                                <>
-                                  <td className="px-2 py-2 text-center">
-                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.appearances ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-center">
-                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.played ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-center">
-                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.won ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-center">
-                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.lost ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-center">
-                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.points_for ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-center">
-                                    {(playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.points_against ?? 0}
-                                  </td>
-                                  <td className="px-2 py-2 text-center">
-                                    {((playerTableView === "singles" ? r.singles : playerTableView === "doubles" ? r.doubles : r.total)?.win_pct ?? 0).toFixed(1)}%
-                                  </td>
-                                </>
-                              )}
-                            </tr>
-                          ))}
-                          {playerSummaryRows.length === 0 ? (
-                            <tr>
-                              <td className="px-2 py-2 text-slate-500" colSpan={playerTableView === "all" ? 24 : 10}>
-                                No player data yet.
-                              </td>
-                            </tr>
-                          ) : null}
-                        </tbody>
-                      </table>
-                    </div>
-                  </>
-                ) : (
-                  <p className="mt-2 text-sm text-slate-600">Select a published league to view player statistics.</p>
-                )}
-              </section>
+                <LeaguePlayerTable
+                  hasSeason={Boolean(seasonId)}
+                  seasonName={currentSeason?.name ?? "Selected league"}
+                  singlesCount={currentSeasonSinglesCount}
+                  doublesCount={currentSeasonDoublesCount}
+                  mode={playerTableView}
+                  rows={playerSummaryRows}
+                  onModeChange={setPlayerTableView}
+                  onSelectPlayer={setSelectedPlayerTablePlayerId}
+                />
               ) : null}
-
               {activeView === "handicaps" && canManage ? (
               <section className="rounded-2xl border border-fuchsia-200 bg-gradient-to-br from-white to-fuchsia-50 p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-fuchsia-900">Handicap Management</h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  View and adjust player handicaps. Elo can continue updating without changing live playing handicaps.
-                </p>
-                <div className="mt-3 rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-3 text-sm text-fuchsia-950">
+                <LeagueAreaWorkbench
+                  eyebrow="Ratings and playing starts"
+                  title="Handicap Management"
+                  description="Review Elo-derived recommendations, publish current lists, apply scheduled reviews and retain a complete audit history."
+                  tone="fuchsia"
+                  tasks={[
+                    { href: "#handicap-method", label: "Review method", description: "Check how Elo converts into a playing handicap.", badge: `${currentSeason?.handicap_review_interval_weeks ?? 4}-weekly` },
+                    { href: "#handicap-review", label: "Run review", description: "Apply the current Elo targets deliberately.", badge: currentSeason?.handicap_enabled ? "Active" : "Elo only" },
+                    { href: "#handicap-adjustment", label: "Manual adjustment", description: "Find one player and record a reasoned override." },
+                    { href: "#handicap-history", label: "Audit history", description: "Review every recorded handicap change.", badge: `${handicapHistoryFiltered.length} records` },
+                  ]}
+                />
+                <div id="handicap-method" className="mt-3 scroll-mt-40 rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-3 text-sm text-fuchsia-950">
                   <p className="font-semibold">How snooker handicaps now work</p>
                   <ul className="mt-2 space-y-1 text-xs leading-6 text-fuchsia-900">
                       <li>Elo rating updates after every valid competitive frame.</li>
@@ -9831,7 +8978,7 @@ export default function LeaguePage() {
                     </table>
                   </div>
                 </div>
-                <div className="mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3">
+                <div id="handicap-review" className="mt-3 scroll-mt-40 rounded-xl border border-rose-300 bg-rose-50 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-rose-950">Apply handicap changes from Elo target</p>
@@ -9926,7 +9073,7 @@ export default function LeaguePage() {
                     placeholder="Select club and team to build a copy-ready handicap list."
                   />
                 </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-6">
+                <div id="handicap-adjustment" className="mt-3 grid scroll-mt-40 gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-6">
                   <select
                     aria-label="Select club for handicap management"
                     className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
@@ -10064,7 +9211,7 @@ export default function LeaguePage() {
                     </tbody>
                   </table>
                 </div>
-                <h3 className="mt-4 text-sm font-semibold text-slate-900">Handicap History</h3>
+                <h3 id="handicap-history" className="mt-4 scroll-mt-40 text-sm font-semibold text-slate-900">Handicap History</h3>
                 <div className="mt-2 overflow-auto rounded-xl border border-slate-200 bg-white">
                   <table className="min-w-full border-collapse text-sm">
                     <thead>
@@ -10092,7 +9239,7 @@ export default function LeaguePage() {
                                 <button
                                   type="button"
                                   onClick={() => {
-                                    setSeasonId(f.season_id);
+                                    selectLeagueSeason(f.season_id);
                                     setActiveView("fixtures");
                                     setFixtureId(f.id);
                                     setResultEntryOpen(true);
@@ -10688,4 +9835,8 @@ export default function LeaguePage() {
       </div>
     </main>
   );
+}
+
+export default function LeaguePage() {
+  return <Suspense fallback={<main className="min-h-screen bg-slate-100 p-6"><div className="mx-auto max-w-6xl rounded-2xl border border-slate-200 bg-white p-5 text-slate-600">Loading League Manager…</div></main>}><LeaguePageContent /></Suspense>;
 }

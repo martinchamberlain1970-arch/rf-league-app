@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
@@ -76,7 +77,7 @@ export default function RescheduleFixturePage() {
     const appUserRes = await client.from("app_users").select("linked_player_id").eq("id", userId).maybeSingle();
     const playerId = (appUserRes.data?.linked_player_id as string | null) ?? null;
     setLinkedPlayerId(playerId);
-    if (!playerId) return setLoading(false);
+    if (!playerId && !admin.canManageLeague) return setLoading(false);
 
     const [seasonRes, teamRes, memberRes, fixtureRes] = await Promise.all([
       client.from("league_seasons").select("id,name,is_published").eq("is_published", true).order("created_at", { ascending: false }),
@@ -97,7 +98,10 @@ export default function RescheduleFixturePage() {
     const sessionRes = await client.auth.getSession();
     const token = sessionRes.data.session?.access_token;
     if (token) {
-      const reqRes = await fetch("/api/league/fixture-change-requests", { headers: { Authorization: `Bearer ${token}` } });
+      const requestUrl = admin.canManageLeague
+        ? "/api/league/fixture-change-requests?scope=admin"
+        : "/api/league/fixture-change-requests";
+      const reqRes = await fetch(requestUrl, { headers: { Authorization: `Bearer ${token}` } });
       const payload = (await reqRes.json().catch(() => ({}))) as { error?: string; rows?: FixtureChangeRequest[] };
       if (!reqRes.ok) {
         setMessage(payload.error ?? "Failed to load fixture date requests.");
@@ -108,7 +112,7 @@ export default function RescheduleFixturePage() {
     setLoading(false);
   };
 
-  useEffect(() => { void loadAll(); }, []);
+  useEffect(() => { if (!admin.loading) void loadAll(); }, [admin.loading, admin.canManageLeague]);
 
   const myMemberships = useMemo(
     () => (linkedPlayerId ? members.filter((m) => m.player_id === linkedPlayerId) : []) as TeamMembership[],
@@ -122,6 +126,7 @@ export default function RescheduleFixturePage() {
   const publishedSeasonIds = useMemo(() => new Set(seasons.map((s) => s.id)), [seasons]);
   const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t.name])), [teams]);
   const hasCaptainPrivileges = captainTeamIds.size > 0;
+  const officerMode = admin.canManageLeague && !hasCaptainPrivileges;
 
   const myFixtures = useMemo(
     () =>
@@ -238,11 +243,18 @@ export default function RescheduleFixturePage() {
           <InfoModal open={Boolean(info)} title={info?.title ?? ""} description={info?.description ?? ""} onClose={() => setInfo(null)} />
 
           {loading ? <section className={sectionCardClass}>Loading...</section> : null}
-          {!linkedPlayerId && !loading ? <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm">Your account must be linked to a player profile to request a fixture date change.</section> : null}
-          {linkedPlayerId && myMemberships.length === 0 && !loading ? <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm">Your linked player profile is not currently assigned to a published league team.</section> : null}
-          {linkedPlayerId && myMemberships.length > 0 && !hasCaptainPrivileges && !loading ? <section className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sky-900 shadow-sm">Only captains and vice-captains can submit fixture-date requests. Team players can still view outstanding fixtures below.</section> : null}
+          {!linkedPlayerId && !admin.canManageLeague && !loading ? <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm">Your account must be linked to a player profile to request a fixture date change.</section> : null}
+          {officerMode && !loading ? (
+            <section className="rounded-2xl border border-teal-200 bg-teal-50 p-4 text-teal-950 shadow-sm">
+              <p className="font-semibold">League officer view</p>
+              <p className="mt-1 text-sm">A player-profile link is not required for your officer account. Captains raise requests here; you review, approve and schedule them through the Results Queue.</p>
+              <Link href="/results" className="mt-3 inline-flex rounded-xl bg-teal-800 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-900">Open fixture request approvals</Link>
+            </section>
+          ) : null}
+          {linkedPlayerId && myMemberships.length === 0 && !admin.canManageLeague && !loading ? <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm">Your linked player profile is not currently assigned to a published league team.</section> : null}
+          {linkedPlayerId && myMemberships.length > 0 && !hasCaptainPrivileges && !admin.canManageLeague && !loading ? <section className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sky-900 shadow-sm">Only captains and vice-captains can submit fixture-date requests. Team players can still view outstanding fixtures below.</section> : null}
 
-          {linkedPlayerId && myMemberships.length > 0 ? <>
+          {(admin.canManageLeague || (linkedPlayerId && myMemberships.length > 0)) ? <>
             <section className={tintedCardClass}>
               <h2 className={sectionTitleClass}>Policy</h2>
               <ul className="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-700">
@@ -376,9 +388,9 @@ export default function RescheduleFixturePage() {
             <section className={sectionCardClass}>
               <h2 className={sectionTitleClass}>Outstanding fixtures</h2>
               <div className="mt-3 space-y-2">
-                {outstandingRequests.length === 0 ? <p className="text-sm text-slate-600">No outstanding fixture requests for your teams.</p> : null}
+                {outstandingRequests.length === 0 ? <p className="text-sm text-slate-600">No outstanding fixture requests{admin.canManageLeague ? " across the league" : " for your teams"}.</p> : null}
                 {outstandingRequests.map((request) => {
-                  const fixture = myFixtures.find((f) => f.id === request.fixture_id);
+                  const fixture = fixtures.find((f) => f.id === request.fixture_id);
                   return <div key={request.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="font-medium text-slate-900">{fixture ? `${teamById.get(fixture.home_team_id) ?? "Home"} vs ${teamById.get(fixture.away_team_id) ?? "Away"}` : "Fixture"}</p>
