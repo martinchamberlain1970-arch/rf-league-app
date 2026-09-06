@@ -5,6 +5,7 @@ import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import { useAppDialog } from "@/components/AppDialogProvider";
 import { supabase } from "@/lib/supabase";
+import Link from "next/link";
 
 type Attestation = { id: string; clubName: string; attestor_name: string; attestor_capacity: string; submitted_at: string };
 const publicUrl = "https://rf-league-app.vercel.app/handicap-consultation/premier-handicap-2026-27";
@@ -73,7 +74,7 @@ export default function HandicapConsultationReviewPage() {
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div><h2 className="text-xl font-black">Club attestations</h2><p className="mt-1 text-sm text-slate-600">{attestations.length} written response{attestations.length === 1 ? "" : "s"} received.</p></div>
-              <button type="button" onClick={() => void copyLink()} className="rounded-xl bg-teal-700 px-4 py-2 font-bold text-white">Copy public link</button>
+              <div className="flex flex-wrap gap-2"><button type="button" onClick={() => void copyLink()} className="rounded-xl border border-teal-600 px-4 py-2 font-bold text-teal-800">Copy public link</button><Link href="/egm-voting" className="rounded-xl bg-teal-700 px-4 py-2 font-bold text-white">Open EGM voting record</Link></div>
             </div>
             <div className="mt-5 overflow-x-auto">
               <table className="w-full min-w-[720px] text-left text-sm">

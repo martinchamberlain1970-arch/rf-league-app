@@ -53,6 +53,7 @@ const groups: NavGroup[] = [
       { href: "/rating-audit", title: "Elo review", description: "Audit Elo movement and handicap alignment.", mark: "ER", leagueOfficerOnly: true },
       { href: "/league-invoices", title: "Club invoices", description: "Preview combined league and competition fees.", mark: "CI", leagueOfficerOnly: true },
       { href: "/handicap-consultation-review", title: "Handicap consultation", description: "Review club attestations for the expedited handicap decision.", mark: "HV", leagueOfficerOnly: true },
+      { href: "/egm-voting", title: "EGM voting record", description: "Register attendees, record ballots and produce the formal handicap decision.", mark: "EG", leagueOfficerOnly: true },
     ],
   },
   {
