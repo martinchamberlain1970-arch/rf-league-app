@@ -12,6 +12,7 @@ import ConfirmModal from "@/components/ConfirmModal";
 import LeagueWorkspaceSwitcher, {
   type LeagueWorkspaceView,
 } from "@/components/league/LeagueWorkspaceSwitcher";
+import LeagueAreaWorkbench from "@/components/league/LeagueAreaWorkbench";
 import {
   LeaguePlayerTable,
   LeagueStandings,
@@ -6472,7 +6473,18 @@ function LeaguePageContent() {
               ) : null}
               {activeView === "setup" ? (
               <section className="rounded-2xl border border-teal-200 bg-gradient-to-br from-white to-teal-50 p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-teal-900">League Setup</h2>
+                <LeagueAreaWorkbench
+                  eyebrow="League administration"
+                  title="League Setup"
+                  description="Create, prepare and publish a season from one workspace. Work through the shortcuts in order, or jump directly to the task you need."
+                  tone="teal"
+                  tasks={[
+                    { href: "#guided-create-league", label: "Create league", description: "Choose the format and create a new season.", badge: currentSeason ? "Created" : "Start here" },
+                    { href: "#guided-add-league-teams", label: "Choose league", description: "Review drafts, live leagues and completed seasons.", badge: `${visibleSeasons.length} leagues` },
+                    { href: "#league-team-entries", label: "Add teams", description: "Copy registered teams into this season.", badge: `${seasonTeams.length} entered` },
+                    { href: "#guided-publish-league", label: "Publish or close", description: "Publish, complete, reopen or remove a league.", badge: currentSeason?.is_published ? "Published" : "Draft" },
+                  ]}
+                />
                 <LeagueCreationPanel
                   bodyName={LEAGUE_BODY_NAME}
                   seasonId={seasonId}
@@ -6497,7 +6509,7 @@ function LeaguePageContent() {
                   onPublish={() => void publishLeague()}
                   onToggleCompletion={() => setConfirmCompletionOpen(true)}
                 />
-                <div id="guided-add-league-teams" className={`mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 scroll-mt-24 ${guidedSectionClass("add-league-teams")}`}>
+                <div id="guided-add-league-teams" className={`mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 scroll-mt-40 ${guidedSectionClass("add-league-teams")}`}>
                   <h3 className="text-sm font-semibold text-slate-900">Created leagues</h3>
                   <div className="mt-2 space-y-2">
                     {seasons
@@ -6641,7 +6653,7 @@ function LeaguePageContent() {
                     )}
                   </div>
                 </div>
-                <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div id="league-team-entries" className="mt-4 scroll-mt-40 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm font-semibold text-slate-900">Add registered team into selected league</p>
                   <p className="mt-1 text-xs text-slate-600">
                     Registered teams are reusable templates. Adding them here creates the season-specific team entry and copies the current template roster into this league only.
@@ -6743,15 +6755,21 @@ function LeaguePageContent() {
 
               {activeView === "knockouts" ? (
                 <section className="rounded-2xl border border-fuchsia-200 bg-gradient-to-br from-white to-fuchsia-50 p-4 shadow-sm">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <h2 className="text-lg font-semibold text-fuchsia-900">Knockout Cups / Competitions</h2>
-                    {canManage ? <Link href="/league-invoices" className="rounded-xl border border-fuchsia-300 bg-white px-4 py-2 text-sm font-bold text-fuchsia-900">Club invoices</Link> : null}
-                  </div>
-                  <p className="mt-1 text-sm text-slate-600">
-                    Published knockout competitions and entries are managed here.
-                  </p>
+                  <LeagueAreaWorkbench
+                    eyebrow="Competition administration"
+                    title="Knockout Competitions"
+                    description="Create cups, control entry windows, review entrants and manage draws, deadlines and finals."
+                    tone="fuchsia"
+                    tasks={[
+                      { href: "#create-knockout", label: "Create competition", description: "Open a new cup from an approved format.", badge: canManage ? "Officer" : "View" },
+                      { href: "#active-knockouts", label: "Manage competitions", description: "Open draws, deadlines, formats and final details.", badge: `${knockoutCompetitions.length} active` },
+                      { href: "#active-knockouts", label: "Review entries", description: "Approve or reject entrants awaiting a decision.", badge: `${knockoutCompetitions.reduce((total, competition) => total + (competitionEntriesByCompetitionId.get(competition.id) ?? []).filter((entry) => entry.status === "pending").length, 0)} pending` },
+                      { href: "/league-invoices", label: "Club invoices", description: "Preview entry charges and prepare club invoices.", badge: "Finance" },
+                    ]}
+                    aside={canManage ? <Link href="/league-invoices" className="rounded-xl border border-fuchsia-300/60 bg-white/10 px-4 py-2 text-sm font-bold text-white hover:bg-white/20">Open invoices</Link> : null}
+                  />
                   {canManage ? (
-                    <div className="mt-3 grid gap-2 sm:grid-cols-4">
+                    <div id="create-knockout" className="mt-3 grid scroll-mt-40 gap-2 rounded-xl border border-fuchsia-200 bg-white p-3 sm:grid-cols-4">
                       <label className="space-y-1">
                         <span className="block text-xs font-medium text-slate-600">Competition</span>
                         <select
@@ -6811,7 +6829,7 @@ function LeaguePageContent() {
                       </button>
                     </div>
                   ) : null}
-                  <div className="mt-3 space-y-3">
+                  <div id="active-knockouts" className="mt-3 scroll-mt-40 space-y-3">
                     {knockoutCompetitions.map((c) => {
                       const isHodgeComp = isHodgeCompetitionName(c.name);
                       const isHamiltonComp = isHamiltonCompetitionName(c.name);
@@ -7261,8 +7279,19 @@ function LeaguePageContent() {
 
               {activeView === "venues" ? (
               <section className="rounded-2xl border border-cyan-200 bg-gradient-to-br from-white to-cyan-50 p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-cyan-900">Venues</h2>
-                <p className="mt-2 text-sm text-slate-600">Register venues and maintain contact details.</p>
+                <LeagueAreaWorkbench
+                  eyebrow="Club and venue records"
+                  title="Venues"
+                  description="Maintain venue details, table capacity, associated teams and players without leaving the league workspace."
+                  tone="cyan"
+                  tasks={[
+                    { href: "#venue-register", label: "Register venue", description: "Add a new club or playing venue.", badge: `${venueLocations.length} venues` },
+                    { href: "#venue-register", label: "Edit details", description: "Update address, contacts and table capacity." },
+                    { href: "#venue-profile", label: "Venue profile", description: "Review teams, captains and linked players.", badge: manageVenueId ? "Selected" : "Choose venue" },
+                    { href: "#venue-unassigned", label: "Unassigned players", description: "Find club players who are not on a team." },
+                  ]}
+                />
+                <div id="venue-register" className="scroll-mt-40">
                 <VenueRegistryPanel
                   seasonId={seasonId}
                   venues={venueLocations}
@@ -7289,8 +7318,9 @@ function LeaguePageContent() {
                   onToggleExpanded={() => setShowAllRegisteredVenues((previous) => !previous)}
                   onSelectVenue={setManageVenueId}
                 />
+                </div>
                 {manageVenueId ? (
-                  <div className="mt-3 space-y-3">
+                  <div id="venue-profile" className="mt-3 scroll-mt-40 space-y-3">
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <p className="text-sm font-semibold text-slate-900">Venue Profile</p>
                       <p className="mt-1 text-base font-semibold text-slate-900">
@@ -7496,7 +7526,7 @@ function LeaguePageContent() {
                         ) : null}
                       </div>
                     </div>
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <div id="venue-unassigned" className="scroll-mt-40 rounded-xl border border-slate-200 bg-slate-50 p-3">
                       <div className="flex flex-wrap items-center justify-between gap-2">
                         <p className="text-sm font-semibold text-slate-900">
                           Unassigned players at this venue ({selectedVenueUnassignedPlayers.length})
@@ -7552,8 +7582,19 @@ function LeaguePageContent() {
               ) : null}
               {activeView === "teamManagement" ? (
               <section className="rounded-2xl border border-indigo-200 bg-gradient-to-br from-white to-indigo-50 p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-indigo-900">Team Management</h2>
-                <p className="mt-2 text-sm text-slate-600">Follow steps in order. You can skip and return later.</p>
+                <LeagueAreaWorkbench
+                  eyebrow="People and team administration"
+                  title="Teams & Roles"
+                  description="Build current-season squads, assign captain access, register new people and manage transfers."
+                  tone="indigo"
+                  tasks={[
+                    { href: "#season-roster", label: "Season squad", description: "Choose the team and maintain its current roster.", badge: `${seasonTeams.length} teams` },
+                    { href: "#registered-team", label: "Registered team", description: "Create reusable club and team records." },
+                    { href: "#guided-assign-players", label: "New players", description: "Create one player or import several names." },
+                    { href: "#player-transfer", label: "Transfers", description: "Move a player to a different club or team." },
+                  ]}
+                />
+                <div id="season-roster" className="scroll-mt-40">
                 <SeasonRosterEditor
                   seasonId={seasonId}
                   teams={seasonTeams}
@@ -7592,7 +7633,8 @@ function LeaguePageContent() {
                   )}
                   onRemoveMember={(memberId) => void removeSeasonRosterMember(memberId)}
                 />
-                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                </div>
+                <div id="registered-team" className="mt-3 scroll-mt-40 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm font-semibold text-slate-900">Step 1: Register venue</p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-4">
                     <select className="rounded-xl border border-slate-300 bg-white px-3 py-2" value={LEAGUE_BODY_NAME} disabled>
@@ -7804,7 +7846,7 @@ function LeaguePageContent() {
                     </ul>
                   </div>
                 ) : null}
-                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div id="player-transfer" className="mt-3 scroll-mt-40 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   <p className="text-sm font-semibold text-slate-900">Step 4: Transfer player club/team</p>
                   <p className="mt-1 text-xs text-slate-600">
                     This updates the player&apos;s club and registered-team template for future league setup. Published season team memberships remain season-specific and are not rewritten.
@@ -7885,8 +7927,20 @@ function LeaguePageContent() {
 
               {activeView === "fixtures" ? (
               <section className="rounded-2xl border border-amber-200 bg-gradient-to-br from-white to-amber-50 p-4 shadow-sm">
+                <LeagueAreaWorkbench
+                  eyebrow="Match operations"
+                  title="Fixtures & Results"
+                  description="Generate and share the fixture list, find a match quickly, then open the guided frame-by-frame result journey."
+                  tone="amber"
+                  tasks={[
+                    { href: "#fixture-sharing", label: "Share fixtures", description: "Open or copy the public or officer preview link.", badge: currentSeason?.is_published ? "Public" : "Draft" },
+                    { href: "#fixture-generation", label: "Generate fixtures", description: "Build the schedule and manage reserved weeks.", badge: `${seasonFixtures.length} fixtures` },
+                    { href: "#fixture-list", label: "Find a fixture", description: "Filter by team, status or fixture week.", badge: `${visibleFixtures.length} shown` },
+                    { href: "#fixture-list", label: "Enter a result", description: "Open a fixture to record frames, breaks and submit.", badge: `${allPendingSubmissions.filter((submission) => submission.season_id === seasonId && submission.status === "pending").length} reviews` },
+                  ]}
+                />
                 <div className="flex flex-wrap items-center gap-2">
-                  <h2 className="text-lg font-semibold text-amber-900">Fixtures</h2>
+                  <span className="text-xs font-black uppercase tracking-wide text-slate-500">Selected league settings</span>
                   {currentSeason ? (
                     <span
                       className={`rounded-full px-2 py-0.5 text-xs font-semibold ${
@@ -7912,7 +7966,7 @@ function LeaguePageContent() {
                   </div>
                 ) : null}
                 {currentSeason ? (
-                  <div className={`mt-3 rounded-xl border p-3 ${currentSeason.is_published ? "border-cyan-200 bg-cyan-50" : "border-amber-200 bg-amber-50"}`}>
+                  <div id="fixture-sharing" className={`mt-3 scroll-mt-40 rounded-xl border p-3 ${currentSeason.is_published ? "border-cyan-200 bg-cyan-50" : "border-amber-200 bg-amber-50"}`}>
                     <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                       <div>
                         <p className="text-sm font-semibold text-slate-900">Fixture sharing</p>
@@ -7968,7 +8022,7 @@ function LeaguePageContent() {
                     ) : null}
                   </div>
                 ) : null}
-                <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                <div id="fixture-generation" className="mt-3 scroll-mt-40 rounded-xl border border-slate-200 bg-slate-50 p-3">
                   {isSummerFormat ? (
                     <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
                       <p className="font-semibold">Summer League result entry</p>
@@ -8178,7 +8232,7 @@ function LeaguePageContent() {
                     </div>
                   </>
                 ) : null}
-                <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <div id="fixture-list" className="mt-3 grid scroll-mt-40 gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-2">
                   <select
                     className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2"
                     value={fixtureTeamFilter}
@@ -8369,18 +8423,35 @@ function LeaguePageContent() {
 
               {activeView === "fixtures" && fixtureId && resultEntryOpen && (canManage || canSubmitCurrentFixture) ? (
                 <div className="fixed inset-0 z-50 flex items-start justify-center bg-slate-900/40 p-4">
-                  <div className="max-h-[92vh] w-full max-w-5xl overflow-auto rounded-2xl border border-slate-200 bg-white p-4 shadow-xl">
-                    <div className="flex items-center justify-between">
-                      <h2 className="text-lg font-semibold text-slate-900">Weekly Result Entry</h2>
+                  <div id="result-entry" className="max-h-[92vh] w-full max-w-5xl overflow-auto rounded-2xl border border-slate-200 bg-white shadow-xl">
+                    <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-700 bg-gradient-to-r from-[#081426] to-[#064e4a] px-4 py-3 text-white shadow-sm">
+                      <div>
+                        <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Match-night scoring</p>
+                        <h2 className="text-lg font-bold">Weekly Result Entry</h2>
+                        {currentFixture ? (
+                          <p className="mt-0.5 text-xs text-slate-200">
+                            {teamById.get(currentFixture.home_team_id)?.name ?? "Home"} vs {teamById.get(currentFixture.away_team_id)?.name ?? "Away"}
+                          </p>
+                        ) : null}
+                      </div>
                       <button
                         type="button"
                         onClick={() => setResultEntryOpen(false)}
-                        className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700"
+                        className="rounded-xl border border-white/30 bg-white/10 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/20"
                       >
                         Close
                       </button>
                     </div>
-                    <p className="mt-1 text-xs text-slate-600">
+                    <div className="grid grid-cols-2 gap-2 border-b border-slate-200 bg-slate-50 px-4 py-3 sm:grid-cols-4">
+                      {["Confirm line-ups", "Enter frame scores", "Record breaks", canManage ? "Save result" : "Submit result"].map((step, index) => (
+                        <div key={step} className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                          <span className="grid h-6 w-6 shrink-0 place-items-center rounded-full bg-slate-900 text-[11px] text-white">{index + 1}</span>
+                          <span>{step}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="p-4">
+                    <p className="text-xs text-slate-600">
                       {`Format: ${currentSeasonSinglesCount} singles${currentSeasonDoublesCount > 0 ? ` + ${currentSeasonDoublesCount} doubles` : ""}. Winner is derived automatically from frame points.`}
                     </p>
                     {isHodgeTriplesFormat ? (
@@ -8744,6 +8815,7 @@ function LeaguePageContent() {
                           : "Changes save automatically for league officers."}
                       </p>
                     )}
+                    </div>
                   </div>
                 </div>
               ) : null}
@@ -8765,11 +8837,19 @@ function LeaguePageContent() {
               ) : null}
               {activeView === "handicaps" && canManage ? (
               <section className="rounded-2xl border border-fuchsia-200 bg-gradient-to-br from-white to-fuchsia-50 p-4 shadow-sm">
-                <h2 className="text-lg font-semibold text-fuchsia-900">Handicap Management</h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  View and adjust player handicaps. Elo can continue updating without changing live playing handicaps.
-                </p>
-                <div className="mt-3 rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-3 text-sm text-fuchsia-950">
+                <LeagueAreaWorkbench
+                  eyebrow="Ratings and playing starts"
+                  title="Handicap Management"
+                  description="Review Elo-derived recommendations, publish current lists, apply scheduled reviews and retain a complete audit history."
+                  tone="fuchsia"
+                  tasks={[
+                    { href: "#handicap-method", label: "Review method", description: "Check how Elo converts into a playing handicap.", badge: `${currentSeason?.handicap_review_interval_weeks ?? 4}-weekly` },
+                    { href: "#handicap-review", label: "Run review", description: "Apply the current Elo targets deliberately.", badge: currentSeason?.handicap_enabled ? "Active" : "Elo only" },
+                    { href: "#handicap-adjustment", label: "Manual adjustment", description: "Find one player and record a reasoned override." },
+                    { href: "#handicap-history", label: "Audit history", description: "Review every recorded handicap change.", badge: `${handicapHistoryFiltered.length} records` },
+                  ]}
+                />
+                <div id="handicap-method" className="mt-3 scroll-mt-40 rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-3 text-sm text-fuchsia-950">
                   <p className="font-semibold">How snooker handicaps now work</p>
                   <ul className="mt-2 space-y-1 text-xs leading-6 text-fuchsia-900">
                       <li>Elo rating updates after every valid competitive frame.</li>
@@ -8808,7 +8888,7 @@ function LeaguePageContent() {
                     </table>
                   </div>
                 </div>
-                <div className="mt-3 rounded-xl border border-rose-300 bg-rose-50 p-3">
+                <div id="handicap-review" className="mt-3 scroll-mt-40 rounded-xl border border-rose-300 bg-rose-50 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
                       <p className="text-sm font-semibold text-rose-950">Apply handicap changes from Elo target</p>
@@ -8903,7 +8983,7 @@ function LeaguePageContent() {
                     placeholder="Select club and team to build a copy-ready handicap list."
                   />
                 </div>
-                <div className="mt-3 grid gap-2 sm:grid-cols-6">
+                <div id="handicap-adjustment" className="mt-3 grid scroll-mt-40 gap-2 rounded-xl border border-slate-200 bg-white p-3 sm:grid-cols-6">
                   <select
                     aria-label="Select club for handicap management"
                     className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
@@ -9041,7 +9121,7 @@ function LeaguePageContent() {
                     </tbody>
                   </table>
                 </div>
-                <h3 className="mt-4 text-sm font-semibold text-slate-900">Handicap History</h3>
+                <h3 id="handicap-history" className="mt-4 scroll-mt-40 text-sm font-semibold text-slate-900">Handicap History</h3>
                 <div className="mt-2 overflow-auto rounded-xl border border-slate-200 bg-white">
                   <table className="min-w-full border-collapse text-sm">
                     <thead>
