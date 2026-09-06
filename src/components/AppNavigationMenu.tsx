@@ -29,6 +29,7 @@ const groups: NavGroup[] = [
     description: "The things captains and players use around a fixture.",
     items: [
       { href: "/captain-results", title: "Line-ups & results", description: "Enter line-ups, frame scores and the final result.", mark: "LR" },
+      { href: "/player-additions", title: "Player additions", description: "Captains request new roster players; league officers review them.", mark: "PA" },
       { href: "/reschedule-fixture", title: "Fixture date requests", description: "Request an agreed early date or exceptional postponement.", mark: "FD" },
       { href: "/live-matches", title: "Live matches", description: "Follow league scorecards currently in progress.", mark: "LM" },
       { href: "/league?view=fixtures", title: "League fixtures", description: "Find the selected league's fixtures and results.", mark: "FT" },

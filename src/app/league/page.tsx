@@ -2494,6 +2494,7 @@ function LeaguePageContent() {
     }
     let created = 0;
     let addedToTeam = 0;
+    let addedToCurrentSeason = 0;
     const issues: string[] = [];
     const seenFullNames = new Set<string>();
     for (const row of parsed) {
@@ -2532,6 +2533,7 @@ function LeaguePageContent() {
       }
       created += 1;
       if (registryTeamId) {
+        const selectedRegisteredTeam = registeredTeams.find((team) => team.id === registryTeamId) ?? null;
         const memberInsert = await client.from("league_registered_team_members").insert({
           team_id: registryTeamId,
           player_id: playerInsert.data.id,
@@ -2542,6 +2544,24 @@ function LeaguePageContent() {
           issues.push(`${fullName}: created, team add failed`);
         } else {
           addedToTeam += 1;
+          const matchingSeasonTeam = selectedRegisteredTeam
+            ? seasonTeams.find(
+                (team) =>
+                  team.location_id === selectedRegisteredTeam.location_id &&
+                  team.name.trim().toLowerCase() === selectedRegisteredTeam.name.trim().toLowerCase()
+              )
+            : null;
+          if (matchingSeasonTeam && seasonId) {
+            const seasonInsert = await client.from("league_team_members").insert({
+              season_id: seasonId,
+              team_id: matchingSeasonTeam.id,
+              player_id: playerInsert.data.id,
+              is_captain: false,
+              is_vice_captain: false,
+            });
+            if (seasonInsert.error) issues.push(`${fullName}: created and added to reusable team, current season roster add failed`);
+            else addedToCurrentSeason += 1;
+          }
         }
       }
     }
@@ -2551,8 +2571,8 @@ function LeaguePageContent() {
       title: "Bulk Player Register Complete",
       description:
         issues.length > 0
-          ? `Created ${created}. Added to team ${addedToTeam}.\n\nThe following names were not created:\n- ${issues.slice(0, 5).join("\n- ")}${issues.length > 5 ? `\n- ${issues.length - 5} more issue(s)` : ""}\n\nIf a player already exists, use the existing player record and add them to the required team.`
-          : `Created ${created} player(s)${registryTeamId ? ` and added ${addedToTeam} to selected team` : ""}.`,
+          ? `Created ${created}. Added ${addedToTeam} to the reusable team and ${addedToCurrentSeason} to the matching current season roster.\n\nThe following names need attention:\n- ${issues.slice(0, 5).join("\n- ")}${issues.length > 5 ? `\n- ${issues.length - 5} more issue(s)` : ""}\n\nIf a player already exists, use the existing player record and add them to the required team.`
+          : `Created ${created} player(s)${registryTeamId ? `, added ${addedToTeam} to the reusable team and ${addedToCurrentSeason} to the matching current season roster` : ""}.`,
     });
   };
 
@@ -2697,6 +2717,51 @@ function LeaguePageContent() {
     const displayName = fullName;
     const existingPlayer = findExistingPlayerRecord(fullName);
     if (existingPlayer) {
+      if (addToSelectedTeam && registryTeamId) {
+        const selectedTeam = registeredTeams.find((team) => team.id === registryTeamId) ?? null;
+        if (!selectedTeam || selectedTeam.location_id !== newPlayerLocationId || existingPlayer.location_id !== newPlayerLocationId) {
+          setInfoModal({
+            title: "Player Already Exists",
+            description: `${describeExistingPlayerPlacement(existingPlayer)} Select that player's existing club and team before adding them.`,
+          });
+          return;
+        }
+        const matchingSeasonTeam = seasonTeams.find(
+          (team) =>
+            team.location_id === selectedTeam.location_id &&
+            team.name.trim().toLowerCase() === selectedTeam.name.trim().toLowerCase()
+        ) ?? null;
+        const seasonConflicts = members.filter(
+          (member) => member.season_id === seasonId && member.player_id === existingPlayer.id && member.team_id !== matchingSeasonTeam?.id
+        );
+        if (seasonConflicts.length > 0) {
+          setInfoModal({
+            title: "Season Roster Conflict",
+            description: `${named(existingPlayer)} is already assigned to another team in the selected league. Remove or transfer that season assignment before continuing.`,
+          });
+          return;
+        }
+        const alreadyInTemplate = (registeredMembersByTeam.get(selectedTeam.id) ?? []).some((member) => member.player_id === existingPlayer.id);
+        if (!alreadyInTemplate) {
+          const templateInsert = await client.from("league_registered_team_members").insert({ team_id: selectedTeam.id, player_id: existingPlayer.id, is_captain: false, is_vice_captain: false });
+          if (templateInsert.error) return setMessage(templateInsert.error.message);
+        }
+        const alreadyInSeason = matchingSeasonTeam
+          ? members.some((member) => member.season_id === seasonId && member.team_id === matchingSeasonTeam.id && member.player_id === existingPlayer.id)
+          : false;
+        if (matchingSeasonTeam && seasonId && !alreadyInSeason) {
+          const seasonInsert = await client.from("league_team_members").insert({ season_id: seasonId, team_id: matchingSeasonTeam.id, player_id: existingPlayer.id, is_captain: false, is_vice_captain: false });
+          if (seasonInsert.error) return setMessage(seasonInsert.error.message);
+        }
+        await loadAll();
+        setInfoModal({
+          title: "Existing Player Added",
+          description: matchingSeasonTeam
+            ? `${named(existingPlayer)} was already registered and has now been added to ${matchingSeasonTeam.name}'s current season roster and reusable team list.`
+            : `${named(existingPlayer)} was already registered and has now been added to the reusable team list. The team is not in the currently selected league, so no season roster was changed.`,
+        });
+        return;
+      }
       setInfoModal({
         title: "Player Already Exists",
         description: `${describeExistingPlayerPlacement(existingPlayer)} Use the existing player record instead of creating a new one.`,
@@ -2726,6 +2791,7 @@ function LeaguePageContent() {
       setMessage(`Failed to register player: ${playerInsert.error.message}`);
       return;
     }
+    let addedToCurrentSeasonTeam: Team | null = null;
     if (addToSelectedTeam) {
       if (!registryTeamId) {
         setMessage("Player created for club. Select a team to add them.");
@@ -2748,6 +2814,28 @@ function LeaguePageContent() {
         setMessage(`Player was created, but could not be added to team: ${memberInsert.error.message}`);
         return;
       }
+      const matchingSeasonTeam = seasonTeams.find(
+        (team) =>
+          team.location_id === selectedTeam.location_id &&
+          team.name.trim().toLowerCase() === selectedTeam.name.trim().toLowerCase()
+      );
+      if (matchingSeasonTeam && seasonId) {
+        const seasonMemberInsert = await client.from("league_team_members").insert({
+          season_id: seasonId,
+          team_id: matchingSeasonTeam.id,
+          player_id: playerInsert.data.id,
+          is_captain: false,
+          is_vice_captain: false,
+        });
+        if (seasonMemberInsert.error) {
+          setMessage(
+            `${fullName} was created and added to the registered-team template, but could not be added to the current ${matchingSeasonTeam.name} season roster: ${seasonMemberInsert.error.message}`
+          );
+          await loadAll();
+          return;
+        }
+        addedToCurrentSeasonTeam = matchingSeasonTeam;
+      }
     }
     setNewPlayerFirstName("");
     setNewPlayerSecondName("");
@@ -2756,7 +2844,9 @@ function LeaguePageContent() {
     setInfoModal({
       title: "Player Registered",
       description: addToSelectedTeam
-        ? `${fullName} was created for the club and added to the selected team.`
+        ? addedToCurrentSeasonTeam
+          ? `${fullName} was created and added to ${addedToCurrentSeasonTeam.name}'s current season roster and reusable team list.`
+          : `${fullName} was created for the club and added to the reusable team list. That team is not in the currently selected league, so no season roster was changed.`
         : `${fullName} was created for the selected club.`,
     });
   };
@@ -7717,7 +7807,7 @@ function LeaguePageContent() {
                     <div id="guided-assign-players" className={`mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3 scroll-mt-24 ${guidedSectionClass("assign-players")}`}>
                       <p className="text-sm font-semibold text-slate-900">Step 3: Register new player for team/club (first-time creation)</p>
                       <p className="mt-2 text-xs text-slate-600">
-                        This step creates brand-new player records only. If the player already exists, use the existing record. Team selection here updates the reusable registered-team template, not historical season rosters.
+                        This step creates brand-new player records only. If the player already exists, use the existing record. “Register + add to team” updates both the reusable team list and the matching team roster in the league currently selected above.
                       </p>
                       <div className="mt-2 grid gap-2 sm:grid-cols-6">
                         <input
@@ -7779,7 +7869,7 @@ function LeaguePageContent() {
                           Register + add to team
                         </button>
                       </div>
-                      {!registryTeamId ? <p className="mt-2 text-xs text-slate-600">Select a team only if using "Register + add to team".</p> : null}
+                      {!registryTeamId ? <p className="mt-2 text-xs text-slate-600">Select a team when using “Register + add to team”. The player will appear in that team’s current season roster immediately when the team belongs to the selected league.</p> : null}
                       <div className="mt-3">
                         <label className="mb-1 block text-xs font-medium text-slate-600">
                           Bulk create players (one per line: First Last or First,Last)

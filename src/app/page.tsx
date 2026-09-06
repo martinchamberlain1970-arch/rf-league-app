@@ -759,7 +759,7 @@ export default function HomePage() {
       }
 
       if (admin.canManageLeague) {
-        const tables = ["player_claim_requests", "player_update_requests", "location_requests"];
+        const tables = ["player_claim_requests", "player_update_requests", "location_requests", "league_player_addition_requests"];
         if (admin.isSuper) tables.push("admin_requests", "profile_merge_requests", "player_deletion_requests");
         const counts = await Promise.all(
           tables.map((table) => client.from(table).select("id", { count: "exact", head: true }).eq("status", "pending"))
@@ -767,12 +767,15 @@ export default function HomePage() {
         const entryPackResult = await client.from("league_entry_packs").select("id,season_id").eq("status", "submitted").order("updated_at", { ascending: false });
         const otherRequestCount = counts.reduce((sum, result) => sum + (result.count ?? 0), 0);
         const entryPacks = (entryPackResult.data ?? []) as Array<{ id: string; season_id: string }>;
+        const playerAdditionCount = counts[3]?.count ?? 0;
         const totalRequestCount = otherRequestCount + entryPacks.length;
         setPendingRequestsCount(totalRequestCount);
         setPendingRequestsHref(
           totalRequestCount === 1 && entryPacks.length === 1
             ? `/entry-packs?seasonId=${encodeURIComponent(entryPacks[0].season_id)}&packId=${encodeURIComponent(entryPacks[0].id)}`
-            : "/notifications"
+            : totalRequestCount === 1 && playerAdditionCount === 1
+              ? "/player-additions"
+              : "/notifications"
         );
         setPendingResultSubmissionsCount(0);
         return;

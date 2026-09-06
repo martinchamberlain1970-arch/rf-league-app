@@ -123,6 +123,9 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
         const { data: entryPackRows } = await applyCreatedFilter(
           client.from("league_entry_packs").select("id,created_at").eq("status", "submitted")
         );
+        const { data: playerAdditionRows } = await applyCreatedFilter(
+          client.from("league_player_addition_requests").select("id,created_at").eq("status", "pending")
+        );
         const ids = [
           ...(resultRows ?? []).map((r: { id: string }) => `result:${r.id}`),
           ...(claimRows ?? []).map((r: { id: string }) => `claim:${r.id}`),
@@ -130,6 +133,7 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
           ...(adminReqRows ?? []).map((r: { id: string }) => `admin:${r.id}`),
           ...(locationReqRows ?? []).map((r: { id: string }) => `location:${r.id}`),
           ...(entryPackRows ?? []).map((r: { id: string }) => `entry-pack:${r.id}`),
+          ...(playerAdditionRows ?? []).map((r: { id: string }) => `player-addition:${r.id}`),
         ];
         setPendingCount(ids.filter((id) => !dismissed.has(id)).length);
       } else if (admin.isAdmin) {
@@ -157,12 +161,16 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
         const { data: entryPackRows } = admin.canManageLeague
           ? await applyCreatedFilter(client.from("league_entry_packs").select("id,created_at").eq("status", "submitted"))
           : { data: [] as Array<{ id: string }> };
+        const { data: playerAdditionRows } = admin.canManageLeague
+          ? await applyCreatedFilter(client.from("league_player_addition_requests").select("id,created_at").eq("status", "pending"))
+          : { data: [] as Array<{ id: string }> };
         const ids = [
           ...(resultRows ?? []).map((r: { id: string }) => `result:${r.id}`),
           ...updateRows.map((r: { id: string }) => `update:${r.id}`),
           ...(claimRows ?? []).map((r: { id: string }) => `claim:${r.id}`),
           ...(locationRows ?? []).map((r: { id: string }) => `location:${r.id}`),
           ...(entryPackRows ?? []).map((r: { id: string }) => `entry-pack:${r.id}`),
+          ...(playerAdditionRows ?? []).map((r: { id: string }) => `player-addition:${r.id}`),
         ];
         setPendingCount(ids.filter((id) => !dismissed.has(id)).length);
       } else {
