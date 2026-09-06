@@ -34,7 +34,7 @@ async function authorize(req: NextRequest): Promise<{ admin: SupabaseClient; use
 
 async function meetingFor(admin: SupabaseClient) {
   const result = await admin.from("handicap_egm_meetings")
-    .select("id,consultation_id,slug,title,season_label,meeting_at,status,runoff_proposals,adopted_proposal,decision_note,completed_at,updated_at")
+    .select("id,consultation_id,slug,public_token,title,season_label,meeting_at,status,runoff_proposals,adopted_proposal,decision_note,completed_at,updated_at")
     .eq("slug", meetingSlug).single();
   if (result.error) throw new Error(result.error.message);
   return result.data;
@@ -45,7 +45,7 @@ async function responsePayload(admin: SupabaseClient) {
   const [seasonsRes, attendeesRes, votesRes, consultationRes] = await Promise.all([
     admin.from("league_seasons").select("id,name").ilike("name", "%Premier League 2026/2027%").order("created_at", { ascending: false }).limit(1),
     admin.from("handicap_egm_attendees").select("id,team_id,location_id,representative_name,created_at,updated_at").eq("meeting_id", meeting.id).order("created_at"),
-    admin.from("handicap_egm_votes").select("id,attendee_id,round_no,choice,recorded_at,updated_at").eq("meeting_id", meeting.id).order("recorded_at"),
+    admin.from("handicap_egm_votes").select("id,attendee_id,round_no,choice,submission_method,recorded_at,updated_at").eq("meeting_id", meeting.id).order("recorded_at"),
     admin.from("handicap_consultation_attestations").select("id", { count: "exact", head: true }).eq("consultation_id", meeting.consultation_id),
   ]);
   const error = seasonsRes.error || attendeesRes.error || votesRes.error || consultationRes.error;
@@ -69,11 +69,21 @@ async function responsePayload(admin: SupabaseClient) {
     attestationCount: consultationRes.count ?? 0,
     teams: (teamsRes.data ?? []).map((team) => ({ ...team, clubName: clubName.get(team.location_id) ?? "Unknown club" })),
     attendees: (attendeesRes.data ?? []).map((attendee) => ({
-      ...attendee,
+      id: attendee.id,
+      team_id: attendee.team_id,
+      location_id: attendee.location_id,
+      representative_name: attendee.representative_name,
+      created_at: attendee.created_at,
+      updated_at: attendee.updated_at,
       teamName: teamName.get(attendee.team_id) ?? "Unknown team",
       clubName: clubName.get(attendee.location_id) ?? "Unknown club",
     })),
-    votes: votesRes.data ?? [],
+    votes: (votesRes.data ?? []).map((vote) => ({
+      ...vote,
+      choice: (meeting.status === "round_1_open" && vote.round_no === 1) || (meeting.status === "round_2_open" && vote.round_no === 2)
+        ? null
+        : vote.choice,
+    })),
   };
 }
 
@@ -101,7 +111,6 @@ export async function POST(req: NextRequest) {
     const body = await req.json().catch(() => ({}));
     const action = cleanText(body?.action, 40);
     const meeting = await meetingFor(admin);
-
     if (action === "add_attendee") {
       if (meeting.status !== "register_open") throw new Error("Attendance can only be changed before round one opens.");
       const teamId = cleanText(body?.teamId, 60);
@@ -122,7 +131,7 @@ export async function POST(req: NextRequest) {
         team_id: teamId,
         location_id: teamRes.data.location_id,
         representative_name: representativeName,
-      });
+      }).select("id").single();
       if (insert.error?.code === "23505") throw new Error("That representative has already been recorded for this club.");
       if (insert.error) throw new Error(insert.error.message);
     } else if (action === "remove_attendee") {
@@ -172,6 +181,13 @@ export async function POST(req: NextRequest) {
       }
       const changed = await admin.from("handicap_egm_meetings").update(update).eq("id", meeting.id);
       if (changed.error) throw new Error(changed.error.message);
+    } else if (action === "clear_vote") {
+      const roundNo = Number(body?.roundNo);
+      const expectedStatus = roundNo === 1 ? "round_1_open" : "round_2_open";
+      if (meeting.status !== expectedStatus) throw new Error(`Ballot round ${roundNo} is not open.`);
+      const attendeeId = cleanText(body?.attendeeId, 60);
+      const deleted = await admin.from("handicap_egm_votes").delete().eq("meeting_id", meeting.id).eq("attendee_id", attendeeId).eq("round_no", roundNo);
+      if (deleted.error) throw new Error(deleted.error.message);
     } else if (action === "record_vote") {
       const roundNo = Number(body?.roundNo);
       const expectedStatus = roundNo === 1 ? "round_1_open" : "round_2_open";
@@ -189,6 +205,7 @@ export async function POST(req: NextRequest) {
         attendee_id: attendeeId,
         round_no: roundNo,
         choice,
+        submission_method: "officer",
         recorded_by_user_id: user.id,
         recorded_at: new Date().toISOString(),
         updated_at: new Date().toISOString(),

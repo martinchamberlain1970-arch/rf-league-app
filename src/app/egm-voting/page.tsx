@@ -9,9 +9,10 @@ import { supabase } from "@/lib/supabase";
 type Proposal = { id: number; title: string; summary: string };
 type Team = { id: string; name: string; location_id: string; clubName: string };
 type Attendee = { id: string; team_id: string; location_id: string; representative_name: string; teamName: string; clubName: string };
-type Vote = { id: string; attendee_id: string; round_no: number; choice: string; recorded_at: string };
+type Vote = { id: string; attendee_id: string; round_no: number; choice: string | null; submission_method: "attendee" | "officer"; recorded_at: string };
 type Meeting = {
   id: string;
+  public_token: string;
   title: string;
   season_label: string;
   meeting_at: string | null;
@@ -51,6 +52,7 @@ export default function EgmVotingPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
+  const [origin, setOrigin] = useState("");
 
   const request = useCallback(async (body?: object) => {
     const session = await supabase?.auth.getSession();
@@ -81,13 +83,23 @@ export default function EgmVotingPage() {
   }, [request]);
 
   useEffect(() => { void load(); }, [load]);
+  useEffect(() => { setOrigin(window.location.origin); }, []);
 
   const votesByAttendeeAndRound = useMemo(() => new Map((data?.votes ?? []).map((vote) => [`${vote.attendee_id}:${vote.round_no}`, vote.choice])), [data?.votes]);
+  const voteRecordByAttendeeAndRound = useMemo(() => new Map((data?.votes ?? []).map((vote) => [`${vote.attendee_id}:${vote.round_no}`, vote])), [data?.votes]);
   const activeRound = data?.meeting.status === "round_1_open" ? 1 : data?.meeting.status === "round_2_open" ? 2 : null;
+
+  useEffect(() => {
+    if (!activeRound) return;
+    const timer = window.setInterval(() => {
+      void request().then((payload) => setData(payload)).catch(() => undefined);
+    }, 5000);
+    return () => window.clearInterval(timer);
+  }, [activeRound, request]);
 
   function tally(roundNo: number) {
     const totals: Record<string, number> = { proposal_1: 0, proposal_2: 0, proposal_3: 0, abstain: 0 };
-    (data?.votes ?? []).filter((vote) => vote.round_no === roundNo).forEach((vote) => { totals[vote.choice] = (totals[vote.choice] ?? 0) + 1; });
+    (data?.votes ?? []).filter((vote) => vote.round_no === roundNo && vote.choice).forEach((vote) => { if (vote.choice) totals[vote.choice] = (totals[vote.choice] ?? 0) + 1; });
     return totals;
   }
 
@@ -99,8 +111,10 @@ export default function EgmVotingPage() {
       const payload = await request(body);
       setData(payload);
       setMessage(success);
+      return true;
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "The EGM record could not be updated.");
+      return false;
     } finally {
       setBusy(false);
     }
@@ -108,13 +122,27 @@ export default function EgmVotingPage() {
 
   async function addAttendee(event: FormEvent) {
     event.preventDefault();
-    await mutate({ action: "add_attendee", teamId, representativeName }, "Voting representative added.");
-    setRepresentativeName("");
+    if (await mutate({ action: "add_attendee", teamId, representativeName }, "Voting representative added and available on the shared voting page.")) setRepresentativeName("");
   }
 
   async function removeAttendee(attendee: Attendee) {
     if (!await showConfirm({ title: "Remove voting representative?", description: `Remove ${attendee.representative_name} from the EGM attendance register?`, confirmLabel: "Remove representative", tone: "danger" })) return;
     await mutate({ action: "remove_attendee", attendeeId: attendee.id }, "Voting representative removed.");
+  }
+
+  function votingUrl() {
+    if (!data || !origin) return "";
+    return `${origin}/egm-vote/${data.meeting.public_token}`;
+  }
+
+  async function copyVotingLink() {
+    await navigator.clipboard.writeText(votingUrl());
+    setMessage("Shared attendee voting link copied.");
+  }
+
+  async function clearVote(attendee: Attendee, roundNo: number) {
+    if (!await showConfirm({ title: "Clear submitted vote?", description: `Clear ${attendee.representative_name}'s ballot ${roundNo} submission so they can select their name and vote again? Their choice is not displayed while voting is open.`, confirmLabel: "Clear and allow another vote", tone: "danger" })) return;
+    await mutate({ action: "clear_vote", attendeeId: attendee.id, roundNo }, `${attendee.representative_name} can now vote again in ballot ${roundNo}.`);
   }
 
   async function changeStatus(status: string, extra: object = {}) {
@@ -160,8 +188,12 @@ export default function EgmVotingPage() {
           <ScreenHeader title="Premier Handicap EGM" eyebrow="League governance" subtitle="Attendance, ballot rounds and the formal decision record for the Microsoft Teams meeting." />
           {error ? <section className="rounded-2xl border border-rose-300 bg-rose-50 p-4 text-rose-900">{error}</section> : null}
           {message ? <section className="rounded-2xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-900">{message}</section> : null}
-
           {data ? <>
+            <section className="rounded-2xl border border-teal-300 bg-white p-5 shadow-sm">
+              <div className="flex flex-wrap items-center justify-between gap-4"><div><p className="text-sm font-bold uppercase tracking-wider text-teal-700">Shared attendee voting page</p><h2 className="mt-1 text-xl font-black">One link for everyone</h2><p className="mt-2 max-w-3xl text-sm leading-6 text-slate-600">Post this link once in the Teams chat. Each representative selects their own name, confirms the displayed team and club, then votes. No individual messages or codes are needed.</p></div><button type="button" disabled={!origin} onClick={() => void copyVotingLink()} className="rounded-xl bg-teal-700 px-5 py-3 font-black text-white disabled:opacity-40">Copy voting link</button></div>
+              <p className="mt-4 break-all rounded-xl bg-slate-100 p-3 font-mono text-xs text-slate-700">{votingUrl()}</p>
+            </section>
+
             <section className="grid gap-3 sm:grid-cols-4">
               <div className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Status</p><p className="mt-2 font-black text-slate-950">{statusLabels[data.meeting.status]}</p></div>
               <div className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Attestations</p><p className="mt-2 text-2xl font-black text-teal-800">{data.attestationCount}</p></div>
@@ -187,7 +219,7 @@ export default function EgmVotingPage() {
               </form>
               <section className="rounded-2xl bg-white p-5 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-black">Attendance register</h2><p className="text-sm text-slate-600">Check the names aloud before voting starts.</p></div><button type="button" disabled={busy || data.attendees.length === 0} onClick={() => void changeStatus("round_1_open")} className="rounded-xl bg-slate-950 px-4 py-3 font-black text-white disabled:opacity-40">Lock register &amp; open ballot 1</button></div>
-                <div className="mt-4 divide-y divide-slate-200">{data.attendees.map((attendee) => <div key={attendee.id} className="flex items-center justify-between gap-3 py-3"><div><p className="font-bold">{attendee.representative_name}</p><p className="text-sm text-slate-600">{attendee.teamName} · {attendee.clubName}</p></div><button type="button" onClick={() => void removeAttendee(attendee)} className="rounded-lg border border-rose-300 px-3 py-2 text-sm font-bold text-rose-800">Remove</button></div>)}{data.attendees.length === 0 ? <p className="py-8 text-center text-slate-500">No representatives recorded yet.</p> : null}</div>
+                <div className="mt-4 divide-y divide-slate-200">{data.attendees.map((attendee) => <div key={attendee.id} className="flex flex-wrap items-center justify-between gap-3 py-3"><div><p className="font-bold">{attendee.representative_name}</p><p className="text-sm text-slate-600">{attendee.teamName} · {attendee.clubName}</p></div><button type="button" onClick={() => void removeAttendee(attendee)} className="rounded-lg border border-rose-300 px-3 py-2 text-sm font-bold text-rose-800">Remove</button></div>)}{data.attendees.length === 0 ? <p className="py-8 text-center text-slate-500">No representatives recorded yet.</p> : null}</div>
               </section>
             </section> : null}
 
@@ -205,8 +237,11 @@ export default function EgmVotingPage() {
               const recorded = data.votes.filter((vote) => vote.round_no === roundNo).length;
               return <section key={roundNo} className="rounded-2xl bg-white p-5 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-black">Ballot {roundNo}</h2><p className="text-sm text-slate-600">{recorded} of {data.attendees.length} votes or abstentions recorded.</p></div>{open ? <button type="button" disabled={busy || recorded !== data.attendees.length} onClick={() => void changeStatus(roundNo === 1 ? "round_1_closed" : "round_2_closed")} className="rounded-xl bg-slate-950 px-4 py-3 font-black text-white disabled:opacity-40">Close ballot {roundNo}</button> : <span className="rounded-full bg-slate-100 px-3 py-2 text-sm font-bold">Closed</span>}</div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{allowedProposals.map((id) => <div key={id} className="rounded-xl bg-teal-50 p-4"><p className="text-sm font-bold">Proposal {id}</p><p className="text-3xl font-black text-teal-900">{totals[`proposal_${id}`]}</p></div>)}<div className="rounded-xl bg-slate-100 p-4"><p className="text-sm font-bold">Abstentions</p><p className="text-3xl font-black">{totals.abstain}</p></div></div>
-                <div className="mt-5 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead><tr><th className="p-3">Representative</th><th className="p-3">Team / club</th><th className="p-3">Recorded vote</th></tr></thead><tbody>{data.attendees.map((attendee) => <tr key={attendee.id} className="border-t border-slate-200"><td className="p-3 font-bold">{attendee.representative_name}</td><td className="p-3">{attendee.teamName}<br /><span className="text-slate-500">{attendee.clubName}</span></td><td className="p-3">{open ? <select value={votesByAttendeeAndRound.get(`${attendee.id}:${roundNo}`) ?? ""} disabled={busy} onChange={(event) => void mutate({ action: "record_vote", attendeeId: attendee.id, roundNo, choice: event.target.value }, `Vote recorded for ${attendee.representative_name}.`)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="">Select vote</option>{allowedProposals.map((id) => <option key={id} value={`proposal_${id}`}>Proposal {id} · {data.proposals.find((proposal) => proposal.id === id)?.title}</option>)}<option value="abstain">Abstain</option></select> : <span className="font-bold">{(() => { const choice = votesByAttendeeAndRound.get(`${attendee.id}:${roundNo}`); return choice === "abstain" ? "Abstained" : choice ? `Proposal ${choice.slice(-1)}` : "Not recorded"; })()}</span>}</td></tr>)}</tbody></table></div>
+                {open ? <div className="mt-4 rounded-xl border border-indigo-200 bg-indigo-50 p-4 text-sm text-indigo-950"><strong>Choices are hidden while voting is open.</strong> Only the number of received votes is shown, so early results cannot influence remaining representatives.</div> : <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{allowedProposals.map((id) => <div key={id} className="rounded-xl bg-teal-50 p-4"><p className="text-sm font-bold">Proposal {id}</p><p className="text-3xl font-black text-teal-900">{totals[`proposal_${id}`]}</p></div>)}<div className="rounded-xl bg-slate-100 p-4"><p className="text-sm font-bold">Abstentions</p><p className="text-3xl font-black">{totals.abstain}</p></div></div>}
+                <div className="mt-5 overflow-x-auto"><table className="w-full min-w-[760px] text-left text-sm"><thead><tr><th className="p-3">Representative</th><th className="p-3">Team / club</th><th className="p-3">Ballot status</th></tr></thead><tbody>{data.attendees.map((attendee) => {
+                  const vote = voteRecordByAttendeeAndRound.get(`${attendee.id}:${roundNo}`);
+                  return <tr key={attendee.id} className="border-t border-slate-200"><td className="p-3 font-bold">{attendee.representative_name}</td><td className="p-3">{attendee.teamName}<br /><span className="text-slate-500">{attendee.clubName}</span></td><td className="p-3">{open ? vote ? <div className="flex flex-wrap items-center justify-between gap-2"><span className="font-bold text-emerald-700">Vote received {vote.submission_method === "attendee" ? "from attendee" : "by officer proxy"}</span><button type="button" onClick={() => void clearVote(attendee, roundNo)} className="rounded-lg border border-rose-300 px-3 py-2 text-xs font-bold text-rose-800">Clear mistaken submission</button></div> : <div><p className="mb-2 text-xs text-slate-500">Awaiting attendee · officer proxy:</p><select defaultValue="" disabled={busy} onChange={(event) => void mutate({ action: "record_vote", attendeeId: attendee.id, roundNo, choice: event.target.value }, `Proxy vote recorded for ${attendee.representative_name}.`)} className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2"><option value="">Select only if proxy agreed</option>{allowedProposals.map((id) => <option key={id} value={`proposal_${id}`}>Proposal {id} · {data.proposals.find((proposal) => proposal.id === id)?.title}</option>)}<option value="abstain">Abstain</option></select></div> : <span className="font-bold">{(() => { const choice = votesByAttendeeAndRound.get(`${attendee.id}:${roundNo}`); return choice === "abstain" ? "Abstained" : choice ? `Proposal ${choice.slice(-1)}` : "Not recorded"; })()}<span className="ml-2 text-xs font-normal text-slate-500">({vote?.submission_method === "attendee" ? "attendee submission" : "officer proxy"})</span></span>}</td></tr>;
+                })}</tbody></table></div>
               </section>;
             })}
 
