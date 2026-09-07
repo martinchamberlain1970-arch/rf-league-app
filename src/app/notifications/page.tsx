@@ -1068,7 +1068,7 @@ export default function NotificationsPage() {
                 ? `Week ${r.week_no ?? "?"} round-up available`
                 : "Match report available",
             created_at: r.created_at,
-            href: "/events",
+            href: "/events?view=league",
             status: "report",
           });
         });

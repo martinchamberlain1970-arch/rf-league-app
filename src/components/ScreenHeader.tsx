@@ -27,7 +27,8 @@ export default function ScreenHeader({
   const admin = useAdminStatus();
   const relatedLinks = pathname.startsWith("/events") || pathname.startsWith("/competitions") || pathname === "/signups"
     ? [
-        { href: "/events", label: "Match centre" },
+        { href: "/events?view=league", label: "League match centre" },
+        { href: "/events", label: "Competitions" },
         { href: "/signups", label: "Competition entries" },
         { href: "/high-breaks", label: "High breaks" },
       ]

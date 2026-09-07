@@ -32,6 +32,7 @@ const groups: NavGroup[] = [
       { href: "/player-additions", title: "Player additions", description: "Captains request new roster players; league officers review them.", mark: "PA" },
       { href: "/reschedule-fixture", title: "Fixture date requests", description: "Request an agreed early date or exceptional postponement.", mark: "FD" },
       { href: "/live-matches", title: "Live matches", description: "Follow league scorecards currently in progress.", mark: "LM" },
+      { href: "/events?view=league", title: "League match centre", description: "See your live league fixture timeline, results and reports.", mark: "MC" },
       { href: "/league?view=fixtures", title: "League fixtures", description: "Find the selected league's fixtures and results.", mark: "FT" },
       { href: "/handicaps", title: "Published handicaps", description: "View playing handicaps and current starts.", mark: "HC" },
       { href: "/league-hub", title: "Public league hub", description: "View the public fixtures, results and statistics pages.", mark: "PH" },
@@ -61,7 +62,7 @@ const groups: NavGroup[] = [
     description: "Entries, draws and additional events.",
     items: [
       { href: "/signups", title: "Competition entries", description: "Enter open competitions and track entry status.", mark: "CE" },
-      { href: "/events", title: "Match centre", description: "View fixtures, reports and competition activity.", mark: "MC" },
+      { href: "/events", title: "Competition match centre", description: "View knockout fixtures, draws and competition activity.", mark: "CM" },
       { href: "/events/new", title: "Create competition", description: "Create a standalone knockout or league event.", mark: "CC", administratorOnly: true },
       { href: "/high-breaks", title: "High breaks", description: "View the published league high-break table.", mark: "HB" },
     ],

@@ -22,7 +22,7 @@ const links = [
   { href: "/high-breaks", title: "High Breaks", desc: "View the published league high-break table." },
   { href: "/captain-results", title: "Lineups & Results", desc: "Enter your pre-match lineup first, then submit your fixture result for approval." },
   { href: "/reschedule-fixture", title: "Reschedule Fixture", desc: "Request permission to play early or, exceptionally, later." },
-  { href: "/events", title: "Match Centre", desc: "View your fixtures, reports, and competition activity." },
+  { href: "/events?view=league", title: "Match Centre", desc: "View your live league fixtures, results, and match reports." },
   { href: "/signups", title: "Competition Sign-ups", desc: "Enter open competitions and track entry status." },
   { href: "/documents", title: "Documents", desc: "Upload and read AGM minutes, rules, and captain meeting notes." },
   { href: "/backup", title: "Data Management", desc: "Backup, restore, and controlled data reset." },
@@ -110,6 +110,7 @@ export default function HomePage() {
   }>({ open: false, title: "", description: "" });
 
   const isVisibleLink = (href: string) => {
+    const route = href.split("?")[0];
     if (admin.loading) return true;
     if (admin.isSuper) {
       return [
@@ -134,19 +135,19 @@ export default function HomePage() {
         "/announcements",
         "/help",
         "/legal",
-      ].includes(href);
+      ].includes(route);
     }
-    if (!admin.isSuper && (href === "/audit" || href === "/usage")) return false;
-    if ((href === "/rating-audit" || href === "/signup-requests") && !admin.canManageLeague) return false;
-    if (href === "/entry-packs" && !admin.canManageLeague) return false;
-    if (href === "/league-invoices" && !admin.canManageLeague) return false;
-    if (href === "/league-officer-guide" && !admin.canManageLeague) return false;
-    if (href === "/announcements" && !admin.canManageLeague) return false;
+    if (!admin.isSuper && (route === "/audit" || route === "/usage")) return false;
+    if ((route === "/rating-audit" || route === "/signup-requests") && !admin.canManageLeague) return false;
+    if (route === "/entry-packs" && !admin.canManageLeague) return false;
+    if (route === "/league-invoices" && !admin.canManageLeague) return false;
+    if (route === "/league-officer-guide" && !admin.canManageLeague) return false;
+    if (route === "/announcements" && !admin.canManageLeague) return false;
     if (admin.isAdmin) {
       // Admins still see these cards, but they can be disabled per-account.
       return true;
     }
-    return ["/events", "/league", "/live-matches", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/signups", "/documents", "/help", "/legal", "/notifications"].includes(href);
+    return ["/events", "/league", "/live-matches", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/signups", "/documents", "/help", "/legal", "/notifications"].includes(route);
   };
 
   const visibleLinks = links.filter((item) => isVisibleLink(item.href));
@@ -172,9 +173,9 @@ export default function HomePage() {
     : admin.isAdmin
       ? ["/results", "/notifications"]
       : [];
-  const primaryLinks = visibleLinks.filter((item) => primaryHrefs.includes(item.href));
-  const quickAccessLinks = visibleLinks.filter((item) => quickAccessHrefs.includes(item.href));
-  const moreLinks = visibleLinks.filter((item) => !primaryHrefs.includes(item.href) && !quickAccessHrefs.includes(item.href));
+  const primaryLinks = visibleLinks.filter((item) => primaryHrefs.includes(item.href.split("?")[0]));
+  const quickAccessLinks = visibleLinks.filter((item) => quickAccessHrefs.includes(item.href.split("?")[0]));
+  const moreLinks = visibleLinks.filter((item) => !primaryHrefs.includes(item.href.split("?")[0]) && !quickAccessHrefs.includes(item.href.split("?")[0]));
   const mainTabLinks = [...primaryLinks, ...moreLinks];
   const leagueRequestsTile =
     admin.canManageLeague && pendingRequestsCount !== null
@@ -375,12 +376,12 @@ export default function HomePage() {
               : "Request early play or track an approved outstanding fixture.",
         },
         {
-          href: "/events",
+          href: "/events?view=league",
           title: "Match Centre",
           value: openEventsCount ?? 0,
           tone: "sky",
           displayValue: (openEventsCount ?? 0) > 0 ? String(openEventsCount ?? 0) : "View",
-          detail: "Check next fixtures, reports, and competition activity.",
+          detail: "Check your next league fixtures, results and match reports.",
         },
       ];
     }
@@ -404,13 +405,13 @@ export default function HomePage() {
         detail: "Track profile, result, and competition updates in one place.",
       },
       {
-        href: "/events",
+        href: "/events?view=league",
         title: "Match Centre",
         value: openEventsCount ?? 0,
         tone: "sky",
         displayValue: "View",
         compactDisplay: true,
-        detail: "See your upcoming fixtures and published competition activity.",
+        detail: "See your upcoming league fixtures, results and match reports.",
       },
     ];
   }, [
@@ -599,19 +600,44 @@ export default function HomePage() {
         setLeagueRole({ isCaptain: false, isViceCaptain: false, teamNames: [] });
         return;
       }
-      const membersRes = await client
-        .from("league_registered_team_members")
-        .select("team_id,is_captain,is_vice_captain")
-        .eq("player_id", userPlayerId);
-      if (membersRes.error || !membersRes.data) {
-        setLeagueRole({ isCaptain: false, isViceCaptain: false, teamNames: [] });
-        return;
+      type RoleMembership = { team_id: string; is_captain: boolean; is_vice_captain?: boolean | null };
+      let rows: RoleMembership[] = [];
+      let teamTable = "league_teams";
+
+      const seasonsRes = await client
+        .from("league_seasons")
+        .select("id")
+        .eq("is_active", true)
+        .eq("is_completed", false)
+        .order("created_at", { ascending: false });
+      const liveSeasonIds = ((seasonsRes.data ?? []) as Array<{ id: string }>).map((season) => season.id);
+      if (!seasonsRes.error && liveSeasonIds.length > 0) {
+        const liveMembersRes = await client
+          .from("league_team_members")
+          .select("team_id,is_captain,is_vice_captain")
+          .eq("player_id", userPlayerId)
+          .in("season_id", liveSeasonIds);
+        if (!liveMembersRes.error) rows = (liveMembersRes.data ?? []) as RoleMembership[];
       }
-      const rows = membersRes.data as Array<{ team_id: string; is_captain: boolean; is_vice_captain?: boolean | null }>;
+
+      // Before a season is live, retain the registered-team template as a fallback.
+      if (rows.length === 0) {
+        const registeredMembersRes = await client
+          .from("league_registered_team_members")
+          .select("team_id,is_captain,is_vice_captain")
+          .eq("player_id", userPlayerId);
+        if (registeredMembersRes.error || !registeredMembersRes.data) {
+          setLeagueRole({ isCaptain: false, isViceCaptain: false, teamNames: [] });
+          return;
+        }
+        rows = registeredMembersRes.data as RoleMembership[];
+        teamTable = "league_registered_teams";
+      }
+
       const teamIds = Array.from(new Set(rows.map((r) => r.team_id)));
       let teamNames: string[] = [];
       if (teamIds.length > 0) {
-        const teamsRes = await client.from("league_registered_teams").select("id,name").in("id", teamIds);
+        const teamsRes = await client.from(teamTable).select("id,name").in("id", teamIds);
         if (!teamsRes.error && teamsRes.data) {
           const byId = new Map((teamsRes.data as Array<{ id: string; name: string }>).map((t) => [t.id, t.name]));
           teamNames = teamIds.map((id) => byId.get(id)).filter(Boolean) as string[];

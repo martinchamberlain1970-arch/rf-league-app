@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import RequireAuth from "@/components/RequireAuth";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
@@ -179,8 +180,10 @@ const componentImpactLabel = (value: number) => {
   return "small";
 };
 
-export default function EventsPage() {
+function EventsPageContent() {
   const admin = useAdminStatus();
+  const searchParams = useSearchParams();
+  const leagueViewRequested = searchParams.get("view") === "league";
   const [rows, setRows] = useState<Competition[]>([]);
   const [matchRows, setMatchRows] = useState<MatchRow[]>([]);
   const [leagueMode, setLeagueMode] = useState(false);
@@ -479,8 +482,8 @@ export default function EventsPage() {
         }
       };
 
-      if (!admin.canManageLeague) {
-        // In league-user mode, Events is a team fixture summary (last/next/following).
+      if (leagueViewRequested || !admin.canManageLeague) {
+        // The league Match Centre always shows the user's live team-fixture timeline.
         setLeagueMode(true);
         await loadLeagueSummary();
         setLoading(false);
@@ -526,7 +529,7 @@ export default function EventsPage() {
     return () => {
       active = false;
     };
-  }, [admin.canManageLeague]);
+  }, [admin.canManageLeague, leagueViewRequested]);
 
   const leagueFixtureLabel = (f: LeagueFixture | null) => {
     if (!f) return "No fixture";
@@ -1557,7 +1560,11 @@ export default function EventsPage() {
     <main className="min-h-screen bg-slate-100 p-4 sm:p-6">
       <div className="mx-auto max-w-5xl space-y-3 sm:space-y-4">
         <RequireAuth>
-          <ScreenHeader title="Events" eyebrow="Events" subtitle={leagueMode ? "Team fixture timeline and competition activity." : "View open, completed, and archived events."} />
+          <ScreenHeader
+            title={leagueMode ? "League Match Centre" : "Competition Match Centre"}
+            eyebrow={leagueMode ? "League" : "Competitions"}
+            subtitle={leagueMode ? "Live team fixtures, results and match reports." : "View open, completed, and archived competitions."}
+          />
 
           <div className="flex items-center gap-2">
             {admin.isAdmin ? (
@@ -2157,5 +2164,13 @@ export default function EventsPage() {
         />
       </div>
     </main>
+  );
+}
+
+export default function EventsPage() {
+  return (
+    <Suspense fallback={<main className="min-h-screen bg-slate-100 p-4 sm:p-6"><p className="mx-auto max-w-5xl rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">Loading Match Centre...</p></main>}>
+      <EventsPageContent />
+    </Suspense>
   );
 }
