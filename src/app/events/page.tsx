@@ -245,6 +245,11 @@ export default function EventsPage() {
     const load = async () => {
       const isMissingTable = (msg: string | undefined) =>
         (msg ?? "").toLowerCase().includes("could not find the table");
+      const isMissingCompetitionColumn = (msg: string | undefined, column: string) => {
+        const text = (msg ?? "").toLowerCase();
+        return text.includes(`column competitions.${column.toLowerCase()} does not exist`)
+          || (text.includes(`'${column.toLowerCase()}'`) && text.includes("schema cache"));
+      };
       const loadLeagueSummary = async () => {
         const authRes = await client.auth.getUser();
         const userId = authRes.data.user?.id ?? null;
@@ -259,12 +264,14 @@ export default function EventsPage() {
 
         const seasonsRes = await client
           .from("league_seasons")
-          .select("id,name,is_published,created_at")
+          .select("id,name,is_published,is_active,is_completed,created_at")
           .eq("is_published", true)
+          .eq("is_active", true)
+          .eq("is_completed", false)
           .order("created_at", { ascending: false });
-        const publishedSeasons = (seasonsRes.data ?? []) as Array<{ id: string; name: string | null }>;
-        const publishedSeasonIds = publishedSeasons.map((season) => season.id);
-        if (publishedSeasonIds.length === 0) {
+        const liveSeasons = (seasonsRes.data ?? []) as Array<{ id: string; name: string | null }>;
+        const liveSeasonIds = liveSeasons.map((season) => season.id);
+        if (liveSeasonIds.length === 0) {
           setLeagueSummaries([]);
           return;
         }
@@ -273,7 +280,7 @@ export default function EventsPage() {
           .from("league_team_members")
           .select("season_id,team_id,player_id")
           .eq("player_id", linkedPlayerId)
-          .in("season_id", publishedSeasonIds);
+          .in("season_id", liveSeasonIds);
         const members = (memberRes.data ?? []) as LeagueTeamMember[];
         if (members.length === 0) {
           setLeagueSummaries([]);
@@ -322,7 +329,7 @@ export default function EventsPage() {
           return Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
         };
 
-        const seasonNameById = new Map(publishedSeasons.map((season) => [season.id, season.name?.trim() || "League"]));
+        const seasonNameById = new Map(liveSeasons.map((season) => [season.id, season.name?.trim() || "League"]));
         const summaryRows = members
           .map((member) => {
             const teamName = teamMap.get(member.team_id) ?? "My Team";
@@ -480,29 +487,38 @@ export default function EventsPage() {
         return;
       }
 
-      const [compRes, matchesRes] = await Promise.all([
-        client
+      const matchesPromise = client
+        .from("matches")
+        .select("competition_id,status,updated_at,is_archived");
+      const compRes = await client
+        .from("competitions")
+        .select("id,name,sport_type,competition_format,match_mode,best_of,is_practice,is_archived,is_completed,created_at")
+        .order("created_at", { ascending: false });
+      let competitionRows = compRes.data as Competition[] | null;
+      let competitionError = compRes.error;
+      if (competitionError && isMissingCompetitionColumn(competitionError.message, "is_practice")) {
+        const legacyRes = await client
           .from("competitions")
-          .select("id,name,sport_type,competition_format,match_mode,best_of,is_practice,is_archived,is_completed,created_at")
-          .order("created_at", { ascending: false }),
-        client
-          .from("matches")
-          .select("competition_id,status,updated_at,is_archived"),
-      ]);
+          .select("id,name,sport_type,competition_format,match_mode,best_of,is_archived,is_completed,created_at")
+          .order("created_at", { ascending: false });
+        competitionRows = legacyRes.data?.map((competition) => ({ ...competition, is_practice: false })) as Competition[] | null;
+        competitionError = legacyRes.error;
+      }
+      const matchesRes = await matchesPromise;
       if (!active) return;
-      if (compRes.error || !compRes.data) {
-        if (isMissingTable(compRes.error?.message)) {
+      if (competitionError || !competitionRows) {
+        if (isMissingTable(competitionError?.message)) {
           setLeagueMode(true);
           await loadLeagueSummary();
           setLoading(false);
           return;
         }
-        setMessage(compRes.error?.message ?? "Failed to load events.");
+        setMessage(competitionError?.message ?? "Failed to load events.");
         setLoading(false);
         return;
       }
       setLeagueMode(false);
-      setRows(compRes.data as Competition[]);
+      setRows(competitionRows);
       setMatchRows((matchesRes.data ?? []) as MatchRow[]);
       setLoading(false);
     };
