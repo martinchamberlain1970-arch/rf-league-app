@@ -10,7 +10,7 @@ import ConfirmModal from "@/components/ConfirmModal";
 import useAdminStatus from "@/components/useAdminStatus";
 import { supabase } from "@/lib/supabase";
 
-type Season = { id: string; name: string; is_published?: boolean | null };
+type Season = { id: string; name: string; is_published?: boolean | null; is_completed?: boolean | null };
 type Team = { id: string; season_id: string; name: string };
 type TeamMember = { season_id: string; team_id: string; player_id: string; is_captain: boolean; is_vice_captain: boolean };
 type TeamMembership = { season_id: string; team_id: string; player_id: string; is_captain: boolean; is_vice_captain: boolean };
@@ -66,6 +66,11 @@ export default function RescheduleFixturePage() {
   const [confirmLateRequestOpen, setConfirmLateRequestOpen] = useState(false);
   const [showLaterFixtures, setShowLaterFixtures] = useState(false);
   const [selectedFixtureId, setSelectedFixtureId] = useState("");
+  const [officerFixtureId, setOfficerFixtureId] = useState("");
+  const [officerAgreedDate, setOfficerAgreedDate] = useState("");
+  const [officerReason, setOfficerReason] = useState("");
+  const [officerTeamsAgreed, setOfficerTeamsAgreed] = useState(false);
+  const [confirmOfficerChangeOpen, setConfirmOfficerChangeOpen] = useState(false);
 
   const loadAll = async () => {
     const client = supabase;
@@ -80,7 +85,7 @@ export default function RescheduleFixturePage() {
     if (!playerId && !admin.canManageLeague) return setLoading(false);
 
     const [seasonRes, teamRes, memberRes, fixtureRes] = await Promise.all([
-      client.from("league_seasons").select("id,name,is_published").eq("is_published", true).order("created_at", { ascending: false }),
+      client.from("league_seasons").select("id,name,is_published,is_completed").eq("is_published", true).eq("is_completed", false).order("created_at", { ascending: false }),
       client.from("league_teams").select("id,season_id,name"),
       client.from("league_team_members").select("season_id,team_id,player_id,is_captain,is_vice_captain"),
       client.from("league_fixtures").select("id,season_id,home_team_id,away_team_id,fixture_date,week_no,status").order("fixture_date", { ascending: true }),
@@ -127,6 +132,7 @@ export default function RescheduleFixturePage() {
   const teamById = useMemo(() => new Map(teams.map((t) => [t.id, t.name])), [teams]);
   const hasCaptainPrivileges = captainTeamIds.size > 0;
   const officerMode = admin.canManageLeague && !hasCaptainPrivileges;
+  const canRecordExceptionalPostponement = admin.isSuper || admin.role === "league_secretary" || admin.role === "league_chairman";
 
   const myFixtures = useMemo(
     () =>
@@ -155,6 +161,26 @@ export default function RescheduleFixturePage() {
   );
 
   const activeRequestFixtureIds = useMemo(() => new Set(requests.filter((r) => r.status === "pending" || r.status === "approved_outstanding").map((r) => r.fixture_id)), [requests]);
+  const officerFixtures = useMemo(
+    () =>
+      fixtures
+        .filter(
+          (fixture) =>
+            publishedSeasonIds.has(fixture.season_id) &&
+            fixture.status !== "complete" &&
+            fixture.fixture_date &&
+            !activeRequestFixtureIds.has(fixture.id)
+        )
+        .sort(
+          (a, b) =>
+            Date.parse(`${a.fixture_date}T12:00:00`) - Date.parse(`${b.fixture_date}T12:00:00`)
+        ),
+    [fixtures, publishedSeasonIds, activeRequestFixtureIds]
+  );
+  const selectedOfficerFixture = useMemo(
+    () => officerFixtures.find((fixture) => fixture.id === officerFixtureId) ?? officerFixtures[0] ?? null,
+    [officerFixtures, officerFixtureId]
+  );
   const nextFixture = useMemo(
     () => requestEligibleFixtures.find((fixture) => fixture.id === selectedFixtureId) ?? requestEligibleFixtures[0] ?? null,
     [requestEligibleFixtures, selectedFixtureId]
@@ -190,6 +216,26 @@ export default function RescheduleFixturePage() {
       setSelectedFixtureId(requestEligibleFixtures[0].id);
     }
   }, [requestEligibleFixtures, selectedFixtureId]);
+
+  useEffect(() => {
+    if (!officerFixtures.length) {
+      setOfficerFixtureId("");
+      return;
+    }
+    if (!officerFixtures.some((fixture) => fixture.id === officerFixtureId)) {
+      setOfficerFixtureId(officerFixtures[0].id);
+    }
+  }, [officerFixtures, officerFixtureId]);
+
+  const minimumOfficerDate = useMemo(() => {
+    if (!selectedOfficerFixture?.fixture_date) return "";
+    const date = new Date(`${selectedOfficerFixture.fixture_date}T12:00:00`);
+    date.setDate(date.getDate() + 1);
+    const year = date.getFullYear();
+    const month = `${date.getMonth() + 1}`.padStart(2, "0");
+    const day = `${date.getDate()}`.padStart(2, "0");
+    return `${year}-${month}-${day}`;
+  }, [selectedOfficerFixture]);
 
   const buildReason = () => {
     if (requestType === "play_early") return `Play before league date requested for ${proposedEarlyDate}. Opposing team agreement: ${opposingTeamAgreed ? "confirmed" : "not confirmed"}.`;
@@ -232,6 +278,50 @@ export default function RescheduleFixturePage() {
     await loadAll();
   };
 
+  const recordExceptionalPostponement = async () => {
+    const client = supabase;
+    if (!client || !selectedOfficerFixture) return;
+    if (!officerAgreedDate) return setMessage("Choose the later date agreed by both teams.");
+    if (!officerTeamsAgreed) return setMessage("Confirm that both teams have agreed to the later date.");
+    if (officerReason.trim().length < 20) return setMessage("Record enough detail to explain the exceptional circumstances.");
+
+    const sessionRes = await client.auth.getSession();
+    const token = sessionRes.data.session?.access_token;
+    if (!token) return setMessage("Session expired. Please sign in again.");
+
+    setSubmitting(true);
+    let res: Response;
+    try {
+      res = await fetch("/api/league/record-exceptional-postponement", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          fixtureId: selectedOfficerFixture.id,
+          agreedFixtureDate: officerAgreedDate,
+          bothTeamsAgreed: officerTeamsAgreed,
+          reason: officerReason.trim(),
+        }),
+      });
+    } catch {
+      setSubmitting(false);
+      return setMessage("Network error while recording the exceptional postponement.");
+    }
+    const payload = (await res.json().catch(() => ({}))) as { error?: string };
+    setSubmitting(false);
+    if (!res.ok) return setMessage(payload.error ?? "Failed to record the exceptional postponement.");
+
+    const home = teamById.get(selectedOfficerFixture.home_team_id) ?? "Home team";
+    const away = teamById.get(selectedOfficerFixture.away_team_id) ?? "Away team";
+    setInfo({
+      title: "Exceptional postponement recorded",
+      description: `${home} vs ${away} has been moved to ${new Date(`${officerAgreedDate}T12:00:00`).toLocaleDateString()}. The agreement, reason and Rules 17 / 29.1 basis have been retained in the fixture history and audit record.`,
+    });
+    setOfficerAgreedDate("");
+    setOfficerReason("");
+    setOfficerTeamsAgreed(false);
+    await loadAll();
+  };
+
   const requestTypeLabel = (value: "play_early" | "play_late") => value === "play_early" ? "Play before league date" : "Exceptional postponement / later date";
 
   return (
@@ -247,7 +337,7 @@ export default function RescheduleFixturePage() {
           {officerMode && !loading ? (
             <section className="rounded-2xl border border-teal-200 bg-teal-50 p-4 text-teal-950 shadow-sm">
               <p className="font-semibold">League officer view</p>
-              <p className="mt-1 text-sm">A player-profile link is not required for your officer account. Captains raise requests here; you review, approve and schedule them through the Results Queue.</p>
+              <p className="mt-1 text-sm">A player-profile link is not required for your officer account. You can review captain requests or record a later date directly when an exceptional postponement has already been agreed.</p>
               <Link href="/results" className="mt-3 inline-flex rounded-xl bg-teal-800 px-4 py-2 text-sm font-semibold text-white hover:bg-teal-900">Open fixture request approvals</Link>
             </section>
           ) : null}
@@ -265,6 +355,88 @@ export default function RescheduleFixturePage() {
                 <li>Once approved, the fixture sits as outstanding until the League Secretary sets the agreed date.</li>
               </ul>
             </section>
+
+            {canRecordExceptionalPostponement ? (
+              <section className="rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 via-white to-orange-50 p-5 shadow-sm">
+                <p className="text-xs font-bold uppercase tracking-[0.16em] text-amber-800">League officer action</p>
+                <h2 className="mt-1 text-xl font-semibold text-slate-950">Record an exceptional postponement</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-700">
+                  Use this only where both teams have agreed and the League Secretary or Chairman has accepted the circumstances under Rules 17 and 29.1. It moves the fixture immediately and keeps the decision in the fixture history and audit record.
+                </p>
+                {!selectedOfficerFixture ? (
+                  <p className="mt-4 text-sm text-slate-600">There are no published, incomplete fixtures available to reschedule.</p>
+                ) : (
+                  <div className="mt-4 space-y-4">
+                    <label className="block text-sm font-medium text-slate-800">
+                      Fixture
+                      <select
+                        className="mt-1 w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm"
+                        value={selectedOfficerFixture.id}
+                        onChange={(event) => {
+                          setOfficerFixtureId(event.target.value);
+                          setOfficerAgreedDate("");
+                        }}
+                      >
+                        {officerFixtures.map((fixture) => {
+                          const season = seasons.find((item) => item.id === fixture.season_id)?.name ?? "League";
+                          return (
+                            <option key={fixture.id} value={fixture.id}>
+                              {teamById.get(fixture.home_team_id) ?? "Home"} vs {teamById.get(fixture.away_team_id) ?? "Away"} · {fixture.fixture_date ? new Date(`${fixture.fixture_date}T12:00:00`).toLocaleDateString() : "Date not set"} · {season}
+                            </option>
+                          );
+                        })}
+                      </select>
+                    </label>
+
+                    <div className="grid gap-3 sm:grid-cols-2">
+                      <div className="rounded-xl border border-slate-200 bg-white p-3 text-sm">
+                        <p className="text-xs font-bold uppercase tracking-wide text-slate-500">Current league date</p>
+                        <p className="mt-1 font-semibold text-slate-900">{selectedOfficerFixture.fixture_date ? new Date(`${selectedOfficerFixture.fixture_date}T12:00:00`).toLocaleDateString() : "Not set"}</p>
+                      </div>
+                      <label className="rounded-xl border border-slate-200 bg-white p-3 text-sm font-medium text-slate-800">
+                        New agreed date
+                        <input
+                          type="date"
+                          min={minimumOfficerDate}
+                          value={officerAgreedDate}
+                          onChange={(event) => setOfficerAgreedDate(event.target.value)}
+                          className="mt-1 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2"
+                        />
+                      </label>
+                    </div>
+
+                    <label className="block text-sm font-medium text-slate-800">
+                      Exceptional circumstances and decision rationale
+                      <textarea
+                        className="mt-1 min-h-[140px] w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm leading-6"
+                        placeholder="Example: The fixtures had only just been formed and tickets for a snooker event had already been purchased before the fixtures were confirmed. This is not a player-availability request."
+                        value={officerReason}
+                        onChange={(event) => setOfficerReason(event.target.value)}
+                      />
+                    </label>
+
+                    <label className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                      <input
+                        type="checkbox"
+                        checked={officerTeamsAgreed}
+                        onChange={(event) => setOfficerTeamsAgreed(event.target.checked)}
+                        className="mt-1"
+                      />
+                      <span>I confirm that both teams have agreed to the later date and that this is a specific exception, not a general right to postpone fixtures.</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={() => setConfirmOfficerChangeOpen(true)}
+                      disabled={submitting || !officerAgreedDate || !officerTeamsAgreed || officerReason.trim().length < 20}
+                      className="rounded-xl bg-amber-700 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-800 disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      {submitting ? "Recording postponement..." : "Review and change fixture date"}
+                    </button>
+                  </div>
+                )}
+              </section>
+            ) : null}
 
             {hasCaptainPrivileges ? <section className={sectionCardClass}>
               <h2 className={sectionTitleClass}>Fixtures eligible for request</h2>
@@ -408,6 +580,18 @@ export default function RescheduleFixturePage() {
               </div>
             </section>
           </> : null}
+          <ConfirmModal
+            open={confirmOfficerChangeOpen}
+            title="Confirm exceptional postponement"
+            description={selectedOfficerFixture ? `${teamById.get(selectedOfficerFixture.home_team_id) ?? "Home"} vs ${teamById.get(selectedOfficerFixture.away_team_id) ?? "Away"} will move from ${selectedOfficerFixture.fixture_date ? new Date(`${selectedOfficerFixture.fixture_date}T12:00:00`).toLocaleDateString() : "its current date"} to ${officerAgreedDate ? new Date(`${officerAgreedDate}T12:00:00`).toLocaleDateString() : "the new date"}.\n\nThis will be recorded as an agreed exceptional postponement under Rules 17 and 29.1.` : "Confirm this exceptional postponement."}
+            confirmLabel="Change date and record decision"
+            cancelLabel="Go back"
+            onConfirm={() => {
+              setConfirmOfficerChangeOpen(false);
+              void recordExceptionalPostponement();
+            }}
+            onCancel={() => setConfirmOfficerChangeOpen(false)}
+          />
           <ConfirmModal
             open={confirmLateRequestOpen}
             title="Submit postponement request?"
