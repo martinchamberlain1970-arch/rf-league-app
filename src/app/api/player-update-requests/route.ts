@@ -40,18 +40,30 @@ function isMissingColumnError(message?: string | null) {
 }
 
 async function loadActor(serviceClient: any, requesterId: string, requesterEmail: string) {
+  const isConfiguredOwner = Boolean(superAdminEmail && requesterEmail === superAdminEmail);
   const appUserRes = await serviceClient
     .from("app_users")
     .select("id,role,linked_player_id")
     .eq("id", requesterId)
     .maybeSingle();
-  if (appUserRes.error || !appUserRes.data) {
+  if (appUserRes.error) {
     return { error: "User account record not found." as const };
   }
 
+  if (!appUserRes.data && isConfiguredOwner) {
+    return {
+      appUser: { id: requesterId, role: "owner", linked_player_id: null } as AppUserRow,
+      role: "owner",
+      isSuper: true,
+      canManageLeague: true,
+      isAdmin: true,
+    } as const;
+  }
+  if (!appUserRes.data) return { error: "User account record not found." as const };
+
   const appUser = appUserRes.data as AppUserRow;
   const role = String(appUser.role ?? "").toLowerCase();
-  const isSuper = Boolean(superAdminEmail && requesterEmail === superAdminEmail) || role === "owner" || role === "super";
+  const isSuper = isConfiguredOwner || role === "owner" || role === "super";
   const canManageLeague = isSuper || canManageLeagueRole(role);
   const isAdmin = canManageLeague || role === "admin";
   return { appUser, role, isSuper, canManageLeague, isAdmin } as const;

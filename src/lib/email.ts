@@ -10,6 +10,10 @@ type SendEmailOptions = {
   html?: string;
 };
 
+export function notificationEmailIsConfigured() {
+  return Boolean(resendApiKey && configuredSender);
+}
+
 export async function sendNotificationEmail(options: SendEmailOptions): Promise<{ sent: boolean; reason?: string }> {
   const to = options.to?.trim() || defaultRecipient;
   if (!resendApiKey) return { sent: false, reason: "RESEND_API_KEY not configured" };

@@ -218,12 +218,12 @@ export default function HandicapsPage() {
                 `Gap to target` is calculated as `target from Elo - current handicap`. A value of `0` means the player is aligned. A negative figure means the current handicap needs to move further into giving start. A positive figure means it needs to move further into receiving start.
               </p>
               <p>
-                Premier League handicaps are reviewed at least every four weeks and matches use the full difference with no maximum start. Division 1 is played off scratch while Elo continues to be recorded in the background.
+                For 2026/27, Premier League handicaps are reviewed weekly for the first four fixture weeks and then every four weeks. Match starts are capped at 40 points. Division 1 is played off scratch while Elo continues to be recorded in the background.
               </p>
               <div className="rounded-xl border border-fuchsia-100 bg-fuchsia-50/60 p-3">
-                <p className="text-xs font-semibold uppercase tracking-wide text-fuchsia-900">No Premier League cap</p>
+                <p className="text-xs font-semibold uppercase tracking-wide text-fuchsia-900">Premier League maximum start</p>
                 <p className="mt-1 text-sm text-slate-700">
-                  The AGM removed the previous 40-point limit. If two Premier players have a handicap difference greater than 40, the complete difference is now applied at the start of the frame.
+                  Proposal 2 was adopted at the EGM. Players retain their reviewed handicaps, but the playing start in any Premier League frame cannot exceed 40 points.
                 </p>
               </div>
               <p>
@@ -235,7 +235,7 @@ export default function HandicapsPage() {
           <section className="grid gap-4 lg:grid-cols-[0.85fr_1.15fr]">
             <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-semibold text-slate-900">Elo to handicap guide</h2>
-              <p className="mt-1 text-sm text-slate-600">Reference points for the current conversion model. Premier League fixtures use the full handicap difference.</p>
+              <p className="mt-1 text-sm text-slate-600">Reference points for the current conversion model. Premier League playing starts are capped at 40 points.</p>
               <div className="mt-3 overflow-auto rounded-xl border border-slate-200">
                 <table className="min-w-full border-collapse text-sm">
                   <thead>

@@ -13,7 +13,7 @@ const faqs = [
   {
     question: "Is there a maximum handicap start?",
     answer:
-      "Not in the 2026/2027 Premier League: the full reviewed handicap difference applies. Division 1 remains scratch match play while Elo is recorded in the background.",
+      "Yes. The 2026/2027 Premier League has a maximum playing start of 40 points. Division 1 remains scratch match play while Elo is recorded in the background.",
   },
   {
     question: "Do no-shows or nominated-player frames affect Elo or handicap?",

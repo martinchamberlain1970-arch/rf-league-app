@@ -23,16 +23,21 @@ export async function POST(req: NextRequest) {
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
   try { await requireLeagueManager(adminClient, user); } catch { return NextResponse.json({ error: "League management access is required." }, { status: 403 }); }
 
-  const seasonsRes = await adminClient
+  const body = await req.json().catch(() => ({}));
+  const seasonId = typeof body?.seasonId === "string" ? body.seasonId.trim() : "";
+  if (!seasonId) return NextResponse.json({ error: "Select the league season to review." }, { status: 400 });
+
+  const seasonRes = await adminClient
     .from("league_seasons")
     .select("id,name,is_published,created_at")
-    .eq("is_published", true)
-    .order("created_at", { ascending: false });
-  if (seasonsRes.error) {
-    return NextResponse.json({ error: seasonsRes.error.message }, { status: 400 });
+    .eq("id", seasonId)
+    .maybeSingle();
+  if (seasonRes.error) {
+    return NextResponse.json({ error: seasonRes.error.message }, { status: 400 });
   }
 
-  const selectedSeason = (seasonsRes.data ?? [])[0] ?? null;
+  const selectedSeason = seasonRes.data ?? null;
+  if (!selectedSeason) return NextResponse.json({ error: "The selected league season could not be found." }, { status: 404 });
   let membershipSource = "league_team_members";
   let leaguePlayerIds = new Set<string>();
 
@@ -115,6 +120,7 @@ export async function POST(req: NextRequest) {
     const histRes = await adminClient.from("league_handicap_history").insert(
       changed.map((row) => ({
         player_id: row.id,
+        season_id: selectedSeason.id,
         change_type: "auto_result",
         delta: row.next - row.previous,
         previous_handicap: row.previous,

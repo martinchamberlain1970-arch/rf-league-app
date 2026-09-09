@@ -114,6 +114,12 @@ type PushStatus = {
   enabledOnDevice: boolean;
   permission: NotificationPermission | "unsupported";
 };
+type EmailNotificationStatus = {
+  databaseReady: boolean;
+  emailConfigured: boolean;
+  emailEnabled: boolean;
+  email: string | null;
+};
 
 function urlBase64ToUint8Array(value: string) {
   const padding = "=".repeat((4 - (value.length % 4)) % 4);
@@ -204,6 +210,8 @@ export default function NotificationsPage() {
   const [serverRead, setServerRead] = useState<Set<string>>(new Set());
   const [pushStatus, setPushStatus] = useState<PushStatus | null>(null);
   const [pushBusy, setPushBusy] = useState(false);
+  const [emailStatus, setEmailStatus] = useState<EmailNotificationStatus | null>(null);
+  const [emailBusy, setEmailBusy] = useState(false);
 
   const dismissedKey = useMemo(
     () => (admin.userId ? `notifications_dismissed_${admin.userId}` : "notifications_dismissed"),
@@ -278,6 +286,40 @@ export default function NotificationsPage() {
     }
   };
 
+  const emailPreferenceRequest = async (method: "GET" | "PATCH", emailEnabled?: boolean) => {
+    const client = supabase;
+    if (!client) throw new Error("The app connection is unavailable.");
+    const sessionResult = await client.auth.getSession();
+    const accessToken = sessionResult.data.session?.access_token;
+    if (!accessToken) throw new Error("Please sign in again.");
+    const response = await fetch("/api/notifications/preferences", {
+      method,
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        ...(method === "PATCH" ? { "Content-Type": "application/json" } : {}),
+      },
+      ...(method === "PATCH" ? { body: JSON.stringify({ emailEnabled }) } : {}),
+      cache: "no-store",
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.error ?? "Email notification settings could not be updated.");
+    return data;
+  };
+
+  const refreshEmailStatus = async () => {
+    try {
+      const data = await emailPreferenceRequest("GET");
+      setEmailStatus({
+        databaseReady: Boolean(data.databaseReady),
+        emailConfigured: Boolean(data.emailConfigured),
+        emailEnabled: Boolean(data.emailEnabled),
+        email: typeof data.email === "string" ? data.email : null,
+      });
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Email notification status could not be checked.");
+    }
+  };
+
   const enablePush = async () => {
     if (!pushStatus?.databaseReady) {
       setMessage("Mobile notifications need the latest Supabase migration before they can be enabled.");
@@ -328,9 +370,36 @@ export default function NotificationsPage() {
     }
   };
 
+  const toggleEmailNotifications = async () => {
+    if (!emailStatus?.databaseReady) {
+      setMessage("Email notifications need the latest Supabase migration before they can be enabled.");
+      return;
+    }
+    if (!emailStatus.emailConfigured) {
+      setMessage("Email notifications are awaiting secure server configuration.");
+      return;
+    }
+    setEmailBusy(true);
+    try {
+      const nextEnabled = !emailStatus.emailEnabled;
+      const result = await emailPreferenceRequest("PATCH", nextEnabled);
+      setEmailStatus((current) => current ? { ...current, emailEnabled: nextEnabled } : current);
+      setMessage(nextEnabled
+        ? result.confirmationSent
+          ? `Email notifications enabled for ${emailStatus.email ?? "your signed-in email address"}. A confirmation email has been sent.`
+          : `Email notifications are enabled, but the confirmation email could not be delivered${result.confirmationError ? `: ${result.confirmationError}` : "."}`
+        : "Email notifications disabled.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Email notifications could not be updated.");
+    } finally {
+      setEmailBusy(false);
+    }
+  };
+
   useEffect(() => {
     if (admin.loading || !admin.userId) return;
     void refreshPushStatus();
+    void refreshEmailStatus();
     // Status is refreshed after each explicit notification setting change.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [admin.loading, admin.userId]);
@@ -1116,7 +1185,7 @@ export default function NotificationsPage() {
                   : "Your notifications."}
             </p>
           </section>
-          <section className="rounded-2xl border border-violet-200 bg-violet-50 p-5 shadow-sm">
+          <section className="space-y-5 rounded-2xl border border-violet-200 bg-violet-50 p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <p className="font-semibold text-violet-950">Mobile notifications</p>
@@ -1139,15 +1208,47 @@ export default function NotificationsPage() {
                               : "Not enabled on this device"}
                 </p>
               </div>
-              {pushStatus?.enabledOnDevice ? (
-                <button type="button" disabled={pushBusy} onClick={() => void disablePush()} className="rounded-xl border border-violet-300 bg-white px-4 py-2 text-sm font-semibold text-violet-900 disabled:opacity-50">
-                  {pushBusy ? "Updating…" : "Disable on this device"}
-                </button>
-              ) : (
-                <button type="button" disabled={pushBusy || !pushStatus?.configured || !pushStatus?.databaseReady || pushStatus?.permission === "unsupported"} onClick={() => void enablePush()} className="rounded-xl bg-violet-800 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50">
-                  {pushBusy ? "Enabling…" : "Enable mobile notifications"}
-                </button>
-              )}
+              <button
+                type="button"
+                role="switch"
+                aria-checked={Boolean(pushStatus?.enabledOnDevice)}
+                aria-label="Mobile notifications"
+                disabled={pushBusy || pushStatus?.permission === "unsupported" || (!pushStatus?.enabledOnDevice && (!pushStatus?.configured || !pushStatus?.databaseReady))}
+                onClick={() => void (pushStatus?.enabledOnDevice ? disablePush() : enablePush())}
+                className={`relative h-8 w-14 rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${pushStatus?.enabledOnDevice ? "bg-violet-700" : "bg-slate-300"}`}
+              >
+                <span className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition ${pushStatus?.enabledOnDevice ? "left-7" : "left-1"}`} />
+              </button>
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-4 border-t border-violet-200 pt-5">
+              <div>
+                <p className="font-semibold text-violet-950">Email notifications</p>
+                <p className="mt-1 max-w-2xl text-sm text-violet-800">
+                  Receive important league approval and submission alerts at {emailStatus?.email ?? "your signed-in email address"}.
+                </p>
+                <p className="mt-2 text-xs font-semibold text-violet-700">
+                  {!emailStatus
+                    ? "Checking your email preference…"
+                    : !emailStatus.databaseReady
+                      ? "Database setup required."
+                      : !emailStatus.emailConfigured
+                        ? "Secure email delivery setup required."
+                        : emailStatus.emailEnabled
+                          ? "Enabled"
+                          : "Off"}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={Boolean(emailStatus?.emailEnabled)}
+                aria-label="Email notifications"
+                disabled={emailBusy || !emailStatus?.databaseReady || (!emailStatus?.emailEnabled && !emailStatus?.emailConfigured)}
+                onClick={() => void toggleEmailNotifications()}
+                className={`relative h-8 w-14 rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${emailStatus?.emailEnabled ? "bg-violet-700" : "bg-slate-300"}`}
+              >
+                <span className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition ${emailStatus?.emailEnabled ? "left-7" : "left-1"}`} />
+              </button>
             </div>
           </section>
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">

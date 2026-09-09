@@ -71,15 +71,6 @@ type Season = {
 type LeagueView = LeagueWorkspaceView;
 const MANAGED_LEAGUE_VIEWS: LeagueView[] = ["guide", "teamManagement", "venues", "profiles", "setup", "knockouts", "fixtures", "table", "playerTable", "handicaps"];
 const MEMBER_LEAGUE_VIEWS: LeagueView[] = ["knockouts", "fixtures", "table", "playerTable"];
-type PremierResetPreview = {
-  season: Season;
-  totalPlayers: number;
-  needsReset: number;
-  alreadyAtBaseline: number;
-  fixtureCount: number;
-  startedFixtureCount: number;
-  players: Array<{ id: string; name: string; elo: number; handicap: number; ratedMatches: number }>;
-};
 type Team = {
   id: string;
   season_id: string;
@@ -563,7 +554,7 @@ const LEAGUE_TEMPLATES = {
     singlesCount: 4,
     doublesCount: 1,
     handicapEnabled: true,
-    handicapMaxStart: null,
+    handicapMaxStart: 40,
     fixtureCycles: 3,
     missRule: "A miss may be called while a player is snookered. After the third attempt, the balls remain where they lie.",
   },
@@ -614,7 +605,6 @@ const seasonDisplayLabel = (
   season: Pick<Season, "name" | "handicap_enabled"> & Partial<Pick<Season, "is_active">>
 ) =>
   `${season.name}${season.handicap_enabled ? " (Handicap)" : " (Non-handicap)"}${season.is_active === false ? " — Completed" : ""}`;
-const formatSignedNumber = (value: number) => (value > 0 ? `+${value}` : `${value}`);
 const extractSeasonYearLabel = (name: string) => {
   const m = name.match(/(20\d{2}(?:\/20\d{2})?)/);
   return m ? m[1] : name.trim();
@@ -785,9 +775,6 @@ function LeaguePageContent() {
   const [reviewReason, setReviewReason] = useState("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
   const [confirmCompletionOpen, setConfirmCompletionOpen] = useState(false);
-  const [confirmPremierResetOpen, setConfirmPremierResetOpen] = useState(false);
-  const [premierResetPreview, setPremierResetPreview] = useState<PremierResetPreview | null>(null);
-  const [premierResetBusy, setPremierResetBusy] = useState(false);
   const [genStartDate, setGenStartDate] = useState("");
   const [genFixtureCycles, setGenFixtureCycles] = useState<1 | 2 | 3>(3);
   const [genClearExisting, setGenClearExisting] = useState(true);
@@ -2288,9 +2275,13 @@ function LeaguePageContent() {
     await loadAll();
     setInfoModal({
       title: "League Created",
-      description: (seasonTemplate === "summer" ? seasonHandicapEnabled : template.handicapEnabled)
-        ? "League created successfully. Handicap mode is enabled with no maximum start."
-        : "League created successfully. Match handicaps are disabled; Elo ratings can still be recorded in the background.",
+      description: seasonTemplate === "summer"
+        ? seasonHandicapEnabled
+          ? "League created successfully. Handicap mode is enabled with no maximum start."
+          : "League created successfully. Match handicaps are disabled; Elo ratings can still be recorded in the background."
+        : template.handicapEnabled
+          ? "League created successfully. Handicap mode is enabled with a maximum playing start of 40."
+          : "League created successfully. Match handicaps are disabled; Elo ratings can still be recorded in the background.",
     });
   };
 
@@ -4430,6 +4421,7 @@ function LeaguePageContent() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
+        body: JSON.stringify({ seasonId }),
       });
     } catch {
       setRecalculatingHandicaps(false);
@@ -5175,71 +5167,6 @@ function LeaguePageContent() {
     });
   };
 
-  const previewPremierOpeningReset = async () => {
-    const client = supabase;
-    if (!client || !seasonId) return;
-    if (!canManage) return setMessage("League management access is required to preview the Premier reset.");
-    setPremierResetBusy(true);
-    const sessionRes = await client.auth.getSession();
-    const token = sessionRes.data.session?.access_token ?? null;
-    if (!token) {
-      setPremierResetBusy(false);
-      return setMessage("Session expired. Please sign in again.");
-    }
-    try {
-      const response = await fetch(`/api/league/premier-reset?seasonId=${encodeURIComponent(seasonId)}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const payload = (await response.json().catch(() => ({}))) as PremierResetPreview & { error?: string };
-      if (!response.ok) {
-        setPremierResetPreview(null);
-        setMessage(payload.error ?? "Could not preview the Premier opening reset.");
-      } else {
-        setPremierResetPreview(payload);
-      }
-    } catch {
-      setMessage("Network error while previewing the Premier opening reset.");
-    } finally {
-      setPremierResetBusy(false);
-    }
-  };
-
-  const runPremierOpeningReset = async () => {
-    const client = supabase;
-    if (!client || !seasonId) return;
-    if (!canManage) return setMessage("League management access is required to reset Premier players.");
-    setPremierResetBusy(true);
-    const sessionRes = await client.auth.getSession();
-    const token = sessionRes.data.session?.access_token ?? null;
-    if (!token) {
-      setPremierResetBusy(false);
-      return setMessage("Session expired. Please sign in again.");
-    }
-    try {
-      const response = await fetch("/api/league/premier-reset", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ seasonId, confirmation: "RESET PREMIER" }),
-      });
-      const payload = (await response.json().catch(() => ({}))) as { error?: string; message?: string; reset?: number };
-      if (!response.ok) {
-        setMessage(payload.error ?? "Could not reset the Premier opening ratings.");
-        return;
-      }
-      setConfirmPremierResetOpen(false);
-      setPremierResetPreview(null);
-      await loadAll();
-      setInfoModal({
-        title: "Premier Opening Reset Complete",
-        description: payload.message ?? "Premier players were reset to Elo 1000 and handicap 0. Historic records were retained.",
-      });
-    } catch {
-      setMessage("Network error while resetting the Premier opening ratings.");
-    } finally {
-      setPremierResetBusy(false);
-    }
-  };
-
   const updateCompetitionSignupSettings = async (
     competitionId: string,
     patch: Partial<Pick<LeagueCompetition, "signup_open" | "signup_deadline" | "final_scheduled_at" | "final_venue_location_id">>
@@ -5959,10 +5886,6 @@ function LeaguePageContent() {
   useEffect(() => {
     setSelectedTeamResultFixtureId(null);
   }, [selectedTableTeamId]);
-  useEffect(() => {
-    setPremierResetPreview(null);
-    setConfirmPremierResetOpen(false);
-  }, [seasonId]);
   const seasonSummary = useMemo(() => {
     const complete = seasonFixtures.filter((f) => f.status === "complete").length;
     const inProgress = seasonFixtures.filter((f) => f.status === "in_progress").length;
@@ -6501,19 +6424,6 @@ function LeaguePageContent() {
             onConfirm={() => void setLeagueCompletion(currentSeason?.is_active !== false)}
             onCancel={() => setConfirmCompletionOpen(false)}
           />
-          <ConfirmModal
-            open={confirmPremierResetOpen}
-            title="Confirm Premier Opening Reset"
-            description={`Reset ${premierResetPreview?.needsReset ?? 0} rostered player${premierResetPreview?.needsReset === 1 ? "" : "s"} in “${currentSeason?.name ?? "the selected Premier League"}” to Elo 1000, handicap 0 and zero rated matches? Historic Elo events and handicap records will be retained. This is blocked after the season has started.`}
-            confirmLabel={premierResetBusy ? "Resetting…" : "Reset Premier Players"}
-            tone="danger"
-            onConfirm={() => {
-              if (!premierResetBusy) void runPremierOpeningReset();
-            }}
-            onCancel={() => {
-              if (!premierResetBusy) setConfirmPremierResetOpen(false);
-            }}
-          />
           {loading ? <section className="rounded-2xl border border-slate-200 bg-white p-4 text-slate-600">Loading league data...</section> : null}
 
           {canViewLeague ? (
@@ -6655,75 +6565,12 @@ function LeaguePageContent() {
                   </div>
                 </div>
                 {currentSeason && /premier league/i.test(currentSeason.name) ? (
-                  <div className="mt-4 rounded-2xl border border-amber-300 bg-gradient-to-br from-amber-50 to-white p-4">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div>
-                        <p className="text-xs font-bold uppercase tracking-[0.18em] text-amber-800">Premier opening baseline</p>
-                        <h3 className="mt-1 text-base font-bold text-slate-950">Reset rostered Premier players before the season starts</h3>
-                        <p className="mt-1 max-w-3xl text-sm text-slate-700">
-                          Preview first, then reset only players assigned to this Premier season to Elo 1000, handicap 0 and zero rated matches. Historic Elo events and handicap records are retained.
-                        </p>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => void previewPremierOpeningReset()}
-                        disabled={premierResetBusy}
-                        className="rounded-xl border border-amber-400 bg-white px-4 py-2 text-sm font-bold text-amber-950 disabled:opacity-50"
-                      >
-                        {premierResetBusy ? "Checking roster…" : "Preview Premier reset"}
-                      </button>
-                    </div>
-                    {premierResetPreview ? (
-                      <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
-                        <div className="grid gap-2 sm:grid-cols-4">
-                          <div className="rounded-lg bg-slate-50 p-2">
-                            <p className="text-xs text-slate-500">Rostered players</p>
-                            <p className="text-xl font-black text-slate-950">{premierResetPreview.totalPlayers}</p>
-                          </div>
-                          <div className="rounded-lg bg-amber-50 p-2">
-                            <p className="text-xs text-amber-800">Need reset</p>
-                            <p className="text-xl font-black text-amber-950">{premierResetPreview.needsReset}</p>
-                          </div>
-                          <div className="rounded-lg bg-emerald-50 p-2">
-                            <p className="text-xs text-emerald-800">Already at baseline</p>
-                            <p className="text-xl font-black text-emerald-950">{premierResetPreview.alreadyAtBaseline}</p>
-                          </div>
-                          <div className={`rounded-lg p-2 ${premierResetPreview.startedFixtureCount > 0 ? "bg-rose-50" : "bg-sky-50"}`}>
-                            <p className="text-xs text-slate-600">Started fixtures</p>
-                            <p className="text-xl font-black text-slate-950">{premierResetPreview.startedFixtureCount}</p>
-                          </div>
-                        </div>
-                        {premierResetPreview.players.length > 0 ? (
-                          <div className="mt-3 max-h-48 overflow-auto rounded-lg border border-slate-200">
-                            {premierResetPreview.players.map((player) => (
-                              <div key={player.id} className="flex items-center justify-between gap-3 border-b border-slate-100 px-3 py-2 text-sm last:border-b-0">
-                                <span className="font-medium text-slate-900">{player.name}</span>
-                                <span className="text-xs text-slate-600">Elo {player.elo} · H {formatSignedNumber(player.handicap)} · {player.ratedMatches} rated</span>
-                              </div>
-                            ))}
-                          </div>
-                        ) : null}
-                        <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
-                          <p className={`text-sm ${premierResetPreview.startedFixtureCount > 0 ? "font-semibold text-rose-800" : "text-slate-600"}`}>
-                            {premierResetPreview.startedFixtureCount > 0
-                              ? "Reset blocked because this season has already started."
-                              : premierResetPreview.totalPlayers === 0
-                              ? "Add teams and player rosters before running the reset."
-                              : premierResetPreview.needsReset === 0
-                              ? "Every rostered player is already at the opening baseline."
-                              : "Review this list carefully before confirming the one-time opening reset."}
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => setConfirmPremierResetOpen(true)}
-                            disabled={premierResetBusy || premierResetPreview.needsReset === 0 || premierResetPreview.startedFixtureCount > 0}
-                            className="rounded-xl bg-rose-700 px-4 py-2 text-sm font-bold text-white disabled:cursor-not-allowed disabled:opacity-40"
-                          >
-                            Reset {premierResetPreview.needsReset} Premier player{premierResetPreview.needsReset === 1 ? "" : "s"}
-                          </button>
-                        </div>
-                      </div>
-                    ) : null}
+                  <div className="mt-4 rounded-2xl border border-emerald-300 bg-gradient-to-br from-emerald-50 to-white p-4">
+                    <p className="text-xs font-bold uppercase tracking-[0.18em] text-emerald-800">Adopted EGM decision</p>
+                    <h3 className="mt-1 text-base font-bold text-slate-950">Proposal 2: Carry forward and stabilise</h3>
+                    <p className="mt-1 max-w-4xl text-sm leading-6 text-slate-700">
+                      Validated pre-reset Elo ratings and handicaps carry forward. Handicap reviews take place weekly for the first four fixture weeks, then every four weeks. The maximum playing start is 40 points.
+                    </p>
                   </div>
                 ) : null}
                 <div className="mt-4 border-t border-slate-200 pt-4">
@@ -8933,7 +8780,7 @@ function LeaguePageContent() {
                   description="Review Elo-derived recommendations, publish current lists, apply scheduled reviews and retain a complete audit history."
                   tone="fuchsia"
                   tasks={[
-                    { href: "#handicap-method", label: "Review method", description: "Check how Elo converts into a playing handicap.", badge: `${currentSeason?.handicap_review_interval_weeks ?? 4}-weekly` },
+                    { href: "#handicap-method", label: "Review method", description: "Check how Elo converts into a playing handicap.", badge: currentSeason && /premier league/i.test(currentSeason.name) ? "Weekly initially" : `${currentSeason?.handicap_review_interval_weeks ?? 4}-weekly` },
                     { href: "#handicap-review", label: "Run review", description: "Apply the current Elo targets deliberately.", badge: currentSeason?.handicap_enabled ? "Active" : "Elo only" },
                     { href: "#handicap-adjustment", label: "Manual adjustment", description: "Find one player and record a reasoned override." },
                     { href: "#handicap-history", label: "Audit history", description: "Review every recorded handicap change.", badge: `${handicapHistoryFiltered.length} records` },
@@ -8950,7 +8797,7 @@ function LeaguePageContent() {
                       <li>Each handicap review aligns a player directly to that Elo-based target handicap.</li>
                       <li>{currentSeasonHandicapCap === null ? "Premier League starts use the full handicap difference with no cap." : `Live match starts are capped at ${currentSeasonHandicapCap}.`}</li>
                       <li>Scratch divisions still record Elo results in the background, but every frame begins level.</li>
-                      <li>Handicaps should be formally reviewed at least every {currentSeason?.handicap_review_interval_weeks ?? 4} weeks.</li>
+                      <li>{currentSeason && /premier league/i.test(currentSeason.name) ? "For 2026/27, reviews take place weekly for the first four fixture weeks, then every four weeks." : `Handicaps should be formally reviewed at least every ${currentSeason?.handicap_review_interval_weeks ?? 4} weeks.`}</li>
                       <li>Manual overrides remain available where league rules require correction.</li>
                     </ul>
                   </div>

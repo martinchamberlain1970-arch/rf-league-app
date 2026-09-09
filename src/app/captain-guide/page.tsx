@@ -39,7 +39,7 @@ const sections = [
     title: "4. During the match",
     bullets: [
       "Open Captain Results and select the relevant fixture.",
-      "In the 2026/2027 Premier League, the full reviewed handicap difference applies with no maximum start. Division 1 is played off scratch.",
+      "In the 2026/2027 Premier League, reviewed handicaps apply with a maximum playing start of 40 points. Division 1 is played off scratch.",
       "Enter the frame players carefully. Player selectors show current handicaps to help you sense-check the matchup.",
       "For summer leagues, remember the two-singles-per-player rule. For winter leagues, check nominated-player and no-show rules before submitting.",
       "Enter frame points accurately and add any qualifying 30+ breaks.",
@@ -137,7 +137,7 @@ export default function CaptainGuidePage() {
             <div className="rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-4 md:col-span-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-fuchsia-700">Handicap starts</p>
               <p className="mt-1 text-sm text-fuchsia-900">
-                The 2026/2027 Premier League uses the full difference between the two reviewed handicaps with no maximum start. Division 1 frames begin level, although Elo is still recorded in the background.
+                The 2026/2027 Premier League uses reviewed handicaps with a maximum playing start of 40 points. Division 1 frames begin level, although Elo is still recorded in the background.
               </p>
             </div>
           </div>
