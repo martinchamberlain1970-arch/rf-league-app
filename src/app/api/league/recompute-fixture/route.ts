@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { rebuildLeagueFixtureSnookerRatings } from "@/lib/snooker-rating";
 import { requireLeagueManager } from "@/lib/server-role";
+import { applyDuePremierHandicapReview, type AutomaticHandicapReviewResult } from "@/lib/automatic-handicap-review";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -142,6 +143,7 @@ export async function POST(req: NextRequest) {
   }
 
   let ratingResult: { ok: boolean; ratedFrameCount: number; playerDeltas: Array<{ player_id: string; delta: number; side: "home" | "away" }> } | null = null;
+  let automaticHandicapReview: AutomaticHandicapReviewResult | null = null;
   if (status === "complete") {
     try {
       ratingResult = await rebuildLeagueFixtureSnookerRatings({
@@ -168,11 +170,20 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+    try {
+      automaticHandicapReview = await applyDuePremierHandicapReview(adminClient, fixtureId);
+    } catch (error) {
+      automaticHandicapReview = {
+        applied: false,
+        reason: `automatic_review_error: ${error instanceof Error ? error.message : "Unknown error"}`,
+      };
+    }
   }
 
   return NextResponse.json({
     ok: true,
     fixture: fixtureUpdateRes.data,
     ratingResult,
+    automaticHandicapReview,
   });
 }

@@ -4,6 +4,7 @@ import { rebuildLeagueFixtureSnookerRatings } from "@/lib/snooker-rating";
 import { logServerAudit } from "@/lib/server-audit";
 import { requireLeagueManager } from "@/lib/server-role";
 import { sendPushToUserIds } from "@/lib/push-server";
+import { applyDuePremierHandicapReview, type AutomaticHandicapReviewResult } from "@/lib/automatic-handicap-review";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -117,6 +118,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Submission is no longer pending." }, { status: 400 });
   }
 
+  let automaticHandicapReview: AutomaticHandicapReviewResult | null = null;
   if (decision === "approved") {
     const frameResults = (submission.frame_results ?? []) as SubmissionFrameResult[];
     const breaks: Array<{ frame_slot_no: number; player_id: string | null; entered_player_name: string | null; break_value: number }> = [];
@@ -259,6 +261,14 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
+      try {
+        automaticHandicapReview = await applyDuePremierHandicapReview(adminClient, submission.fixture_id);
+      } catch (error) {
+        automaticHandicapReview = {
+          applied: false,
+          reason: `automatic_review_error: ${error instanceof Error ? error.message : "Unknown error"}`,
+        };
+      }
     }
   }
 
@@ -323,5 +333,5 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ ok: true, evidenceDeleted });
+  return NextResponse.json({ ok: true, evidenceDeleted, automaticHandicapReview });
 }

@@ -4402,8 +4402,8 @@ function LeaguePageContent() {
     }
     const confirmed = await showConfirm({
       title: "Apply Elo handicap changes?",
-      description: "This changes actual playing handicaps now by aligning them with each player’s current Elo target.\n\nElo updates do not require this action. Cancel if you only want Elo to continue updating in the background.",
-      confirmLabel: "Apply handicaps",
+      description: "Proposal 2 reviews run automatically after the final result in each scheduled review week is completed. Use this only for an exceptional recovery or a specifically authorised early review.\n\nContinue and align every current handicap with its Elo target now?",
+      confirmLabel: "Run exceptional review",
     });
     if (!confirmed) return;
     const sessionRes = await client.auth.getSession();
@@ -8780,8 +8780,8 @@ function LeaguePageContent() {
                   description="Review Elo-derived recommendations, publish current lists, apply scheduled reviews and retain a complete audit history."
                   tone="fuchsia"
                   tasks={[
-                    { href: "#handicap-method", label: "Review method", description: "Check how Elo converts into a playing handicap.", badge: currentSeason && /premier league/i.test(currentSeason.name) ? "Weekly initially" : `${currentSeason?.handicap_review_interval_weeks ?? 4}-weekly` },
-                    { href: "#handicap-review", label: "Run review", description: "Apply the current Elo targets deliberately.", badge: currentSeason?.handicap_enabled ? "Active" : "Elo only" },
+                    { href: "#handicap-method", label: "Review method", description: "Check how Elo converts into a playing handicap.", badge: currentSeason && /premier league/i.test(currentSeason.name) ? "Automatic" : `${currentSeason?.handicap_review_interval_weeks ?? 4}-weekly` },
+                    { href: "#handicap-review", label: "Exceptional review", description: "Officer recovery control outside the automatic timetable.", badge: currentSeason?.handicap_enabled ? "Safeguarded" : "Elo only" },
                     { href: "#handicap-adjustment", label: "Manual adjustment", description: "Find one player and record a reasoned override." },
                     { href: "#handicap-history", label: "Audit history", description: "Review every recorded handicap change.", badge: `${handicapHistoryFiltered.length} records` },
                   ]}
@@ -8792,7 +8792,7 @@ function LeaguePageContent() {
                       <li>Elo rating updates after every valid competitive frame.</li>
                       <li>No-show, nominated-player, and void frames do not affect Elo or handicap.</li>
                       <li>Approving results and rechecking ratings updates Elo only; it does not change the live handicap.</li>
-                      <li>Actual playing handicaps change only when a league officer deliberately applies the Elo handicap review.</li>
+                      <li>For the 2026/27 Premier League, actual playing handicaps update automatically when the final result in a scheduled review week is completed.</li>
                       <li>Target handicap now matches the original Elo seed formula: handicap = nearest multiple of 4 to (1000 - Elo) / 5.</li>
                       <li>Each handicap review aligns a player directly to that Elo-based target handicap.</li>
                       <li>{currentSeasonHandicapCap === null ? "Premier League starts use the full handicap difference with no cap." : `Live match starts are capped at ${currentSeasonHandicapCap}.`}</li>
@@ -8828,9 +8828,9 @@ function LeaguePageContent() {
                 <div id="handicap-review" className="mt-3 scroll-mt-40 rounded-xl border border-rose-300 bg-rose-50 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <div>
-                      <p className="text-sm font-semibold text-rose-950">Apply handicap changes from Elo target</p>
+                      <p className="text-sm font-semibold text-rose-950">Exceptional manual review</p>
                       <p className="text-xs text-rose-800">
-                        This is the only action here that changes actual playing handicaps. Leave this alone if you want Elo to keep updating but handicaps to stay frozen until the end-of-league review.
+                        Proposal 2 reviews are automatic. Use this recovery control only if a scheduled review failed or the League formally authorises an out-of-cycle review.
                       </p>
                     </div>
                     <button
@@ -8839,7 +8839,7 @@ function LeaguePageContent() {
                       disabled={recalculatingHandicaps}
                       className="rounded-xl bg-rose-700 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
                     >
-                      {recalculatingHandicaps ? "Applying handicap changes..." : "Apply handicap changes"}
+                      {recalculatingHandicaps ? "Applying handicap changes..." : "Run exceptional review"}
                     </button>
                   </div>
                 </div>
