@@ -8,6 +8,7 @@ import { supabase } from "@/lib/supabase";
 
 type Proposal = { id: number; title: string; summary: string };
 type Team = { id: string; name: string; location_id: string; clubName: string };
+type TeamPlayer = { id: string; name: string; isCaptain: boolean; isViceCaptain: boolean };
 type Attendee = { id: string; team_id: string; location_id: string; representative_name: string; teamName: string; clubName: string };
 type Vote = { id: string; attendee_id: string; round_no: number; choice: string | null; submission_method: "attendee" | "officer"; recorded_at: string };
 type Meeting = {
@@ -22,7 +23,7 @@ type Meeting = {
   decision_note: string | null;
   completed_at: string | null;
 };
-type Payload = { meeting: Meeting; proposals: Proposal[]; teams: Team[]; attendees: Attendee[]; votes: Vote[]; attestationCount: number };
+type Payload = { meeting: Meeting; proposals: Proposal[]; teams: Team[]; teamPlayers: Record<string, TeamPlayer[]>; attendees: Attendee[]; votes: Vote[]; attestationCount: number };
 
 const statusLabels: Record<string, string> = {
   register_open: "Attendance register open",
@@ -45,6 +46,7 @@ export default function EgmVotingPage() {
   const [data, setData] = useState<Payload | null>(null);
   const [clubId, setClubId] = useState("");
   const [teamId, setTeamId] = useState("");
+  const [representativePlayerId, setRepresentativePlayerId] = useState("");
   const [representativeName, setRepresentativeName] = useState("");
   const [meetingAt, setMeetingAt] = useState("");
   const [adoptedProposal, setAdoptedProposal] = useState(0);
@@ -94,6 +96,8 @@ export default function EgmVotingPage() {
     return [...unique.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
   }, [data?.teams]);
   const clubTeams = useMemo(() => (data?.teams ?? []).filter((team) => team.location_id === clubId), [clubId, data?.teams]);
+  const selectedTeamPlayers = useMemo(() => data?.teamPlayers?.[teamId] ?? [], [data?.teamPlayers, teamId]);
+  const manualRepresentative = representativePlayerId === "other" || (teamId !== "" && selectedTeamPlayers.length === 0);
 
   useEffect(() => {
     if (!activeRound) return;
@@ -135,7 +139,10 @@ export default function EgmVotingPage() {
 
   async function addAttendee(event: FormEvent) {
     event.preventDefault();
-    if (await mutate({ action: "add_attendee", teamId, representativeName }, "Voting representative added and available on the shared voting page.")) setRepresentativeName("");
+    if (await mutate({ action: "add_attendee", teamId, representativePlayerId: representativePlayerId === "other" ? "" : representativePlayerId, representativeName }, "Voting representative added and available on the shared voting page.")) {
+      setRepresentativePlayerId("");
+      setRepresentativeName("");
+    }
   }
 
   async function removeAttendee(attendee: Attendee) {
@@ -223,11 +230,17 @@ export default function EgmVotingPage() {
                 <label className="mt-4 block text-sm font-bold">Microsoft Teams meeting date and time</label>
                 <div className="mt-2 flex gap-2"><input type="datetime-local" value={meetingAt} onChange={(event) => setMeetingAt(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2" /><button type="button" disabled={busy} onClick={() => void mutate({ action: "set_meeting", meetingAt }, "Meeting date saved.")} className="rounded-xl border border-teal-600 px-4 py-2 font-bold text-teal-800">Save</button></div>
                 <label className="mt-5 block text-sm font-bold">Club</label>
-                <select value={clubId} onChange={(event) => { const nextClubId = event.target.value; const matchingTeams = data.teams.filter((team) => team.location_id === nextClubId); setClubId(nextClubId); setTeamId(matchingTeams.length === 1 ? matchingTeams[0].id : ""); }} required className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3"><option value="">Select club</option>{clubs.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}</select>
+                <select value={clubId} onChange={(event) => { const nextClubId = event.target.value; const matchingTeams = data.teams.filter((team) => team.location_id === nextClubId); setClubId(nextClubId); setTeamId(matchingTeams.length === 1 ? matchingTeams[0].id : ""); setRepresentativePlayerId(""); setRepresentativeName(""); }} required className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3"><option value="">Select club</option>{clubs.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}</select>
                 <label className="mt-4 block text-sm font-bold">Premier League team</label>
-                <select value={teamId} onChange={(event) => setTeamId(event.target.value)} required disabled={!clubId} className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 disabled:bg-slate-100"><option value="">{clubId ? "Select team" : "Select the club first"}</option>{clubTeams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select>
-                <label className="mt-4 block text-sm font-bold">Representative’s full name</label>
-                <input value={representativeName} onChange={(event) => setRepresentativeName(event.target.value)} required placeholder="First name and surname" className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3" />
+                <select value={teamId} onChange={(event) => { setTeamId(event.target.value); setRepresentativePlayerId(""); setRepresentativeName(""); }} required disabled={!clubId} className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 disabled:bg-slate-100"><option value="">{clubId ? "Select team" : "Select the club first"}</option>{clubTeams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select>
+                <label className="mt-4 block text-sm font-bold">Voting representative</label>
+                <select value={representativePlayerId} onChange={(event) => { setRepresentativePlayerId(event.target.value); setRepresentativeName(""); }} required={selectedTeamPlayers.length > 0} disabled={!teamId} className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 disabled:bg-slate-100">
+                  <option value="">{!teamId ? "Select the team first" : selectedTeamPlayers.length ? "Select a player from the winter roster" : "No players found on this winter roster"}</option>
+                  {selectedTeamPlayers.map((player) => <option key={player.id} value={player.id}>{player.name}{player.isCaptain ? " · Captain" : player.isViceCaptain ? " · Vice-captain" : ""}</option>)}
+                  {teamId ? <option value="other">Someone else authorised by the team</option> : null}
+                </select>
+                {manualRepresentative ? <><label className="mt-4 block text-sm font-bold">Authorised representative’s full name</label><input value={representativeName} onChange={(event) => setRepresentativeName(event.target.value)} required placeholder="First name and surname" className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3" /></> : null}
+                {teamId && selectedTeamPlayers.length === 0 ? <p className="mt-2 text-xs font-semibold text-amber-700">No current-season players were found for this team. You can still enter an authorised representative manually.</p> : null}
                 <button disabled={busy} className="mt-4 w-full rounded-xl bg-teal-700 px-4 py-3 font-black text-white disabled:opacity-50">Add voting representative</button>
               </form>
               <section className="rounded-2xl bg-white p-5 shadow-sm">

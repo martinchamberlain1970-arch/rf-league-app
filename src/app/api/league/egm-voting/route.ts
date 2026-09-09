@@ -68,6 +68,16 @@ async function responsePayload(admin: SupabaseClient) {
     ? await admin.from("league_teams").select("id,name,location_id,is_active").eq("season_id", season.id).eq("is_active", true).order("name")
     : { data: [], error: null };
   if (teamsRes.error) throw new Error(teamsRes.error.message);
+  const teamIds = (teamsRes.data ?? []).map((team) => team.id);
+  const membersRes = teamIds.length
+    ? await admin.from("league_team_members").select("team_id,player_id,is_captain,is_vice_captain").eq("season_id", season!.id).in("team_id", teamIds)
+    : { data: [], error: null };
+  if (membersRes.error) throw new Error(membersRes.error.message);
+  const playerIds = [...new Set((membersRes.data ?? []).map((member) => member.player_id).filter(Boolean))];
+  const playersRes = playerIds.length
+    ? await admin.from("players").select("id,display_name,full_name").in("id", playerIds).eq("is_archived", false)
+    : { data: [], error: null };
+  if (playersRes.error) throw new Error(playersRes.error.message);
   const locationIds = [...new Set((teamsRes.data ?? []).map((team) => team.location_id).filter(Boolean))];
   const locationsRes = locationIds.length
     ? await admin.from("locations").select("id,name").in("id", locationIds)
@@ -75,12 +85,26 @@ async function responsePayload(admin: SupabaseClient) {
   if (locationsRes.error) throw new Error(locationsRes.error.message);
   const teamName = new Map((teamsRes.data ?? []).map((team) => [team.id, team.name]));
   const clubName = new Map((locationsRes.data ?? []).map((club) => [club.id, club.name]));
+  const playerName = new Map((playersRes.data ?? []).map((player) => [player.id, (player.full_name?.trim() || player.display_name?.trim() || "Unnamed player")]));
+  const teamPlayers = Object.fromEntries((teamsRes.data ?? []).map((team) => [
+    team.id,
+    (membersRes.data ?? [])
+      .filter((member) => member.team_id === team.id && playerName.has(member.player_id))
+      .map((member) => ({
+        id: member.player_id,
+        name: playerName.get(member.player_id)!,
+        isCaptain: Boolean(member.is_captain),
+        isViceCaptain: Boolean(member.is_vice_captain),
+      }))
+      .sort((a, b) => Number(b.isCaptain) - Number(a.isCaptain) || Number(b.isViceCaptain) - Number(a.isViceCaptain) || a.name.localeCompare(b.name)),
+  ]));
   return {
     meeting,
     proposals,
     season,
     attestationCount: consultationRes.count ?? 0,
     teams: (teamsRes.data ?? []).map((team) => ({ ...team, clubName: clubName.get(team.location_id) ?? "Unknown club" })),
+    teamPlayers,
     attendees: (attendeesRes.data ?? []).map((attendee) => ({
       id: attendee.id,
       team_id: attendee.team_id,
@@ -127,8 +151,9 @@ export async function POST(req: NextRequest) {
     if (action === "add_attendee") {
       if (meeting.status !== "register_open") throw new Error("Attendance can only be changed before round one opens.");
       const teamId = cleanText(body?.teamId, 60);
-      const representativeName = cleanText(body?.representativeName);
-      if (!teamId || representativeName.split(" ").filter(Boolean).length < 2) throw new Error("Select a team and enter the representative's full name.");
+      const representativePlayerId = cleanText(body?.representativePlayerId, 60);
+      let representativeName = cleanText(body?.representativeName);
+      if (!teamId) throw new Error("Select a Premier League team.");
       const teamRes = await admin.from("league_teams").select("id,location_id,is_active,season_id").eq("id", teamId).maybeSingle();
       if (teamRes.error || !teamRes.data) throw new Error(teamRes.error?.message ?? "The selected team was not found.");
       const seasonRes = await admin.from("league_seasons").select("name").eq("id", teamRes.data.season_id).maybeSingle();
@@ -136,6 +161,14 @@ export async function POST(req: NextRequest) {
       const seasonName = seasonRes.data.name ?? "";
       if (!teamRes.data.is_active || !seasonName.toLowerCase().includes("premier league 2026/2027")) throw new Error("Select an active 2026/2027 Premier League team.");
       if (!teamRes.data.location_id) throw new Error("This team is not linked to a club.");
+      if (representativePlayerId) {
+        const memberRes = await admin.from("league_team_members").select("player_id").eq("season_id", teamRes.data.season_id).eq("team_id", teamId).eq("player_id", representativePlayerId).maybeSingle();
+        if (memberRes.error || !memberRes.data) throw new Error(memberRes.error?.message ?? "Select a representative from this team's current season roster.");
+        const playerRes = await admin.from("players").select("display_name,full_name").eq("id", representativePlayerId).eq("is_archived", false).maybeSingle();
+        if (playerRes.error || !playerRes.data) throw new Error(playerRes.error?.message ?? "The selected roster player could not be found.");
+        representativeName = cleanText(playerRes.data.full_name || playerRes.data.display_name);
+      }
+      if (representativeName.split(" ").filter(Boolean).length < 2) throw new Error("Select a roster player or enter the authorised representative's full name.");
       const teamAttendee = await admin.from("handicap_egm_attendees").select("id", { count: "exact", head: true }).eq("meeting_id", meeting.id).eq("team_id", teamId);
       if (teamAttendee.error) throw new Error(teamAttendee.error.message);
       if ((teamAttendee.count ?? 0) >= 1) throw new Error("This Premier League team already has its one voting representative.");
