@@ -43,6 +43,7 @@ function localDateTimeValue(value: string | null) {
 export default function EgmVotingPage() {
   const { showConfirm } = useAppDialog();
   const [data, setData] = useState<Payload | null>(null);
+  const [clubId, setClubId] = useState("");
   const [teamId, setTeamId] = useState("");
   const [representativeName, setRepresentativeName] = useState("");
   const [meetingAt, setMeetingAt] = useState("");
@@ -87,6 +88,12 @@ export default function EgmVotingPage() {
   const votesByAttendeeAndRound = useMemo(() => new Map((data?.votes ?? []).map((vote) => [`${vote.attendee_id}:${vote.round_no}`, vote.choice])), [data?.votes]);
   const voteRecordByAttendeeAndRound = useMemo(() => new Map((data?.votes ?? []).map((vote) => [`${vote.attendee_id}:${vote.round_no}`, vote])), [data?.votes]);
   const activeRound = data?.meeting.status === "round_1_open" ? 1 : data?.meeting.status === "round_2_open" ? 2 : null;
+  const clubs = useMemo(() => {
+    const unique = new Map<string, string>();
+    (data?.teams ?? []).forEach((team) => unique.set(team.location_id, team.clubName));
+    return [...unique.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
+  }, [data?.teams]);
+  const clubTeams = useMemo(() => (data?.teams ?? []).filter((team) => team.location_id === clubId), [clubId, data?.teams]);
 
   useEffect(() => {
     if (!activeRound) return;
@@ -212,10 +219,13 @@ export default function EgmVotingPage() {
             {data.meeting.status === "register_open" ? <section className="grid gap-4 lg:grid-cols-[1fr_1.5fr]">
               <form onSubmit={addAttendee} className="rounded-2xl bg-white p-5 shadow-sm">
                 <h2 className="text-xl font-black">1. Prepare the meeting</h2>
+                <p className="mt-2 text-sm leading-6 text-slate-600"><strong>When:</strong> add representatives at the start of the Teams meeting, after confirming who is actually present and before opening ballot 1. The voter may be the captain, vice-captain or another person authorised by that Premier League team.</p>
                 <label className="mt-4 block text-sm font-bold">Microsoft Teams meeting date and time</label>
                 <div className="mt-2 flex gap-2"><input type="datetime-local" value={meetingAt} onChange={(event) => setMeetingAt(event.target.value)} className="min-w-0 flex-1 rounded-xl border border-slate-300 px-3 py-2" /><button type="button" disabled={busy} onClick={() => void mutate({ action: "set_meeting", meetingAt }, "Meeting date saved.")} className="rounded-xl border border-teal-600 px-4 py-2 font-bold text-teal-800">Save</button></div>
-                <label className="mt-5 block text-sm font-bold">Team represented</label>
-                <select value={teamId} onChange={(event) => setTeamId(event.target.value)} required className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3"><option value="">Select team</option>{data.teams.map((team) => <option key={team.id} value={team.id}>{team.name} · {team.clubName}</option>)}</select>
+                <label className="mt-5 block text-sm font-bold">Club</label>
+                <select value={clubId} onChange={(event) => { const nextClubId = event.target.value; const matchingTeams = data.teams.filter((team) => team.location_id === nextClubId); setClubId(nextClubId); setTeamId(matchingTeams.length === 1 ? matchingTeams[0].id : ""); }} required className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3"><option value="">Select club</option>{clubs.map((club) => <option key={club.id} value={club.id}>{club.name}</option>)}</select>
+                <label className="mt-4 block text-sm font-bold">Premier League team</label>
+                <select value={teamId} onChange={(event) => setTeamId(event.target.value)} required disabled={!clubId} className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3 disabled:bg-slate-100"><option value="">{clubId ? "Select team" : "Select the club first"}</option>{clubTeams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select>
                 <label className="mt-4 block text-sm font-bold">Representative’s full name</label>
                 <input value={representativeName} onChange={(event) => setRepresentativeName(event.target.value)} required placeholder="First name and surname" className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3" />
                 <button disabled={busy} className="mt-4 w-full rounded-xl bg-teal-700 px-4 py-3 font-black text-white disabled:opacity-50">Add voting representative</button>
