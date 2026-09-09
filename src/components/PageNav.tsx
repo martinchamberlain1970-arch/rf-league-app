@@ -4,8 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
+import { useAppShell } from "@/components/AppShellContext";
 import ConfirmModal from "@/components/ConfirmModal";
-import AppNavigationMenu from "@/components/AppNavigationMenu";
 import { logAudit } from "@/lib/audit";
 
 type PageNavProps = {
@@ -16,10 +16,9 @@ type PageNavProps = {
 export default function PageNav({ warnOnNavigate = false, warnMessage = "You have unsaved changes. Leave this screen?" }: PageNavProps) {
   const router = useRouter();
   const admin = useAdminStatus();
+  const appShell = useAppShell();
   const [pendingCount, setPendingCount] = useState(0);
   const [pendingNav, setPendingNav] = useState<"back" | "home" | null>(null);
-  const [pendingMenuHref, setPendingMenuHref] = useState<string | null>(null);
-  const [menuOpen, setMenuOpen] = useState(false);
   const storageKey = useMemo(() => (admin.userId ? `notifications_last_read_${admin.userId}` : "notifications_last_read"), [admin.userId]);
   const dismissedKey = useMemo(
     () => (admin.userId ? `notifications_dismissed_${admin.userId}` : "notifications_dismissed"),
@@ -36,13 +35,6 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
       return;
     }
     setPendingNav(target);
-  };
-
-  const requestMenuNavigation = (href: string) => {
-    if (!warnOnNavigate) return true;
-    setPendingMenuHref(href);
-    setMenuOpen(false);
-    return false;
   };
 
   const onSignOut = async () => {
@@ -71,9 +63,13 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
   const showBack = true;
 
   useEffect(() => {
+    return appShell.registerNavigationGuard(warnOnNavigate, warnMessage);
+  }, [appShell, warnMessage, warnOnNavigate]);
+
+  useEffect(() => {
     const load = async () => {
       const client = supabase;
-      if (!client || admin.loading) return;
+      if (appShell.enabled || !client || admin.loading) return;
       if (!admin.userId) return;
       const lastRead = typeof window !== "undefined" ? window.localStorage.getItem(storageKey) : null;
       const applyCreatedFilter = (query: any) => (lastRead ? query.gt("created_at", lastRead) : query);
@@ -207,19 +203,12 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
       }
     };
     load();
-  }, [admin.loading, admin.isAdmin, admin.isSuper, admin.canManageLeague, admin.userId, storageKey, dismissedKey]);
+  }, [admin.loading, admin.isAdmin, admin.isSuper, admin.canManageLeague, admin.userId, appShell.enabled, storageKey, dismissedKey]);
+
+  if (appShell.enabled) return null;
 
   return (
     <div className="flex w-auto items-center justify-end gap-1.5 sm:gap-2">
-      <button
-        type="button"
-        onClick={() => setMenuOpen(true)}
-        className="inline-flex h-10 items-center gap-2 whitespace-nowrap rounded-lg border border-[#0f1a31] bg-[#0f1a31] px-3 text-sm font-semibold text-white shadow-sm hover:border-teal-700 hover:bg-teal-800"
-        aria-label="Open app menu"
-      >
-        <span aria-hidden="true" className="text-base leading-none">☰</span>
-        <span>Menu</span>
-      </button>
       <button
         type="button"
         onClick={onNotifications}
@@ -241,27 +230,23 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
       <button type="button" aria-label="Go home" onClick={() => requestNavigation("home")} className="hidden h-10 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 hover:border-teal-300 hover:bg-teal-50 sm:inline-flex">
         <span aria-hidden="true">⌂</span><span className="hidden lg:inline">Home</span>
       </button>
-      <button type="button" aria-label="Sign out" onClick={onSignOut} className="hidden h-10 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 sm:inline-flex">
+      {admin.userId ? <button type="button" aria-label="Sign out" onClick={onSignOut} className="hidden h-10 items-center gap-1 whitespace-nowrap rounded-lg border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 hover:border-rose-300 hover:bg-rose-50 hover:text-rose-700 sm:inline-flex">
         <span aria-hidden="true">↪</span><span className="hidden lg:inline">Sign out</span>
-      </button>
+      </button> : null}
       <ConfirmModal
-        open={Boolean(pendingNav || pendingMenuHref)}
+        open={Boolean(pendingNav)}
         title="Unsaved changes"
         description={warnMessage}
         confirmLabel="Leave screen"
         cancelLabel="Stay"
         onConfirm={() => {
-          if (pendingMenuHref) router.push(pendingMenuHref);
-          else if (pendingNav) performNavigation(pendingNav);
+          if (pendingNav) performNavigation(pendingNav);
           setPendingNav(null);
-          setPendingMenuHref(null);
         }}
         onCancel={() => {
           setPendingNav(null);
-          setPendingMenuHref(null);
         }}
       />
-      <AppNavigationMenu open={menuOpen} onClose={() => setMenuOpen(false)} onSignOut={onSignOut} onNavigate={requestMenuNavigation} />
     </div>
   );
 }

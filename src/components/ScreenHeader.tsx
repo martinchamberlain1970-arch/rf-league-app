@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import PageNav from "@/components/PageNav";
 import useAdminStatus from "@/components/useAdminStatus";
+import { useAppShell } from "@/components/AppShellContext";
 
 type ScreenHeaderProps = {
   title: string;
@@ -25,6 +26,7 @@ export default function ScreenHeader({
 }: ScreenHeaderProps) {
   const pathname = usePathname();
   const admin = useAdminStatus();
+  const appShell = useAppShell();
   const relatedLinks = pathname.startsWith("/events") || pathname.startsWith("/competitions") || pathname === "/signups"
     ? [
         { href: "/events?view=league", label: "League match centre" },
@@ -50,15 +52,19 @@ export default function ScreenHeader({
       <div className="h-1 bg-gradient-to-r from-cyan-400 via-teal-600 to-[#0f1a31]" />
       <div className="p-4 sm:p-5">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-          <div className="flex min-w-0 items-start gap-3">
-            <span className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#0f1a31] to-teal-800 text-xs font-black tracking-tight text-cyan-300 shadow-sm">R&amp;F</span>
+          <div className={`flex min-w-0 items-start ${appShell.enabled ? "" : "gap-3"}`}>
+            {!appShell.enabled ? <span className="mt-0.5 grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-[#0f1a31] to-teal-800 text-xs font-black tracking-tight text-cyan-300 shadow-sm">R&amp;F</span> : null}
             <div className="min-w-0">
-              <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-slate-500">
-                <Link href="/" className="hover:text-teal-700">Home</Link>
-                <span aria-hidden="true">/</span>
-                {eyebrow ? <span className="uppercase tracking-wide text-teal-700">{eyebrow}</span> : <span>Workspace</span>}
-              </div>
-              <h1 className="mt-0.5 text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl">{title}</h1>
+              {appShell.enabled ? (
+                eyebrow ? <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-teal-700">{eyebrow}</p> : null
+              ) : (
+                <div className="flex flex-wrap items-center gap-1.5 text-xs font-semibold text-slate-500">
+                  <Link href="/" className="hover:text-teal-700">Home</Link>
+                  <span aria-hidden="true">/</span>
+                  {eyebrow ? <span className="uppercase tracking-wide text-teal-700">{eyebrow}</span> : <span>Workspace</span>}
+                </div>
+              )}
+              <h1 className={`${appShell.enabled ? "mt-1" : "mt-0.5"} text-2xl font-bold tracking-tight text-slate-950 sm:text-3xl`}>{title}</h1>
               {subtitle ? <p className="mt-1 max-w-3xl text-sm leading-5 text-slate-600">{subtitle}</p> : null}
             </div>
           </div>

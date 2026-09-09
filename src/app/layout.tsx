@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
+import { Suspense } from "react";
 import PwaRegistration from "@/components/PwaRegistration";
 import AppDialogProvider from "@/components/AppDialogProvider";
+import AppShell from "@/components/AppShell";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -46,7 +48,9 @@ export default function RootLayout({
       </head>
       <body className="antialiased">
         <AppDialogProvider>
-          {children}
+          <Suspense fallback={children}>
+            <AppShell>{children}</AppShell>
+          </Suspense>
           <PwaRegistration />
         </AppDialogProvider>
       </body>
