@@ -5,7 +5,7 @@ import { useEffect, useState } from "react";
 import PageNav from "@/components/PageNav";
 
 const EFFECTIVE_DATE = "11 March 2026";
-const LAST_UPDATED = "3 September 2026";
+const LAST_UPDATED = "9 September 2026";
 const USAGE_CONSENT_KEY = "rf_usage_tracking_consent";
 const PRIVACY_EMAIL =
   process.env.NEXT_PUBLIC_PRIVACY_CONTACT_EMAIL?.trim() ||
@@ -42,7 +42,7 @@ export default function PrivacyPage() {
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Legal</p>
               <h1 className="text-2xl font-bold text-slate-900">Privacy Policy</h1>
-              <p className="mt-1 text-xs text-slate-600">Effective date: {EFFECTIVE_DATE} · Last updated: {LAST_UPDATED} · Version 2026-09-03</p>
+              <p className="mt-1 text-xs text-slate-600">Effective date: {EFFECTIVE_DATE} · Last updated: {LAST_UPDATED} · Version 2026-09-09</p>
             </div>
             <PageNav />
           </div>
@@ -63,6 +63,7 @@ export default function PrivacyPage() {
               <li>Account information, including email address, user ID, account status, acceptance records and authentication information managed by Supabase.</li>
               <li>Player information, including name, club, team, role, date of birth where required, profile image, nationality and player-profile links.</li>
               <li>League and competition records, including line-ups, fixtures, frame scores, breaks, results, submissions, approvals, reports, Elo ratings, handicaps and historical trends.</li>
+              <li>Public paper-scorecard submissions, including the submitter&apos;s name and team, confirmation that both teams agreed the result, and an optional photograph of the signed scorecard.</li>
               <li>Contact information supplied for arranging matches or competitions, including telephone-sharing choices.</li>
               <li>Registration and competition-form information, including drafts, declarations, notes and information submitted by captains or club officers about other players.</li>
               <li>Administration and financial records, including competition entries, club invoice items, invoice recipients, payment status and audit history. Rack &amp; Frame does not currently process payment-card details.</li>
@@ -129,6 +130,7 @@ export default function PrivacyPage() {
               <li>Approved fixtures, results, sporting statistics and handicap history may be retained as the League&apos;s permanent sporting archive.</li>
               <li>Account and current contact information is retained while the account or league relationship remains active and then reviewed for deletion, restriction or anonymisation.</li>
               <li>Drafts, unsuccessful requests, notification subscriptions and operational logs are retained only while needed for their purpose, troubleshooting, security or dispute resolution.</li>
+              <li>An optional paper-scorecard photograph is held privately while the submission awaits review and is deleted after approval or rejection. Unreviewed photographs expire after 30 days; the result submission and evidence-deletion audit record may be retained.</li>
               <li>Invoice and payment records are normally retained for up to six years after the relevant financial year where needed for accounting and dispute records.</li>
             </ul>
             <p className="mt-2">Records are reviewed periodically. Legal claims, safeguarding, security incidents or statutory obligations may require a longer period.</p>

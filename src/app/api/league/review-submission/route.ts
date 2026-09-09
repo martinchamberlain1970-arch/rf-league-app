@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
 
   const submissionRes = await adminClient
     .from("league_result_submissions")
-    .select("id,fixture_id,submitted_by_user_id,status,frame_results")
+    .select("id,fixture_id,submitted_by_user_id,status,frame_results,submission_source,public_submitter_name,scorecard_photo_path")
     .eq("id", submissionId)
     .maybeSingle();
   if (submissionRes.error || !submissionRes.data) {
@@ -105,9 +105,12 @@ export async function POST(req: NextRequest) {
   const submission = submissionRes.data as {
     id: string;
     fixture_id: string;
-    submitted_by_user_id: string;
+    submitted_by_user_id: string | null;
     status: "pending" | "approved" | "rejected" | "needs_correction";
     frame_results: SubmissionFrameResult[] | null;
+    submission_source?: "authenticated" | "public_paper";
+    public_submitter_name?: string | null;
+    scorecard_photo_path?: string | null;
   };
 
   if (submission.status !== "pending") {
@@ -272,6 +275,18 @@ export async function POST(req: NextRequest) {
 
   if (reviewUpdate.error) return NextResponse.json({ error: reviewUpdate.error.message }, { status: 400 });
 
+  let evidenceDeleted = !submission.scorecard_photo_path;
+  if (submission.scorecard_photo_path) {
+    const removed = await adminClient.storage.from("temporary-scorecards").remove([submission.scorecard_photo_path]);
+    if (!removed.error) {
+      evidenceDeleted = true;
+      await adminClient.from("league_result_submissions").update({
+        scorecard_photo_path: null,
+        scorecard_evidence_deleted_at: new Date().toISOString(),
+      }).eq("id", submission.id);
+    }
+  }
+
   if (decision === "rejected") {
     const resetFixture = await adminClient.from("league_fixtures").update({ status: "pending" }).eq("id", submission.fixture_id);
     if (resetFixture.error) return NextResponse.json({ error: resetFixture.error.message }, { status: 400 });
@@ -293,6 +308,9 @@ export async function POST(req: NextRequest) {
       submission_id: submission.id,
       decision,
       rejection_reason: decision === "rejected" ? rejectionReason || null : null,
+      submission_source: submission.submission_source ?? "authenticated",
+      public_submitter_name: submission.public_submitter_name ?? null,
+      temporary_scorecard_evidence_deleted: evidenceDeleted,
     },
   });
 
@@ -305,5 +323,5 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, evidenceDeleted });
 }

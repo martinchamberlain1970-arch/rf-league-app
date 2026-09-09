@@ -38,11 +38,17 @@ type SubmissionFrameResult = {
 type LeagueSubmission = {
   id: string;
   fixture_id: string;
-  submitted_by_user_id: string;
+  submitted_by_user_id: string | null;
   created_at: string;
   status: "pending" | "approved" | "rejected" | "needs_correction";
   rejection_reason?: string | null;
   frame_results?: SubmissionFrameResult[] | null;
+  submission_source?: "authenticated" | "public_paper";
+  public_submitter_name?: string | null;
+  public_submitter_team_id?: string | null;
+  public_both_teams_confirmed?: boolean;
+  scorecard_photo_path?: string | null;
+  scorecard_evidence_deleted_at?: string | null;
 };
 type CompetitionSubmission = {
   id: string;
@@ -152,7 +158,7 @@ function ResultsQueuePageContent() {
 
     let query = client
       .from("league_result_submissions")
-      .select("id,fixture_id,submitted_by_user_id,created_at,status,rejection_reason,frame_results")
+      .select("id,fixture_id,submitted_by_user_id,created_at,status,rejection_reason,frame_results,submission_source,public_submitter_name,public_submitter_team_id,public_both_teams_confirmed,scorecard_photo_path,scorecard_evidence_deleted_at")
       .order("created_at", { ascending: false });
 
     if (!admin.isAdmin && admin.userId) {
@@ -365,6 +371,28 @@ function ResultsQueuePageContent() {
       return;
     }
     await load();
+  };
+
+  const openScorecardEvidence = async (submissionId: string) => {
+    const client = supabase;
+    if (!client) return;
+    const preview = window.open("about:blank", "_blank");
+    const { data: sessionRes } = await client.auth.getSession();
+    const token = sessionRes.session?.access_token;
+    if (!token) {
+      preview?.close();
+      setMessage("Session expired. Please sign in again.");
+      return;
+    }
+    const response = await fetch(`/api/league/scorecard-evidence/${submissionId}`, { headers: { Authorization: `Bearer ${token}` }, cache: "no-store" });
+    const payload = (await response.json().catch(() => ({}))) as { error?: string; url?: string };
+    if (!response.ok || !payload.url) {
+      preview?.close();
+      setMessage(payload.error ?? "The temporary scorecard image could not be opened.");
+      return;
+    }
+    if (preview) preview.location.href = payload.url;
+    else window.location.assign(payload.url);
   };
 
   const onReviewFixtureChange = async (requestId: string, decision: "approved" | "rejected") => {
@@ -890,6 +918,7 @@ function ResultsQueuePageContent() {
                           </button>
                         </div>
                         <p className="text-xs text-slate-600">Submitted: {new Date(s.created_at).toLocaleString()}</p>
+                        {s.submission_source === "public_paper" ? <div className="mt-2 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-950"><p><strong>Paper scorecard fallback</strong> · Submitted by {s.public_submitter_name || "unnamed representative"}{s.public_submitter_team_id ? ` for ${teamById.get(s.public_submitter_team_id) ?? "the selected team"}` : ""}.</p><p className="mt-1 text-xs">Both-team agreement was {s.public_both_teams_confirmed ? "confirmed" : "not confirmed"}. Approval controls the official result.</p>{s.scorecard_photo_path && !s.scorecard_evidence_deleted_at ? <button type="button" onClick={() => void openScorecardEvidence(s.id)} className="mt-2 rounded-lg border border-cyan-400 bg-white px-3 py-2 text-xs font-bold text-cyan-900">Open temporary scorecard photo</button> : <p className="mt-1 text-xs font-semibold">No temporary photograph is available.</p>}</div> : null}
 
                         {isExpanded ? (
                           <div className="mt-2 overflow-x-auto rounded-lg border border-slate-200 bg-slate-50">

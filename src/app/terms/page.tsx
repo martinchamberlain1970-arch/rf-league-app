@@ -4,7 +4,7 @@ import Link from "next/link";
 import PageNav from "@/components/PageNav";
 
 const EFFECTIVE_DATE = "11 March 2026";
-const LAST_UPDATED = "3 September 2026";
+const LAST_UPDATED = "9 September 2026";
 const CONTACT_EMAIL =
   process.env.NEXT_PUBLIC_PRIVACY_CONTACT_EMAIL?.trim() ||
   process.env.NEXT_PUBLIC_OWNER_EMAIL?.trim() ||
@@ -20,7 +20,7 @@ export default function TermsPage() {
             <div>
               <p className="text-xs font-semibold uppercase tracking-wide text-teal-700">Legal</p>
               <h1 className="text-2xl font-bold text-slate-900">Terms &amp; Conditions</h1>
-              <p className="mt-1 text-xs text-slate-600">Effective date: {EFFECTIVE_DATE} · Last updated: {LAST_UPDATED} · Version 2026-09-03</p>
+              <p className="mt-1 text-xs text-slate-600">Effective date: {EFFECTIVE_DATE} · Last updated: {LAST_UPDATED} · Version 2026-09-09</p>
             </div>
             <PageNav />
           </div>
@@ -57,6 +57,7 @@ export default function TermsPage() {
               <li>Team registrations must identify the correct captain, vice-captain and intended squad. Registrations remain subject to league-officer review and approval.</li>
               <li>On league nights, the home side normally submits its line-up first, the away side confirms its line-up, and the home captain or vice-captain records every frame and submits the completed result.</li>
               <li>The away side should not submit a duplicate result. Proxy entry may be used only where both teams agree and the person entering the information checks it with both sides.</li>
+              <li>Where a team uses the public paper-scorecard form, the named submitter must copy the signed card accurately, confirm that both teams agree it and submit it only once. The form does not update official records until a league officer approves it.</li>
               <li>Scores, player selections, forfeits, no-shows and qualifying breaks must be recorded accurately. Deliberately false or misleading submissions are prohibited.</li>
               <li>The League Secretary, Chairman or Treasurer may review, approve, reject, return or correct submissions in accordance with League rules and the audit record.</li>
             </ul>
@@ -98,6 +99,7 @@ export default function TermsPage() {
             <h2 className="text-base font-semibold text-slate-900">8. Public information and protected links</h2>
             <p className="mt-2">Player names, teams, fixtures, line-ups, results, breaks, tables, Elo ratings, handicaps and sporting statistics may appear on public league pages. Private contact details, account emails and full dates of birth must not be copied into public notes or shared unnecessarily.</p>
             <p className="mt-2">Registration drafts, competition drafts, draft fixture reviews and invoices may be protected by an unlisted link rather than an account login. A person using such a link must not publish it, forward it beyond those who need it, attempt to discover another protected link or continue using it after access is withdrawn.</p>
+            <p className="mt-2">The public paper-scorecard page may be shared with league teams. An optional scorecard photograph is private evidence for league officers, is not published with the result, and is removed after the submission is approved or rejected.</p>
           </div>
 
           <div>
