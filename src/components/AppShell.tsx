@@ -68,6 +68,7 @@ const navigationGroups: NavigationGroup[] = [
       { href: "/players", label: "Players & team rosters", officerOnly: true },
       { href: "/rating-audit", label: "Elo review", officerOnly: true },
       { href: "/league-invoices", label: "Club invoices", officerOnly: true },
+      { href: "/premier-handicap-confirmations", label: "Premier handicap confirmations", officerOnly: true },
       { href: "/handicap-consultation-review", label: "Handicap consultation", officerOnly: true },
       { href: "/egm-voting", label: "EGM voting record", officerOnly: true },
     ],
@@ -103,6 +104,7 @@ const alwaysBarePrefixes = [
   "/competition-entry",
   "/league-invoice",
   "/handicap-consultation/",
+  "/premier-handicaps/",
   "/egm-vote/",
   "/offline",
 ];
