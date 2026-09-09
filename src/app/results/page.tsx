@@ -526,12 +526,21 @@ function ResultsQueuePageContent() {
   const fixtureChangeQueueSection = (
     <section className={cardClass}>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-        <h2 className="text-xl font-semibold text-slate-900">Fixture date requests ({fixtureChangePending.length})</h2>
-        <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-700">
-          Pending {fixtureChangePending.length} · Outstanding {fixtureChangeOutstanding.length}
-        </span>
+        <div>
+          <h2 className="text-xl font-semibold text-slate-900">Fixture date requests ({fixtureChangePending.length})</h2>
+          <p className="mt-1 text-sm text-slate-600">Early-play requests can be approved here. Exceptional postponements can also be recorded or amended by an authorised league officer.</p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          {admin.canManageLeague ? (
+            <Link href="/reschedule-fixture" className="rounded-lg bg-amber-700 px-3 py-2 text-xs font-semibold text-white hover:bg-amber-800">
+              Record or amend exceptional postponement
+            </Link>
+          ) : null}
+          <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-700">
+            Pending {fixtureChangePending.length} · Outstanding {fixtureChangeOutstanding.length}
+          </span>
+        </div>
       </div>
-      <p className="text-sm text-slate-600">Early-play requests can be approved straight onto the agreed date. Exceptional postponement requests stay outstanding until you set the new agreed date.</p>
       <div className="mt-3 space-y-3">
         {fixtureChangePending.length === 0 ? <p className="text-sm text-slate-600">No pending fixture date requests.</p> : null}
         {fixtureChangePending.map((r) => {
@@ -653,6 +662,11 @@ function ResultsQueuePageContent() {
                   </div>
                   {r.agreed_fixture_date ? <p className="mt-1 text-slate-600">Agreed date: {new Date(`${r.agreed_fixture_date}T12:00:00`).toLocaleDateString()}</p> : null}
                   {r.review_notes ? <p className="mt-1 text-slate-600">Note: {r.review_notes}</p> : null}
+                  {admin.canManageLeague && r.status === "rescheduled" ? (
+                    <Link href="/reschedule-fixture" className="mt-2 inline-flex rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 font-semibold text-amber-900 hover:bg-amber-100">
+                      Change this fixture date again
+                    </Link>
+                  ) : null}
                 </div>
               );
             })}
