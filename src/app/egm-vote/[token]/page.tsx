@@ -92,6 +92,7 @@ export default function EgmVotePage({ params }: { params: Promise<{ token: strin
         <p className="text-sm font-bold uppercase tracking-[0.24em] text-cyan-300">Rack &amp; Frame · EGM ballot</p>
         <h1 className="mt-3 text-3xl font-black sm:text-4xl">{meeting?.title ?? "Premier Handicap EGM"}</h1>
         <p className="mt-3 text-slate-200">{meeting?.seasonLabel}{meeting?.meetingAt ? ` · ${new Date(meeting.meetingAt).toLocaleString("en-GB", { dateStyle: "long", timeStyle: "short" })}` : ""}</p>
+        <p className="mt-3 text-sm font-semibold text-cyan-100">One vote per represented Premier League team.</p>
       </header>
 
       {error ? <section className="rounded-2xl border border-rose-300 bg-rose-50 p-5 text-rose-900">{error}</section> : null}
@@ -112,7 +113,7 @@ export default function EgmVotePage({ params }: { params: Promise<{ token: strin
         <button type="submit" disabled={busy || !attendeeId || !identityConfirmed || !choice} className="w-full rounded-xl bg-teal-700 px-5 py-4 text-lg font-black text-white disabled:cursor-not-allowed disabled:opacity-40">{busy ? "Recording vote…" : `Submit ballot ${meeting.activeRound} vote`}</button>
       </form> : meeting ? <section className="rounded-2xl border border-amber-300 bg-white p-6 shadow-sm"><h2 className="text-xl font-black">The ballot is not open</h2><p className="mt-2 leading-7 text-slate-700">{meeting.status === "completed" ? "The EGM has been completed and voting is closed." : "Please remain in the Microsoft Teams meeting. The League Secretary or Chairman will announce when voting opens, then refresh this page."}</p><button type="button" onClick={() => window.location.reload()} className="mt-4 rounded-xl bg-slate-950 px-4 py-3 font-bold text-white">Refresh ballot status</button></section> : null}
 
-      <footer className="px-2 text-center text-xs leading-5 text-slate-500">Only confirmed attendees should use this ballot. Rack &amp; Frame retains the representative, selection and submission time as part of the formal EGM record.</footer>
+      <footer className="px-2 text-center text-xs leading-5 text-slate-500">Only the confirmed voting representative for each team should use this ballot. Rack &amp; Frame retains the representative, selection and submission time as part of the formal EGM record.</footer>
     </div>
   </main>;
 }

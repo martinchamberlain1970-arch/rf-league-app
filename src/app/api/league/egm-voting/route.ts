@@ -16,6 +16,19 @@ const proposals = [
   { id: 3, title: "Carry forward with 40-point pairing variance", summary: "Carry forward validated ratings; four-weekly reviews; pair players within 40 points where possible; use the full playing start." },
 ];
 
+function voteLeaders(rows: Array<{ choice: string | null }>) {
+  const totals = new Map<number, number>(proposals.map((proposal) => [proposal.id, 0]));
+  for (const row of rows) {
+    const match = row.choice?.match(/^proposal_([1-3])$/);
+    if (!match) continue;
+    const proposalId = Number(match[1]);
+    totals.set(proposalId, (totals.get(proposalId) ?? 0) + 1);
+  }
+  const highest = Math.max(...totals.values());
+  if (highest === 0) return [];
+  return proposals.filter((proposal) => totals.get(proposal.id) === highest).map((proposal) => proposal.id);
+}
+
 function cleanText(value: unknown, length = 120) {
   return String(value ?? "").replace(/\s+/g, " ").trim().slice(0, length);
 }
@@ -123,16 +136,16 @@ export async function POST(req: NextRequest) {
       const seasonName = seasonRes.data.name ?? "";
       if (!teamRes.data.is_active || !seasonName.toLowerCase().includes("premier league 2026/2027")) throw new Error("Select an active 2026/2027 Premier League team.");
       if (!teamRes.data.location_id) throw new Error("This team is not linked to a club.");
-      const clubAttendees = await admin.from("handicap_egm_attendees").select("id", { count: "exact", head: true }).eq("meeting_id", meeting.id).eq("location_id", teamRes.data.location_id);
-      if (clubAttendees.error) throw new Error(clubAttendees.error.message);
-      if ((clubAttendees.count ?? 0) >= 2) throw new Error("This club already has two voting representatives, which is the Rule 8 maximum.");
+      const teamAttendee = await admin.from("handicap_egm_attendees").select("id", { count: "exact", head: true }).eq("meeting_id", meeting.id).eq("team_id", teamId);
+      if (teamAttendee.error) throw new Error(teamAttendee.error.message);
+      if ((teamAttendee.count ?? 0) >= 1) throw new Error("This Premier League team already has its one voting representative.");
       const insert = await admin.from("handicap_egm_attendees").insert({
         meeting_id: meeting.id,
         team_id: teamId,
         location_id: teamRes.data.location_id,
         representative_name: representativeName,
       }).select("id").single();
-      if (insert.error?.code === "23505") throw new Error("That representative has already been recorded for this club.");
+      if (insert.error?.code === "23505") throw new Error("That representative has already been recorded.");
       if (insert.error) throw new Error(insert.error.message);
     } else if (action === "remove_attendee") {
       if (meeting.status !== "register_open") throw new Error("Attendance can only be changed before round one opens.");
@@ -159,6 +172,13 @@ export async function POST(req: NextRequest) {
       const attendeeCount = await admin.from("handicap_egm_attendees").select("id", { count: "exact", head: true }).eq("meeting_id", meeting.id);
       if (attendeeCount.error) throw new Error(attendeeCount.error.message);
       if (nextStatus === "round_1_open" && (attendeeCount.count ?? 0) === 0) throw new Error("Record the voting representatives before opening round one.");
+      if (nextStatus === "round_1_open") {
+        const registered = await admin.from("handicap_egm_attendees").select("team_id").eq("meeting_id", meeting.id);
+        if (registered.error) throw new Error(registered.error.message);
+        const teamIds = (registered.data ?? []).map((row) => row.team_id);
+        if (teamIds.length > 9) throw new Error("The attendance register cannot exceed the nine Premier League teams.");
+        if (new Set(teamIds).size !== teamIds.length) throw new Error("Each Premier League team may have only one voting representative. Remove the duplicate team entry before opening the ballot.");
+      }
       if (nextStatus === "round_1_closed" || nextStatus === "round_2_closed") {
         const roundNo = nextStatus === "round_1_closed" ? 1 : 2;
         const voteCount = await admin.from("handicap_egm_votes").select("id", { count: "exact", head: true }).eq("meeting_id", meeting.id).eq("round_no", roundNo);
@@ -167,16 +187,32 @@ export async function POST(req: NextRequest) {
       }
       const update: Record<string, unknown> = { status: nextStatus, updated_at: new Date().toISOString() };
       if (nextStatus === "round_2_open") {
-        const submittedRunoff: unknown[] = Array.isArray(body?.runoffProposals) ? body.runoffProposals : [];
-        const runoff = Array.from(new Set(submittedRunoff.map((value) => Number(value)))).filter((value) => value >= 1 && value <= 3);
-        if (runoff.length !== 2) throw new Error("Select exactly two proposals for the second ballot.");
-        update.runoff_proposals = runoff;
+        const firstRoundVotes = await admin.from("handicap_egm_votes").select("choice").eq("meeting_id", meeting.id).eq("round_no", 1);
+        if (firstRoundVotes.error) throw new Error(firstRoundVotes.error.message);
+        const tiedLeaders = voteLeaders(firstRoundVotes.data ?? []);
+        if (tiedLeaders.length === 0) throw new Error("No proposal received a vote in ballot 1, so there is no leading proposal for ballot 2.");
+        if (tiedLeaders.length < 2) throw new Error("The first ballot has a single leading proposal, so a second ballot is not required.");
+        update.runoff_proposals = tiedLeaders;
       }
       if (nextStatus === "completed") {
         const adopted = Number(body?.adoptedProposal);
         if (![1, 2, 3].includes(adopted)) throw new Error("Select the proposal adopted by the meeting.");
+        const roundNo = meeting.status === "round_2_closed" ? 2 : 1;
+        const ballot = await admin.from("handicap_egm_votes").select("choice").eq("meeting_id", meeting.id).eq("round_no", roundNo);
+        if (ballot.error) throw new Error(ballot.error.message);
+        const leaders = voteLeaders(ballot.data ?? []);
+        if (leaders.length === 0) throw new Error("No proposal received a vote, so the meeting cannot record an adopted proposal.");
+        if (!leaders.includes(adopted)) throw new Error("The adopted proposal must be one of the proposals tied for the most votes.");
+        if (meeting.status === "round_1_closed" && leaders.length > 1) {
+          throw new Error("The first ballot is tied. Open ballot 2 with every proposal tied for the most votes.");
+        }
+        const note = cleanText(body?.decisionNote, 500);
+        if (meeting.status === "round_2_closed" && leaders.length > 1) {
+          if (body?.castingVoteUsed !== true) throw new Error("Confirm that the Secretary exercised the Rule 8 casting vote to resolve the second-ballot tie.");
+          if (note.length < 20) throw new Error("Record the Secretary's casting-vote decision in the decision note.");
+        }
         update.adopted_proposal = adopted;
-        update.decision_note = cleanText(body?.decisionNote, 500) || null;
+        update.decision_note = note || null;
         update.completed_at = new Date().toISOString();
       }
       const changed = await admin.from("handicap_egm_meetings").update(update).eq("id", meeting.id);

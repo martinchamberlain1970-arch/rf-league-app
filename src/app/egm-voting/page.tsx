@@ -46,9 +46,9 @@ export default function EgmVotingPage() {
   const [teamId, setTeamId] = useState("");
   const [representativeName, setRepresentativeName] = useState("");
   const [meetingAt, setMeetingAt] = useState("");
-  const [runoff, setRunoff] = useState<number[]>([]);
   const [adoptedProposal, setAdoptedProposal] = useState(0);
   const [decisionNote, setDecisionNote] = useState("");
+  const [castingVoteUsed, setCastingVoteUsed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
@@ -74,7 +74,6 @@ export default function EgmVotingPage() {
       const payload = await request();
       setData(payload);
       setMeetingAt(localDateTimeValue(payload.meeting.meeting_at));
-      setRunoff(payload.meeting.runoff_proposals ?? []);
       setAdoptedProposal(payload.meeting.adopted_proposal ?? 0);
       setDecisionNote(payload.meeting.decision_note ?? "");
     } catch (caught) {
@@ -101,6 +100,13 @@ export default function EgmVotingPage() {
     const totals: Record<string, number> = { proposal_1: 0, proposal_2: 0, proposal_3: 0, abstain: 0 };
     (data?.votes ?? []).filter((vote) => vote.round_no === roundNo && vote.choice).forEach((vote) => { if (vote.choice) totals[vote.choice] = (totals[vote.choice] ?? 0) + 1; });
     return totals;
+  }
+
+  function leaders(roundNo: number) {
+    const totals = tally(roundNo);
+    const highest = Math.max(...data!.proposals.map((proposal) => totals[`proposal_${proposal.id}`] ?? 0));
+    if (highest === 0) return [];
+    return data!.proposals.filter((proposal) => (totals[`proposal_${proposal.id}`] ?? 0) === highest).map((proposal) => proposal.id);
   }
 
   async function mutate(body: object, success: string) {
@@ -149,7 +155,7 @@ export default function EgmVotingPage() {
     const descriptions: Record<string, string> = {
       round_1_open: "Lock the attendance register and open the first ballot? Attendance cannot then be changed.",
       round_1_closed: "Close the first ballot after every representative has voted or abstained?",
-      round_2_open: "Open a second ballot using the two selected proposals?",
+      round_2_open: "Open a second ballot containing every proposal tied for the most votes in ballot 1?",
       round_2_closed: "Close the second ballot after every representative has voted or abstained?",
       completed: "Record the selected proposal as the EGM decision and complete the meeting?",
     };
@@ -157,16 +163,12 @@ export default function EgmVotingPage() {
     await mutate({ action: "set_status", status, ...extra }, status === "completed" ? "The EGM decision has been recorded." : `${statusLabels[status]}.`);
   }
 
-  function toggleRunoff(id: number) {
-    setRunoff((current) => current.includes(id) ? current.filter((value) => value !== id) : current.length < 2 ? [...current, id] : current);
-  }
-
   async function copyMinutes() {
     if (!data) return;
     const lines = [
       data.meeting.title,
       data.meeting.meeting_at ? `Held by Microsoft Teams on ${new Date(data.meeting.meeting_at).toLocaleString("en-GB", { dateStyle: "long", timeStyle: "short" })}.` : "Held by Microsoft Teams.",
-      `${data.attendees.length} voting representative${data.attendees.length === 1 ? "" : "s"} attended, representing ${new Set(data.attendees.map((row) => row.location_id)).size} club${new Set(data.attendees.map((row) => row.location_id)).size === 1 ? "" : "s"}.`,
+      `${data.attendees.length} Premier League team${data.attendees.length === 1 ? " was" : "s were"} represented, with one vote allocated to each team present.`,
       "",
       ...[1, 2].flatMap((roundNo) => {
         const votes = data.votes.filter((vote) => vote.round_no === roundNo);
@@ -198,12 +200,13 @@ export default function EgmVotingPage() {
               <div className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Status</p><p className="mt-2 font-black text-slate-950">{statusLabels[data.meeting.status]}</p></div>
               <div className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Attestations</p><p className="mt-2 text-2xl font-black text-teal-800">{data.attestationCount}</p></div>
               <div className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Teams represented</p><p className="mt-2 text-2xl font-black text-slate-950">{new Set(data.attendees.map((row) => row.team_id)).size} / 9</p><p className="text-xs text-slate-500">Current Premier League teams</p></div>
-              <div className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Voting entitlement</p><p className="mt-2 text-2xl font-black text-slate-950">{data.attendees.length}</p><p className="text-xs text-slate-500">Across {new Set(data.attendees.map((row) => row.location_id)).size} clubs; maximum two each</p></div>
+              <div className="rounded-2xl bg-white p-4 shadow-sm"><p className="text-xs font-bold uppercase tracking-wider text-slate-500">Voting entitlement</p><p className="mt-2 text-2xl font-black text-slate-950">{new Set(data.attendees.map((row) => row.team_id)).size}</p><p className="text-xs text-slate-500">One vote per represented Premier League team</p></div>
             </section>
 
             <section className="rounded-2xl border border-amber-300 bg-amber-50 p-5 text-sm leading-6 text-amber-950">
               <h2 className="font-black">Voting basis</h2>
-              <p className="mt-1">The nine teams identify who is represented. Under Rule 8, the vote belongs to attending club representatives: one attendee gives the club one vote, two attendees give two votes, and no club may cast more than two. The team-to-club link is checked automatically.</p>
+              <p className="mt-1">For this EGM, the meeting has agreed one vote for each Premier League team represented, up to nine votes. Each team therefore names one voting representative and can submit only one vote in each ballot.</p>
+              <p className="mt-2"><strong>Tie procedure:</strong> a sole highest vote wins. If two or three proposals tie for the highest total in ballot 1, every tied proposal proceeds automatically to ballot 2. If ballot 2 is tied for the highest total, the Secretary may exercise the casting vote provided by Rule 8; if the Secretary declines, no proposal is adopted.</p>
             </section>
 
             {data.meeting.status === "register_open" ? <section className="grid gap-4 lg:grid-cols-[1fr_1.5fr]">
@@ -245,9 +248,20 @@ export default function EgmVotingPage() {
               </section>;
             })}
 
-            {data.meeting.status === "round_1_closed" ? <section className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5"><h2 className="text-xl font-black">Decide the next step</h2><p className="mt-1 text-sm text-slate-700">If a proposal has the required majority, complete the meeting. Otherwise select the two proposals proceeding to ballot 2.</p><div className="mt-4 flex flex-wrap gap-2">{data.proposals.map((proposal) => <button key={proposal.id} type="button" onClick={() => toggleRunoff(proposal.id)} className={`rounded-xl border px-4 py-2 font-bold ${runoff.includes(proposal.id) ? "border-indigo-700 bg-indigo-700 text-white" : "border-indigo-300 bg-white text-indigo-950"}`}>Proposal {proposal.id}</button>)}</div><div className="mt-4 flex flex-wrap gap-3"><button type="button" disabled={busy || runoff.length !== 2} onClick={() => void changeStatus("round_2_open", { runoffProposals: runoff })} className="rounded-xl bg-indigo-700 px-4 py-3 font-black text-white disabled:opacity-40">Open ballot 2</button><button type="button" onClick={() => { setAdoptedProposal(0); document.getElementById("decision-panel")?.scrollIntoView({ behavior: "smooth" }); }} className="rounded-xl border border-emerald-600 bg-white px-4 py-3 font-black text-emerald-800">Record a first-ballot decision</button></div></section> : null}
+            {data.meeting.status === "round_1_closed" ? (() => {
+              const tiedLeaders = leaders(1);
+              if (tiedLeaders.length === 0) return <section className="rounded-2xl border border-amber-300 bg-amber-50 p-5"><h2 className="text-xl font-black">No proposal received a vote</h2><p className="mt-2 text-sm leading-6 text-slate-700">Ballot 1 cannot produce a decision or a tied-proposal ballot. Record this in the meeting minutes and adjourn the decision.</p></section>;
+              const hasTie = tiedLeaders.length > 1;
+              return <section className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5"><h2 className="text-xl font-black">Ballot 1 outcome</h2>{hasTie ? <><p className="mt-2 text-sm leading-6 text-slate-700">The highest total is tied between {tiedLeaders.map((id) => `Proposal ${id}`).join(", ")}. Ballot 2 will contain {tiedLeaders.length === 3 ? "all three proposals" : "those two proposals"} automatically.</p><button type="button" disabled={busy} onClick={() => void changeStatus("round_2_open")} className="mt-4 rounded-xl bg-indigo-700 px-4 py-3 font-black text-white disabled:opacity-40">Open tied-proposal ballot 2</button></> : <><p className="mt-2 text-sm leading-6 text-slate-700">Proposal {tiedLeaders[0]} received the sole highest total and can now be recorded as the decision.</p><button type="button" onClick={() => { setAdoptedProposal(tiedLeaders[0]); document.getElementById("decision-panel")?.scrollIntoView({ behavior: "smooth" }); }} className="mt-4 rounded-xl border border-emerald-600 bg-white px-4 py-3 font-black text-emerald-800">Record ballot 1 decision</button></>}</section>;
+            })() : null}
 
-            {(data.meeting.status === "round_1_closed" || data.meeting.status === "round_2_closed") ? <section id="decision-panel" className="rounded-2xl border border-emerald-300 bg-white p-5 shadow-sm"><h2 className="text-xl font-black">Complete the formal record</h2><label className="mt-4 block text-sm font-bold">Proposal adopted</label><select value={adoptedProposal} onChange={(event) => setAdoptedProposal(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3"><option value={0}>Select adopted proposal</option>{data.proposals.map((proposal) => <option key={proposal.id} value={proposal.id}>Proposal {proposal.id} · {proposal.title}</option>)}</select><label className="mt-4 block text-sm font-bold">Decision note (optional)</label><textarea value={decisionNote} onChange={(event) => setDecisionNote(event.target.value)} rows={3} placeholder="For example: adopted by majority on ballot 1, or Secretary exercised casting vote following a tie." className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3" /><button type="button" disabled={busy || !adoptedProposal} onClick={() => void changeStatus("completed", { adoptedProposal, decisionNote })} className="mt-4 rounded-xl bg-emerald-700 px-5 py-3 font-black text-white disabled:opacity-40">Complete meeting and record decision</button></section> : null}
+            {(data.meeting.status === "round_1_closed" || data.meeting.status === "round_2_closed") ? (() => {
+              const finalRound = data.meeting.status === "round_2_closed" ? 2 : 1;
+              const eligibleLeaders = leaders(finalRound);
+              const tiedFinal = finalRound === 2 && eligibleLeaders.length > 1;
+              if (finalRound === 1 && eligibleLeaders.length > 1) return null;
+              return <section id="decision-panel" className="rounded-2xl border border-emerald-300 bg-white p-5 shadow-sm"><h2 className="text-xl font-black">Complete the formal record</h2>{tiedFinal ? <div className="mt-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm leading-6 text-amber-950">Ballot 2 is tied between {eligibleLeaders.map((id) => `Proposal ${id}`).join(" and ")}. The Secretary may now use the Rule 8 casting vote. If the Secretary declines, do not complete the meeting as having adopted a proposal.</div> : null}<label className="mt-4 block text-sm font-bold">Proposal adopted</label><select value={adoptedProposal} onChange={(event) => setAdoptedProposal(Number(event.target.value))} className="mt-2 w-full rounded-xl border border-slate-300 bg-white px-3 py-3"><option value={0}>Select adopted proposal</option>{data.proposals.filter((proposal) => eligibleLeaders.includes(proposal.id)).map((proposal) => <option key={proposal.id} value={proposal.id}>Proposal {proposal.id} · {proposal.title}</option>)}</select>{tiedFinal ? <label className="mt-4 flex gap-3 rounded-xl border border-amber-300 bg-amber-50 p-4 text-sm font-semibold text-amber-950"><input type="checkbox" checked={castingVoteUsed} onChange={(event) => setCastingVoteUsed(event.target.checked)} className="mt-1 h-5 w-5" /><span>I confirm that the Secretary exercised the casting vote under Rule 8 for the proposal selected above.</span></label> : null}<label className="mt-4 block text-sm font-bold">Decision note {tiedFinal ? "(required)" : "(optional)"}</label><textarea value={decisionNote} onChange={(event) => setDecisionNote(event.target.value)} rows={3} placeholder={tiedFinal ? "Record that the second ballot was tied and how the Secretary exercised the Rule 8 casting vote." : "For example: Proposal 2 received the sole highest total on ballot 1."} className="mt-2 w-full rounded-xl border border-slate-300 px-3 py-3" /><button type="button" disabled={busy || !adoptedProposal || (tiedFinal && (!castingVoteUsed || decisionNote.trim().length < 20))} onClick={() => void changeStatus("completed", { adoptedProposal, decisionNote, castingVoteUsed })} className="mt-4 rounded-xl bg-emerald-700 px-5 py-3 font-black text-white disabled:opacity-40">Complete meeting and record decision</button></section>;
+            })() : null}
 
             {data.meeting.status === "completed" ? <section className="rounded-2xl border border-emerald-300 bg-emerald-50 p-6"><p className="text-sm font-bold uppercase tracking-wider text-emerald-800">Formal decision recorded</p><h2 className="mt-2 text-2xl font-black">Proposal {data.meeting.adopted_proposal}: {data.proposals.find((proposal) => proposal.id === data.meeting.adopted_proposal)?.title}</h2>{data.meeting.decision_note ? <p className="mt-3 text-slate-700">{data.meeting.decision_note}</p> : null}<button type="button" onClick={() => void copyMinutes()} className="mt-5 rounded-xl bg-emerald-800 px-5 py-3 font-black text-white">Copy minutes-ready summary</button></section> : null}
           </> : null}
