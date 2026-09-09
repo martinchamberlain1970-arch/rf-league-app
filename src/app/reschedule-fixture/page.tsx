@@ -10,7 +10,7 @@ import ConfirmModal from "@/components/ConfirmModal";
 import useAdminStatus from "@/components/useAdminStatus";
 import { supabase } from "@/lib/supabase";
 
-type Season = { id: string; name: string; is_published?: boolean | null; is_completed?: boolean | null };
+type Season = { id: string; name: string; is_published?: boolean | null; is_active?: boolean | null };
 type Team = { id: string; season_id: string; name: string };
 type TeamMember = { season_id: string; team_id: string; player_id: string; is_captain: boolean; is_vice_captain: boolean };
 type TeamMembership = { season_id: string; team_id: string; player_id: string; is_captain: boolean; is_vice_captain: boolean };
@@ -85,7 +85,7 @@ export default function RescheduleFixturePage() {
     if (!playerId && !admin.canManageLeague) return setLoading(false);
 
     const [seasonRes, teamRes, memberRes, fixtureRes] = await Promise.all([
-      client.from("league_seasons").select("id,name,is_published,is_completed").eq("is_published", true).eq("is_completed", false).order("created_at", { ascending: false }),
+      client.from("league_seasons").select("id,name,is_published,is_active").eq("is_published", true).eq("is_active", true).order("created_at", { ascending: false }),
       client.from("league_teams").select("id,season_id,name"),
       client.from("league_team_members").select("season_id,team_id,player_id,is_captain,is_vice_captain"),
       client.from("league_fixtures").select("id,season_id,home_team_id,away_team_id,fixture_date,week_no,status").order("fixture_date", { ascending: true }),

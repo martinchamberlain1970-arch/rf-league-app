@@ -73,13 +73,13 @@ export async function POST(req: NextRequest) {
 
   const seasonRes = await adminClient
     .from("league_seasons")
-    .select("id,is_published,is_completed")
+    .select("id,is_published,is_active")
     .eq("id", fixtureRes.data.season_id)
     .maybeSingle();
   if (seasonRes.error || !seasonRes.data) {
     return NextResponse.json({ error: seasonRes.error?.message ?? "League season not found." }, { status: 404 });
   }
-  if (!seasonRes.data.is_published || seasonRes.data.is_completed) {
+  if (!seasonRes.data.is_published || !seasonRes.data.is_active) {
     return NextResponse.json({ error: "Only fixtures in a live published league can be rescheduled." }, { status: 400 });
   }
 
