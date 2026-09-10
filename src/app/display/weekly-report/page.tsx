@@ -26,6 +26,7 @@ type FixtureReport = {
 
 type Payload = {
   season: { id: string; name: string } | null;
+  seasons: Array<{ id: string; name: string }>;
   week: number | null;
   summary: {
     title: string;
@@ -43,12 +44,19 @@ type Payload = {
 
 export default function PublicWeeklyReportPage() {
   const [data, setData] = useState<Payload | null>(null);
+  const [selectedSeasonId, setSelectedSeasonId] = useState("");
   const [updatedAt, setUpdatedAt] = useState<string>("");
 
   useEffect(() => {
     let active = true;
     const load = async () => {
-      const resp = await fetch("/api/public/weekly-report", { cache: "no-store" });
+      const requestedSeasonId = selectedSeasonId || new URLSearchParams(window.location.search).get("seasonId") || "";
+      if (!selectedSeasonId && requestedSeasonId) {
+        setSelectedSeasonId(requestedSeasonId);
+        return;
+      }
+      const query = requestedSeasonId ? `?seasonId=${encodeURIComponent(requestedSeasonId)}` : "";
+      const resp = await fetch(`/api/public/weekly-report${query}`, { cache: "no-store" });
       const payload = (await resp.json()) as Payload;
       if (!active) return;
       setData(payload);
@@ -64,7 +72,10 @@ export default function PublicWeeklyReportPage() {
       active = false;
       window.clearInterval(interval);
     };
-  }, []);
+  }, [selectedSeasonId]);
+
+  const displayedSeasonId = selectedSeasonId || data?.season?.id || "";
+  const isDivisionOne = /division\s*1/i.test(data?.season?.name ?? "");
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6">
@@ -80,7 +91,29 @@ export default function PublicWeeklyReportPage() {
             {data?.week ? `Week ${data.week}` : "Awaiting a completed week"} · Updated{" "}
             {updatedAt || "--:--"}
           </p>
+          {(data?.seasons?.length ?? 0) > 1 ? (
+            <label className="mt-4 block max-w-xl text-sm font-semibold text-white">
+              League
+              <select
+                className="mt-2 w-full rounded-xl border border-white/20 bg-slate-900 px-4 py-3 text-white"
+                value={displayedSeasonId}
+                onChange={(event) => {
+                  const nextSeasonId = event.target.value;
+                  setSelectedSeasonId(nextSeasonId);
+                  window.history.replaceState(null, "", `${window.location.pathname}?seasonId=${encodeURIComponent(nextSeasonId)}`);
+                }}
+              >
+                {data?.seasons.map((season) => <option key={season.id} value={season.id}>{season.name}</option>)}
+              </select>
+            </label>
+          ) : null}
         </header>
+
+        {isDivisionOne ? (
+          <section className="rounded-2xl border border-violet-400/30 bg-violet-500/10 p-4 text-sm text-violet-100">
+            Division 1 Elo is shown for performance information within Division 1 only. It is not a Premier League handicap or an automatic Premier League starting rating. If a team is promoted, each player&apos;s Premier starting position must be assessed and approved separately.
+          </section>
+        ) : null}
 
         {data?.error ? (
           <section className="rounded-2xl border border-rose-400/40 bg-rose-500/10 p-4 text-rose-100">

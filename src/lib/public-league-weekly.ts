@@ -8,6 +8,7 @@ type SeasonRow = {
   id: string;
   name: string;
   created_at?: string | null;
+  is_active?: boolean | null;
 };
 
 type TeamRow = {
@@ -136,16 +137,24 @@ export function getPublicLeagueAdminClient(): SupabaseClient {
   return createClient(supabaseUrl, serviceRoleKey);
 }
 
-export async function getLatestPublishedSeason(adminClient: SupabaseClient, seasonId?: string | null) {
+export async function getPublicPublishedSeasons(adminClient: SupabaseClient) {
   const seasonsRes = await adminClient
     .from("league_seasons")
-    .select("id,name,created_at")
+    .select("id,name,created_at,is_active")
     .eq("is_published", true)
     .order("created_at", { ascending: false });
 
   if (seasonsRes.error) throw new Error(seasonsRes.error.message);
   const seasons = (seasonsRes.data ?? []) as SeasonRow[];
-  return (seasonId ? seasons.find((season) => season.id === seasonId) : null) ?? seasons[0] ?? null;
+  const activeSeasons = seasons.filter((season) => season.is_active === true);
+  return activeSeasons.length > 0 ? activeSeasons : seasons;
+}
+
+export async function getLatestPublishedSeason(adminClient: SupabaseClient, seasonId?: string | null) {
+  const seasons = await getPublicPublishedSeasons(adminClient);
+  const requestedSeason = seasonId ? seasons.find((season) => season.id === seasonId) : null;
+  const premierSeason = seasons.find((season) => /premier league/i.test(season.name));
+  return requestedSeason ?? premierSeason ?? seasons[0] ?? null;
 }
 
 export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seasonId?: string | null, weekNo?: number | null) {
@@ -550,8 +559,8 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
   };
 }
 
-export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClient) {
-  const season = await getLatestPublishedSeason(adminClient);
+export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClient, seasonId?: string | null) {
+  const season = await getLatestPublishedSeason(adminClient, seasonId);
   if (!season) {
     return {
       season: null,
@@ -574,7 +583,10 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
       .from("players")
       .select("id,display_name,full_name,rating_snooker,snooker_handicap,snooker_handicap_base")
       .eq("is_archived", false),
-    adminClient.from("league_registered_team_members").select("player_id"),
+    adminClient
+      .from("league_registered_team_members")
+      .select("player_id")
+      .eq("season_id", season.id),
   ]);
 
   const firstError =
@@ -657,6 +669,7 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
       .map((frame) => [`league_fixture:${frame.fixture_id}:frame:${frame.slot_no}`, frame] as const)
   );
 
+  const isInformationOnly = /division\s*1/i.test(season.name);
   const changes = players
     .filter((player) => leaguePlayerIds.has(player.id))
     .map((player) => {
@@ -750,10 +763,10 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
         ratedFrames,
         reason:
           delta > 0
-            ? `${name} moved from ${startingRating} to ${currentRating}, gaining ${delta} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${frameSummary ? `${frameSummary} ` : ""}The current playing handicap is ${formatSigned(currentHandicap)}, based on the current Elo banding.`
+            ? `${name} moved from ${startingRating} to ${currentRating}, gaining ${delta} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${frameSummary ? `${frameSummary} ` : ""}${isInformationOnly ? "Division 1 Elo is for information only; matches remain scratch." : `The current playing handicap is ${formatSigned(currentHandicap)}, based on the current Elo banding.`}`
             : delta < 0
-              ? `${name} moved from ${startingRating} to ${currentRating}, losing ${Math.abs(delta)} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${frameSummary ? `${frameSummary} ` : ""}The current playing handicap is ${formatSigned(currentHandicap)}, based on the current Elo banding.`
-              : `${name} stayed at ${currentRating} Elo this week with no Elo movement recorded. The current playing handicap is ${formatSigned(currentHandicap)}, based on the current Elo banding.`,
+              ? `${name} moved from ${startingRating} to ${currentRating}, losing ${Math.abs(delta)} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${frameSummary ? `${frameSummary} ` : ""}${isInformationOnly ? "Division 1 Elo is for information only; matches remain scratch." : `The current playing handicap is ${formatSigned(currentHandicap)}, based on the current Elo banding.`}`
+              : `${name} stayed at ${currentRating} Elo this week with no Elo movement recorded. ${isInformationOnly ? "Division 1 Elo is for information only; matches remain scratch." : `The current playing handicap is ${formatSigned(currentHandicap)}, based on the current Elo banding.`}`,
       };
     })
     .filter((row) => row.changedThisWeek)
@@ -761,6 +774,7 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
 
   return {
     season,
+    isInformationOnly,
     batchTime: latestBatchTime,
     week: selectedWeek,
     changes,

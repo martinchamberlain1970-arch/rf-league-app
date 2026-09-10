@@ -18,6 +18,8 @@ type ChangeRow = {
 
 type Payload = {
   season: { id: string; name: string } | null;
+  seasons: Array<{ id: string; name: string }>;
+  isInformationOnly?: boolean;
   batchTime: string | null;
   week: number | null;
   changes: ChangeRow[];
@@ -30,12 +32,19 @@ function formatHandicap(value: number) {
 
 export default function PublicWeeklyHandicapReviewPage() {
   const [data, setData] = useState<Payload | null>(null);
+  const [selectedSeasonId, setSelectedSeasonId] = useState("");
   const [updatedAt, setUpdatedAt] = useState<string>("");
 
   useEffect(() => {
     let active = true;
     const load = async () => {
-      const resp = await fetch("/api/public/weekly-handicap-review", {
+      const requestedSeasonId = selectedSeasonId || new URLSearchParams(window.location.search).get("seasonId") || "";
+      if (!selectedSeasonId && requestedSeasonId) {
+        setSelectedSeasonId(requestedSeasonId);
+        return;
+      }
+      const query = requestedSeasonId ? `?seasonId=${encodeURIComponent(requestedSeasonId)}` : "";
+      const resp = await fetch(`/api/public/weekly-handicap-review${query}`, {
         cache: "no-store",
       });
       const payload = (await resp.json()) as Payload;
@@ -53,7 +62,9 @@ export default function PublicWeeklyHandicapReviewPage() {
       active = false;
       window.clearInterval(interval);
     };
-  }, []);
+  }, [selectedSeasonId]);
+
+  const displayedSeasonId = selectedSeasonId || data?.season?.id || "";
 
   const batchLabel = data?.batchTime
     ? new Date(data.batchTime).toLocaleString("en-GB", {
@@ -80,9 +91,33 @@ export default function PublicWeeklyHandicapReviewPage() {
             {batchLabel} · Updated {updatedAt || "--:--"}
           </p>
           <p className="mt-2 text-sm text-slate-300">
-            Players whose Elo changed in the completed week, showing their before-and-after Elo and current playing handicap.
+            {data?.isInformationOnly
+              ? "Players whose Elo changed in the completed week. Division 1 remains scratch, so this is a performance review rather than a handicap review."
+              : "Players whose Elo changed in the completed week, showing their before-and-after Elo and current playing handicap."}
           </p>
+          {(data?.seasons?.length ?? 0) > 1 ? (
+            <label className="mt-4 block max-w-xl text-sm font-semibold text-white">
+              League
+              <select
+                className="mt-2 w-full rounded-xl border border-white/20 bg-slate-900 px-4 py-3 text-white"
+                value={displayedSeasonId}
+                onChange={(event) => {
+                  const nextSeasonId = event.target.value;
+                  setSelectedSeasonId(nextSeasonId);
+                  window.history.replaceState(null, "", `${window.location.pathname}?seasonId=${encodeURIComponent(nextSeasonId)}`);
+                }}
+              >
+                {data?.seasons.map((season) => <option key={season.id} value={season.id}>{season.name}</option>)}
+              </select>
+            </label>
+          ) : null}
         </header>
+
+        {data?.isInformationOnly ? (
+          <section className="rounded-2xl border border-violet-400/30 bg-violet-500/10 p-4 text-sm text-violet-100">
+            Division 1 Elo is for information only and does not transfer into the Premier League. Promotion does not carry a Division 1 Elo figure into Premier handicapping; the League must separately assess and approve each promoted player&apos;s Premier starting handicap and rating.
+          </section>
+        ) : null}
 
         {data?.error ? (
           <section className="rounded-2xl border border-rose-400/40 bg-rose-500/10 p-4 text-rose-100">
@@ -120,21 +155,21 @@ export default function PublicWeeklyHandicapReviewPage() {
                 </div>
               </div>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className={`mt-5 grid gap-3 ${data?.isInformationOnly ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
                     Elo (Previous Week)
                   </p>
                   <p className="mt-2 text-2xl font-bold text-white">{row.previous}</p>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                {!data?.isInformationOnly ? <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
                     Elo (Following Review)
                   </p>
                   <p className="mt-2 text-2xl font-bold text-white">
                     {row.next}
                   </p>
-                </div>
+                </div> : null}
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
                     Playing Handicap
