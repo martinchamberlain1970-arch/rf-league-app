@@ -98,19 +98,29 @@ export default function LiveMatchesPage() {
         <div className="mx-auto max-w-6xl space-y-4">
           <ScreenHeader title="Live Matches" eyebrow="League" subtitle="Follow tonight's live league scorecards from inside the app." />
 
-          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-end lg:justify-between">
-              <div>
+          <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{data.season?.name ?? "Published League"}</p>
                 <h2 className="mt-1 text-2xl font-black text-slate-950">{data.liveMatches.length} live match{data.liveMatches.length === 1 ? "" : "es"}</h2>
-                <p className="mt-1 text-sm text-slate-600">Updates automatically every 30 seconds. Confirmed results drop off this view.</p>
               </div>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <div className="flex shrink-0 items-center gap-2 self-start rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
+                Updated {updatedAt}
+              </div>
+            </div>
+
+            <div className="mt-4 rounded-xl border border-sky-100 bg-sky-50/70 px-3 py-2 text-sm text-slate-600">
+              This screen refreshes every 30 seconds. Completed matches are removed automatically.
+            </div>
+
+            {(data.seasons.length > 1 || data.liveMatches.length > 1) ? (
+              <div className="mt-4 grid gap-3 lg:grid-cols-2">
                 {data.seasons.length > 1 ? (
-                  <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
+                  <label className="grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
                     League
                     <select
-                      className="h-11 min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-slate-900"
+                      className="h-12 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-slate-900"
                       value={data.season?.id ?? selectedSeasonId}
                       onChange={(event) => {
                         setLoading(true);
@@ -125,10 +135,10 @@ export default function LiveMatchesPage() {
                   </label>
                 ) : null}
                 {data.liveMatches.length > 1 ? (
-                  <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
+                  <label className="grid min-w-0 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
                     Follow match
                     <select
-                      className="h-11 min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-slate-900"
+                      className="h-12 w-full min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-slate-900"
                       value={selectedMatch?.fixtureId ?? ""}
                       onChange={(event) => setSelectedFixtureId(event.target.value)}
                     >
@@ -138,9 +148,8 @@ export default function LiveMatchesPage() {
                     </select>
                   </label>
                 ) : null}
-                <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">Updated {updatedAt}</span>
               </div>
-            </div>
+            ) : null}
           </section>
 
           {loading ? <section className="rounded-2xl border border-slate-200 bg-white p-5 text-slate-600 shadow-sm">Loading live matches...</section> : null}

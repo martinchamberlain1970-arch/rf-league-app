@@ -39,7 +39,10 @@ const emptyData: LiveMatchData = {
   liveMatches: [],
 };
 
-const MATCHES_PER_PAGE = 2;
+// A venue screen needs to show a complete scorecard at a readable size. Rotate
+// one match at a time and use two frame columns instead of clipping the bottom
+// of two vertically stacked scorecards.
+const MATCHES_PER_PAGE = 1;
 const PAGE_ROTATION_MS = 15000;
 
 function chunkRows<T>(rows: T[], size: number) {
@@ -157,11 +160,15 @@ export default function PublicLiveMatchesPage() {
     return () => window.clearInterval(timer);
   }, [totalPages]);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }, [pageIndex]);
+
   const generatedAt = useMemo(() => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), [data]);
 
   return (
-    <main className="min-h-screen overflow-x-hidden overflow-y-auto bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_55%)] p-2.5 text-white lg:h-screen lg:overflow-hidden sm:p-3 xl:p-4">
-      <div className="mx-auto grid min-h-screen w-full min-w-0 max-w-7xl gap-2.5 sm:gap-3 lg:h-full lg:min-h-0 lg:grid-rows-[auto_minmax(0,1fr)]">
+    <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_55%)] p-2.5 text-white sm:p-3 xl:p-4">
+      <div className="mx-auto grid min-h-screen w-full min-w-0 max-w-7xl content-start gap-2.5 sm:gap-3">
         <section className="min-w-0 rounded-2xl border border-white/10 bg-white/5 p-3 shadow-2xl backdrop-blur sm:p-4">
           <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between lg:gap-4">
             <div className="min-w-0">
@@ -190,7 +197,7 @@ export default function PublicLiveMatchesPage() {
               </div>
               {totalPages > 1 ? (
                 <div className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-semibold text-cyan-100 sm:px-4 sm:py-2 sm:text-sm">
-                  Page {Math.min(pageIndex + 1, totalPages)} of {totalPages}
+                  Match {Math.min(pageIndex + 1, totalPages)} of {totalPages}
                 </div>
               ) : null}
               <div className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-100 sm:px-4 sm:py-2 sm:text-sm">
@@ -277,9 +284,9 @@ export default function PublicLiveMatchesPage() {
         ) : null}
 
         {!loading && !data.error && data.liveMatches.length > 0 ? (
-          <div className="hidden min-h-0 gap-3 lg:grid lg:grid-cols-2">
+          <div className="hidden gap-3 lg:grid">
             {visibleMatches.map((match) => (
-              <section key={match.fixtureId} className="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-white/10 bg-white/6 p-3 shadow-2xl backdrop-blur">
+              <section key={match.fixtureId} className="flex flex-col rounded-2xl border border-white/10 bg-white/6 p-3 shadow-2xl backdrop-blur">
                 <div className="flex min-w-0 items-start justify-between gap-3">
                   <div>
                     <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-cyan-200">Week {match.weekNo ?? "-"}</p>
@@ -293,7 +300,7 @@ export default function PublicLiveMatchesPage() {
                   </div>
                 </div>
 
-                <div className="mt-2 grid min-h-0 flex-1 content-start gap-1.5 overflow-hidden">
+                <div className="mt-2 grid content-start gap-1.5 xl:grid-cols-2">
                   {match.frameRows.map((frame) => (
                     <div key={frame.id} className="rounded-xl border border-white/10 bg-slate-950/35 px-2.5 py-2">
                       {(() => {
