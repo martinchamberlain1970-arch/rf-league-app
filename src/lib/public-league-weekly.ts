@@ -85,6 +85,9 @@ type ReceiptRow = {
 
 type RatingEventRow = {
   player_id: string;
+  event_type: "result_win" | "result_loss" | "result_draw";
+  rating_before: number;
+  rating_after: number;
   rating_delta: number | null;
   source_result_id: string | null;
 };
@@ -656,7 +659,7 @@ export async function buildPublicWeeklyHandicapReview(
     weekFrameSourceIds.length > 0
       ? await adminClient
           .from("rating_events")
-          .select("player_id,rating_delta,source_result_id")
+          .select("player_id,event_type,rating_before,rating_after,rating_delta,source_result_id")
           .eq("source_app", "league")
           .in("source_result_id", weekFrameSourceIds)
       : { data: [], error: null };
@@ -701,6 +704,13 @@ export async function buildPublicWeeklyHandicapReview(
       .filter((frame) => Number.isInteger(frame.slot_no))
       .map((frame) => [`league_fixture:${frame.fixture_id}:frame:${frame.slot_no}`, frame] as const)
   );
+  const eventsBySourceId = new Map<string, RatingEventRow[]>();
+  for (const event of (eventsRes.data ?? []) as RatingEventRow[]) {
+    if (!event.source_result_id) continue;
+    const bucket = eventsBySourceId.get(event.source_result_id) ?? [];
+    bucket.push(event);
+    eventsBySourceId.set(event.source_result_id, bucket);
+  }
 
   const isInformationOnly = /division\s*1/i.test(season.name);
   const changes = players
@@ -731,23 +741,13 @@ export async function buildPublicWeeklyHandicapReview(
               ? [frame.away_player1_id, frame.away_player2_id]
               : [frame.home_player1_id, frame.home_player2_id]
           ).filter(Boolean) as string[];
-          const ownStartRating = Math.round(
-            avg(
-              ownIds.map((id) => {
-                const p = players.find((item) => item.id === id);
-                const playerDelta = Math.round(deltaByPlayer.get(id) ?? 0);
-                return Math.round(Number(p?.rating_snooker ?? 1000)) - playerDelta;
-              }),
-              startingRating
-            )
-          );
+          const ownStartRating = Math.round(Number(event.rating_before ?? startingRating));
+          const sourceEvents = eventsBySourceId.get(event.source_result_id ?? "") ?? [];
           const oppStartRating = Math.round(
             avg(
-              oppIds.map((id) => {
-                const p = players.find((item) => item.id === id);
-                const playerDelta = Math.round(deltaByPlayer.get(id) ?? 0);
-                return Math.round(Number(p?.rating_snooker ?? 1000)) - playerDelta;
-              }),
+              sourceEvents
+                .filter((item) => oppIds.includes(item.player_id))
+                .map((item) => Number(item.rating_before ?? 1000)),
               1000
             )
           );
@@ -756,24 +756,25 @@ export async function buildPublicWeeklyHandicapReview(
             .map((id) => named(players.find((item) => item.id === id)))
             .filter(Boolean)
             .join(" / ");
-          let explanation = "This frame was close to rating expectation, so the Elo swing stayed modest.";
+          const outcome = event.event_type === "result_win" ? "won" : event.event_type === "result_loss" ? "lost" : "drew";
+          const frameLabel = `${frame.slot_type === "doubles" ? "Doubles" : "Singles"} Frame ${frame.slot_no}`;
+          const opponents = opponentNames || "the recorded opposition";
+          const exactMovement = `${ownStartRating} → ${Math.round(Number(event.rating_after ?? ownStartRating + deltaValue))} (${deltaValue > 0 ? "+" : ""}${deltaValue})`;
+          let movementReason = "The players began at similar ratings, so the movement was moderate.";
           if (deltaValue > 0 && oppStartRating > ownStartRating) {
-            explanation = `Frame ${frame.slot_no} vs ${opponentNames} brought a stronger gain because the opposition started about ${ratingGap} Elo higher.`;
+            movementReason = `The opposition started ${ratingGap} Elo higher, so the win earned a larger gain.`;
           } else if (deltaValue > 0 && oppStartRating < ownStartRating) {
-            explanation = `Frame ${frame.slot_no} vs ${opponentNames} brought a smaller gain because the opposition started about ${ratingGap} Elo lower.`;
+            movementReason = `The opposition started ${ratingGap} Elo lower, so the expected win earned a smaller gain.`;
           } else if (deltaValue < 0 && oppStartRating < ownStartRating) {
-            explanation = `Frame ${frame.slot_no} vs ${opponentNames} caused a sharper drop because the opposition started about ${ratingGap} Elo lower.`;
+            movementReason = `The opposition started ${ratingGap} Elo lower, so the unexpected loss caused a larger drop.`;
           } else if (deltaValue < 0 && oppStartRating > ownStartRating) {
-            explanation = `Frame ${frame.slot_no} vs ${opponentNames} caused a smaller drop because the opposition started about ${ratingGap} Elo higher.`;
-          } else if (deltaValue > 0) {
-            explanation = `Frame ${frame.slot_no} vs ${opponentNames} produced a positive Elo swing in a fairly even matchup.`;
-          } else if (deltaValue < 0) {
-            explanation = `Frame ${frame.slot_no} vs ${opponentNames} produced a negative Elo swing in a fairly even matchup.`;
+            movementReason = `The opposition started ${ratingGap} Elo higher, so the loss caused a smaller drop.`;
           }
+          const explanation = `${frameLabel}: ${outcome} against ${opponents} (opposition average ${oppStartRating} Elo); ${exactMovement}. ${movementReason}`;
           return {
             deltaValue,
             slotNo: frame.slot_no ?? 0,
-            frameLabel: `Frame ${frame.slot_no}`,
+            frameLabel,
             explanation,
           };
         })

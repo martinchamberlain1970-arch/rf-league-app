@@ -23,6 +23,8 @@ type LeagueFixtureRatingFrame = {
   slot_no: number;
   slot_type?: "singles" | "doubles" | null;
   winner_side: "home" | "away" | null;
+  home_nominated?: boolean | null;
+  away_nominated?: boolean | null;
   home_forfeit?: boolean | null;
   away_forfeit?: boolean | null;
   home_player1_id: string | null;
@@ -504,6 +506,9 @@ export async function rebuildLeagueFixtureSnookerRatings({
   for (const frame of resolvedFrames) {
     if (!frame.winner_side) continue;
     if (frame.home_forfeit || frame.away_forfeit) continue;
+    // Nominated-player frames award the team frame point, but the league rules
+    // exclude the outcome from individual statistics, Elo and handicap review.
+    if (frame.home_nominated || frame.away_nominated) continue;
 
     const homeIds = uniqueIds([
       frame.home_player1_id ?? "",

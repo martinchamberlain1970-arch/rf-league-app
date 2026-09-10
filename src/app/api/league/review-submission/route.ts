@@ -215,12 +215,14 @@ export async function POST(req: NextRequest) {
 
     const framesRes = await adminClient
       .from("league_fixture_frames")
-      .select("slot_no,winner_side,home_forfeit,away_forfeit,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored")
+      .select("slot_no,winner_side,home_nominated,away_nominated,home_forfeit,away_forfeit,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored")
       .eq("fixture_id", submission.fixture_id);
     if (framesRes.error) return NextResponse.json({ error: framesRes.error.message }, { status: 400 });
     const rows = (framesRes.data ?? []) as Array<{
       slot_no: number;
       winner_side: "home" | "away" | null;
+      home_nominated: boolean;
+      away_nominated: boolean;
       home_forfeit: boolean;
       away_forfeit: boolean;
       home_player1_id: string | null;
@@ -260,6 +262,8 @@ export async function POST(req: NextRequest) {
             slot_no: row.slot_no,
             slot_type: row.home_player2_id || row.away_player2_id ? "doubles" : "singles",
             winner_side: row.winner_side,
+            home_nominated: row.home_nominated,
+            away_nominated: row.away_nominated,
             home_forfeit: row.home_forfeit,
             away_forfeit: row.away_forfeit,
             home_player1_id: row.home_player1_id,

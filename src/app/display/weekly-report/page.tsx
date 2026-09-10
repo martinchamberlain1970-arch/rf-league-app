@@ -241,7 +241,7 @@ export default function PublicWeeklyReportPage() {
                   Week {eloHandicapData?.week ?? data?.week ?? "-"} changes
                 </h2>
                 <p className="mt-2 text-sm text-slate-300">
-                  Elo changes are calculated from each completed frame, including doubles. Playing handicaps show the scheduled Proposal 2 review outcome.
+                  Elo changes are calculated from eligible completed singles and doubles frames. Nominated-player, no-show and void frames are excluded. Playing handicaps show the scheduled Proposal 2 review outcome.
                 </p>
               </div>
               <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-semibold text-amber-100">
@@ -271,7 +271,12 @@ export default function PublicWeeklyReportPage() {
                   <tbody className="divide-y divide-white/10">
                     {(eloHandicapData?.changes ?? []).map((row) => (
                       <tr key={row.playerId} className="bg-slate-950/20">
-                        <td className="px-4 py-3 font-semibold text-white">{row.name}</td>
+                        <td className="px-4 py-3 text-white">
+                          <p className="font-semibold">{row.name}</p>
+                          <p className="mt-2 max-w-3xl text-xs font-normal leading-5 text-slate-400">
+                            {row.reason}
+                          </p>
+                        </td>
                         <td className="whitespace-nowrap px-4 py-3 text-cyan-100">{row.previous} → {row.next}</td>
                         <td className="px-4 py-3 text-slate-300">{row.ratedFrames}</td>
                         <td className="whitespace-nowrap px-4 py-3 text-amber-100">
