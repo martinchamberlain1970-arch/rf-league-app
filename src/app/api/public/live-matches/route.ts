@@ -9,6 +9,7 @@ type SeasonRow = {
   id: string;
   name: string;
   is_published?: boolean | null;
+  is_active?: boolean | null;
   created_at?: string | null;
   handicap_enabled?: boolean | null;
   handicap_max_start?: number | null;
@@ -129,8 +130,9 @@ export async function GET(req: NextRequest) {
 
   const seasonsRes = await adminClient
     .from("league_seasons")
-    .select("id,name,is_published,created_at,handicap_enabled,handicap_max_start")
+    .select("id,name,is_published,is_active,created_at,handicap_enabled,handicap_max_start")
     .eq("is_published", true)
+    .eq("is_active", true)
     .order("created_at", { ascending: false });
 
   if (seasonsRes.error) {

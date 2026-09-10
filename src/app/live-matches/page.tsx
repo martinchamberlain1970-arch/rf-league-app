@@ -43,6 +43,14 @@ function frameTone(status: string) {
   return "border-slate-200 bg-slate-50 text-slate-700";
 }
 
+function shortSeasonName(name: string) {
+  const season = name.match(/20\d{2}\s*(?:\/|-)\s*20?\d{2}/)?.[0]?.replace(/\s/g, "") ?? "";
+  if (/premier league/i.test(name)) return `Premier League${season ? ` ${season}` : ""}`;
+  if (/division\s*1/i.test(name)) return `Division 1${season ? ` ${season}` : ""}`;
+  if (/summer league/i.test(name)) return `Summer League${season ? ` ${season}` : ""}`;
+  return name;
+}
+
 export default function LiveMatchesPage() {
   const [data, setData] = useState<LiveMatchData>(emptyData);
   const [loading, setLoading] = useState(true);
@@ -101,7 +109,7 @@ export default function LiveMatchesPage() {
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{data.season?.name ?? "Published League"}</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{data.season ? shortSeasonName(data.season.name) : "Published League"}</p>
                 <h2 className="mt-1 text-2xl font-black text-slate-950">{data.liveMatches.length} live match{data.liveMatches.length === 1 ? "" : "es"}</h2>
               </div>
               <div className="flex shrink-0 items-center gap-2 self-start rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
@@ -129,7 +137,7 @@ export default function LiveMatchesPage() {
                       }}
                     >
                       {data.seasons.map((season) => (
-                        <option key={season.id} value={season.id}>{season.name}</option>
+                        <option key={season.id} value={season.id}>{shortSeasonName(season.name)}</option>
                       ))}
                     </select>
                   </label>
