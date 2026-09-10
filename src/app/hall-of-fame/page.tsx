@@ -68,7 +68,7 @@ const teamHonours: HonourRow[] = [
 ];
 
 const highestBreaks: HonourRow[] = [
-  { season: "2025-26", values: ["Amrik Cheema", "100"] },
+  { season: "2025-26", values: ["Martin Chamberlain", "104 - Scratch Doubles"] },
   { season: "2024-25", values: ["Harry Compton", "72"] },
   { season: "2023-24", values: ["Jordan Church", "97"] },
   { season: "2022-23", values: ["Steve Hartley", "96"] },
@@ -175,7 +175,11 @@ export default function HallOfFamePage() {
           </div>
           <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-300/10 p-4">
             <p className="text-xs font-bold uppercase tracking-wider text-amber-200">Highest break 2025-26</p>
-            <p className="mt-1 text-2xl font-black text-white">Amrik Cheema <span className="text-amber-300">100</span></p>
+            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+              <div><p className="text-xs font-bold uppercase tracking-wider text-amber-100/75">League fixture</p><p className="mt-1 text-xl font-black text-white">Amrik Cheema <span className="text-amber-300">100</span></p></div>
+              <div><p className="text-xs font-bold uppercase tracking-wider text-amber-100/75">Competition</p><p className="mt-1 text-xl font-black text-white">Martin Chamberlain <span className="text-amber-300">104</span></p><p className="mt-1 text-xs text-amber-100/75">Scratch Doubles</p></div>
+              <div><p className="text-xs font-bold uppercase tracking-wider text-amber-100/75">Overall season</p><p className="mt-1 text-xl font-black text-white">Martin Chamberlain <span className="text-amber-300">104</span></p></div>
+            </div>
           </div>
         </section>
 
@@ -201,7 +205,7 @@ export default function HallOfFamePage() {
           <HonourTable title="League champions" description="Recent Premier Division and Division 1 champions." headings={["Premier Division", "Division 1"]} rows={leagueChampions} />
           <HonourTable title="Individual champions" description="Scratch, handicap and age-group singles honours." headings={["Gary Webb Scratch Singles", "Lee Ford Handicap Singles", "Jack Harvey Over 50s", "Fred Osbourne Over 60s"]} rows={individualHonours} />
           <HonourTable title="Doubles and team champions" description="Cross Cup, Hodge Cup and Mick White competition winners." headings={["Cross Cup Doubles", "Hodge Cup Three Player Team", "Mick White Division 1 Team"]} rows={teamHonours} />
-          <HonourTable title="Season highest breaks" description="The highest league break recorded for each available season." headings={["Player", "Break"]} rows={highestBreaks} />
+          <HonourTable title="Season highest breaks" description="The highest break recorded in an official league fixture or league-run competition for each available season." headings={["Player", "Break and source"]} rows={highestBreaks} />
         </div>
 
         <section className="rounded-3xl border border-amber-300/20 bg-amber-300/10 p-6 sm:flex sm:items-center sm:justify-between sm:gap-6">

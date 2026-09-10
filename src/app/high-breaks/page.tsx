@@ -181,6 +181,9 @@ export default function LeagueHighBreaksPage() {
       <div className="mx-auto max-w-6xl space-y-4">
         <RequireAuth>
           <ScreenHeader title="High Break Table" eyebrow="League" subtitle="Published league breaks recorded from approved fixture results." />
+          <section className="rounded-2xl border border-cyan-200 bg-cyan-50 p-4 text-sm text-cyan-950 shadow-sm">
+            Competition breaks are recorded separately when an approved competition result includes a 30+ break. View the public breakdown for <a href="/display/high-breaks" className="font-bold underline underline-offset-2">league fixtures, competitions and the overall season</a>.
+          </section>
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <div className="flex flex-wrap items-center gap-3">
               <label className="text-sm font-medium text-slate-700" htmlFor="season-filter">Published league</label>

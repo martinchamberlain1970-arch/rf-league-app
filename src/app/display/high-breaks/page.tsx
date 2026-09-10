@@ -12,6 +12,7 @@ type BreakHistoryRow = {
   break_value: number;
   fixture_label: string;
   fixture_date: string | null;
+  source_type?: "league" | "competition";
 };
 
 type HighBreakRow = {
@@ -29,8 +30,13 @@ type Payload = {
   seasons: SeasonOption[];
   selected_season_id: string;
   rows: HighBreakRow[];
+  league_rows?: HighBreakRow[];
+  competition_rows?: HighBreakRow[];
+  overall_rows?: HighBreakRow[];
   error?: string;
 };
+
+type BreakScope = "overall" | "league" | "competition";
 
 function formatHistory(row: HighBreakRow) {
   return row.break_history
@@ -52,6 +58,7 @@ export default function PublicHighBreaksPage() {
   const [data, setData] = useState<Payload | null>(null);
   const [updatedAt, setUpdatedAt] = useState("");
   const [selectedPlayer, setSelectedPlayer] = useState<HighBreakRow | null>(null);
+  const [scope, setScope] = useState<BreakScope>("overall");
 
   useEffect(() => {
     let active = true;
@@ -73,13 +80,23 @@ export default function PublicHighBreaksPage() {
   }, [selectedSeasonId]);
 
   const summary = useMemo(() => {
-    const rows = data?.rows ?? [];
+    const rows = scope === "league"
+      ? data?.league_rows ?? []
+      : scope === "competition"
+        ? data?.competition_rows ?? []
+        : data?.overall_rows ?? data?.rows ?? [];
     return {
       topBreak: rows[0]?.high_break ?? 0,
       centuries: rows.reduce((sum, row) => sum + row.century_count, 0),
       totalThirtyPlus: rows.reduce((sum, row) => sum + row.breaks_30_plus, 0),
     };
-  }, [data]);
+  }, [data, scope]);
+
+  const visibleRows = scope === "league"
+    ? data?.league_rows ?? []
+    : scope === "competition"
+      ? data?.competition_rows ?? []
+      : data?.overall_rows ?? data?.rows ?? [];
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6">
@@ -87,7 +104,7 @@ export default function PublicHighBreaksPage() {
         <header className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/20 backdrop-blur">
           <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-300">Public High Breaks</p>
           <h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">Leading Break Builders</h1>
-          <p className="mt-2 text-sm text-slate-300">Published league 30+ breaks · Updated {updatedAt || "--:--"}</p>
+          <p className="mt-2 text-sm text-slate-300">Approved 30+ breaks from league fixtures and league-run competitions · Updated {updatedAt || "--:--"}</p>
         </header>
 
         <section className="rounded-3xl border border-white/10 bg-slate-900/80 p-4 shadow-2xl shadow-black/20">
@@ -110,6 +127,24 @@ export default function PublicHighBreaksPage() {
             </select>
           </div>
 
+          <div className="mt-4 grid gap-2 sm:grid-cols-3" aria-label="Break category">
+            {([
+              ["overall", "Overall season"],
+              ["league", "League fixtures"],
+              ["competition", "Competitions"],
+            ] as Array<[BreakScope, string]>).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => setScope(value)}
+                aria-pressed={scope === value}
+                className={`rounded-xl px-4 py-2.5 text-sm font-bold ${scope === value ? "bg-cyan-400 text-slate-950" : "border border-white/10 bg-white/5 text-slate-200 hover:bg-white/10"}`}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+
           <div className="mt-4 grid gap-3 sm:grid-cols-3">
             <div className="rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4">
               <p className="text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200">Top break</p>
@@ -129,8 +164,8 @@ export default function PublicHighBreaksPage() {
         {data?.error ? <section className="rounded-2xl border border-rose-400/40 bg-rose-500/10 p-4 text-rose-100">{data.error}</section> : null}
 
         <section className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/80 shadow-2xl shadow-black/20">
-          {data && data.rows.length === 0 ? (
-            <div className="p-6 text-sm text-slate-300">No 30+ breaks have been recorded for the selected published league(s).</div>
+          {data && visibleRows.length === 0 ? (
+            <div className="p-6 text-sm text-slate-300">No approved 30+ breaks have been recorded in this category for the selected season.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="min-w-full text-sm sm:text-base">
@@ -141,11 +176,11 @@ export default function PublicHighBreaksPage() {
                     <th className="px-3 py-3 text-center">High</th>
                     <th className="px-3 py-3 text-center">100+</th>
                     <th className="px-3 py-3 text-center">30+</th>
-                    <th className="px-3 py-3">League(s)</th>
+                    <th className="px-3 py-3">Source</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {(data?.rows ?? []).map((row) => (
+                  {visibleRows.map((row) => (
                     <tr key={row.key} className="border-t border-white/5 text-slate-100">
                       <td className="px-3 py-3 font-semibold text-cyan-300">{row.rank}</td>
                       <td className="px-3 py-3 font-medium">
