@@ -6,6 +6,7 @@ import ScreenHeader from "@/components/ScreenHeader";
 
 type LiveMatchData = {
   season: { id: string; name: string } | null;
+  seasons: Array<{ id: string; name: string }>;
   liveMatches: Array<{
     fixtureId: string;
     fixtureDate: string | null;
@@ -30,7 +31,7 @@ type LiveMatchData = {
   error?: string;
 };
 
-const emptyData: LiveMatchData = { season: null, liveMatches: [] };
+const emptyData: LiveMatchData = { season: null, seasons: [], liveMatches: [] };
 
 function stripHandicapSuffix(label: string) {
   return label.replace(/\s\([+-]?\d+(?:\.\d+)?\)/g, "");
@@ -46,15 +47,22 @@ export default function LiveMatchesPage() {
   const [data, setData] = useState<LiveMatchData>(emptyData);
   const [loading, setLoading] = useState(true);
   const [selectedFixtureId, setSelectedFixtureId] = useState("");
+  const [selectedSeasonId, setSelectedSeasonId] = useState("");
 
   useEffect(() => {
     let active = true;
     const load = async () => {
       try {
-        const res = await fetch("/api/public/live-matches", { cache: "no-store" });
+        const query = selectedSeasonId ? `?seasonId=${encodeURIComponent(selectedSeasonId)}` : "";
+        const res = await fetch(`/api/public/live-matches${query}`, { cache: "no-store" });
         const payload = (await res.json().catch(() => emptyData)) as LiveMatchData;
         if (!active) return;
-        setData(res.ok ? payload : { ...emptyData, error: payload.error ?? "Failed to load live matches." });
+        if (res.ok) {
+          setData({ ...payload, seasons: payload.seasons ?? [] });
+          setSelectedSeasonId((current) => current || payload.season?.id || "");
+        } else {
+          setData({ ...emptyData, error: payload.error ?? "Failed to load live matches." });
+        }
       } catch {
         if (!active) return;
         setData({ ...emptyData, error: "Failed to load live matches." });
@@ -68,7 +76,7 @@ export default function LiveMatchesPage() {
       active = false;
       window.clearInterval(timer);
     };
-  }, []);
+  }, [selectedSeasonId]);
 
   const selectedMatch = useMemo(
     () => data.liveMatches.find((match) => match.fixtureId === selectedFixtureId) ?? data.liveMatches[0] ?? null,
@@ -82,7 +90,7 @@ export default function LiveMatchesPage() {
     });
   }, [data.liveMatches]);
 
-  const updatedAt = useMemo(() => new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }), [data]);
+  const updatedAt = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 sm:p-6">
@@ -98,6 +106,24 @@ export default function LiveMatchesPage() {
                 <p className="mt-1 text-sm text-slate-600">Updates automatically every 30 seconds. Confirmed results drop off this view.</p>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                {data.seasons.length > 1 ? (
+                  <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
+                    League
+                    <select
+                      className="h-11 min-w-0 rounded-xl border border-slate-300 bg-white px-3 text-sm font-semibold normal-case tracking-normal text-slate-900"
+                      value={data.season?.id ?? selectedSeasonId}
+                      onChange={(event) => {
+                        setLoading(true);
+                        setSelectedFixtureId("");
+                        setSelectedSeasonId(event.target.value);
+                      }}
+                    >
+                      {data.seasons.map((season) => (
+                        <option key={season.id} value={season.id}>{season.name}</option>
+                      ))}
+                    </select>
+                  </label>
+                ) : null}
                 {data.liveMatches.length > 1 ? (
                   <label className="grid gap-1 text-xs font-semibold uppercase tracking-[0.16em] text-slate-600">
                     Follow match

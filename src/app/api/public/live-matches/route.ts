@@ -89,10 +89,6 @@ function publicPlayerCard(player?: PlayerRow | null, fallbackName?: string): Pub
   };
 }
 
-function named(player?: PlayerRow | null) {
-  return player?.full_name?.trim() || player?.display_name || "Unknown";
-}
-
 function formatHandicap(value: number) {
   if (value > 0) return `+${value}`;
   return `${value}`;
@@ -144,9 +140,10 @@ export async function GET(req: NextRequest) {
   const seasons = (seasonsRes.data ?? []) as SeasonRow[];
   const selectedSeason =
     (seasonIdParam ? seasons.find((season) => season.id === seasonIdParam) : null) ?? seasons[0] ?? null;
+  const seasonOptions = seasons.map(({ id, name }) => ({ id, name }));
 
   if (!selectedSeason) {
-    return NextResponse.json({ season: null, liveMatches: [] });
+    return NextResponse.json({ season: null, seasons: seasonOptions, liveMatches: [] });
   }
 
   const [teamsRes, fixturesRes, framesRes, playersQueryRes] = await Promise.all([
@@ -343,6 +340,7 @@ export async function GET(req: NextRequest) {
       id: selectedSeason.id,
       name: selectedSeason.name,
     },
+    seasons: seasonOptions,
     liveMatches,
   });
 }
