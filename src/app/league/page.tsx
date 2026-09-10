@@ -4268,14 +4268,16 @@ function LeaguePageContent() {
       return;
     }
     if (selection === "__NOMINATED__") {
-      if (isWinterFormat && slot.slot_no === 4) {
+      if (isWinterFormat && slot.slot_no === 4 && !canManage) {
         setMessage("Frame 4 is nominated automatically when frame 3 is recorded as No Show.");
         return;
       }
+      setNominatedNames((prev) => ({ ...prev, [`${slot.id}:${side}`]: "" }));
       await updateFrameWithDerivedWinner(slot, {
         [`${sidePrefix}_player1_id`]: null,
         [`${sidePrefix}_nominated`]: true,
         [`${sidePrefix}_forfeit`]: false,
+        [nameKey]: null,
       } as Partial<FrameSlot>);
       return;
     }
@@ -4397,6 +4399,24 @@ function LeaguePageContent() {
         ? "Breaks 30+ have been updated on this completed fixture."
         : "Breaks 30+ have been recorded for this fixture.",
     });
+  };
+
+  const applyManagedNominatedPlayer = async (
+    slot: FrameSlot,
+    side: "home" | "away",
+    playerId: string
+  ) => {
+    if (!canManage || !isWinterFormat || slot.slot_no !== 4) return;
+    const sidePrefix = side === "home" ? "home" : "away";
+    const nameKey = side === "home" ? "home_nominated_name" : "away_nominated_name";
+    const nominatedName = playerId ? named(playerById.get(playerId)) : "";
+    setNominatedNames((prev) => ({ ...prev, [`${slot.id}:${side}`]: nominatedName }));
+    await updateFrameWithDerivedWinner(slot, {
+      [`${sidePrefix}_player1_id`]: null,
+      [`${sidePrefix}_nominated`]: true,
+      [`${sidePrefix}_forfeit`]: false,
+      [nameKey]: nominatedName || null,
+    } as Partial<FrameSlot>);
   };
 
   const recalculateSnookerHandicapsFromElo = async () => {
@@ -8472,6 +8492,18 @@ function LeaguePageContent() {
                                   .filter((id): id is string => Boolean(id))
                               )
                             : awayRosterIds;
+                        const homeNominatedOptions = sortRosterIds(
+                          fixtureSlots
+                            .filter((row) => row.slot_type === "singles" && row.slot_no >= 1 && row.slot_no <= 3)
+                            .map((row) => row.home_player1_id)
+                            .filter((id): id is string => Boolean(id))
+                        );
+                        const awayNominatedOptions = sortRosterIds(
+                          fixtureSlots
+                            .filter((row) => row.slot_type === "singles" && row.slot_no >= 1 && row.slot_no <= 3)
+                            .map((row) => row.away_player1_id)
+                            .filter((id): id is string => Boolean(id))
+                        );
                         const homeSelection = getSinglesSelectionValue(slot, "home");
                         const awaySelection = getSinglesSelectionValue(slot, "away");
                         return (
@@ -8524,7 +8556,7 @@ function LeaguePageContent() {
                                   >
                                     <option value="">Home player</option>
                                     {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show</option> : null}
-                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">System-nominated player</option> : null}
+                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">{canManage ? "Nominated player — choose manually" : "System-nominated player"}</option> : null}
                                     {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                     {homeRosterIds.map((id) => (
                                       <option key={id} value={id} disabled={(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id}>
@@ -8585,7 +8617,7 @@ function LeaguePageContent() {
                                   >
                                     <option value="">Away player</option>
                                     {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show</option> : null}
-                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">System-nominated player</option> : null}
+                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">{canManage ? "Nominated player — choose manually" : "System-nominated player"}</option> : null}
                                     {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                     {awayRosterIds.map((id) => (
                                       <option key={id} value={id} disabled={(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id}>
@@ -8612,14 +8644,42 @@ function LeaguePageContent() {
                             {slot.slot_type === "singles" && isWinterFormat && slot.slot_no === 4 ? (
                               <div className="mt-2 grid gap-2 sm:grid-cols-2">
                                 {slot.home_nominated ? (
-                                  <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900">
-                                    System selected: {nominatedNames[`${slot.id}:home`] || slot.home_nominated_name || "Awaiting frame 3 selection"}
-                                  </div>
+                                  canManage ? (
+                                    <label className="grid gap-1 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sky-900">
+                                      Home nominated player
+                                      <select
+                                        className="rounded-lg border border-sky-300 bg-white px-2 py-2 text-sm font-medium normal-case tracking-normal text-slate-900"
+                                        value={homeNominatedOptions.find((id) => named(playerById.get(id)) === (nominatedNames[`${slot.id}:home`] || slot.home_nominated_name || "")) ?? ""}
+                                        onChange={(event) => void applyManagedNominatedPlayer(slot, "home", event.target.value)}
+                                      >
+                                        <option value="">Select the player shown on the card</option>
+                                        {homeNominatedOptions.map((id) => <option key={id} value={id}>{named(playerById.get(id))}</option>)}
+                                      </select>
+                                    </label>
+                                  ) : (
+                                    <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900">
+                                      System selected: {nominatedNames[`${slot.id}:home`] || slot.home_nominated_name || "Awaiting frame 3 selection"}
+                                    </div>
+                                  )
                                 ) : <div />}
                                 {slot.away_nominated ? (
-                                  <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900">
-                                    System selected: {nominatedNames[`${slot.id}:away`] || slot.away_nominated_name || "Awaiting frame 3 selection"}
-                                  </div>
+                                  canManage ? (
+                                    <label className="grid gap-1 rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-sky-900">
+                                      Away nominated player
+                                      <select
+                                        className="rounded-lg border border-sky-300 bg-white px-2 py-2 text-sm font-medium normal-case tracking-normal text-slate-900"
+                                        value={awayNominatedOptions.find((id) => named(playerById.get(id)) === (nominatedNames[`${slot.id}:away`] || slot.away_nominated_name || "")) ?? ""}
+                                        onChange={(event) => void applyManagedNominatedPlayer(slot, "away", event.target.value)}
+                                      >
+                                        <option value="">Select the player shown on the card</option>
+                                        {awayNominatedOptions.map((id) => <option key={id} value={id}>{named(playerById.get(id))}</option>)}
+                                      </select>
+                                    </label>
+                                  ) : (
+                                    <div className="rounded-lg border border-sky-200 bg-sky-50 px-3 py-2 text-sm font-medium text-sky-900">
+                                      System selected: {nominatedNames[`${slot.id}:away`] || slot.away_nominated_name || "Awaiting frame 3 selection"}
+                                    </div>
+                                  )
                                 ) : <div />}
                               </div>
                             ) : null}
