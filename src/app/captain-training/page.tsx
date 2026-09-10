@@ -8,6 +8,7 @@ type Stage = "lineup" | "scorecard" | "review";
 
 const players = ["Alex Carter (0)", "Ben Morris (+8)", "Chris Taylor (-4)", "Daniel White (+16)"];
 const opponents = ["Jamie Smith (+4)", "Lee Harris (0)", "Morgan Jones (+12)", "Pat Brown (-4)"];
+const completedScores = ["68–41", "52–61", "74–33", "49–58"];
 
 export default function CaptainTrainingPage() {
   const [stage, setStage] = useState<Stage>("lineup");
@@ -92,8 +93,17 @@ export default function CaptainTrainingPage() {
             <h2 className="mt-1 text-xl font-bold text-slate-950">Check the full scorecard with both teams</h2>
             <p className="mt-1 text-sm text-slate-600">Confirm every player, score and break before submitting the official result.</p>
             <div className="mt-4 overflow-hidden rounded-xl border border-slate-200">
-              <div className="grid grid-cols-[55px_1fr_80px_1fr] bg-slate-900 px-3 py-2 text-xs font-bold text-white"><span>Frame</span><span>Home</span><span>Score</span><span>Away</span></div>
-              {players.map((player, index) => <div key={player} className="grid grid-cols-[55px_1fr_80px_1fr] border-t border-slate-200 px-3 py-2 text-sm"><span>{index + 1}</span><span>{player.split(" (")[0]}</span><span>{index === 0 ? "68–41" : "Entered"}</span><span>{opponents[index].split(" (")[0]}</span></div>)}
+              <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3 bg-slate-900 px-4 py-3 text-xs font-bold uppercase tracking-wide text-white">
+                <span>Home player</span><span>Score</span><span className="text-right">Away player</span>
+              </div>
+              {players.map((player, index) => <div key={player} className="border-t border-slate-200 px-4 py-3 text-sm">
+                <p className="mb-2 text-center text-[11px] font-bold uppercase tracking-wide text-slate-500">Frame {index + 1}</p>
+                <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-3">
+                  <span className="font-medium text-slate-950">{player.split(" (")[0]}</span>
+                  <span className="rounded-lg bg-slate-100 px-3 py-1.5 font-bold tabular-nums text-slate-950">{completedScores[index]}</span>
+                  <span className="text-right font-medium text-slate-950">{opponents[index].split(" (")[0]}</span>
+                </div>
+              </div>)}
             </div>
             <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 p-3 text-sm text-violet-950"><strong>Breaks 30+</strong><br />Alex Carter · 42 · Frame 1</div>
             {submitted ? <div className="mt-4 rounded-xl border border-emerald-300 bg-emerald-50 p-4 text-emerald-950"><strong>Training submission complete</strong><br />A live submission would now enter the league-officer approval queue.</div> : null}
