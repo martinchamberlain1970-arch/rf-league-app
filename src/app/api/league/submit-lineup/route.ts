@@ -179,6 +179,7 @@ export async function POST(req: NextRequest) {
     const doubles = sideFields.find((patch) => frameById.get(patch.id)?.slot_type === "doubles");
     const firstId = side === "home" ? first?.home_player1_id : first?.away_player1_id;
     const secondId = side === "home" ? second?.home_player1_id : second?.away_player1_id;
+    const thirdId = side === "home" ? third?.home_player1_id : third?.away_player1_id;
     const frameThreeForfeit = side === "home" ? Boolean(third?.home_forfeit) : Boolean(third?.away_forfeit);
     const frameFourNominated = side === "home" ? Boolean(fourth?.home_nominated) : Boolean(fourth?.away_nominated);
     const frameFourName = side === "home" ? fourth?.home_nominated_name?.trim() : fourth?.away_nominated_name?.trim();
@@ -205,7 +206,16 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "The players from frames 1 and 2 must play together in the doubles frame." }, { status: 400 });
       }
     } else if (frameFourNominated) {
-      return NextResponse.json({ error: "Frame 4 can only use the system-nominated player when frame 3 is recorded as No Show." }, { status: 400 });
+      const firstThreeIds = [firstId, secondId, thirdId].filter((id): id is string => Boolean(id));
+      if (firstThreeIds.length !== 3 || new Set(firstThreeIds).size !== 3) {
+        return NextResponse.json({ error: "Frames 1, 2 and 3 must contain three different players before Frame 4 can use a nominated player." }, { status: 400 });
+      }
+      if (!frameFourName) {
+        return NextResponse.json({ error: "Frame 4 must contain the player nominated automatically from Frames 1, 2 and 3." }, { status: 400 });
+      }
+      if (new Set([doublesFirstId, doublesSecondId]).size !== 2 || ![doublesFirstId, doublesSecondId].every((id) => firstThreeIds.includes(id ?? ""))) {
+        return NextResponse.json({ error: "Choose two of the players from Frames 1, 2 and 3 for the doubles frame." }, { status: 400 });
+      }
     }
   }
 

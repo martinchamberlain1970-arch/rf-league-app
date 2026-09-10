@@ -1068,10 +1068,12 @@ export default function CaptainResultsPage() {
   const winterDoublesEligibleIds = (side: "home" | "away") => {
     if (!isWinterFormat) return sortRosterIds(side === "home" ? homeRosterIds : awayRosterIds);
     const frameThree = slots.find((slot) => slot.slot_type === "singles" && slot.slot_no === 3);
+    const frameFour = slots.find((slot) => slot.slot_type === "singles" && slot.slot_no === 4);
     const sideForfeit = side === "home" ? frameThree?.home_forfeit : frameThree?.away_forfeit;
-    if (!sideForfeit) return sortRosterIds(side === "home" ? homeRosterIds : awayRosterIds);
+    const sideNominated = side === "home" ? frameFour?.home_nominated : frameFour?.away_nominated;
+    if (!sideForfeit && !sideNominated) return sortRosterIds(side === "home" ? homeRosterIds : awayRosterIds);
     const eligible = new Set<string>();
-    for (const slotNo of [1, 2]) {
+    for (const slotNo of sideForfeit ? [1, 2] : [1, 2, 3]) {
       const slot = slots.find((row) => row.slot_type === "singles" && row.slot_no === slotNo);
       const playerId = side === "home" ? slot?.home_player1_id : slot?.away_player1_id;
       if (playerId) eligible.add(playerId);
@@ -1089,6 +1091,8 @@ export default function CaptainResultsPage() {
       side === "home"
         ? slot.home_nominated_name?.trim() || named(playerById.get(slot.home_player1_id ?? "") ?? null)
         : slot.away_nominated_name?.trim() || named(playerById.get(slot.away_player1_id ?? "") ?? null);
+    const nominated = side === "home" ? slot.home_nominated : slot.away_nominated;
+    if (namedPlayer && nominated) return `${namedPlayer} (nominated player)`;
     return namedPlayer || (side === "home" ? "Home player" : "Away player");
   };
 
@@ -1363,7 +1367,6 @@ export default function CaptainResultsPage() {
           const localById = new Map(slots.map((row) => [row.id, row]));
           activeSlots = repairedFrames.map((row) => ({ ...row, ...(localById.get(row.id) ?? {}) }));
           setSlots(activeSlots);
-          setAllSlots((current) => [...current.filter((row) => row.fixture_id !== selectedFixture.id), ...repairedFrames]);
           frameFour = activeSlots.find((row) => row.slot_type === "singles" && row.slot_no === 4);
           doublesFrame = activeSlots.find((row) => row.slot_type === "doubles");
           if (!frameFour || !doublesFrame) {
@@ -1407,7 +1410,38 @@ export default function CaptainResultsPage() {
     }
     if (selection === "__NOMINATED__") {
       if (isWinterFormat && slot.slot_no === 4) {
-        setMessage("Frame 4 is nominated automatically when frame 3 is recorded as No Show.");
+        const firstThreePlayerIds = [1, 2, 3]
+          .map((slotNo) => slots.find((row) => row.slot_type === "singles" && row.slot_no === slotNo))
+          .map((row) => (side === "home" ? row?.home_player1_id : row?.away_player1_id))
+          .filter((id): id is string => Boolean(id));
+        if (new Set(firstThreePlayerIds).size !== 3) {
+          setMessage(`Select three different ${side} players in frames 1, 2 and 3 before choosing a nominated player for frame 4.`);
+          return;
+        }
+        const confirmed = await showConfirm({
+          title: "Confirm three-player lineup",
+          description:
+            "This confirms that only three players are available. The system will randomly nominate one of the players from Frames 1, 2 and 3 for Frame 4. You must then choose any two of those three players for the doubles. Do you want to continue?",
+          confirmLabel: "Confirm nomination",
+          cancelLabel: "Cancel",
+        });
+        if (!confirmed) return;
+        const nominatedId = firstThreePlayerIds[Math.floor(Math.random() * firstThreePlayerIds.length)];
+        const nominatedName = named(playerById.get(nominatedId));
+        const doublesFrame = slots.find((row) => row.slot_type === "doubles");
+        setNominatedNames((prev) => ({ ...prev, [`${slot.id}:${side}`]: nominatedName }));
+        updateSlotLocal(slot.id, {
+          [`${sidePrefix}_player1_id`]: null,
+          [`${sidePrefix}_nominated`]: true,
+          [`${sidePrefix}_forfeit`]: false,
+          [nameKey]: nominatedName,
+        } as Partial<FrameSlot>);
+        if (doublesFrame) {
+          updateSlotLocal(doublesFrame.id, {
+            [`${sidePrefix}_player1_id`]: null,
+            [`${sidePrefix}_player2_id`]: null,
+          } as Partial<FrameSlot>);
+        }
         return;
       }
       updateSlotLocal(slot.id, {
@@ -2371,7 +2405,7 @@ export default function CaptainResultsPage() {
                                     <select className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={homeSelection} onChange={(e) => applySinglesSelection(slot, "home", e.target.value)} disabled={homeSelectionLocked}>
                                       <option value="">Home player</option>
                                       {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show</option> : null}
-                                      {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">System-nominated player</option> : null}
+                                      {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">{slot.home_nominated_name ? `${slot.home_nominated_name} (nominated player)` : "Nominated player"}</option> : null}
                                       {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                       {sortRosterIds(homeRosterIds).map((id) => (
                                         <option key={id} value={id} disabled={(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id}>
@@ -2399,7 +2433,7 @@ export default function CaptainResultsPage() {
                                     <select className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={awaySelection} onChange={(e) => applySinglesSelection(slot, "away", e.target.value)} disabled={awaySelectionLocked}>
                                       <option value="">Away player</option>
                                       {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show</option> : null}
-                                      {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">System-nominated player</option> : null}
+                                      {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">{slot.away_nominated_name ? `${slot.away_nominated_name} (nominated player)` : "Nominated player"}</option> : null}
                                       {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                       {sortRosterIds(awayRosterIds).map((id) => (
                                         <option key={id} value={id} disabled={(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id}>
