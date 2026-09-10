@@ -4,6 +4,7 @@ import { logServerAudit } from "@/lib/server-audit";
 import { sendPushToLeagueManagers } from "@/lib/push-server";
 import { canManageLeagueRole } from "@/lib/app-roles";
 import { resolveServerRole } from "@/lib/server-role";
+import { validateCompleteLeagueScorecard } from "@/lib/league-scorecard-validation";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -94,7 +95,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: fixture.status === "bye" ? "This is a BYE week and has no result to submit." : "This fixture is already complete." }, { status: 400 });
   }
 
-  const seasonRes = await adminClient.from("league_seasons").select("id,is_published,is_active").eq("id", fixture.season_id).maybeSingle();
+  const seasonRes = await adminClient.from("league_seasons").select("id,is_published,is_active,singles_count,doubles_count").eq("id", fixture.season_id).maybeSingle();
   if (seasonRes.error || !seasonRes.data) {
     return NextResponse.json({ error: "League season not found." }, { status: 404 });
   }
@@ -151,7 +152,7 @@ export async function POST(req: NextRequest) {
     .map((r) => ({
       slot_no: r.slot_no,
       winner_side: r.winner_side,
-      slot_type: r.slot_type === "doubles" ? "doubles" : "singles",
+      slot_type: r.slot_type === "doubles" ? ("doubles" as const) : ("singles" as const),
       home_player1_id: r.home_player1_id ?? null,
       home_player2_id: r.home_player2_id ?? null,
       away_player1_id: r.away_player1_id ?? null,
@@ -175,8 +176,13 @@ export async function POST(req: NextRequest) {
             .filter((b) => Number.isFinite(b.break_value) && b.break_value >= 30 && Number.isInteger(b.slot_no) && (b.player_id || b.entered_player_name))
         : undefined,
     }));
-  if (!cleanFrameResults.some((r) => r.winner_side)) {
-    return NextResponse.json({ error: "Select at least one frame result before submitting." }, { status: 400 });
+  const scorecardValidation = validateCompleteLeagueScorecard(
+    cleanFrameResults,
+    seasonRes.data.singles_count ?? 4,
+    seasonRes.data.doubles_count ?? 1
+  );
+  if (!scorecardValidation.valid) {
+    return NextResponse.json({ error: scorecardValidation.error }, { status: 400 });
   }
 
   const submissionPayload: Record<string, unknown> = {

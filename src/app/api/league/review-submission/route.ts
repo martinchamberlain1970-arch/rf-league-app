@@ -5,6 +5,7 @@ import { logServerAudit } from "@/lib/server-audit";
 import { requireLeagueManager } from "@/lib/server-role";
 import { sendPushToUserIds } from "@/lib/push-server";
 import { applyDuePremierHandicapReview, type AutomaticHandicapReviewResult } from "@/lib/automatic-handicap-review";
+import { expectedLeagueScorecardFrames, validateCompleteLeagueScorecard } from "@/lib/league-scorecard-validation";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -97,7 +98,7 @@ export async function POST(req: NextRequest) {
 
   const submissionRes = await adminClient
     .from("league_result_submissions")
-    .select("id,fixture_id,submitted_by_user_id,status,frame_results,submission_source,public_submitter_name,scorecard_photo_path")
+    .select("id,fixture_id,submitted_by_user_id,submitter_team_id,status,frame_results,submission_source,public_submitter_name,scorecard_photo_path")
     .eq("id", submissionId)
     .maybeSingle();
   if (submissionRes.error || !submissionRes.data) {
@@ -107,6 +108,7 @@ export async function POST(req: NextRequest) {
     id: string;
     fixture_id: string;
     submitted_by_user_id: string | null;
+    submitter_team_id?: string | null;
     status: "pending" | "approved" | "rejected" | "needs_correction";
     frame_results: SubmissionFrameResult[] | null;
     submission_source?: "authenticated" | "public_paper";
@@ -118,9 +120,37 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Submission is no longer pending." }, { status: 400 });
   }
 
+  const fixtureRes = await adminClient
+    .from("league_fixtures")
+    .select("id,season_id,home_team_id,away_team_id")
+    .eq("id", submission.fixture_id)
+    .maybeSingle();
+  if (fixtureRes.error || !fixtureRes.data) {
+    return NextResponse.json({ error: fixtureRes.error?.message ?? "Fixture not found." }, { status: 400 });
+  }
+  const seasonRes = await adminClient
+    .from("league_seasons")
+    .select("id,name,singles_count,doubles_count")
+    .eq("id", fixtureRes.data.season_id)
+    .maybeSingle();
+  if (seasonRes.error || !seasonRes.data) {
+    return NextResponse.json({ error: seasonRes.error?.message ?? "League not found." }, { status: 400 });
+  }
+
   let automaticHandicapReview: AutomaticHandicapReviewResult | null = null;
   if (decision === "approved") {
     const frameResults = (submission.frame_results ?? []) as SubmissionFrameResult[];
+    const scorecardValidation = validateCompleteLeagueScorecard(
+      frameResults,
+      seasonRes.data.singles_count ?? 4,
+      seasonRes.data.doubles_count ?? 1
+    );
+    if (!scorecardValidation.valid) {
+      return NextResponse.json(
+        { error: `${scorecardValidation.error} Reject this submission for correction rather than approving it.` },
+        { status: 400 }
+      );
+    }
     const breaks: Array<{ frame_slot_no: number; player_id: string | null; entered_player_name: string | null; break_value: number }> = [];
 
     for (const item of frameResults) {
@@ -181,23 +211,6 @@ export async function POST(req: NextRequest) {
         }))
       );
       if (insBreaks.error) return NextResponse.json({ error: insBreaks.error.message }, { status: 400 });
-    }
-
-    const fixtureRes = await adminClient
-      .from("league_fixtures")
-      .select("id,season_id")
-      .eq("id", submission.fixture_id)
-      .maybeSingle();
-    if (fixtureRes.error || !fixtureRes.data) {
-      return NextResponse.json({ error: fixtureRes.error?.message ?? "Fixture not found." }, { status: 400 });
-    }
-    const seasonRes = await adminClient
-      .from("league_seasons")
-      .select("id,name,singles_count,doubles_count")
-      .eq("id", fixtureRes.data.season_id)
-      .maybeSingle();
-    if (seasonRes.error || !seasonRes.data) {
-      return NextResponse.json({ error: seasonRes.error?.message ?? "League not found." }, { status: 400 });
     }
 
     const framesRes = await adminClient
@@ -272,6 +285,68 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  if (decision === "rejected") {
+    // Repair the scorecard layout as part of reopening it. This matters for
+    // older/incomplete submissions where (for example) the doubles row was
+    // never created, otherwise the captain would have nothing to complete.
+    const expectedFrames = expectedLeagueScorecardFrames(
+      seasonRes.data.singles_count ?? 4,
+      seasonRes.data.doubles_count ?? 1
+    );
+    const existingFramesRes = await adminClient
+      .from("league_fixture_frames")
+      .select("id,slot_no,slot_type")
+      .eq("fixture_id", submission.fixture_id);
+    if (existingFramesRes.error) {
+      return NextResponse.json({ error: existingFramesRes.error.message }, { status: 400 });
+    }
+    const existingBySlot = new Map((existingFramesRes.data ?? []).map((row) => [row.slot_no, row]));
+    const missingFrames = expectedFrames.filter((row) => !existingBySlot.has(row.slot_no));
+    if (missingFrames.length > 0) {
+      const insertFrames = await adminClient.from("league_fixture_frames").insert(
+        missingFrames.map((row) => ({ fixture_id: submission.fixture_id, ...row }))
+      );
+      if (insertFrames.error) return NextResponse.json({ error: insertFrames.error.message }, { status: 400 });
+    }
+    for (const expected of expectedFrames) {
+      const existing = existingBySlot.get(expected.slot_no);
+      if (existing && existing.slot_type !== expected.slot_type) {
+        const repairFrame = await adminClient
+          .from("league_fixture_frames")
+          .update({ slot_type: expected.slot_type })
+          .eq("id", existing.id);
+        if (repairFrame.error) return NextResponse.json({ error: repairFrame.error.message }, { status: 400 });
+      }
+    }
+
+    // Keep the captain's recorded work available on the live fixture so the
+    // scorecard reopens with the existing scores instead of starting again.
+    for (const item of submission.frame_results ?? []) {
+      if (!item?.slot_no || !Number.isInteger(item.slot_no)) continue;
+      const patch: Record<string, unknown> = {
+        winner_side: item.winner_side === "home" || item.winner_side === "away" ? item.winner_side : null,
+        home_player1_id: item.home_player1_id ?? null,
+        home_player2_id: item.home_player2_id ?? null,
+        away_player1_id: item.away_player1_id ?? null,
+        away_player2_id: item.away_player2_id ?? null,
+        home_nominated: Boolean(item.home_nominated),
+        away_nominated: Boolean(item.away_nominated),
+        home_forfeit: Boolean(item.home_forfeit),
+        away_forfeit: Boolean(item.away_forfeit),
+        home_nominated_name: item.home_nominated_name ?? null,
+        away_nominated_name: item.away_nominated_name ?? null,
+        home_points_scored: typeof item.home_points_scored === "number" ? item.home_points_scored : null,
+        away_points_scored: typeof item.away_points_scored === "number" ? item.away_points_scored : null,
+      };
+      const keepResult = await adminClient
+        .from("league_fixture_frames")
+        .update(patch)
+        .eq("fixture_id", submission.fixture_id)
+        .eq("slot_no", item.slot_no);
+      if (keepResult.error) return NextResponse.json({ error: keepResult.error.message }, { status: 400 });
+    }
+  }
+
   const reviewUpdate = await adminClient
     .from("league_result_submissions")
     .update({
@@ -298,7 +373,10 @@ export async function POST(req: NextRequest) {
   }
 
   if (decision === "rejected") {
-    const resetFixture = await adminClient.from("league_fixtures").update({ status: "pending" }).eq("id", submission.fixture_id);
+    const hasRecordedFrames = (submission.frame_results ?? []).some(
+      (row) => row.winner_side || row.home_forfeit || row.away_forfeit || typeof row.home_points_scored === "number" || typeof row.away_points_scored === "number"
+    );
+    const resetFixture = await adminClient.from("league_fixtures").update({ status: hasRecordedFrames ? "in_progress" : "pending" }).eq("id", submission.fixture_id);
     if (resetFixture.error) return NextResponse.json({ error: resetFixture.error.message }, { status: 400 });
   }
 
@@ -324,11 +402,29 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  if (submission.submitted_by_user_id) {
-    await sendPushToUserIds(adminClient, [submission.submitted_by_user_id], {
+  let notificationUserIds = submission.submitted_by_user_id ? [submission.submitted_by_user_id] : [];
+  if (decision === "rejected") {
+    const correctionTeamId = submission.submitter_team_id ?? fixtureRes.data.home_team_id;
+    const officersRes = await adminClient
+      .from("league_team_members")
+      .select("player_id")
+      .eq("season_id", fixtureRes.data.season_id)
+      .eq("team_id", correctionTeamId)
+      .or("is_captain.eq.true,is_vice_captain.eq.true");
+    if (!officersRes.error) {
+      const playerIds = [...new Set((officersRes.data ?? []).map((row) => row.player_id).filter(Boolean))];
+      if (playerIds.length > 0) {
+        const usersRes = await adminClient.from("app_users").select("id").in("linked_player_id", playerIds);
+        if (!usersRes.error) notificationUserIds = [...notificationUserIds, ...(usersRes.data ?? []).map((row) => row.id)];
+      }
+    }
+  }
+
+  if (notificationUserIds.length > 0) {
+    await sendPushToUserIds(adminClient, notificationUserIds, {
       title: decision === "approved" ? "League result approved" : "League result needs attention",
       body: decision === "approved" ? "Your submitted league scorecard has been approved." : rejectionReason || "Your submitted scorecard was not approved. Open Rack & Frame for details.",
-      url: "/results",
+      url: decision === "approved" ? "/results" : `/captain-results?fixtureId=${submission.fixture_id}`,
       tag: `league-submission-review-${submission.id}`,
     });
   }
