@@ -1326,7 +1326,7 @@ export default function CaptainResultsPage() {
     return playerId ?? "";
   };
 
-  const applySinglesSelection = (slot: FrameSlot, side: "home" | "away", selection: string) => {
+  const applySinglesSelection = async (slot: FrameSlot, side: "home" | "away", selection: string) => {
     const sidePrefix = side === "home" ? "home" : "away";
     const nameKey = side === "home" ? "home_nominated_name" : "away_nominated_name";
     if (selection === "__NO_SHOW__") {
@@ -1345,6 +1345,14 @@ export default function CaptainResultsPage() {
           setMessage("The winter scorecard is incomplete. It must contain four singles frames and one doubles frame.");
           return;
         }
+        const confirmed = await showConfirm({
+          title: "Confirm two-player lineup",
+          description:
+            "This will record Frame 3 as a No Show. The system will then randomly nominate one of the players from Frames 1 and 2 for Frame 4 and enter both players into the doubles. Do you want to continue?",
+          confirmLabel: "Confirm No Show",
+          cancelLabel: "Cancel",
+        });
+        if (!confirmed) return;
         const nominatedId = firstTwoPlayerIds[Math.floor(Math.random() * firstTwoPlayerIds.length)];
         const nominatedName = named(playerById.get(nominatedId));
         setNominatedNames((prev) => ({ ...prev, [`${frameFour.id}:${side}`]: nominatedName }));
