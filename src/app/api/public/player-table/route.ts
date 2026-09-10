@@ -59,7 +59,8 @@ export async function GET(req: NextRequest) {
   }
 
   const seasonIdParam = req.nextUrl.searchParams.get("seasonId")?.trim() ?? "";
-  const mode = req.nextUrl.searchParams.get("mode") === "doubles" ? "doubles" : "singles";
+  const requestedMode = req.nextUrl.searchParams.get("mode");
+  const mode = requestedMode === "doubles" || requestedMode === "pairings" ? requestedMode : "singles";
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
   const seasonsRes = await adminClient
@@ -118,11 +119,23 @@ export async function GET(req: NextRequest) {
 
   const appearanceByPlayer = new Map<string, Set<string>>();
   const resultsByPlayer = new Map<string, { won: number; lost: number; pointsFor: number; pointsAgainst: number }>();
+  const pairingPlayers = new Map<string, [string, string]>();
   const fixtureIds = new Set(fixtures.filter((fixture) => fixture.status === "complete").map((fixture) => fixture.id));
 
-  for (const frame of frames.filter((row) => fixtureIds.has(row.fixture_id) && row.slot_type === mode)) {
-    const homeIds = [frame.home_player1_id, mode === "doubles" ? frame.home_player2_id : null].filter(Boolean) as string[];
-    const awayIds = [frame.away_player1_id, mode === "doubles" ? frame.away_player2_id : null].filter(Boolean) as string[];
+  const frameType = mode === "singles" ? "singles" : "doubles";
+  for (const frame of frames.filter((row) => fixtureIds.has(row.fixture_id) && row.slot_type === frameType)) {
+    const homePlayerIds = [frame.home_player1_id, frameType === "doubles" ? frame.home_player2_id : null].filter(Boolean) as string[];
+    const awayPlayerIds = [frame.away_player1_id, frameType === "doubles" ? frame.away_player2_id : null].filter(Boolean) as string[];
+    const pairingKey = (playerIds: string[]) => {
+      if (mode !== "pairings") return playerIds;
+      if (playerIds.length !== 2) return [];
+      const sortedIds = [...playerIds].sort() as [string, string];
+      const key = sortedIds.join(":");
+      pairingPlayers.set(key, sortedIds);
+      return [key];
+    };
+    const homeIds = pairingKey(homePlayerIds);
+    const awayIds = pairingKey(awayPlayerIds);
     for (const playerId of [...homeIds, ...awayIds]) {
       const set = appearanceByPlayer.get(playerId) ?? new Set<string>();
       set.add(frame.fixture_id);
@@ -151,15 +164,18 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const rosterPlayerIds = new Set<string>(members.map((member) => member.player_id));
+  const rosterPlayerIds = mode === "pairings" ? new Set<string>() : new Set<string>(members.map((member) => member.player_id));
   const playersTable = Array.from(new Set<string>([...rosterPlayerIds, ...appearanceByPlayer.keys(), ...resultsByPlayer.keys()]))
     .map((playerId) => {
       const result = resultsByPlayer.get(playerId) ?? { won: 0, lost: 0, pointsFor: 0, pointsAgainst: 0 };
       const played = result.won + result.lost;
+      const pairing = pairingPlayers.get(playerId);
+      const pairingNames = pairing?.map((id) => named(playerById.get(id))) ?? [];
+      const pairingTeams = Array.from(new Set(pairing?.map((id) => playerTeamName.get(id) ?? "-") ?? []));
       return {
         player_id: playerId,
-        player_name: named(playerById.get(playerId)),
-        team_name: playerTeamName.get(playerId) ?? "-",
+        player_name: pairing ? pairingNames.join(" & ") : named(playerById.get(playerId)),
+        team_name: pairing ? pairingTeams.join(" / ") : playerTeamName.get(playerId) ?? "-",
         appearances: appearanceByPlayer.get(playerId)?.size ?? 0,
         played,
         won: result.won,

@@ -18,12 +18,18 @@ type PlayerRow = {
 
 type Payload = {
   season: { id: string; name: string } | null;
-  mode: "singles" | "doubles";
+  mode: "singles" | "doubles" | "pairings";
   players: PlayerRow[];
   error?: string;
 };
 
-type TableMode = "singles" | "doubles";
+type TableMode = "singles" | "doubles" | "pairings";
+
+const modeHeading: Record<TableMode, string> = {
+  singles: "Leading Singles Players",
+  doubles: "Leading Doubles Players",
+  pairings: "Leading Doubles Pairings",
+};
 
 export default function PublicPlayerTablePage() {
   const [data, setData] = useState<Payload | null>(null);
@@ -55,14 +61,14 @@ export default function PublicPlayerTablePage() {
         <header className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/20 backdrop-blur">
           <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-300">Public Player Table</p>
           <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-            <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">Leading {mode === "singles" ? "Singles" : "Doubles"} Players</h1>
-            <div className="grid grid-cols-2 rounded-xl border border-white/15 bg-slate-950/50 p-1" aria-label="Player table type">
-              {(["singles", "doubles"] as const).map((option) => (
+            <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">{modeHeading[mode]}</h1>
+            <div className="grid grid-cols-3 rounded-xl border border-white/15 bg-slate-950/50 p-1" aria-label="Player table type">
+              {(["singles", "doubles", "pairings"] as const).map((option) => (
                 <button
                   key={option}
                   type="button"
                   onClick={() => setMode(option)}
-                  className={`rounded-lg px-4 py-2 text-sm font-bold capitalize ${mode === option ? "bg-cyan-400 text-slate-950" : "text-slate-300 hover:bg-white/10"}`}
+                  className={`rounded-lg px-3 py-2 text-sm font-bold capitalize sm:px-4 ${mode === option ? "bg-cyan-400 text-slate-950" : "text-slate-300 hover:bg-white/10"}`}
                 >
                   {option}
                 </button>
@@ -80,7 +86,7 @@ export default function PublicPlayerTablePage() {
               <thead className="bg-white/5 text-left text-slate-300">
                 <tr>
                   <th className="px-3 py-3">#</th>
-                  <th className="px-3 py-3">Player</th>
+                  <th className="px-3 py-3">{mode === "pairings" ? "Pairing" : "Player"}</th>
                   <th className="px-3 py-3">Team</th>
                   <th className="px-3 py-3 text-center">App</th>
                   <th className="px-3 py-3 text-center">P</th>
@@ -109,7 +115,11 @@ export default function PublicPlayerTablePage() {
               </tbody>
             </table>
           </div>
-          {data && data.players.length === 0 ? <p className="border-t border-white/5 px-4 py-8 text-center text-slate-300">No completed {mode} frames have been recorded for this league yet.</p> : null}
+          {data && data.players.length === 0 ? (
+            <p className="border-t border-white/5 px-4 py-8 text-center text-slate-300">
+              {mode === "pairings" ? "No completed doubles pairings have been recorded for this league yet." : `No completed ${mode} frames have been recorded for this league yet.`}
+            </p>
+          ) : null}
         </section>
       </div>
     </main>
