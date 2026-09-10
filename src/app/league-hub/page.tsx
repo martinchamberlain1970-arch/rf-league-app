@@ -323,6 +323,7 @@ export default function LeagueHubPage() {
           <div className="mt-4 flex flex-wrap items-center gap-2 text-xs font-bold uppercase tracking-wide">
             <span className="rounded-full border border-emerald-300/30 bg-emerald-400/10 px-3 py-1 text-emerald-100">Published information</span>
             <span className="rounded-full border border-white/15 bg-white/5 px-3 py-1 text-slate-200">Updated {updatedAt || "--:--"}</span>
+            <a href="/hall-of-fame" className="rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-amber-100 hover:bg-amber-300/15">Hall of Fame</a>
           </div>
         </header>
 

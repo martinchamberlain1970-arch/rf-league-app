@@ -20,6 +20,7 @@ const links = [
   { href: "/live-matches", title: "Live Matches", desc: "Follow tonight's live league scorecards inside the app." },
   { href: "/handicaps", title: "Handicaps", desc: "See the snooker handicap list and how starts are worked out." },
   { href: "/high-breaks", title: "High Breaks", desc: "View the published league high-break table." },
+  { href: "/hall-of-fame", title: "Hall of Fame", desc: "Explore historic league champions, competition winners and season high breaks." },
   { href: "/captain-results", title: "Lineups & Results", desc: "Enter your pre-match lineup first, then submit your fixture result for approval." },
   { href: "/reschedule-fixture", title: "Reschedule Fixture", desc: "Request permission to play early or, exceptionally, later." },
   { href: "/events?view=league", title: "Match Centre", desc: "View your live league fixtures, results, and match reports." },
@@ -123,6 +124,7 @@ export default function HomePage() {
         "/league-invoices",
         "/league-officer-guide",
         "/high-breaks",
+        "/hall-of-fame",
         "/signups",
         "/documents",
         "/notifications",
@@ -147,7 +149,7 @@ export default function HomePage() {
       // Admins still see these cards, but they can be disabled per-account.
       return true;
     }
-    return ["/events", "/league", "/live-matches", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/signups", "/documents", "/help", "/legal", "/notifications"].includes(route);
+    return ["/events", "/league", "/live-matches", "/handicaps", "/high-breaks", "/hall-of-fame", "/captain-results", "/reschedule-fixture", "/signups", "/documents", "/help", "/legal", "/notifications"].includes(route);
   };
 
   const visibleLinks = links.filter((item) => isVisibleLink(item.href));
@@ -164,10 +166,10 @@ export default function HomePage() {
   const primaryHrefs = admin.isSuper
       ? ["/entry-packs", "/league-invoices", "/signup-requests", "/players", "/notifications", "/league", "/results", "/reschedule-fixture", "/rating-audit", "/backup", "/signups", "/announcements", "/legal"]
     : admin.canManageLeague
-      ? ["/league", "/entry-packs", "/league-invoices", "/results", "/league-officer-guide", "/reschedule-fixture", "/handicaps", "/rating-audit", "/players", "/signup-requests", "/signups", "/documents", "/announcements", "/notifications", "/live-matches", "/high-breaks", "/help", "/legal"]
+      ? ["/league", "/entry-packs", "/league-invoices", "/results", "/league-officer-guide", "/reschedule-fixture", "/handicaps", "/rating-audit", "/players", "/signup-requests", "/signups", "/documents", "/announcements", "/notifications", "/live-matches", "/high-breaks", "/hall-of-fame", "/help", "/legal"]
     : admin.isAdmin
-      ? ["/league", "/live-matches", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/quick-match", "/events/new", "/signups", "/help", "/legal"]
-      : ["/league", "/live-matches", "/handicaps", "/high-breaks", "/captain-results", "/reschedule-fixture", "/events", "/notifications", "/signups", "/help", "/legal"];
+      ? ["/league", "/live-matches", "/handicaps", "/high-breaks", "/hall-of-fame", "/captain-results", "/reschedule-fixture", "/events", "/quick-match", "/events/new", "/signups", "/help", "/legal"]
+      : ["/league", "/live-matches", "/handicaps", "/high-breaks", "/hall-of-fame", "/captain-results", "/reschedule-fixture", "/events", "/notifications", "/signups", "/help", "/legal"];
   const quickAccessHrefs = admin.isSuper
     ? ["/audit", "/rating-audit", "/usage"]
     : admin.isAdmin
@@ -239,7 +241,7 @@ export default function HomePage() {
       {
         title: "Competitions & match information",
         description: "Competition entries, live play, published records and documents.",
-        prefixes: ["/signups", "/events", "/live-matches", "/high-breaks", "/documents", "/quick-match"],
+        prefixes: ["/signups", "/events", "/live-matches", "/high-breaks", "/hall-of-fame", "/documents", "/quick-match"],
       },
       {
         title: "People & communications",

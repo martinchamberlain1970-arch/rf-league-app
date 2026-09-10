@@ -43,6 +43,7 @@ const navigationGroups: NavigationGroup[] = [
       { href: "/league-hub?tab=players", label: "Player standings" },
       { href: "/handicaps", label: "Published handicaps" },
       { href: "/high-breaks", label: "High breaks" },
+      { href: "/hall-of-fame", label: "Hall of Fame" },
       { href: "/league-hub", label: "Public league hub" },
     ],
   },
@@ -106,6 +107,7 @@ const alwaysBarePrefixes = [
   "/handicap-consultation/",
   "/premier-handicaps/",
   "/egm-vote/",
+  "/hall-of-fame",
   "/offline",
 ];
 
