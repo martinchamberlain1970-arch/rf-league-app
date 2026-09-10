@@ -38,6 +38,14 @@ type FixtureRow = {
   away_points: number | null;
 };
 
+type FixtureChangeRow = {
+  fixture_id: string;
+  original_fixture_date: string | null;
+  agreed_fixture_date: string | null;
+  status: string;
+  created_at: string;
+};
+
 export async function GET(req: NextRequest) {
   if (!supabaseUrl || !serviceRoleKey) {
     return json({ error: "Server configuration missing." }, 500);
@@ -147,7 +155,7 @@ export async function GET(req: NextRequest) {
     return json({ seasons: [], season: null, fixtures: [] });
   }
 
-  const [teamsRes, fixturesRes] = await Promise.all([
+  const [teamsRes, fixturesRes, fixtureChangesRes] = await Promise.all([
     adminClient
       .from("league_teams")
       .select("id,name,is_active")
@@ -159,9 +167,14 @@ export async function GET(req: NextRequest) {
       .order("week_no", { ascending: true })
       .order("fixture_date", { ascending: true })
       .order("id", { ascending: true }),
+    adminClient
+      .from("league_fixture_change_requests")
+      .select("fixture_id,original_fixture_date,agreed_fixture_date,status,created_at")
+      .eq("status", "rescheduled")
+      .order("created_at", { ascending: false }),
   ]);
 
-  const firstError = teamsRes.error?.message || fixturesRes.error?.message;
+  const firstError = teamsRes.error?.message || fixturesRes.error?.message || fixtureChangesRes.error?.message;
   if (firstError) {
     return json({ error: firstError }, 500);
   }
@@ -170,6 +183,12 @@ export async function GET(req: NextRequest) {
   const activeTeams = teams.filter((team) => team.is_active !== false);
   const teamNameById = new Map(teams.map((team) => [team.id, team.name]));
   const fixtures = (fixturesRes.data ?? []) as FixtureRow[];
+  const latestRescheduleByFixtureId = new Map<string, FixtureChangeRow>();
+  for (const change of (fixtureChangesRes.data ?? []) as FixtureChangeRow[]) {
+    if (!latestRescheduleByFixtureId.has(change.fixture_id)) {
+      latestRescheduleByFixtureId.set(change.fixture_id, change);
+    }
+  }
 
   const byeFixtures = activeTeams.length % 2 === 1
     ? Array.from(new Set(fixtures.map((fixture) => fixture.week_no).filter((week): week is number => week !== null))).flatMap((weekNo) => {
@@ -196,15 +215,25 @@ export async function GET(req: NextRequest) {
       : seasons.map(({ id, name }) => ({ id, name })),
     season: { id: selectedSeason.id, name: selectedSeason.name },
     isDraftPreview,
-    fixtures: [...fixtures.map((fixture) => ({
-      id: fixture.id,
-      fixtureDate: fixture.fixture_date,
-      weekNo: fixture.week_no,
-      homeTeam: teamNameById.get(fixture.home_team_id) ?? "Home team",
-      awayTeam: teamNameById.get(fixture.away_team_id) ?? "Away team",
-      status: fixture.status,
-      homePoints: fixture.home_points,
-      awayPoints: fixture.away_points,
-    })), ...byeFixtures].sort((left, right) => (left.weekNo ?? 0) - (right.weekNo ?? 0)),
+    fixtures: [...fixtures.map((fixture) => {
+      const reschedule = latestRescheduleByFixtureId.get(fixture.id) ?? null;
+      return {
+        id: fixture.id,
+        fixtureDate: fixture.fixture_date,
+        weekNo: fixture.week_no,
+        homeTeam: teamNameById.get(fixture.home_team_id) ?? "Home team",
+        awayTeam: teamNameById.get(fixture.away_team_id) ?? "Away team",
+        status: fixture.status,
+        homePoints: fixture.home_points,
+        awayPoints: fixture.away_points,
+        reschedule: reschedule?.original_fixture_date && reschedule.agreed_fixture_date
+          ? {
+              originalFixtureDate: reschedule.original_fixture_date,
+              agreedFixtureDate: reschedule.agreed_fixture_date,
+              direction: reschedule.agreed_fixture_date < reschedule.original_fixture_date ? "earlier" : "later",
+            }
+          : null,
+      };
+    }), ...byeFixtures].sort((left, right) => (left.weekNo ?? 0) - (right.weekNo ?? 0)),
   });
 }

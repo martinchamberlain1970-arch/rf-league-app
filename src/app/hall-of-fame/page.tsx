@@ -68,8 +68,8 @@ const teamHonours: HonourRow[] = [
 ];
 
 const highestBreaks: HonourRow[] = [
-  { season: "2025-26", values: ["Martin Chamberlain", "104 - Scratch Doubles"] },
-  { season: "2024-25", values: ["Harry Compton", "72"] },
+  { season: "2025-26", values: ["Amrik Cheema", "100 - League fixture"] },
+  { season: "2024-25", values: ["Martin Chamberlain", "104 - Scratch Doubles"] },
   { season: "2023-24", values: ["Jordan Church", "97"] },
   { season: "2022-23", values: ["Steve Hartley", "96"] },
   { season: "2021-22", values: ["Steve Hartley", "85"] },
@@ -175,10 +175,9 @@ export default function HallOfFamePage() {
           </div>
           <div className="mt-4 rounded-2xl border border-amber-300/20 bg-amber-300/10 p-4">
             <p className="text-xs font-bold uppercase tracking-wider text-amber-200">Highest break 2025-26</p>
-            <div className="mt-3 grid gap-3 sm:grid-cols-3">
+            <div className="mt-3 grid gap-3 sm:grid-cols-2">
               <div><p className="text-xs font-bold uppercase tracking-wider text-amber-100/75">League fixture</p><p className="mt-1 text-xl font-black text-white">Amrik Cheema <span className="text-amber-300">100</span></p></div>
-              <div><p className="text-xs font-bold uppercase tracking-wider text-amber-100/75">Competition</p><p className="mt-1 text-xl font-black text-white">Martin Chamberlain <span className="text-amber-300">104</span></p><p className="mt-1 text-xs text-amber-100/75">Scratch Doubles</p></div>
-              <div><p className="text-xs font-bold uppercase tracking-wider text-amber-100/75">Overall season</p><p className="mt-1 text-xl font-black text-white">Martin Chamberlain <span className="text-amber-300">104</span></p></div>
+              <div><p className="text-xs font-bold uppercase tracking-wider text-amber-100/75">Overall season</p><p className="mt-1 text-xl font-black text-white">Amrik Cheema <span className="text-amber-300">100</span></p></div>
             </div>
           </div>
         </section>

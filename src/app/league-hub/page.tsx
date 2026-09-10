@@ -18,6 +18,11 @@ type PublicFixture = {
   status: "pending" | "in_progress" | "complete" | "bye";
   homePoints: number | null;
   awayPoints: number | null;
+  reschedule?: {
+    originalFixtureDate: string;
+    agreedFixtureDate: string;
+    direction: "earlier" | "later";
+  } | null;
 };
 
 type LeagueRow = {
@@ -160,7 +165,19 @@ function FixturesPanel({ groups, results = false }: { groups: FixtureGroup[]; re
           <div className="divide-y divide-white/5">
             {group.fixtures.map((fixture) => (
               <article key={fixture.id} className="grid gap-2 px-4 py-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-                <p className="text-base font-bold text-white sm:text-right sm:text-lg">{fixture.homeTeam}</p>
+                <div className="sm:text-right">
+                  <p className="text-base font-bold text-white sm:text-lg">{fixture.homeTeam}</p>
+                  {fixture.reschedule ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2 sm:justify-end">
+                      <span className="inline-flex rounded-full border border-amber-300/30 bg-amber-400/10 px-2.5 py-1 text-[0.68rem] font-bold uppercase tracking-wide text-amber-100">
+                        {fixture.reschedule.direction === "earlier" ? "Brought forward" : "Rescheduled"}
+                      </span>
+                      <span className="text-xs font-medium text-cyan-100">Now {formatFixtureDate(fixture.fixtureDate)}</span>
+                    </div>
+                  ) : fixture.fixtureDate !== group.fixtureDate ? (
+                    <p className="mt-1 text-xs font-medium text-cyan-100">{formatFixtureDate(fixture.fixtureDate)}</p>
+                  ) : null}
+                </div>
                 <div className="min-w-20 text-center">
                   {fixture.status === "bye" ? (
                     <span className="inline-flex rounded-full bg-cyan-400/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-cyan-100">BYE</span>
@@ -174,7 +191,12 @@ function FixturesPanel({ groups, results = false }: { groups: FixtureGroup[]; re
                     <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">vs</span>
                   )}
                 </div>
-                <p className="text-base font-bold text-white sm:text-lg">{fixture.awayTeam}</p>
+                <div>
+                  <p className="text-base font-bold text-white sm:text-lg">{fixture.awayTeam}</p>
+                  {fixture.reschedule ? (
+                    <p className="mt-2 text-xs text-slate-300">Originally {formatFixtureDate(fixture.reschedule.originalFixtureDate)}</p>
+                  ) : null}
+                </div>
               </article>
             ))}
           </div>
