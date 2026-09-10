@@ -39,6 +39,13 @@ type Payload = {
     lines: string[];
   } | null;
   fixtures: FixtureReport[];
+  deferredFixtures?: Array<{
+    id: string;
+    dateLabel: string;
+    home: string;
+    away: string;
+    note: string;
+  }>;
   error?: string;
 };
 
@@ -51,12 +58,16 @@ type EloHandicapChange = {
   nextHandicap: number;
   handicapChangedThisWeek: boolean;
   ratedFrames: number;
+  target: number;
+  illustrativeHandicap: number;
   reason: string;
 };
 
 type EloHandicapPayload = {
   season: { id: string; name: string } | null;
   week: number | null;
+  isInformationOnly?: boolean;
+  reviewNote?: string | null;
   changes: EloHandicapChange[];
   error?: string;
 };
@@ -230,24 +241,46 @@ export default function PublicWeeklyReportPage() {
           </section>
         )}
 
-        {!isDivisionOne ? (
-          <section className="rounded-3xl border border-amber-300/20 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
+        {(data?.deferredFixtures ?? []).length > 0 ? (
+          <section className="rounded-3xl border border-sky-300/30 bg-sky-400/10 p-5 text-sky-50 shadow-2xl shadow-black/20">
+            <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sky-300">
+              Deferred fixture
+            </p>
+            {(data?.deferredFixtures ?? []).map((fixture) => (
+              <div key={fixture.id} className="mt-3">
+                <p className="font-semibold">{fixture.home} vs {fixture.away}</p>
+                <p className="mt-1 text-sm text-sky-100">{fixture.note}</p>
+              </div>
+            ))}
+          </section>
+        ) : null}
+
+        <section className={`rounded-3xl border bg-slate-900/80 p-5 shadow-2xl shadow-black/20 ${isDivisionOne ? "border-violet-300/20" : "border-amber-300/20"}`}>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-amber-300">
-                  Elo &amp; Handicap Review
+                  {isDivisionOne ? "Elo & Indicative Handicap Review" : "Elo & Handicap Review"}
                 </p>
                 <h2 className="mt-2 text-2xl font-bold text-white">
                   Week {eloHandicapData?.week ?? data?.week ?? "-"} changes
                 </h2>
                 <p className="mt-2 text-sm text-slate-300">
-                  Elo changes are calculated from eligible completed singles and doubles frames. Nominated-player, no-show and void frames are excluded. Playing handicaps show the scheduled Proposal 2 review outcome.
+                  {isDivisionOne
+                    ? "Elo changes are calculated from eligible completed singles and doubles frames. The indicative handicap is supplied for information only; every Division 1 frame remains scratch."
+                    : "Elo changes are calculated from eligible completed singles and doubles frames. Nominated-player, no-show and void frames are excluded. Playing handicaps show the scheduled Proposal 2 review outcome."}
                 </p>
               </div>
               <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-semibold text-amber-100">
                 {(eloHandicapData?.changes ?? []).length} players changed Elo
               </span>
             </div>
+
+            {eloHandicapData?.reviewNote ? (
+              <div className="mt-5 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm leading-6 text-amber-50">
+                <p className="font-semibold">Why some Week 1 handicap movements look unusually large</p>
+                <p className="mt-1">{eloHandicapData.reviewNote}</p>
+              </div>
+            ) : null}
 
             {eloHandicapData?.error ? (
               <p className="mt-4 rounded-2xl border border-rose-400/40 bg-rose-500/10 p-4 text-sm text-rose-100">
@@ -265,7 +298,7 @@ export default function PublicWeeklyReportPage() {
                       <th className="px-4 py-3">Player</th>
                       <th className="px-4 py-3">Elo</th>
                       <th className="px-4 py-3">Frames</th>
-                      <th className="px-4 py-3">Handicap</th>
+                      <th className="px-4 py-3">{isDivisionOne ? "Scratch / indicative" : "Handicap"}</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-white/10">
@@ -280,10 +313,21 @@ export default function PublicWeeklyReportPage() {
                         <td className="whitespace-nowrap px-4 py-3 text-cyan-100">{row.previous} → {row.next}</td>
                         <td className="px-4 py-3 text-slate-300">{row.ratedFrames}</td>
                         <td className="whitespace-nowrap px-4 py-3 text-amber-100">
-                          {signed(row.previousHandicap)} → {signed(row.nextHandicap)}
-                          <span className="ml-2 text-xs text-slate-400">
-                            {row.handicapChangedThisWeek ? "changed" : "unchanged"}
-                          </span>
+                          {isDivisionOne ? (
+                            <>
+                              Scratch
+                              <span className="ml-2 text-xs text-slate-400">
+                                indicative {signed(row.illustrativeHandicap ?? row.target)}
+                              </span>
+                            </>
+                          ) : (
+                            <>
+                              {signed(row.previousHandicap)} → {signed(row.nextHandicap)}
+                              <span className="ml-2 text-xs text-slate-400">
+                                {row.handicapChangedThisWeek ? "changed" : "unchanged"}
+                              </span>
+                            </>
+                          )}
                         </td>
                       </tr>
                     ))}
@@ -292,7 +336,6 @@ export default function PublicWeeklyReportPage() {
               </div>
             )}
           </section>
-        ) : null}
 
         <section className="space-y-4">
           {(data?.fixtures ?? []).map((fixture) => (

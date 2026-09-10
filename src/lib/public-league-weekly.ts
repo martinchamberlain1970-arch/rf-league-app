@@ -144,6 +144,22 @@ function fmtDate(dateStr?: string | null) {
   });
 }
 
+function isReportableWeek(fixtures: FixtureRow[], week: number) {
+  const weekFixtures = fixtures.filter((fixture) => fixture.week_no === week);
+  const completedDates = weekFixtures
+    .filter((fixture) => fixture.status === "complete" && fixture.fixture_date)
+    .map((fixture) => fixture.fixture_date as string)
+    .sort();
+  const latestCompletedDate = completedDates.at(-1) ?? null;
+  if (!latestCompletedDate) return false;
+  return weekFixtures.every(
+    (fixture) =>
+      fixture.status === "complete" ||
+      fixture.status === "bye" ||
+      (fixture.status === "pending" && Boolean(fixture.fixture_date) && fixture.fixture_date! > latestCompletedDate)
+  );
+}
+
 export function getPublicLeagueAdminClient(): SupabaseClient {
   if (!supabaseUrl || !serviceRoleKey) {
     throw new Error("Server configuration missing.");
@@ -230,7 +246,7 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
       fixtures
         .filter((fixture) => fixture.week_no !== null)
         .map((fixture) => fixture.week_no as number)
-        .filter((week) => fixtures.filter((fixture) => fixture.week_no === week).every((fixture) => fixture.status === "complete" || fixture.status === "bye"))
+        .filter((week) => isReportableWeek(fixtures, week))
     )
   ).sort((a, b) => b - a);
   const selectedWeek = weekNo ?? completeWeeks[0] ?? null;
@@ -243,10 +259,10 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
     };
   }
 
-  const weekFixtures = fixtures
+  const scheduledWeekFixtures = fixtures
     .filter((fixture) => fixture.week_no === selectedWeek)
     .sort((a, b) => (a.fixture_date ?? "").localeCompare(b.fixture_date ?? ""));
-  if (!weekFixtures.length) {
+  if (!scheduledWeekFixtures.length) {
     return {
       season,
       week: selectedWeek,
@@ -266,6 +282,17 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
     list.push(player);
     playersByTeam.set(member.team_id, list);
   }
+  const weekFixtures = scheduledWeekFixtures.filter((fixture) => fixture.status === "complete");
+  const deferredFixtures = scheduledWeekFixtures
+    .filter((fixture) => fixture.status !== "complete" && fixture.status !== "bye")
+    .map((fixture) => ({
+      id: fixture.id,
+      date: fixture.fixture_date,
+      dateLabel: fmtDate(fixture.fixture_date),
+      home: teamById.get(fixture.home_team_id) ?? "Home",
+      away: teamById.get(fixture.away_team_id) ?? "Away",
+      note: `Not included in this round-up; due to be played on ${fmtDate(fixture.fixture_date)}.`,
+    }));
 
   const teamStats = new Map<string, TeamStats>();
   for (const team of teams) {
@@ -570,6 +597,7 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
       lines: fixtureRows.map((fixture) => `${fixture.home} ${fixture.score} ${fixture.away}`),
     },
     fixtures: fixtureRows,
+    deferredFixtures,
   };
 }
 
@@ -621,11 +649,7 @@ export async function buildPublicWeeklyHandicapReview(
       fixtures
         .filter((fixture) => fixture.week_no !== null)
         .map((fixture) => fixture.week_no as number)
-        .filter((week) =>
-          fixtures
-            .filter((fixture) => fixture.week_no === week)
-            .every((fixture) => fixture.status === "complete" || fixture.status === "bye")
-        )
+        .filter((week) => isReportableWeek(fixtures, week))
     )
   ).sort((a, b) => b - a);
   const selectedWeek = weekNo ?? completeWeeks[0] ?? null;
@@ -643,7 +667,9 @@ export async function buildPublicWeeklyHandicapReview(
     };
   }
 
-  const weekFixtures = fixtures.filter((fixture) => fixture.week_no === selectedWeek);
+  const weekFixtures = fixtures.filter(
+    (fixture) => fixture.week_no === selectedWeek && fixture.status === "complete"
+  );
   const fixtureIds = new Set(weekFixtures.map((fixture) => fixture.id));
   const weekFrames = frames.filter((frame) => fixtureIds.has(frame.fixture_id));
   const weekFrameSourceIds = frames
@@ -713,13 +739,14 @@ export async function buildPublicWeeklyHandicapReview(
   }
 
   const isInformationOnly = /division\s*1/i.test(season.name);
-  const changes = players
+  const allChanges = players
     .filter((player) => leaguePlayerIds.has(player.id))
     .map((player) => {
       const currentHandicap = Number(player.snooker_handicap ?? 0);
       const currentRating = Math.round(Number(player.rating_snooker ?? 1000));
       const delta = Math.round(deltaByPlayer.get(player.id) ?? 0);
       const startingRating = currentRating - delta;
+      const startingTarget = targetHandicapFromElo(startingRating);
       const target = targetHandicapFromElo(currentRating);
       const handicapChange = handicapChangeByPlayer.get(player.id) ?? null;
       const ratedFrames = ratedFramesByPlayer.get(player.id) ?? 0;
@@ -797,24 +824,35 @@ export async function buildPublicWeeklyHandicapReview(
         baseline: Number(player.snooker_handicap_base ?? currentHandicap),
         rating: currentRating,
         target,
+        startingTarget,
+        illustrativeHandicap: target,
         changedThisWeek: delta !== 0,
         ratedFrames,
         reason:
           delta > 0
-            ? `${name} moved from ${startingRating} to ${currentRating}, gaining ${delta} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${frameSummary ? `${frameSummary} ` : ""}${isInformationOnly ? "Division 1 Elo is for information only; matches remain scratch." : `The current playing handicap is ${formatSigned(currentHandicap)}, based on the current Elo banding.`}`
+            ? `${name} moved from ${startingRating} to ${currentRating}, gaining ${delta} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${frameSummary ? `${frameSummary} ` : ""}${isInformationOnly ? `The information-only Elo would indicate ${formatSigned(target)}, but every Division 1 match is played off scratch.` : `The current playing handicap is ${formatSigned(currentHandicap)}, based on the current Elo banding.`}`
             : delta < 0
-              ? `${name} moved from ${startingRating} to ${currentRating}, losing ${Math.abs(delta)} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${frameSummary ? `${frameSummary} ` : ""}${isInformationOnly ? "Division 1 Elo is for information only; matches remain scratch." : `The current playing handicap is ${formatSigned(currentHandicap)}, based on the current Elo banding.`}`
-              : `${name} stayed at ${currentRating} Elo this week with no Elo movement recorded. ${isInformationOnly ? "Division 1 Elo is for information only; matches remain scratch." : `The current playing handicap is ${formatSigned(currentHandicap)}, based on the current Elo banding.`}`,
+              ? `${name} moved from ${startingRating} to ${currentRating}, losing ${Math.abs(delta)} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${frameSummary ? `${frameSummary} ` : ""}${isInformationOnly ? `The information-only Elo would indicate ${formatSigned(target)}, but every Division 1 match is played off scratch.` : `The current playing handicap is ${formatSigned(currentHandicap)}, based on the current Elo banding.`}`
+              : `${name} stayed at ${currentRating} Elo this week with no Elo movement recorded. ${isInformationOnly ? `The information-only Elo would indicate ${formatSigned(target)}, but every Division 1 match is played off scratch.` : `The current playing handicap is ${formatSigned(currentHandicap)}, based on the current Elo banding.`}`,
       };
-    })
-    .filter((row) => row.changedThisWeek)
+    });
+  const changes = allChanges
+    .filter((row) => row.changedThisWeek || row.handicapChangedThisWeek)
     .sort((a, b) => b.rating - a.rating || a.name.localeCompare(b.name));
+  const transitionMismatchCount = allChanges.filter(
+    (row) => row.handicapChangedThisWeek && row.previousHandicap !== row.startingTarget
+  ).length;
+  const reviewNote =
+    !isInformationOnly && selectedWeek === 1 && transitionMismatchCount > 0
+      ? `Week 1 transition: ${transitionMismatchCount} players began with a restored playing handicap that did not match the handicap band implied by their restored Elo. Proposal 2 restored the last validated pre-reset Elo and the previous playing handicap as separate historical values. The records confirm those values were not aligned for every player; this can occur when Elo results and formal handicap reviews were last applied at different times. This first review therefore removes that inherited gap as well as reflecting Week 1 results. It is not all movement caused by one night of play.`
+      : null;
 
   return {
     season,
     isInformationOnly,
     batchTime: latestBatchTime,
     week: selectedWeek,
+    reviewNote,
     changes,
   };
 }

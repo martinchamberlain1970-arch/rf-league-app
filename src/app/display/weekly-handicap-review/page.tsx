@@ -16,6 +16,8 @@ type ChangeRow = {
   rating: number;
   changedThisWeek: boolean;
   ratedFrames: number;
+  target: number;
+  illustrativeHandicap: number;
   reason: string;
 };
 
@@ -25,6 +27,7 @@ type Payload = {
   isInformationOnly?: boolean;
   batchTime: string | null;
   week: number | null;
+  reviewNote?: string | null;
   changes: ChangeRow[];
   error?: string;
 };
@@ -122,7 +125,14 @@ export default function PublicWeeklyHandicapReviewPage() {
 
         {data?.isInformationOnly ? (
           <section className="rounded-2xl border border-violet-400/30 bg-violet-500/10 p-4 text-sm text-violet-100">
-            Division 1 Elo is for information only and does not transfer into the Premier League. Promotion does not carry a Division 1 Elo figure into Premier handicapping; the League must separately assess and approve each promoted player&apos;s Premier starting handicap and rating.
+            Division 1 Elo and its indicative handicap are for information only. Every Division 1 frame remains scratch, and these figures do not transfer into Premier handicapping. The League must separately assess and approve each promoted player&apos;s Premier starting handicap and rating.
+          </section>
+        ) : null}
+
+        {data?.reviewNote ? (
+          <section className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm leading-6 text-amber-50">
+            <p className="font-semibold">Why some Week 1 handicap movements look unusually large</p>
+            <p className="mt-1">{data.reviewNote}</p>
           </section>
         ) : null}
 
@@ -162,30 +172,36 @@ export default function PublicWeeklyHandicapReviewPage() {
                 </div>
               </div>
 
-              <div className={`mt-5 grid gap-3 ${data?.isInformationOnly ? "sm:grid-cols-2" : "sm:grid-cols-3"}`}>
+              <div className="mt-5 grid gap-3 sm:grid-cols-3">
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
                     Elo (Previous Week)
                   </p>
                   <p className="mt-2 text-2xl font-bold text-white">{row.previous}</p>
                 </div>
-                {!data?.isInformationOnly ? <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
+                <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
                     Elo (After Week)
                   </p>
                   <p className="mt-2 text-2xl font-bold text-white">
                     {row.next}
                   </p>
-                </div> : null}
+                </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    Playing Handicap Change
+                    {data?.isInformationOnly ? "Indicative Handicap" : "Playing Handicap Change"}
                   </p>
                   <p className="mt-2 text-2xl font-bold text-white">
-                    {formatHandicap(row.previousHandicap)} → {formatHandicap(row.nextHandicap)}
+                    {data?.isInformationOnly
+                      ? `${formatHandicap(row.illustrativeHandicap ?? row.target)} (scratch play)`
+                      : `${formatHandicap(row.previousHandicap)} → ${formatHandicap(row.nextHandicap)}`}
                   </p>
                   <p className="mt-1 text-xs text-slate-400">
-                    {row.handicapChangedThisWeek ? "Changed at the scheduled weekly review" : "No handicap band change"}
+                    {data?.isInformationOnly
+                      ? "Information only; not applied to Division 1 matches"
+                      : row.handicapChangedThisWeek
+                        ? "Changed at the scheduled weekly review"
+                        : "No handicap band change"}
                   </p>
                 </div>
               </div>
