@@ -558,7 +558,7 @@ export default function CaptainResultsPage() {
         ? "Home lineup has been sent, but you can still reopen it before 19:15 if a late change is needed."
       : homeLineupSubmitted
         ? "Home lineup has been sent. Away captain should now complete and confirm the lineup."
-        : "Home captain should enter slots 1-6 first and send them to the opponent.";
+        : `Home captain should enter frames 1-${slots.length || 5} first and send them to the opponent.`;
   const draftStorageKey = selectedFixture ? `rf_league_captain_draft_${selectedFixture.id}` : null;
   useEffect(() => {
     if (!selectedFixtureId) return;
@@ -2266,86 +2266,6 @@ export default function CaptainResultsPage() {
                           <p className="text-violet-800"><strong>Proxy entry active.</strong> One captain or vice-captain can enter both teams and submit the final result for this fixture by agreement.</p>
                         ) : null}
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        {selectedFixtureSide === "home" && lineupWindowOpen && !awayLineupSubmitted ? (
-                          <button
-                            type="button"
-                            onClick={saveLineupDraft}
-                            disabled={submitting}
-                            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
-                          >
-                            Save lineup draft
-                          </button>
-                        ) : null}
-                        {canEnableProxyEntry ? (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              if (await showConfirm({
-                                title: "Enable agreed proxy entry?",
-                                description: "Use this only when both teams agree that one captain or vice-captain will enter both lineups and the final result in Rack & Frame.",
-                                confirmLabel: "Enable proxy entry",
-                              })) void enableProxyEntry();
-                            }}
-                            disabled={submitting}
-                            className="rounded-xl border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-900"
-                          >
-                            Use agreed proxy entry
-                          </button>
-                        ) : null}
-                        {canSubmitHomeLineup ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => void submitLineupForSide("home")}
-                              disabled={submitting}
-                              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
-                            >
-                              {submitting ? "Saving..." : proxyEntryEnabled ? "Submit home lineup by agreement" : "Submit team to opponent"}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={async () => {
-                                if (await showConfirm({
-                                  title: "Use a paper record?",
-                                  description: "This fixture will use a paper pre-match card instead of the normal digital lineup process.",
-                                  confirmLabel: "Use paper record",
-                                })) void markPaperLineup();
-                              }}
-                              disabled={submitting}
-                              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
-                            >
-                              Use paper record instead
-                            </button>
-                          </>
-                        ) : null}
-                        {canEditSubmittedHomeLineup ? (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              if (await showConfirm({
-                                title: "Reopen the home lineup?",
-                                description: "The submitted home lineup will reopen for editing. This is only available before 19:15 and before the away team confirms its lineup.",
-                                confirmLabel: "Reopen lineup",
-                              })) void reopenSubmittedHomeLineup();
-                            }}
-                            disabled={submitting}
-                            className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900"
-                          >
-                            Edit submitted home lineup
-                          </button>
-                        ) : null}
-                        {canSubmitAwayLineup ? (
-                          <button
-                            type="button"
-                            onClick={() => void submitLineupForSide("away")}
-                            disabled={submitting}
-                            className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700"
-                          >
-                            {submitting ? "Saving..." : proxyEntryEnabled ? "Confirm both lineups by agreement" : "Submit and confirm lineup"}
-                          </button>
-                        ) : null}
-                      </div>
                     </div>
                   </div>
                   {activeEntryTab === "lineup" ? (
@@ -2376,7 +2296,7 @@ export default function CaptainResultsPage() {
                               {homeLineupStepLabel}
                             </span>
                           </div>
-                          <p className="mt-2 text-sm text-slate-700">{proxyEntryEnabled ? "Enter the home lineup first so the fixture order stays consistent before you confirm both teams." : "Slots 1-6 should be submitted to the opponent by 19:15."}</p>
+                          <p className="mt-2 text-sm text-slate-700">{proxyEntryEnabled ? "Enter the home lineup first so the fixture order stays consistent before you confirm both teams." : `Frames 1-${slots.length} should be submitted to the opponent by 19:15.`}</p>
                         </div>
                         <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
                           <div className="flex items-center justify-between gap-3">
@@ -2484,6 +2404,40 @@ export default function CaptainResultsPage() {
                             </div>
                           );
                         })}
+                      </div>
+                      <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50/70 p-3">
+                        <p className="text-sm font-semibold text-slate-900">Lineup actions</p>
+                        <p className="mt-1 text-xs text-slate-600">Review all five frames above, then choose the appropriate next action.</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {selectedFixtureSide === "home" && lineupWindowOpen && !awayLineupSubmitted ? (
+                            <button type="button" onClick={saveLineupDraft} disabled={submitting} className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">Save lineup draft</button>
+                          ) : null}
+                          {canEnableProxyEntry ? (
+                            <button type="button" onClick={async () => {
+                              if (await showConfirm({ title: "Enable agreed proxy entry?", description: "Use this only when both teams agree that one captain or vice-captain will enter both lineups and the final result in Rack & Frame.", confirmLabel: "Enable proxy entry" })) void enableProxyEntry();
+                            }} disabled={submitting} className="rounded-xl border border-violet-300 bg-violet-50 px-4 py-2 text-sm font-medium text-violet-900">Use agreed proxy entry</button>
+                          ) : null}
+                          {canSubmitHomeLineup ? (
+                            <>
+                              <button type="button" onClick={() => void submitLineupForSide("home")} disabled={submitting} className="rounded-xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white">
+                                {submitting ? "Saving..." : proxyEntryEnabled ? "Submit home lineup by agreement" : "Submit team to opponent"}
+                              </button>
+                              <button type="button" onClick={async () => {
+                                if (await showConfirm({ title: "Use a paper record?", description: "This fixture will use a paper pre-match card instead of the normal digital lineup process.", confirmLabel: "Use paper record" })) void markPaperLineup();
+                              }} disabled={submitting} className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-medium text-slate-700">Use paper record instead</button>
+                            </>
+                          ) : null}
+                          {canEditSubmittedHomeLineup ? (
+                            <button type="button" onClick={async () => {
+                              if (await showConfirm({ title: "Reopen the home lineup?", description: "The submitted home lineup will reopen for editing. This is only available before 19:15 and before the away team confirms its lineup.", confirmLabel: "Reopen lineup" })) void reopenSubmittedHomeLineup();
+                            }} disabled={submitting} className="rounded-xl border border-amber-300 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900">Edit submitted home lineup</button>
+                          ) : null}
+                          {canSubmitAwayLineup ? (
+                            <button type="button" onClick={() => void submitLineupForSide("away")} disabled={submitting} className="rounded-xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white">
+                              {submitting ? "Saving..." : proxyEntryEnabled ? "Confirm both lineups by agreement" : "Submit and confirm lineup"}
+                            </button>
+                          ) : null}
+                        </div>
                       </div>
                     </section>
                   ) : null}
