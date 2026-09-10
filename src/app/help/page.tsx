@@ -92,9 +92,17 @@ export default function HelpPage() {
                   <p className="text-sm font-semibold text-emerald-900">Captain / Vice-captain Guide</p>
                   <p className="mt-1 text-sm text-emerald-800">The full operating guide for captains and vice-captains using lineups, notifications, and Captain Results.</p>
                 </div>
-                <Link href="/captain-guide" className="rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-100">
-                  Open captain guide
-                </Link>
+                <div className="flex flex-wrap gap-2">
+                  <Link href="/captain-guide" className="rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-100">
+                    Open online guide
+                  </Link>
+                  <a href="/guides/Rack-and-Frame-Captain-and-Vice-Captain-Guide-2026-27.docx" download className="rounded-xl border border-emerald-300 bg-white px-4 py-2 text-sm font-medium text-emerald-900 hover:bg-emerald-100">
+                    Download illustrated Word guide
+                  </a>
+                  <Link href="/captain-training" className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">
+                    Practise safely
+                  </Link>
+                </div>
               </div>
             </div>
             <div className="mt-3 rounded-xl border border-teal-200 bg-teal-50 p-4">
