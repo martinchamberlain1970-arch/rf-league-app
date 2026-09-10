@@ -141,18 +141,23 @@ export default function PublicLiveMatchesPage() {
   const matchPages = useMemo(() => chunkRows(data.liveMatches, MATCHES_PER_PAGE), [data.liveMatches]);
   const totalPages = Math.max(matchPages.length, 1);
   const visibleMatches = matchPages[Math.min(pageIndex, totalPages - 1)] ?? [];
+  const liveFixtureKey = useMemo(
+    () => data.liveMatches.map((match) => match.fixtureId).join("|"),
+    [data.liveMatches]
+  );
   const selectedMatch = useMemo(
     () => data.liveMatches.find((match) => match.fixtureId === selectedFixtureId) ?? data.liveMatches[0] ?? null,
     [data.liveMatches, selectedFixtureId]
   );
 
   useEffect(() => {
-    setPageIndex(0);
+    const liveFixtureIds = liveFixtureKey ? liveFixtureKey.split("|") : [];
+    setPageIndex((current) => Math.min(current, Math.max(liveFixtureIds.length - 1, 0)));
     setSelectedFixtureId((current) => {
-      if (current && data.liveMatches.some((match) => match.fixtureId === current)) return current;
-      return data.liveMatches[0]?.fixtureId ?? "";
+      if (current && liveFixtureIds.includes(current)) return current;
+      return liveFixtureIds[0] ?? "";
     });
-  }, [data.liveMatches]);
+  }, [liveFixtureKey]);
 
   useEffect(() => {
     if (totalPages <= 1) return;
