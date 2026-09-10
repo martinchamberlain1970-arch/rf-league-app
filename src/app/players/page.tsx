@@ -185,6 +185,7 @@ function PlayersPageContent() {
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [roleSearch, setRoleSearch] = useState("");
   const [roleFilter, setRoleFilter] = useState<"all" | "super" | "league_secretary" | "league_chairman" | "league_treasurer" | "admin" | "user">("all");
+  const [profileSearch, setProfileSearch] = useState("");
   const [profileLocationFilter, setProfileLocationFilter] = useState("all");
   const [profileLinkFilter, setProfileLinkFilter] = useState("all");
   const superAdminEmail = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL?.trim().toLowerCase() ?? "";
@@ -271,14 +272,18 @@ function PlayersPageContent() {
         : profileLocationFilter === "__none"
           ? activePlayers.filter((p) => !p.location_id)
           : activePlayers.filter((p) => p.location_id === profileLocationFilter);
-    if (profileLinkFilter === "linked") {
-      return byLocation.filter((p) => Boolean(p.claimed_by) || ((p.age_band ?? "18_plus") !== "18_plus" && Boolean(p.guardian_user_id)));
-    }
-    if (profileLinkFilter === "unlinked") {
-      return byLocation.filter((p) => !p.claimed_by && !((p.age_band ?? "18_plus") !== "18_plus" && p.guardian_user_id));
-    }
-    return byLocation;
-  }, [activePlayers, profileLocationFilter, profileLinkFilter]);
+    const byLink = profileLinkFilter === "linked"
+      ? byLocation.filter((p) => Boolean(p.claimed_by) || ((p.age_band ?? "18_plus") !== "18_plus" && Boolean(p.guardian_user_id)))
+      : profileLinkFilter === "unlinked"
+        ? byLocation.filter((p) => !p.claimed_by && !((p.age_band ?? "18_plus") !== "18_plus" && p.guardian_user_id))
+        : byLocation;
+    const search = profileSearch.trim().toLowerCase();
+    if (!search) return byLink;
+    return byLink.filter((p) => {
+      const location = p.location_id ? locationById.get(p.location_id) ?? "" : "";
+      return `${p.full_name ?? ""} ${p.display_name} ${location}`.toLowerCase().includes(search);
+    });
+  }, [activePlayers, profileLocationFilter, profileLinkFilter, profileSearch, locationById]);
   const loadPlayers = async () => {
     const client = supabase;
     if (!client) {
@@ -2175,6 +2180,13 @@ function PlayersPageContent() {
               <h2 className={sectionTitleClass}>Player Profiles</h2>
               <p className="mt-1 text-sm text-slate-600">Open a player profile to view their individual stats and matchup history.</p>
               <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                <input
+                  type="search"
+                  className="min-w-[220px] flex-1 rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
+                  placeholder="Search player or location"
+                  value={profileSearch}
+                  onChange={(e) => setProfileSearch(e.target.value)}
+                />
                 <label className="text-sm text-slate-700">Filter by location</label>
                 <select
                   className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm"
@@ -2290,7 +2302,7 @@ function PlayersPageContent() {
           {tab === "archived" && isSuperAdmin ? (
             <section className={sectionCardClass}>
               <h2 className={sectionTitleClass}>Archived ({archivedPlayers.length})</h2>
-              <div className="mt-3 space-y-2">
+              <div className="mt-3 max-h-[560px] space-y-2 overflow-y-auto pr-1">
                 {archivedPlayers.length === 0 ? <p className="text-sm text-slate-600">No archived players.</p> : null}
                 {archivedPlayers.map((p) => (
                   <div key={p.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 shadow-sm">

@@ -212,6 +212,9 @@ export default function NotificationsPage() {
   const [pushBusy, setPushBusy] = useState(false);
   const [emailStatus, setEmailStatus] = useState<EmailNotificationStatus | null>(null);
   const [emailBusy, setEmailBusy] = useState(false);
+  const [workspaceView, setWorkspaceView] = useState<"inbox" | "settings">("inbox");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [visibleLimit, setVisibleLimit] = useState(20);
 
   const dismissedKey = useMemo(
     () => (admin.userId ? `notifications_dismissed_${admin.userId}` : "notifications_dismissed"),
@@ -1160,6 +1163,14 @@ export default function NotificationsPage() {
     () => items.filter((n) => !dismissed.has(n.key) && !serverRead.has(n.key)),
     [items, dismissed, serverRead]
   );
+  const notificationStatuses = useMemo(
+    () => Array.from(new Set(visible.map((n) => n.status))).sort(),
+    [visible]
+  );
+  const filteredVisible = useMemo(
+    () => statusFilter === "all" ? visible : visible.filter((n) => n.status === statusFilter),
+    [statusFilter, visible]
+  );
 
   const statusClass = (status: string) => {
     if (status === "pending") return "border-amber-200 bg-amber-50 text-amber-800";
@@ -1175,17 +1186,27 @@ export default function NotificationsPage() {
         <RequireAuth>
           <ScreenHeader title="Notifications" eyebrow="Inbox" subtitle="Read and manage your notifications." />
           <section className={`${sectionCardClass} ${sectionCardTintClass}`}>
-            <p className="text-sm text-slate-700">
-              {admin.isSuper
-                ? "System-owner and league-operation notifications."
-                : admin.canManageLeague
-                  ? "League-operation notifications."
-                  : admin.isAdmin
-                  ? "Operational notifications."
-                  : "Your notifications."}
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-sm text-slate-700">
+                {admin.isSuper
+                  ? "System-owner and league-operation notifications."
+                  : admin.canManageLeague
+                    ? "League-operation notifications."
+                    : admin.isAdmin
+                    ? "Operational notifications."
+                    : "Your notifications."}
+              </p>
+              <div className="flex items-center gap-2">
+                <button type="button" onClick={() => setWorkspaceView("inbox")} className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${workspaceView === "inbox" ? "border-violet-700 bg-violet-700 text-white" : "border-slate-300 bg-white text-slate-700"}`}>
+                  Inbox ({visible.length})
+                </button>
+                <button type="button" onClick={() => setWorkspaceView("settings")} className={`rounded-full border px-3 py-1.5 text-sm font-semibold ${workspaceView === "settings" ? "border-violet-700 bg-violet-700 text-white" : "border-slate-300 bg-white text-slate-700"}`}>
+                  Settings
+                </button>
+              </div>
+            </div>
           </section>
-          <section className="space-y-5 rounded-2xl border border-violet-200 bg-violet-50 p-5 shadow-sm">
+          {workspaceView === "settings" ? <section className="space-y-5 rounded-2xl border border-violet-200 bg-violet-50 p-5 shadow-sm">
             <div className="flex flex-wrap items-center justify-between gap-4">
               <div>
                 <p className="font-semibold text-violet-950">Mobile notifications</p>
@@ -1250,10 +1271,24 @@ export default function NotificationsPage() {
                 <span className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition ${emailStatus?.emailEnabled ? "left-7" : "left-1"}`} />
               </button>
             </div>
-          </section>
-          <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <p className="text-sm text-slate-600">Notifications stay here until you delete them.</p>
+          </section> : null}
+          {workspaceView === "inbox" ? <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm text-slate-600">Notifications stay here until you delete them.</p>
+                <select
+                  aria-label="Filter notifications by status"
+                  value={statusFilter}
+                  onChange={(event) => {
+                    setStatusFilter(event.target.value);
+                    setVisibleLimit(20);
+                  }}
+                  className="rounded-lg border border-slate-300 bg-white px-2.5 py-1.5 text-sm text-slate-700"
+                >
+                  <option value="all">All statuses</option>
+                  {notificationStatuses.map((status) => <option key={status} value={status}>{status}</option>)}
+                </select>
+              </div>
               <button
                 type="button"
                 onClick={() => {
@@ -1268,8 +1303,8 @@ export default function NotificationsPage() {
             </div>
             <MessageModal message={message} onClose={() => setMessage(null)} />
             <div className="space-y-2">
-              {visible.length === 0 ? <p className="text-sm text-slate-600">No notifications.</p> : null}
-              {visible.map((n) => (
+              {filteredVisible.length === 0 ? <p className="text-sm text-slate-600">No notifications for this filter.</p> : null}
+              {filteredVisible.slice(0, visibleLimit).map((n) => (
                 <div key={n.key} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 bg-gradient-to-br from-white via-white to-cyan-50 px-3 py-2">
                   <Link href={n.href} className="min-w-[220px] flex-1">
                     <div className="mb-1 flex flex-wrap items-center gap-2">
@@ -1295,8 +1330,13 @@ export default function NotificationsPage() {
                   </button>
                 </div>
               ))}
+              {filteredVisible.length > visibleLimit ? (
+                <button type="button" onClick={() => setVisibleLimit((current) => current + 20)} className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700">
+                  Load 20 more
+                </button>
+              ) : null}
             </div>
-          </section>
+          </section> : null}
         </RequireAuth>
       </div>
     </main>
