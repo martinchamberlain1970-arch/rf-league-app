@@ -126,6 +126,7 @@ export async function GET(req: NextRequest) {
   }
 
   const seasonIdParam = req.nextUrl.searchParams.get("seasonId")?.trim() ?? "";
+  const includeAllSeasons = req.nextUrl.searchParams.get("allSeasons") === "true";
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
   const seasonsRes = await adminClient
@@ -143,19 +144,22 @@ export async function GET(req: NextRequest) {
   const selectedSeason =
     (seasonIdParam ? seasons.find((season) => season.id === seasonIdParam) : null) ?? seasons[0] ?? null;
   const seasonOptions = seasons.map(({ id, name }) => ({ id, name }));
+  const selectedSeasons = includeAllSeasons ? seasons : selectedSeason ? [selectedSeason] : [];
 
-  if (!selectedSeason) {
+  if (selectedSeasons.length === 0) {
     return NextResponse.json({ season: null, seasons: seasonOptions, liveMatches: [] });
   }
+  const selectedSeasonIds = selectedSeasons.map((season) => season.id);
+  const seasonById = new Map(selectedSeasons.map((season) => [season.id, season]));
 
   const [teamsRes, fixturesRes, framesRes, playersQueryRes] = await Promise.all([
-    adminClient.from("league_teams").select("id,season_id,name").eq("season_id", selectedSeason.id),
+    adminClient.from("league_teams").select("id,season_id,name").in("season_id", selectedSeasonIds),
     adminClient
       .from("league_fixtures")
       .select(
         "id,season_id,fixture_date,week_no,home_team_id,away_team_id,status,pre_match_paper_record,home_lineup_submitted_at,away_lineup_submitted_at"
       )
-      .eq("season_id", selectedSeason.id)
+      .in("season_id", selectedSeasonIds)
       .order("fixture_date", { ascending: true }),
     adminClient
       .from("league_fixture_frames")
@@ -195,7 +199,7 @@ export async function GET(req: NextRequest) {
   }
 
   const teams = (teamsRes.data ?? []) as TeamRow[];
-  const fixtures = ((fixturesRes.data ?? []) as FixtureRow[]).filter((fixture) => fixture.season_id === selectedSeason.id);
+  const fixtures = ((fixturesRes.data ?? []) as FixtureRow[]).filter((fixture) => seasonById.has(fixture.season_id));
   const frames = (framesRes.data ?? []) as FrameRow[];
   const players = playersData as PlayerRow[];
 
@@ -208,12 +212,18 @@ export async function GET(req: NextRequest) {
     return Boolean(fixture.home_lineup_submitted_at) && Boolean(fixture.away_lineup_submitted_at);
   });
 
-  const currentMatchNightDate =
-    [...new Set(matchNightCandidates.map((fixture) => fixture.fixture_date).filter((value): value is string => Boolean(value)))]
-      .sort((a, b) => b.localeCompare(a))[0] ?? null;
+  const currentMatchNightDateBySeason = new Map<string, string>();
+  for (const fixture of matchNightCandidates) {
+    if (!fixture.fixture_date) continue;
+    const current = currentMatchNightDateBySeason.get(fixture.season_id);
+    if (!current || fixture.fixture_date > current) currentMatchNightDateBySeason.set(fixture.season_id, fixture.fixture_date);
+  }
 
   const liveFixtures = matchNightCandidates
-    .filter((fixture) => (currentMatchNightDate ? fixture.fixture_date === currentMatchNightDate : true))
+    .filter((fixture) => {
+      const currentMatchNightDate = currentMatchNightDateBySeason.get(fixture.season_id);
+      return currentMatchNightDate ? fixture.fixture_date === currentMatchNightDate : true;
+    })
     .sort((a, b) => {
       const statusRank = (status: FixtureRow["status"]) =>
         status === "in_progress" ? 0 : 1;
@@ -227,6 +237,7 @@ export async function GET(req: NextRequest) {
     });
 
   const liveMatches = liveFixtures.map((fixture) => {
+    const fixtureSeason = seasonById.get(fixture.season_id) ?? selectedSeasons[0];
     const fixtureFrames = frames.filter((frame) => frame.fixture_id === fixture.id).sort((a, b) => a.slot_no - b.slot_no);
     const homeFramesWon = fixtureFrames.filter((frame) => frame.winner_side === "home").length;
     const awayFramesWon = fixtureFrames.filter((frame) => frame.winner_side === "away").length;
@@ -264,8 +275,8 @@ export async function GET(req: NextRequest) {
         frame.slot_type === "doubles"
           ? (playerHandicap(awayPrimary) + playerHandicap(awaySecondary)) / 2
           : playerHandicap(awayPrimary);
-      const handicapCap = selectedSeason.handicap_max_start === null ? null : selectedSeason.handicap_max_start ?? MAX_SNOOKER_START;
-      const starts = selectedSeason.handicap_enabled
+      const handicapCap = fixtureSeason.handicap_max_start === null ? null : fixtureSeason.handicap_max_start ?? MAX_SNOOKER_START;
+      const starts = fixtureSeason.handicap_enabled
         ? calculateAdjustedScoresWithCap(0, 0, homeHandicap, awayHandicap, handicapCap)
         : { homeStart: 0, awayStart: 0 };
       const startDetail = formatStartDetail(starts.homeStart, starts.awayStart);
@@ -317,7 +328,7 @@ export async function GET(req: NextRequest) {
               ],
         scoreLabel,
         frameStatus,
-        startLabel: selectedSeason.handicap_enabled
+        startLabel: fixtureSeason.handicap_enabled
           ? `${handicapCap === null ? "No maximum start" : `Max start ${handicapCap}`} · ${startDetail.label}`
           : "Scratch frame · level start",
         startRecipient: startDetail.recipient,
@@ -327,6 +338,8 @@ export async function GET(req: NextRequest) {
 
     return {
       fixtureId: fixture.id,
+      seasonId: fixtureSeason.id,
+      seasonName: fixtureSeason.name,
       fixtureDate: fixture.fixture_date,
       weekNo: fixture.week_no,
       status: effectiveStatus,
@@ -338,10 +351,9 @@ export async function GET(req: NextRequest) {
   });
 
   return NextResponse.json({
-    season: {
-      id: selectedSeason.id,
-      name: selectedSeason.name,
-    },
+    season: includeAllSeasons
+      ? { id: "all", name: "All live league matches" }
+      : { id: selectedSeasons[0].id, name: selectedSeasons[0].name },
     seasons: seasonOptions,
     liveMatches,
   });

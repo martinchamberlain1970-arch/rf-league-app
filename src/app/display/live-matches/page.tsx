@@ -7,6 +7,8 @@ type LiveMatchData = {
   season: { id: string; name: string } | null;
   liveMatches: Array<{
     fixtureId: string;
+    seasonId?: string;
+    seasonName?: string;
     fixtureDate: string | null;
     weekNo: number | null;
     status: string;
@@ -43,7 +45,7 @@ const emptyData: LiveMatchData = {
 // one match at a time and use two frame columns instead of clipping the bottom
 // of two vertically stacked scorecards.
 const MATCHES_PER_PAGE = 1;
-const PAGE_ROTATION_MS = 15000;
+const PAGE_ROTATION_MS = 20000;
 
 function chunkRows<T>(rows: T[], size: number) {
   const chunks: T[][] = [];
@@ -115,7 +117,7 @@ export default function PublicLiveMatchesPage() {
     let active = true;
     const load = async () => {
       try {
-        const res = await fetch("/api/public/live-matches", { cache: "no-store" });
+        const res = await fetch("/api/public/live-matches?allSeasons=true", { cache: "no-store" });
         const payload = (await res.json().catch(() => emptyData)) as LiveMatchData;
         if (!active) return;
         setData(res.ok ? payload : { ...emptyData, error: payload.error ?? "Failed to load live matches." });
@@ -233,7 +235,9 @@ export default function PublicLiveMatchesPage() {
           <section className="min-w-0 rounded-2xl border border-white/10 bg-white/6 p-3 shadow-2xl backdrop-blur lg:hidden">
             <div className="flex min-w-0 items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-cyan-200">Week {selectedMatch.weekNo ?? "-"}</p>
+                <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-cyan-200">
+                  {selectedMatch.seasonName ? `${selectedMatch.seasonName} · ` : ""}Week {selectedMatch.weekNo ?? "-"}
+                </p>
                 <h2 className="mt-1 break-words text-lg font-black leading-tight sm:text-xl">
                   {selectedMatch.homeTeam} <span className="text-cyan-200">vs.</span> {selectedMatch.awayTeam}
                 </h2>
@@ -289,7 +293,9 @@ export default function PublicLiveMatchesPage() {
               <section key={match.fixtureId} className="flex flex-col rounded-2xl border border-white/10 bg-white/6 p-3 shadow-2xl backdrop-blur">
                 <div className="flex min-w-0 items-start justify-between gap-3">
                   <div>
-                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-cyan-200">Week {match.weekNo ?? "-"}</p>
+                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-cyan-200">
+                      {match.seasonName ? `${match.seasonName} · ` : ""}Week {match.weekNo ?? "-"}
+                    </p>
                     <h2 className="mt-1 text-xl font-black leading-tight xl:text-2xl">
                       {match.homeTeam} <span className="text-cyan-200">vs.</span> {match.awayTeam}
                     </h2>
