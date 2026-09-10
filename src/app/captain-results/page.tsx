@@ -305,6 +305,7 @@ export default function CaptainResultsPage() {
   const [breakRequiredSlotNo, setBreakRequiredSlotNo] = useState<number | null>(null);
 
   const baselineScorecardSignatureRef = useRef("");
+  const winterFrameRepairAttemptedRef = useRef<Set<string>>(new Set());
   const [scorecardDirty, setScorecardDirty] = useState(false);
   const [remoteScorecardChanged, setRemoteScorecardChanged] = useState(false);
 
@@ -694,6 +695,41 @@ export default function CaptainResultsPage() {
     setRemoteScorecardChanged(false);
     void loadBreaks(selectedFixture.id);
   }, [allSlots, awayLineupSubmitted, homeLineupSubmitted, homeSideCanManageScorecard, pendingSubmissionMap, selectedFixture]);
+
+  useEffect(() => {
+    if (loading || !selectedFixture || !configuredAsWinter || fixtureHasWinterFrames) return;
+    if (!slots.some((row) => row.fixture_id === selectedFixture.id)) return;
+    if (winterFrameRepairAttemptedRef.current.has(selectedFixture.id)) return;
+    winterFrameRepairAttemptedRef.current.add(selectedFixture.id);
+
+    void (async () => {
+      const sessionRes = await supabase?.auth.getSession();
+      const token = sessionRes?.data.session?.access_token;
+      if (!token) {
+        winterFrameRepairAttemptedRef.current.delete(selectedFixture.id);
+        return;
+      }
+      const response = await fetch("/api/league/ensure-fixture-frames", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ fixtureId: selectedFixture.id }),
+      });
+      const body = await response.json().catch(() => null);
+      if (!response.ok) {
+        winterFrameRepairAttemptedRef.current.delete(selectedFixture.id);
+        setMessage(body?.error ?? "The complete winter scorecard could not be loaded. Refresh the page and try again.");
+        return;
+      }
+      const repairedFrames = (body?.frames ?? []) as FrameSlot[];
+      const localById = new Map(slots.map((row) => [row.id, row]));
+      const mergedFrames = repairedFrames.map((row) => ({ ...row, ...(localById.get(row.id) ?? {}) }));
+      setSlots(mergedFrames);
+      setAllSlots((current) => [
+        ...current.filter((row) => row.fixture_id !== selectedFixture.id),
+        ...mergedFrames,
+      ]);
+    })();
+  }, [configuredAsWinter, fixtureHasWinterFrames, loading, selectedFixture, slots]);
 
   useEffect(() => {
     if (!selectedFixture || scorecardDirty) return;
