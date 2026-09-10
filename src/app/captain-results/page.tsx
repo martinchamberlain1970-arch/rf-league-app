@@ -432,15 +432,39 @@ export default function CaptainResultsPage() {
       return;
     }
 
+    const loadedPlayers = (playerRes.data ?? []) as Player[];
+    const playerIdsByName = new Map<string, string[]>();
+    for (const player of loadedPlayers) {
+      for (const value of [player.full_name, player.display_name]) {
+        const key = (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+        if (!key) continue;
+        const ids = playerIdsByName.get(key) ?? [];
+        if (!ids.includes(player.id)) ids.push(player.id);
+        playerIdsByName.set(key, ids);
+      }
+    }
+    const resolveUniquePlayerName = (value?: string | null) => {
+      const key = (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+      const ids = playerIdsByName.get(key) ?? [];
+      return ids.length === 1 ? ids[0] : null;
+    };
+    const loadedSlots = ((slotRes.data ?? []) as FrameSlot[]).map((slot) => ({
+      ...slot,
+      home_player1_id:
+        slot.home_player1_id ?? (slot.home_nominated ? resolveUniquePlayerName(slot.home_nominated_name) : null),
+      away_player1_id:
+        slot.away_player1_id ?? (slot.away_nominated ? resolveUniquePlayerName(slot.away_nominated_name) : null),
+    }));
+
     setSeasons((seasonRes.data ?? []) as Season[]);
     setTeams((teamRes.data ?? []) as Team[]);
     setMembers((memberRes.data ?? []) as TeamMember[]);
     setFixtures(fixtureRows as Fixture[]);
-    setAllSlots((slotRes.data ?? []) as FrameSlot[]);
+    setAllSlots(loadedSlots);
     const pendingRows = (pendingRes.data ?? []) as PendingSubmission[];
     setPendingByFixture(new Set(pendingRows.map((r) => r.fixture_id as string)));
     setPendingSubmissionMap(new Map(pendingRows.map((r) => [r.fixture_id, r])));
-    setPlayers((playerRes.data ?? []) as Player[]);
+    setPlayers(loadedPlayers);
     setLoading(false);
   }, []);
 
@@ -1440,7 +1464,9 @@ export default function CaptainResultsPage() {
         const nominatedName = named(playerById.get(nominatedId));
         setNominatedNames((prev) => ({ ...prev, [`${frameFour.id}:${side}`]: nominatedName }));
         updateSlotLocal(frameFour.id, {
-          [`${sidePrefix}_player1_id`]: null,
+          // Keep the real player id as well as the nomination flag/name.  The
+          // id is required by high-break validation and frame-by-frame Elo.
+          [`${sidePrefix}_player1_id`]: nominatedId,
           [`${sidePrefix}_nominated`]: true,
           [`${sidePrefix}_forfeit`]: false,
           [nameKey]: nominatedName,
@@ -1485,7 +1511,9 @@ export default function CaptainResultsPage() {
         const doublesFrame = slots.find((row) => row.slot_type === "doubles");
         setNominatedNames((prev) => ({ ...prev, [`${slot.id}:${side}`]: nominatedName }));
         updateSlotLocal(slot.id, {
-          [`${sidePrefix}_player1_id`]: null,
+          // A nominated player is still the player who played the frame.  Do
+          // not discard their id: breaks and Elo both depend on it.
+          [`${sidePrefix}_player1_id`]: nominatedId,
           [`${sidePrefix}_nominated`]: true,
           [`${sidePrefix}_forfeit`]: false,
           [nameKey]: nominatedName,

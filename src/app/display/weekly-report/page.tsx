@@ -42,8 +42,32 @@ type Payload = {
   error?: string;
 };
 
+type EloHandicapChange = {
+  playerId: string;
+  name: string;
+  previous: number;
+  next: number;
+  previousHandicap: number;
+  nextHandicap: number;
+  handicapChangedThisWeek: boolean;
+  ratedFrames: number;
+  reason: string;
+};
+
+type EloHandicapPayload = {
+  season: { id: string; name: string } | null;
+  week: number | null;
+  changes: EloHandicapChange[];
+  error?: string;
+};
+
+function signed(value: number) {
+  return value > 0 ? `+${value}` : `${value}`;
+}
+
 export default function PublicWeeklyReportPage() {
   const [data, setData] = useState<Payload | null>(null);
+  const [eloHandicapData, setEloHandicapData] = useState<EloHandicapPayload | null>(null);
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
   const [updatedAt, setUpdatedAt] = useState<string>("");
 
@@ -55,11 +79,20 @@ export default function PublicWeeklyReportPage() {
         setSelectedSeasonId(requestedSeasonId);
         return;
       }
-      const query = requestedSeasonId ? `?seasonId=${encodeURIComponent(requestedSeasonId)}` : "";
-      const resp = await fetch(`/api/public/weekly-report${query}`, { cache: "no-store" });
-      const payload = (await resp.json()) as Payload;
+      const requestedWeek = new URLSearchParams(window.location.search).get("week") || "";
+      const params = new URLSearchParams();
+      if (requestedSeasonId) params.set("seasonId", requestedSeasonId);
+      if (requestedWeek) params.set("week", requestedWeek);
+      const query = params.size ? `?${params.toString()}` : "";
+      const [reportResp, eloResp] = await Promise.all([
+        fetch(`/api/public/weekly-report${query}`, { cache: "no-store" }),
+        fetch(`/api/public/weekly-handicap-review${query}`, { cache: "no-store" }),
+      ]);
+      const payload = (await reportResp.json()) as Payload;
+      const eloPayload = (await eloResp.json()) as EloHandicapPayload;
       if (!active) return;
       setData(payload);
+      setEloHandicapData(eloPayload);
       setUpdatedAt(
         new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       );
@@ -100,7 +133,11 @@ export default function PublicWeeklyReportPage() {
                 onChange={(event) => {
                   const nextSeasonId = event.target.value;
                   setSelectedSeasonId(nextSeasonId);
-                  window.history.replaceState(null, "", `${window.location.pathname}?seasonId=${encodeURIComponent(nextSeasonId)}`);
+                  const week = new URLSearchParams(window.location.search).get("week");
+                  const nextUrl = new URL(window.location.href);
+                  nextUrl.searchParams.set("seasonId", nextSeasonId);
+                  if (week) nextUrl.searchParams.set("week", week);
+                  window.history.replaceState(null, "", `${nextUrl.pathname}${nextUrl.search}`);
                 }}
               >
                 {data?.seasons.map((season) => <option key={season.id} value={season.id}>{season.name}</option>)}
@@ -192,6 +229,65 @@ export default function PublicWeeklyReportPage() {
             Weekly report appears when the latest published week is complete.
           </section>
         )}
+
+        {!isDivisionOne ? (
+          <section className="rounded-3xl border border-amber-300/20 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.28em] text-amber-300">
+                  Elo &amp; Handicap Review
+                </p>
+                <h2 className="mt-2 text-2xl font-bold text-white">
+                  Week {eloHandicapData?.week ?? data?.week ?? "-"} changes
+                </h2>
+                <p className="mt-2 text-sm text-slate-300">
+                  Elo changes are calculated from each completed frame, including doubles. Playing handicaps show the scheduled Proposal 2 review outcome.
+                </p>
+              </div>
+              <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-semibold text-amber-100">
+                {(eloHandicapData?.changes ?? []).length} players changed Elo
+              </span>
+            </div>
+
+            {eloHandicapData?.error ? (
+              <p className="mt-4 rounded-2xl border border-rose-400/40 bg-rose-500/10 p-4 text-sm text-rose-100">
+                The Elo and handicap section is not ready: {eloHandicapData.error}
+              </p>
+            ) : (eloHandicapData?.changes ?? []).length === 0 ? (
+              <p className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                No Elo changes have been recorded for this completed week yet.
+              </p>
+            ) : (
+              <div className="mt-5 overflow-x-auto rounded-2xl border border-white/10">
+                <table className="min-w-full divide-y divide-white/10 text-left text-sm">
+                  <thead className="bg-white/5 text-xs uppercase tracking-[0.16em] text-slate-300">
+                    <tr>
+                      <th className="px-4 py-3">Player</th>
+                      <th className="px-4 py-3">Elo</th>
+                      <th className="px-4 py-3">Frames</th>
+                      <th className="px-4 py-3">Handicap</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-white/10">
+                    {(eloHandicapData?.changes ?? []).map((row) => (
+                      <tr key={row.playerId} className="bg-slate-950/20">
+                        <td className="px-4 py-3 font-semibold text-white">{row.name}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-cyan-100">{row.previous} → {row.next}</td>
+                        <td className="px-4 py-3 text-slate-300">{row.ratedFrames}</td>
+                        <td className="whitespace-nowrap px-4 py-3 text-amber-100">
+                          {signed(row.previousHandicap)} → {signed(row.nextHandicap)}
+                          <span className="ml-2 text-xs text-slate-400">
+                            {row.handicapChangedThisWeek ? "changed" : "unchanged"}
+                          </span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </section>
+        ) : null}
 
         <section className="space-y-4">
           {(data?.fixtures ?? []).map((fixture) => (

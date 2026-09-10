@@ -29,6 +29,8 @@ type LeagueFixtureRatingFrame = {
   home_player2_id?: string | null;
   away_player1_id: string | null;
   away_player2_id?: string | null;
+  home_nominated_name?: string | null;
+  away_nominated_name?: string | null;
 };
 
 type LeagueFixtureRatingArgs = {
@@ -62,6 +64,51 @@ function kFactor(avgRating: number, avgMatches: number) {
 
 function uniqueIds(ids: string[]) {
   return Array.from(new Set(ids.filter(Boolean)));
+}
+
+function normalizePlayerName(value?: string | null) {
+  return (value ?? "").trim().replace(/\s+/g, " ").toLowerCase();
+}
+
+async function resolveLegacyNominatedPlayerIds(
+  adminClient: SupabaseClient,
+  frames: LeagueFixtureRatingFrame[]
+) {
+  const unresolvedNames = uniqueIds(
+    frames.flatMap((frame) => [
+      !frame.home_player1_id ? normalizePlayerName(frame.home_nominated_name) : "",
+      !frame.away_player1_id ? normalizePlayerName(frame.away_nominated_name) : "",
+    ])
+  );
+  if (unresolvedNames.length === 0) return frames;
+
+  const playersRes = await adminClient
+    .from("players")
+    .select("id,display_name,full_name")
+    .eq("is_archived", false);
+  if (playersRes.error) throw new Error(playersRes.error.message);
+
+  const idsByName = new Map<string, string[]>();
+  for (const player of (playersRes.data ?? []) as Array<{ id: string; display_name: string | null; full_name: string | null }>) {
+    for (const value of [player.full_name, player.display_name]) {
+      const key = normalizePlayerName(value);
+      if (!key || !unresolvedNames.includes(key)) continue;
+      const ids = idsByName.get(key) ?? [];
+      if (!ids.includes(player.id)) ids.push(player.id);
+      idsByName.set(key, ids);
+    }
+  }
+
+  const resolveUnique = (name?: string | null) => {
+    const ids = idsByName.get(normalizePlayerName(name)) ?? [];
+    return ids.length === 1 ? ids[0] : null;
+  };
+
+  return frames.map((frame) => ({
+    ...frame,
+    home_player1_id: frame.home_player1_id ?? resolveUnique(frame.home_nominated_name),
+    away_player1_id: frame.away_player1_id ?? resolveUnique(frame.away_nominated_name),
+  }));
 }
 
 export function targetHandicapFromElo(rating: number) {
@@ -423,16 +470,17 @@ export async function rebuildLeagueFixtureSnookerRatings({
   notes,
   metadata,
 }: LeagueFixtureRatingArgs) {
+  const resolvedFrames = await resolveLegacyNominatedPlayerIds(adminClient, frames);
   const summarySourceId = `league_fixture:${fixtureId}`;
   const touchedPlayerIds = uniqueIds(
-    frames.flatMap((frame) => [
+    resolvedFrames.flatMap((frame) => [
       frame.home_player1_id ?? "",
       frame.home_player2_id ?? "",
       frame.away_player1_id ?? "",
       frame.away_player2_id ?? "",
     ])
   );
-  const frameSourceIds = frames
+  const frameSourceIds = resolvedFrames
     .filter((frame) => Number.isInteger(frame.slot_no))
     .map((frame) => `league_fixture:${fixtureId}:frame:${frame.slot_no}`);
 
@@ -453,7 +501,7 @@ export async function rebuildLeagueFixtureSnookerRatings({
     k_factor: number;
   }> = [];
 
-  for (const frame of frames) {
+  for (const frame of resolvedFrames) {
     if (!frame.winner_side) continue;
     if (frame.home_forfeit || frame.away_forfeit) continue;
 

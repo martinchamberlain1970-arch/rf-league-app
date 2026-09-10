@@ -9,6 +9,9 @@ type ChangeRow = {
   previous: number;
   next: number;
   current: number;
+  previousHandicap: number;
+  nextHandicap: number;
+  handicapChangedThisWeek: boolean;
   baseline: number;
   rating: number;
   changedThisWeek: boolean;
@@ -43,7 +46,11 @@ export default function PublicWeeklyHandicapReviewPage() {
         setSelectedSeasonId(requestedSeasonId);
         return;
       }
-      const query = requestedSeasonId ? `?seasonId=${encodeURIComponent(requestedSeasonId)}` : "";
+      const requestedWeek = new URLSearchParams(window.location.search).get("week") || "";
+      const params = new URLSearchParams();
+      if (requestedSeasonId) params.set("seasonId", requestedSeasonId);
+      if (requestedWeek) params.set("week", requestedWeek);
+      const query = params.size ? `?${params.toString()}` : "";
       const resp = await fetch(`/api/public/weekly-handicap-review${query}`, {
         cache: "no-store",
       });
@@ -164,7 +171,7 @@ export default function PublicWeeklyHandicapReviewPage() {
                 </div>
                 {!data?.isInformationOnly ? <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    Elo (Following Review)
+                    Elo (After Week)
                   </p>
                   <p className="mt-2 text-2xl font-bold text-white">
                     {row.next}
@@ -172,10 +179,13 @@ export default function PublicWeeklyHandicapReviewPage() {
                 </div> : null}
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    Playing Handicap
+                    Playing Handicap Change
                   </p>
                   <p className="mt-2 text-2xl font-bold text-white">
-                    {formatHandicap(row.current)}
+                    {formatHandicap(row.previousHandicap)} → {formatHandicap(row.nextHandicap)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-400">
+                    {row.handicapChangedThisWeek ? "Changed at the scheduled weekly review" : "No handicap band change"}
                   </p>
                 </div>
               </div>

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { rebuildLeagueFixtureSnookerRatings } from "@/lib/snooker-rating";
+import { applyDuePremierHandicapReview } from "@/lib/automatic-handicap-review";
 import { requireLeagueManager } from "@/lib/server-role";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -23,6 +24,8 @@ type FrameRow = {
   home_player2_id: string | null;
   away_player1_id: string | null;
   away_player2_id: string | null;
+  home_nominated_name: string | null;
+  away_nominated_name: string | null;
 };
 
 export async function POST(req: NextRequest) {
@@ -42,16 +45,18 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}));
   const fixtureDate = typeof body?.fixtureDate === "string" ? body.fixtureDate : "";
+  const seasonId = typeof body?.seasonId === "string" ? body.seasonId : "";
   if (!fixtureDate) {
     return NextResponse.json({ error: "fixtureDate is required." }, { status: 400 });
   }
 
-  const fixturesRes = await adminClient
+  let fixturesQuery = adminClient
     .from("league_fixtures")
     .select("id,season_id,fixture_date,status")
     .eq("fixture_date", fixtureDate)
-    .eq("status", "complete")
-    .order("id", { ascending: true });
+    .eq("status", "complete");
+  if (seasonId) fixturesQuery = fixturesQuery.eq("season_id", seasonId);
+  const fixturesRes = await fixturesQuery.order("id", { ascending: true });
   if (fixturesRes.error) {
     return NextResponse.json({ error: fixturesRes.error.message }, { status: 400 });
   }
@@ -62,7 +67,7 @@ export async function POST(req: NextRequest) {
   for (const fixture of fixtures) {
     const framesRes = await adminClient
       .from("league_fixture_frames")
-      .select("slot_no,winner_side,home_forfeit,away_forfeit,home_player1_id,home_player2_id,away_player1_id,away_player2_id")
+      .select("slot_no,winner_side,home_forfeit,away_forfeit,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated_name,away_nominated_name")
       .eq("fixture_id", fixture.id)
       .order("slot_no", { ascending: true });
     if (framesRes.error) {
@@ -86,6 +91,8 @@ export async function POST(req: NextRequest) {
           home_player2_id: row.home_player2_id,
           away_player1_id: row.away_player1_id,
           away_player2_id: row.away_player2_id,
+          home_nominated_name: row.home_nominated_name,
+          away_nominated_name: row.away_nominated_name,
         })),
         notes: `League fixture ${fixture.id}`,
         metadata: { fixture_id: fixture.id, season_id: fixture.season_id, source: "bulk_rebuild" },
@@ -99,6 +106,14 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  let automaticHandicapReview: Awaited<ReturnType<typeof applyDuePremierHandicapReview>> | null = null;
+  const lastSuccessfulFixture = [...fixtures].reverse().find((fixture) =>
+    results.some((result) => result.fixtureId === fixture.id)
+  );
+  if (failures.length === 0 && lastSuccessfulFixture) {
+    automaticHandicapReview = await applyDuePremierHandicapReview(adminClient, lastSuccessfulFixture.id);
+  }
+
   return NextResponse.json({
     ok: failures.length === 0,
     fixtureDate,
@@ -107,5 +122,6 @@ export async function POST(req: NextRequest) {
     failedCount: failures.length,
     results,
     failures,
+    automaticHandicapReview,
   });
 }

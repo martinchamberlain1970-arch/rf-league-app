@@ -215,7 +215,7 @@ export async function POST(req: NextRequest) {
 
     const framesRes = await adminClient
       .from("league_fixture_frames")
-      .select("slot_no,winner_side,home_forfeit,away_forfeit,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_points_scored,away_points_scored")
+      .select("slot_no,winner_side,home_forfeit,away_forfeit,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored")
       .eq("fixture_id", submission.fixture_id);
     if (framesRes.error) return NextResponse.json({ error: framesRes.error.message }, { status: 400 });
     const rows = (framesRes.data ?? []) as Array<{
@@ -227,6 +227,8 @@ export async function POST(req: NextRequest) {
       home_player2_id: string | null;
       away_player1_id: string | null;
       away_player2_id: string | null;
+      home_nominated_name: string | null;
+      away_nominated_name: string | null;
       home_points_scored?: number | null;
       away_points_scored?: number | null;
     }>;
@@ -264,6 +266,8 @@ export async function POST(req: NextRequest) {
             home_player2_id: row.home_player2_id,
             away_player1_id: row.away_player1_id,
             away_player2_id: row.away_player2_id,
+            home_nominated_name: row.home_nominated_name,
+            away_nominated_name: row.away_nominated_name,
           })),
           notes: `League fixture ${submission.fixture_id}`,
           metadata: { fixture_id: submission.fixture_id, season_id: fixtureRes.data.season_id, source: "submission_review" },

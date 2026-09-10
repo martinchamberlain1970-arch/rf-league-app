@@ -37,6 +37,8 @@ type FrameRow = {
   home_player2_id: string | null;
   away_player1_id: string | null;
   away_player2_id: string | null;
+  home_nominated_name: string | null;
+  away_nominated_name: string | null;
   home_points_scored?: number | null;
   away_points_scored?: number | null;
 };
@@ -86,6 +88,7 @@ export async function POST(req: NextRequest) {
 
   const body = await req.json().catch(() => ({}));
   const fixtureId = typeof body?.fixtureId === "string" ? body.fixtureId : "";
+  const applyRatings = body?.applyRatings !== false;
   if (!fixtureId) {
     return NextResponse.json({ error: "Fixture id is required." }, { status: 400 });
   }
@@ -112,7 +115,7 @@ export async function POST(req: NextRequest) {
 
   const framesRes = await adminClient
     .from("league_fixture_frames")
-    .select("slot_no,winner_side,home_forfeit,away_forfeit,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_points_scored,away_points_scored")
+    .select("slot_no,winner_side,home_forfeit,away_forfeit,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored")
     .eq("fixture_id", fixtureId);
   if (framesRes.error) {
     return NextResponse.json({ error: framesRes.error.message }, { status: 400 });
@@ -144,7 +147,7 @@ export async function POST(req: NextRequest) {
 
   let ratingResult: { ok: boolean; ratedFrameCount: number; playerDeltas: Array<{ player_id: string; delta: number; side: "home" | "away" }> } | null = null;
   let automaticHandicapReview: AutomaticHandicapReviewResult | null = null;
-  if (status === "complete") {
+  if (status === "complete" && applyRatings) {
     try {
       ratingResult = await rebuildLeagueFixtureSnookerRatings({
         adminClient,
@@ -160,14 +163,24 @@ export async function POST(req: NextRequest) {
           home_player2_id: row.home_player2_id,
           away_player1_id: row.away_player1_id,
           away_player2_id: row.away_player2_id,
+          home_nominated_name: row.home_nominated_name,
+          away_nominated_name: row.away_nominated_name,
         })),
         notes: `League fixture ${fixtureId}`,
         metadata: { fixture_id: fixtureId, season_id: fixture.season_id, source: "superuser_direct_entry" },
       });
     } catch (error) {
+      const detail = error instanceof Error ? error.message : "Failed to apply snooker rating.";
+      const isConcurrentRatingRebuild =
+        detail.includes("rating_events_source_app_source_result_id_player_id_key") ||
+        detail.toLowerCase().includes("duplicate key value violates unique constraint");
       return NextResponse.json(
-        { error: error instanceof Error ? error.message : "Failed to apply snooker rating." },
-        { status: 400 }
+        {
+          error: isConcurrentRatingRebuild
+            ? "The frame score and fixture result have been saved, but another Elo update was already running. Wait a moment, then use ‘Recheck result and update Elo only’."
+            : detail,
+        },
+        { status: isConcurrentRatingRebuild ? 409 : 400 }
       );
     }
     try {

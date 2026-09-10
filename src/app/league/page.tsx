@@ -4467,15 +4467,18 @@ function LeaguePageContent() {
     await loadAll();
   };
 
-  const recomputeFixtureScore = async (fixtureTargetId: string) => {
+  const recomputeFixtureScore = async (
+    fixtureTargetId: string,
+    options: { applyRatings?: boolean } = {}
+  ): Promise<boolean> => {
     const client = supabase;
-    if (!client) return;
+    if (!client) return false;
     if (canManage) {
       const sessionRes = await client.auth.getSession();
       const token = sessionRes.data.session?.access_token ?? null;
       if (!token) {
         setMessage("Session expired. Please sign in again.");
-        return;
+        return false;
       }
       let res: Response;
       try {
@@ -4485,11 +4488,14 @@ function LeaguePageContent() {
             "Content-Type": "application/json",
             Authorization: `Bearer ${token}`,
           },
-          body: JSON.stringify({ fixtureId: fixtureTargetId }),
+          body: JSON.stringify({
+            fixtureId: fixtureTargetId,
+            applyRatings: options.applyRatings !== false,
+          }),
         });
       } catch {
         setMessage("Network error while saving fixture progress.");
-        return;
+        return false;
       }
       const payload = (await res.json().catch(() => ({}))) as {
         error?: string;
@@ -4498,12 +4504,12 @@ function LeaguePageContent() {
       };
       if (!res.ok) {
         setMessage(payload.error ?? "Failed to save fixture progress.");
-        return;
+        return false;
       }
       if (payload.fixture) {
         setFixtures((prev) => prev.map((f) => (f.id === fixtureTargetId ? ({ ...f, ...payload.fixture }) : f)));
       }
-      return;
+      return true;
     }
     const framesRes = await client
       .from("league_fixture_frames")
@@ -4511,7 +4517,7 @@ function LeaguePageContent() {
       .eq("fixture_id", fixtureTargetId);
     if (framesRes.error) {
       setMessage(framesRes.error.message);
-      return;
+      return false;
     }
     const frameRows = (framesRes.data ?? []) as Array<{
       slot_no: number;
@@ -4552,9 +4558,10 @@ function LeaguePageContent() {
       .single();
     if (fixtureErr) {
       setMessage(fixtureErr.message);
-      return;
+      return false;
     }
     setFixtures((prev) => prev.map((f) => (f.id === fixtureTargetId ? ({ ...f, ...(fixtureRow as Fixture) }) : f)));
+    return true;
   };
 
   const rebuildFixtureDateRatings = async (fixtureDate: string | null | undefined) => {
@@ -4574,7 +4581,7 @@ function LeaguePageContent() {
           "Content-Type": "application/json",
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ fixtureDate }),
+        body: JSON.stringify({ fixtureDate, seasonId: currentFixture?.season_id ?? seasonId }),
       });
     } catch {
       setMessage("Network error while rebuilding frame ratings.");
@@ -4589,8 +4596,8 @@ function LeaguePageContent() {
       return;
     }
     setInfoModal({
-      title: "Frame Ratings Rebuilt",
-      description: `${payload.fixtureCount ?? 0} complete fixture(s) on ${fixtureDate} were rebuilt using frame-by-frame Elo. This action applies to every complete fixture on that date, not just the one currently open.`,
+      title: "Elo and Handicap Review Refreshed",
+      description: `${payload.fixtureCount ?? 0} complete fixture(s) on ${fixtureDate} in the selected league were rebuilt using frame-by-frame Elo. If this was a scheduled Premier League review week, playing handicaps were then aligned to the corrected Elo figures.`,
     });
     await loadAll();
   };
@@ -4644,7 +4651,10 @@ function LeaguePageContent() {
     }
     if (data) {
       setSlots((prev) => prev.map((s) => (s.id === slotId ? ({ ...s, ...(data as FrameSlot) }) : s)));
-      await recomputeFixtureScore((data as FrameSlot).fixture_id);
+      // Keep the live fixture total current while an officer edits, but only
+      // rebuild Elo when they explicitly save the completed result. Otherwise
+      // moving between score fields can launch overlapping rating rebuilds.
+      await recomputeFixtureScore((data as FrameSlot).fixture_id, { applyRatings: false });
     }
   };
 
@@ -5059,7 +5069,8 @@ function LeaguePageContent() {
           }
         }
       }
-      await recomputeFixtureScore(submission.fixture_id);
+      const recomputed = await recomputeFixtureScore(submission.fixture_id, { applyRatings: true });
+      if (!recomputed) return;
     }
     const { error } = await client
       .from("league_result_submissions")
@@ -8701,7 +8712,7 @@ function LeaguePageContent() {
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <p className="text-xs text-slate-600">
                             {isCurrentFixtureLocked
-                              ? "This fixture is complete. Use these actions to update/rebuild Elo only. They do not change playing handicaps."
+                              ? "This fixture is complete. You can recheck this result or rebuild the selected league date. A scheduled Premier League handicap review is refreshed after corrected Elo is applied."
                               : "League-officer changes save as you edit. Use this to keep partial progress, recompute the fixture status, and close the entry screen."}
                           </p>
                           <div className="flex flex-wrap gap-2">
@@ -8711,19 +8722,19 @@ function LeaguePageContent() {
                                 onClick={() => void rebuildFixtureDateRatings(currentFixture.fixture_date)}
                                 className="rounded-xl border border-indigo-300 bg-white px-4 py-2 text-sm font-medium text-indigo-700"
                               >
-                                Rebuild Elo only for all complete fixtures on this date
+                                Rebuild Elo and refresh the weekly handicap review
                               </button>
                             ) : null}
                             <button
                               type="button"
                               onClick={async () => {
-                                await recomputeFixtureScore(currentFixture.id);
-                                setResultEntryOpen(false);
+                                const saved = await recomputeFixtureScore(currentFixture.id, { applyRatings: true });
+                                if (saved) setResultEntryOpen(false);
                               }}
                               className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
                             >
                               {isCurrentFixtureLocked
-                                ? "Recheck result and update Elo only"
+                                ? "Recheck result, Elo and due handicap review"
                                 : computeFixtureProgress(currentFixture).status === "complete"
                                   ? "Save and complete fixture"
                                   : "Save progress and close"}

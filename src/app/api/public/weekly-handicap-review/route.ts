@@ -9,8 +9,10 @@ export async function GET(req: NextRequest) {
   try {
     const adminClient = getPublicLeagueAdminClient();
     const seasonId = req.nextUrl.searchParams.get("seasonId")?.trim() || null;
+    const weekParam = req.nextUrl.searchParams.get("week")?.trim() || "";
+    const weekNo = /^\d+$/.test(weekParam) ? Number(weekParam) : null;
     const [payload, seasons] = await Promise.all([
-      buildPublicWeeklyHandicapReview(adminClient, seasonId),
+      buildPublicWeeklyHandicapReview(adminClient, seasonId, weekNo),
       getPublicPublishedSeasons(adminClient),
     ]);
     return NextResponse.json({

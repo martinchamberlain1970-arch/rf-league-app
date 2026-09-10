@@ -44,6 +44,8 @@ type FrameRow = {
   home_player2_id: string | null;
   away_player1_id: string | null;
   away_player2_id: string | null;
+  home_nominated_name: string | null;
+  away_nominated_name: string | null;
   home_points_scored: number | null;
   away_points_scored: number | null;
   home_forfeit: boolean | null;
@@ -95,6 +97,15 @@ type ReviewFrameRow = {
   home_player2_id: string | null;
   away_player1_id: string | null;
   away_player2_id: string | null;
+  home_nominated_name: string | null;
+  away_nominated_name: string | null;
+};
+
+type HandicapHistoryRow = {
+  player_id: string;
+  previous_handicap: number | null;
+  new_handicap: number | null;
+  created_at: string | null;
 };
 
 type TeamStats = {
@@ -178,7 +189,7 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
       .order("fixture_date", { ascending: true }),
     adminClient
       .from("league_fixture_frames")
-      .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_points_scored,away_points_scored,home_forfeit,away_forfeit"),
+      .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored,home_forfeit,away_forfeit"),
     adminClient
       .from("players")
       .select("id,display_name,full_name,rating_snooker,snooker_handicap")
@@ -399,11 +410,11 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
         const homeName =
           [playerNameMap.get(frame.home_player1_id ?? "") ?? null, playerNameMap.get(frame.home_player2_id ?? "") ?? null]
             .filter(Boolean)
-            .join(" / ") || "TBC";
+            .join(" / ") || frame.home_nominated_name?.trim() || "TBC";
         const awayName =
           [playerNameMap.get(frame.away_player1_id ?? "") ?? null, playerNameMap.get(frame.away_player2_id ?? "") ?? null]
             .filter(Boolean)
-            .join(" / ") || "TBC";
+            .join(" / ") || frame.away_nominated_name?.trim() || "TBC";
         const homePoints = typeof frame.home_points_scored === "number" ? frame.home_points_scored : null;
         const awayPoints = typeof frame.away_points_scored === "number" ? frame.away_points_scored : null;
 
@@ -559,7 +570,11 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
   };
 }
 
-export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClient, seasonId?: string | null) {
+export async function buildPublicWeeklyHandicapReview(
+  adminClient: SupabaseClient,
+  seasonId?: string | null,
+  weekNo?: number | null
+) {
   const season = await getLatestPublishedSeason(adminClient, seasonId);
   if (!season) {
     return {
@@ -578,13 +593,13 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
       .order("fixture_date", { ascending: true }),
     adminClient
       .from("league_fixture_frames")
-      .select("fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id"),
+      .select("fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated_name,away_nominated_name"),
     adminClient
       .from("players")
       .select("id,display_name,full_name,rating_snooker,snooker_handicap,snooker_handicap_base")
       .eq("is_archived", false),
     adminClient
-      .from("league_registered_team_members")
+      .from("league_team_members")
       .select("player_id")
       .eq("season_id", season.id),
   ]);
@@ -610,7 +625,7 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
         )
     )
   ).sort((a, b) => b - a);
-  const selectedWeek = completeWeeks[0] ?? null;
+  const selectedWeek = weekNo ?? completeWeeks[0] ?? null;
   const leaguePlayerIds = new Set(
     (teamMembersRes.data ?? []).map((row) => row.player_id).filter(Boolean)
   );
@@ -647,6 +662,24 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
       : { data: [], error: null };
   if (eventsRes.error) throw new Error(eventsRes.error.message);
 
+  const historyRes = await adminClient
+    .from("league_handicap_history")
+    .select("player_id,previous_handicap,new_handicap,created_at")
+    .eq("season_id", season.id)
+    .in("fixture_id", Array.from(fixtureIds))
+    .order("created_at", { ascending: true });
+  if (historyRes.error) throw new Error(historyRes.error.message);
+
+  const handicapChangeByPlayer = new Map<string, { previous: number; next: number }>();
+  for (const row of (historyRes.data ?? []) as HandicapHistoryRow[]) {
+    if (!row.player_id) continue;
+    const existing = handicapChangeByPlayer.get(row.player_id);
+    handicapChangeByPlayer.set(row.player_id, {
+      previous: existing?.previous ?? Number(row.previous_handicap ?? 0),
+      next: Number(row.new_handicap ?? 0),
+    });
+  }
+
   const deltaByPlayer = new Map<string, number>();
   const ratedFramesByPlayer = new Map<string, number>();
   const eventsByPlayer = new Map<string, RatingEventRow[]>();
@@ -678,6 +711,7 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
       const delta = Math.round(deltaByPlayer.get(player.id) ?? 0);
       const startingRating = currentRating - delta;
       const target = targetHandicapFromElo(currentRating);
+      const handicapChange = handicapChangeByPlayer.get(player.id) ?? null;
       const ratedFrames = ratedFramesByPlayer.get(player.id) ?? 0;
       const name = named(player);
       const frameEvents = eventsByPlayer.get(player.id) ?? [];
@@ -756,6 +790,9 @@ export async function buildPublicWeeklyHandicapReview(adminClient: SupabaseClien
         previous: startingRating,
         next: currentRating,
         current: currentHandicap,
+        previousHandicap: handicapChange?.previous ?? currentHandicap,
+        nextHandicap: handicapChange?.next ?? currentHandicap,
+        handicapChangedThisWeek: Boolean(handicapChange && handicapChange.previous !== handicapChange.next),
         baseline: Number(player.snooker_handicap_base ?? currentHandicap),
         rating: currentRating,
         target,
