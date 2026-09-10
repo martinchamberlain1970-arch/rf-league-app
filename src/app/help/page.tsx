@@ -75,6 +75,17 @@ export default function HelpPage() {
 
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-semibold text-slate-900">Quick Guide</h2>
+            <div className="mt-3 rounded-xl border border-sky-200 bg-sky-50 p-4">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-sky-900">Player Guide</p>
+                  <p className="mt-1 text-sm text-sky-800">Account setup, fixtures, match night, competition entry and what to do if something is wrong.</p>
+                </div>
+                <Link href="/player-guide" className="rounded-xl border border-sky-300 bg-white px-4 py-2 text-sm font-medium text-sky-900 hover:bg-sky-100">
+                  Open player guide
+                </Link>
+              </div>
+            </div>
             <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>

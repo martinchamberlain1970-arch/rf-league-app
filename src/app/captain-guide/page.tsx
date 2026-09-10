@@ -16,7 +16,7 @@ const sections = [
       "The app supports more than the weekly league. Captains may also need to help with singles, doubles, triples, billiards, summer league, winter league, and knockout competitions.",
       "When sign-ups open, make sure players are entering the correct competition type and not duplicating accounts or entries.",
       "For doubles and triples competitions, confirm the correct teammate names before submitting the entry.",
-      "Age-restricted competitions such as Over 50s and Over 60s require a valid date of birth before entry can continue.",
+      "Age-restricted competitions such as the Under 25s, Over 50s and Over 60s require a valid date of birth before entry can continue.",
     ],
   },
   {
@@ -132,7 +132,7 @@ export default function CaptainGuidePage() {
             </div>
             <div className="rounded-xl border border-violet-200 bg-violet-50 p-4">
               <p className="text-xs font-semibold uppercase tracking-wide text-violet-700">Age-gated entries</p>
-              <p className="mt-1 text-sm text-violet-900">Over 50s / Over 60s sign-ups require a valid date of birth before entry is allowed.</p>
+              <p className="mt-1 text-sm text-violet-900">Under 25s / Over 50s / Over 60s sign-ups require a valid date of birth before entry is allowed.</p>
             </div>
             <div className="rounded-xl border border-fuchsia-200 bg-fuchsia-50 p-4 md:col-span-3">
               <p className="text-xs font-semibold uppercase tracking-wide text-fuchsia-700">Handicap starts</p>
@@ -141,6 +141,17 @@ export default function CaptainGuidePage() {
               </p>
             </div>
           </div>
+        </section>
+
+        <section className="rounded-2xl border border-indigo-200 bg-indigo-50 p-5 shadow-sm">
+          <h2 className="text-lg font-semibold text-indigo-950">Match-night checklist</h2>
+          <ol className="mt-3 grid gap-3 text-sm text-indigo-950 md:grid-cols-2">
+            <li className="rounded-xl bg-white p-4"><strong>1. Open Captain Results.</strong><br />Select tonight&apos;s fixture and check that the teams and date are correct.</li>
+            <li className="rounded-xl bg-white p-4"><strong>2. Complete the lineups.</strong><br />Home submits first; away responds after the notification. Finish before 19:30.</li>
+            <li className="rounded-xl bg-white p-4"><strong>3. Switch to Scorecard.</strong><br />Once both lineups are locked, enter each frame result and any break of 30 or more.</li>
+            <li className="rounded-xl bg-white p-4"><strong>4. Review before submitting.</strong><br />Check every player, score and break. The home team normally submits the completed result.</li>
+            <li className="rounded-xl bg-white p-4 md:col-span-2"><strong>5. If the app causes a problem.</strong><br />Keep the match moving, retain an accurate paper scorecard and message the League Secretary. A manual upload link can be supplied when needed, but it requires manual authorisation and will update more slowly.</li>
+          </ol>
         </section>
 
         <section className="grid gap-4 md:grid-cols-2">

@@ -81,6 +81,7 @@ const navigationGroups: NavigationGroup[] = [
       { href: "/notifications", label: "Notifications" },
       { href: "/documents", label: "League documents" },
       { href: "/announcements", label: "Announcements", officerOnly: true },
+      { href: "/player-guide", label: "Player guide" },
       { href: "/captain-guide", label: "Captain guide" },
       { href: "/league-officer-guide", label: "Officer guides", officerOnly: true },
       { href: "/help", label: "Help & user guides" },
