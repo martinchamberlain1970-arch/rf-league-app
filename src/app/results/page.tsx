@@ -141,10 +141,22 @@ function ResultsQueuePageContent() {
   const [expandedPending, setExpandedPending] = useState<Set<string>>(new Set());
   const [reviewedLimit, setReviewedLimit] = useState(20);
   const [queueTab, setQueueTab] = useState<"league" | "competition" | "fixture_changes">("league");
+  const [queueView, setQueueView] = useState<"pending" | "reviewed">("pending");
   const selectQueueTab = (tab: "league" | "competition" | "fixture_changes") => {
     setQueueTab(tab);
+    setQueueView("pending");
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", tab);
+    params.delete("view");
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+  const selectQueueView = (view: "pending" | "reviewed") => {
+    setQueueView(view);
+    setReviewedLimit(20);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", queueTab);
+    if (view === "reviewed") params.set("view", "reviewed");
+    else params.delete("view");
     router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
@@ -281,6 +293,7 @@ function ResultsQueuePageContent() {
     if (tab === "fixture_changes" || tab === "competition" || tab === "league") {
       setQueueTab(tab);
     }
+    setQueueView(searchParams.get("view") === "reviewed" ? "reviewed" : "pending");
   }, [admin.isAdmin, searchParams]);
 
   const fixtureById = useMemo(() => new Map(fixtures.map((f) => [f.id, f])), [fixtures]);
@@ -553,6 +566,8 @@ function ResultsQueuePageContent() {
 
   const fixtureChangeQueueSection = (
     <section className={cardClass}>
+      {queueView === "pending" ? (
+        <>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div>
           <h2 className="text-xl font-semibold text-slate-900">Fixture date requests ({fixtureChangePending.length})</h2>
@@ -674,10 +689,12 @@ function ResultsQueuePageContent() {
           );
         })}
       </div>
-      {fixtureChangeReviewed.length > 0 ? (
-        <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <summary className="cursor-pointer text-sm font-semibold text-slate-800">Reviewed fixture date requests ({fixtureChangeReviewed.length})</summary>
-          <div className="mt-2 space-y-2">
+        </>
+      ) : (
+        <>
+          <h2 className="text-xl font-semibold text-slate-900">Reviewed fixture date requests ({fixtureChangeReviewed.length})</h2>
+          <div className="mt-3 space-y-2">
+            {fixtureChangeReviewed.length === 0 ? <p className="text-sm text-slate-600">No reviewed fixture date requests yet.</p> : null}
             {fixtureChangeReviewed.slice(0, reviewedLimit).map((r) => {
               const f = fixtureById.get(r.fixture_id);
               const home = f ? teamById.get(f.home_team_id) ?? "Home" : "Home";
@@ -698,14 +715,21 @@ function ResultsQueuePageContent() {
                 </div>
               );
             })}
+            {fixtureChangeReviewed.length > reviewedLimit ? (
+              <button type="button" className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700" onClick={() => setReviewedLimit((prev) => prev + 20)}>
+                Load 20 more
+              </button>
+            ) : null}
           </div>
-        </details>
-      ) : null}
+        </>
+      )}
     </section>
   );
 
   const competitionQueueSection = (
     <section className={cardClass}>
+      {queueView === "pending" ? (
+        <>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-xl font-semibold text-slate-900">Competition submissions ({competitionPending.length})</h2>
         <span className="rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs text-slate-700">
@@ -754,19 +778,26 @@ function ResultsQueuePageContent() {
           );
         })}
       </div>
-      {competitionReviewed.length > 0 ? (
-        <details className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3">
-          <summary className="cursor-pointer text-sm font-semibold text-slate-800">Reviewed competition submissions ({competitionReviewed.length})</summary>
-          <div className="mt-2 space-y-2">
+        </>
+      ) : (
+        <>
+          <h2 className="text-xl font-semibold text-slate-900">Reviewed competition submissions ({competitionReviewed.length})</h2>
+          <div className="mt-3 space-y-2">
+            {competitionReviewed.length === 0 ? <p className="text-sm text-slate-600">No reviewed competition submissions yet.</p> : null}
             {competitionReviewed.slice(0, reviewedLimit).map((s) => (
               <div key={s.id} className="flex items-center justify-between rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs">
                 <span>{competitionById.get(s.competition_id) ?? "Competition"}</span>
                 <span className={`rounded-full border px-2 py-0.5 ${statusChipClass(s.status)}`}>{s.status}</span>
               </div>
             ))}
+            {competitionReviewed.length > reviewedLimit ? (
+              <button type="button" className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700" onClick={() => setReviewedLimit((prev) => prev + 20)}>
+                Load 20 more
+              </button>
+            ) : null}
           </div>
-        </details>
-      ) : null}
+        </>
+      )}
     </section>
   );
 
@@ -803,6 +834,22 @@ function ResultsQueuePageContent() {
                   className={`rounded-full border px-4 py-1.5 text-sm ${queueTab === "fixture_changes" ? "border-indigo-700 bg-indigo-700 text-white" : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"}`}
                 >
                   Fixture Date Requests ({fixtureChangePendingCount})
+                </button>
+              </div>
+              <div className="mt-3 flex items-center gap-2 border-t border-slate-200 pt-3">
+                <button
+                  type="button"
+                  onClick={() => selectQueueView("pending")}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${queueView === "pending" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                >
+                  {queueTab === "fixture_changes" ? "Open requests" : "To review"} ({queueTab === "league" ? filteredPending.length : queueTab === "competition" ? competitionPending.length : fixtureChangePendingCount})
+                </button>
+                <button
+                  type="button"
+                  onClick={() => selectQueueView("reviewed")}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-semibold ${queueView === "reviewed" ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50"}`}
+                >
+                  Reviewed ({queueTab === "league" ? filteredReviewed.length : queueTab === "competition" ? competitionReviewed.length : fixtureChangeReviewed.length})
                 </button>
               </div>
               {queueTab === "league" ? (
@@ -884,7 +931,7 @@ function ResultsQueuePageContent() {
           ) : queueTab === "fixture_changes" ? (
             fixtureChangeQueueSection
           ) : (
-            <>
+            queueView === "pending" ? (
               <section className={cardClass}>
                 <h2 className="text-xl font-semibold text-slate-900">Pending approvals ({filteredPending.length})</h2>
                 <div className="mt-3 space-y-3">
@@ -988,7 +1035,7 @@ function ResultsQueuePageContent() {
                   })}
                 </div>
               </section>
-
+            ) : (
               <section className={cardClass}>
                 <h2 className="text-xl font-semibold text-slate-900">Reviewed ({filteredReviewed.length})</h2>
                 <div className="mt-3 space-y-2">
@@ -1020,7 +1067,7 @@ function ResultsQueuePageContent() {
                   ) : null}
                 </div>
               </section>
-            </>
+            )
           )}
           <ConfirmModal
             open={Boolean(confirmReview)}
