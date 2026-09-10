@@ -1605,7 +1605,11 @@ export default function CaptainResultsPage() {
       if (resolvedPlayerId) {
         const maxFramePoints = pointsByPlayerAndSlot.get(`${slotNo}:${resolvedPlayerId}`);
         if (maxFramePoints === undefined) {
-          return { error: `Break entry failed: selected player is not part of Frame ${slotNo}.`, rows: [] as SubmissionBreakEntry[] };
+          const selectedPlayerName = named(playerById.get(resolvedPlayerId));
+          return {
+            error: `Break entry needs correcting: ${selectedPlayerName} is not one of the players in Frame ${slotNo}. In the 30+ breaks review, change the frame or player—or remove the entry if no break was made.`,
+            rows: [] as SubmissionBreakEntry[],
+          };
         }
         if (breakValue > maxFramePoints) {
           return { error: `Break entry failed: ${breakValue} exceeds the player's frame points (${maxFramePoints}) in Frame ${slotNo}.`, rows: [] as SubmissionBreakEntry[] };
@@ -3050,8 +3054,42 @@ export default function CaptainResultsPage() {
                             </div>
                           ) : null}
                           {displayedBreakRows.map(({ row, index }) => (
-                            <div key={`break-${index}`} className="grid gap-2 sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_140px_auto]">
+                            <div
+                              key={`break-${index}`}
+                              className={`grid gap-2 ${
+                                scorecardReviewMode
+                                  ? "sm:grid-cols-[120px_minmax(0,1.2fr)_minmax(0,1fr)_140px_auto]"
+                                  : "sm:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)_140px_auto]"
+                              }`}
+                            >
+                              {scorecardReviewMode ? (
+                                <select
+                                  aria-label="Break frame"
+                                  className="min-h-11 rounded-lg border border-violet-300 bg-white px-3 py-2.5 text-sm font-semibold text-violet-900 sm:min-h-0 sm:px-2 sm:py-1"
+                                  value={row.slot_no ?? ""}
+                                  onChange={(event) => {
+                                    const nextSlotNo = Number(event.target.value);
+                                    const selectedPlayerStillEligible = fixturePlayerOptions.some(
+                                      (option) => option.id === row.player_id && option.frameEligibleSlotNos.has(nextSlotNo)
+                                    );
+                                    setBreakField(index, {
+                                      slot_no: nextSlotNo,
+                                      player_id: selectedPlayerStillEligible ? row.player_id : null,
+                                      entered_player_name: selectedPlayerStillEligible ? "" : row.entered_player_name,
+                                    });
+                                  }}
+                                  disabled={!homeSideCanManageScorecard}
+                                >
+                                  <option value="">Select frame</option>
+                                  {orderedScoreSlots.map((slot) => (
+                                    <option key={`break-frame-${slot.id}`} value={slot.slot_no}>
+                                      Frame {slot.slot_no}{slot.slot_type === "doubles" ? " · Doubles" : ""}
+                                    </option>
+                                  ))}
+                                </select>
+                              ) : null}
                               <select
+                                aria-label={row.slot_no ? `Break player for Frame ${row.slot_no}` : "Break player"}
                                 className="min-h-11 rounded-lg border border-slate-300 bg-white px-3 py-2.5 text-sm sm:min-h-0 sm:px-2 sm:py-1"
                                 value={row.player_id ?? ""}
                                 onChange={(e) =>
@@ -3064,8 +3102,18 @@ export default function CaptainResultsPage() {
                                 disabled={!homeSideCanManageScorecard}
                               >
                                 <option value="">Select player</option>
+                                {row.player_id && !fixturePlayerOptions.some(
+                                  (option) => option.id === row.player_id && (!row.slot_no || option.frameEligibleSlotNos.has(row.slot_no))
+                                ) ? (
+                                  <option value={row.player_id}>
+                                    {namedWithHandicap(playerById.get(row.player_id))} · not in Frame {row.slot_no ?? "selected"}
+                                  </option>
+                                ) : null}
                                 {fixturePlayerOptions
-                                  .filter((opt) => scorecardReviewMode || !currentScorecardFrame || opt.frameEligibleSlotNos.has(currentScorecardFrame.slot_no))
+                                  .filter((opt) => {
+                                    const targetSlotNo = row.slot_no ?? currentScorecardFrame?.slot_no ?? null;
+                                    return targetSlotNo !== null && opt.frameEligibleSlotNos.has(targetSlotNo);
+                                  })
                                   .map((opt) => <option key={opt.id} value={opt.id}>{opt.label}</option>)}
                               </select>
                               <input
