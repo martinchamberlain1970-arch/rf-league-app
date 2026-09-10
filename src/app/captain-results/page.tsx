@@ -1339,11 +1339,37 @@ export default function CaptainResultsPage() {
           setMessage(`Select two different ${side} players in frames 1 and 2 before recording frame 3 as No Show.`);
           return;
         }
-        const frameFour = slots.find((row) => row.slot_type === "singles" && row.slot_no === 4);
-        const doublesFrame = slots.find((row) => row.slot_type === "doubles");
+        let activeSlots = slots;
+        let frameFour = activeSlots.find((row) => row.slot_type === "singles" && row.slot_no === 4);
+        let doublesFrame = activeSlots.find((row) => row.slot_type === "doubles");
         if (!frameFour || !doublesFrame) {
-          setMessage("The winter scorecard is incomplete. It must contain four singles frames and one doubles frame.");
-          return;
+          const sessionRes = await supabase?.auth.getSession();
+          const token = sessionRes?.data.session?.access_token;
+          if (!token || !selectedFixture) {
+            setMessage("The complete winter scorecard could not be loaded. Refresh the page and try again.");
+            return;
+          }
+          const repairRes = await fetch("/api/league/ensure-fixture-frames", {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+            body: JSON.stringify({ fixtureId: selectedFixture.id }),
+          });
+          const repairBody = await repairRes.json().catch(() => null);
+          if (!repairRes.ok) {
+            setMessage(repairBody?.error ?? "The complete winter scorecard could not be loaded. Refresh the page and try again.");
+            return;
+          }
+          const repairedFrames = (repairBody?.frames ?? []) as FrameSlot[];
+          const localById = new Map(slots.map((row) => [row.id, row]));
+          activeSlots = repairedFrames.map((row) => ({ ...row, ...(localById.get(row.id) ?? {}) }));
+          setSlots(activeSlots);
+          setAllSlots((current) => [...current.filter((row) => row.fixture_id !== selectedFixture.id), ...repairedFrames]);
+          frameFour = activeSlots.find((row) => row.slot_type === "singles" && row.slot_no === 4);
+          doublesFrame = activeSlots.find((row) => row.slot_type === "doubles");
+          if (!frameFour || !doublesFrame) {
+            setMessage("The complete winter scorecard could not be loaded. Refresh the page and try again.");
+            return;
+          }
         }
         const confirmed = await showConfirm({
           title: "Confirm two-player lineup",
@@ -2344,7 +2370,7 @@ export default function CaptainResultsPage() {
                                   ) : (
                                     <select className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={homeSelection} onChange={(e) => applySinglesSelection(slot, "home", e.target.value)} disabled={homeSelectionLocked}>
                                       <option value="">Home player</option>
-                                      {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show — only two players available</option> : null}
+                                      {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show</option> : null}
                                       {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">System-nominated player</option> : null}
                                       {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                       {sortRosterIds(homeRosterIds).map((id) => (
@@ -2355,15 +2381,6 @@ export default function CaptainResultsPage() {
                                       ))}
                                     </select>
                                   )}
-                                  {isWinterFormat && slot.slot_type === "singles" && slot.slot_no === 3 && !homeSelectionLocked ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => applySinglesSelection(slot, "home", "__NO_SHOW__")}
-                                      className="mt-2 w-full rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100"
-                                    >
-                                      Only two players? Set Frame 3 to No Show
-                                    </button>
-                                  ) : null}
                                 </div>
                                 <div>
                                   <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-500">{teamById.get(selectedFixture.away_team_id)?.name ?? "Away"}</p>
@@ -2381,7 +2398,7 @@ export default function CaptainResultsPage() {
                                   ) : (
                                     <select className="w-full rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm" value={awaySelection} onChange={(e) => applySinglesSelection(slot, "away", e.target.value)} disabled={awaySelectionLocked}>
                                       <option value="">Away player</option>
-                                      {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show — only two players available</option> : null}
+                                      {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show</option> : null}
                                       {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">System-nominated player</option> : null}
                                       {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                       {sortRosterIds(awayRosterIds).map((id) => (
@@ -2392,15 +2409,6 @@ export default function CaptainResultsPage() {
                                       ))}
                                     </select>
                                   )}
-                                  {isWinterFormat && slot.slot_type === "singles" && slot.slot_no === 3 && !awaySelectionLocked ? (
-                                    <button
-                                      type="button"
-                                      onClick={() => applySinglesSelection(slot, "away", "__NO_SHOW__")}
-                                      className="mt-2 w-full rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm font-semibold text-amber-900 hover:bg-amber-100"
-                                    >
-                                      Only two players? Set Frame 3 to No Show
-                                    </button>
-                                  ) : null}
                                 </div>
                               </div>
                             </div>
