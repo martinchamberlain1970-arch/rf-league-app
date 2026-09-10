@@ -32,7 +32,7 @@ const sections = [
       "If your fixture is using digital pre-match lineups, the home side enters its lineup first on the day of the fixture.",
       "The away side can then respond before the fixture start time.",
       "Once both teams have submitted, the lineup is locked and those player assignments flow into the result card.",
-      "If both teams agree to use paper instead, select the paper-record option so the system records that digital lineups were intentionally skipped.",
+      "If the app cannot be used, keep an accurate manual scorecard and contact the League Secretary for the separate result-upload link. There is no paper-record option inside the digital lineup journey.",
       "The key deadline is before 19:30: if a lineup needs to be submitted in the app, it must be done before the match starts.",
     ],
   },
@@ -42,7 +42,9 @@ const sections = [
       "Open Captain Results and select the relevant fixture.",
       "In the 2026/2027 Premier League, reviewed handicaps apply with a maximum playing start of 40 points. Division 1 is played off scratch.",
       "Enter the frame players carefully. Player selectors show current handicaps to help you sense-check the matchup.",
-      "For summer leagues, remember the two-singles-per-player rule. For winter leagues, check nominated-player and no-show rules before submitting.",
+      "For a normal winter lineup, select four different singles players and any two eligible players for the doubles.",
+      "With only two players, select No Show in Frame 3, acknowledge the confirmation, and the system will nominate one of the first two players for Frame 4 and place both in the doubles.",
+      "With three players, select three different players in Frames 1 to 3, choose Nominated player in Frame 4, acknowledge the confirmation, and then choose any two of those three for the doubles.",
       "Enter frame points accurately and add any qualifying 30+ breaks.",
       "Use the same controlling device for score entry and break entry where possible.",
       "Each completed frame is saved as you advance. Your current work is also kept safely on the device until final submission.",
@@ -52,6 +54,7 @@ const sections = [
     title: "5. Proxy entry",
     bullets: [
       "Use agreed proxy entry only when one side cannot operate the app and both teams are content for one captain or vice-captain to handle the fixture in-app.",
+      "Enable proxy entry before selecting players. It unlocks both teams' player fields on the same screen.",
       "Proxy entry does not remove the normal lineup order or final submission requirements.",
       "The acting captain or vice-captain must still make sure both teams agree the lineups and result before submission.",
       "Proxy use is recorded in the app audit trail.",
@@ -176,33 +179,45 @@ export default function CaptainGuidePage() {
           <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
             <figure className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
               <figcaption>
-                <h3 className="font-bold text-slate-950">1. Enter and submit the home lineup</h3>
-                <p className="mt-1 text-sm text-slate-600">Choose the home player for every frame, save a draft while checking it, then select Submit lineup only when it is final.</p>
+                <h3 className="font-bold text-slate-950">1. Normal four-player winter lineup</h3>
+                <p className="mt-1 text-sm text-slate-600">Choose four different singles players and complete the doubles. Lineup actions appear after Frame 5.</p>
               </figcaption>
-              <div className="mx-auto mt-3 max-w-sm overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <Image
-                  src="/guides/screenshots/captain-home-lineup-real.jpeg"
-                  alt="Real mobile captain screen showing home-player selectors for each frame, Save draft and Submit lineup"
-                  width={1290}
-                  height={2796}
+                  src="/guides/screenshots/captain-winter-four-player.png"
+                  alt="Winter captain lineup showing four singles, one doubles frame, and lineup actions at the end"
+                  width={1173}
+                  height={1283}
                   className="h-auto w-full"
                 />
               </div>
             </figure>
-            <figure className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+            <figure className="rounded-2xl border border-violet-200 bg-violet-50 p-4">
               <figcaption>
-                <h3 className="font-bold text-slate-950">2. Review the completed scorecard</h3>
-                <p className="mt-1 text-sm text-slate-600">Confirm all four frame scores, player names and qualifying breaks with both teams before the final submission.</p>
+                <h3 className="font-bold text-slate-950">2. Agreed proxy entry</h3>
+                <p className="mt-1 text-sm text-slate-600">Enable this at the start only with both teams&apos; agreement. It unlocks both sides so one official can enter both lineups.</p>
               </figcaption>
               <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
                 <Image
-                  src="/guides/screenshots/captain-final-scorecard-complete.png"
-                  alt="Completed captain scorecard with four frame scores, home players on the left, away players on the right, a recorded break and submission confirmation"
-                  width={1265}
-                  height={710}
+                  src="/guides/screenshots/captain-proxy-entry.png"
+                  alt="Agreed proxy entry active with both teams' lineup fields unlocked"
+                  width={1173}
+                  height={1283}
                   className="h-auto w-full"
                 />
               </div>
+            </figure>
+            <figure className="rounded-2xl border border-amber-200 bg-amber-50 p-4">
+              <figcaption><h3 className="font-bold text-slate-950">3. Two-player winter lineup</h3><p className="mt-1 text-sm text-slate-600">Select No Show in Frame 3. After confirmation, Frame 4 is nominated at random and both players fill the doubles automatically.</p></figcaption>
+              <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><Image src="/guides/screenshots/captain-winter-two-player.png" alt="Two-player winter lineup with Frame 3 No Show, named nominated player in Frame 4, and automatic doubles pairing" width={1173} height={1381} className="h-auto w-full" /></div>
+            </figure>
+            <figure className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <figcaption><h3 className="font-bold text-slate-950">4. Three-player winter lineup</h3><p className="mt-1 text-sm text-slate-600">Choose Nominated player in Frame 4. After confirmation, select any two players from Frames 1 to 3 for the doubles.</p></figcaption>
+              <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><Image src="/guides/screenshots/captain-winter-three-player.png" alt="Three-player winter lineup with named nominated player in Frame 4 and doubles choices restricted to the first three players" width={1173} height={1381} className="h-auto w-full" /></div>
+            </figure>
+            <figure className="rounded-2xl border border-sky-200 bg-sky-50 p-4 lg:col-span-2">
+              <figcaption><h3 className="font-bold text-slate-950">5. Review and submit the completed scorecard</h3><p className="mt-1 text-sm text-slate-600">Check every player, frame score and qualifying break with both teams before final submission.</p></figcaption>
+              <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"><Image src="/guides/screenshots/captain-final-scorecard-complete.png" alt="Completed captain scorecard with players, frame scores, a recorded break and submission confirmation" width={1265} height={710} className="h-auto w-full" /></div>
             </figure>
           </div>
           <p className="mt-3 text-sm text-slate-600">Training names and scores are examples only. The practice screen does not save anything to live league records.</p>

@@ -5,6 +5,7 @@ import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 
 type Stage = "lineup" | "scorecard" | "review";
+type LineupMode = "four" | "three" | "two";
 
 const players = ["Alex Carter (0)", "Ben Morris (+8)", "Chris Taylor (-4)", "Daniel White (+16)"];
 const opponents = ["Jamie Smith (+4)", "Lee Harris (0)", "Morgan Jones (+12)", "Pat Brown (-4)"];
@@ -14,6 +15,8 @@ export default function CaptainTrainingPage() {
   const [stage, setStage] = useState<Stage>("lineup");
   const [submitted, setSubmitted] = useState(false);
   const [breakEntry, setBreakEntry] = useState(false);
+  const [lineupMode, setLineupMode] = useState<LineupMode>("four");
+  const [proxyEnabled, setProxyEnabled] = useState(false);
 
   const tabClass = (active: boolean) => `flex-1 rounded-xl border px-3 py-3 text-left ${active ? "border-sky-700 bg-sky-700 text-white" : "border-slate-200 bg-white text-slate-600"}`;
 
@@ -39,20 +42,48 @@ export default function CaptainTrainingPage() {
           <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <p className="text-xs font-bold uppercase tracking-[0.16em] text-teal-700">Home team view</p>
             <h2 className="mt-1 text-xl font-bold text-slate-950">Enter the home lineup first</h2>
-            <p className="mt-1 text-sm text-slate-600">Save a draft while deciding. Submit only when the lineup is final and ready for the away captain.</p>
-            <div className="mt-4 space-y-3">
-              {players.map((player, index) => (
-                <label key={player} className="block rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm font-semibold text-slate-800">
-                  Frame {index + 1} · Singles
-                  <select className="mt-2 block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal" defaultValue={player}>
-                    {players.map((name) => <option key={name}>{name}</option>)}
-                  </select>
-                </label>
+            <p className="mt-1 text-sm text-slate-600">These safe examples show the normal four-player lineup and the special three-player and two-player winter routes.</p>
+            <div className="mt-4 rounded-xl border border-violet-200 bg-violet-50 p-3">
+              <p className="font-semibold text-violet-950">Agreed proxy entry</p>
+              <p className="mt-1 text-sm text-violet-900">If both teams agree, proxy entry unlocks the opponent&apos;s fields so one captain or vice-captain can enter both lineups.</p>
+              <button type="button" onClick={() => setProxyEnabled(true)} className="mt-2 rounded-lg border border-violet-300 bg-white px-3 py-2 text-sm font-semibold text-violet-900">{proxyEnabled ? "Proxy entry active" : "Use agreed proxy entry"}</button>
+            </div>
+            <div className="mt-4 grid gap-2 sm:grid-cols-3">
+              {([['four', 'Four players'], ['three', 'Three players'], ['two', 'Two players']] as const).map(([mode, label]) => (
+                <button key={mode} type="button" onClick={() => setLineupMode(mode)} className={`rounded-lg border px-3 py-2 text-sm font-semibold ${lineupMode === mode ? "border-sky-700 bg-sky-700 text-white" : "border-slate-300 bg-white text-slate-700"}`}>{label}</button>
               ))}
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-2">
-              <button type="button" className="rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-700">Save draft</button>
-              <button type="button" onClick={() => setStage("scorecard")} className="rounded-xl bg-sky-700 px-4 py-3 font-semibold text-white">Submit lineup</button>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2">
+              {[0, 1, 2, 3].map((index) => {
+                const homeValue = lineupMode === "two" && index === 2
+                  ? "No Show"
+                  : lineupMode !== "four" && index === 3
+                    ? `${players[lineupMode === "two" ? 0 : 1].split(" (")[0]} (nominated player)`
+                    : players[index];
+                return (
+                  <div key={index} className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm font-semibold text-slate-800">
+                    Frame {index + 1} · Singles
+                    <div className="mt-2 rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal">{homeValue}</div>
+                    <div className={`mt-2 rounded-lg border px-3 py-2 font-normal ${proxyEnabled ? "border-slate-300 bg-white text-slate-900" : "border-slate-200 bg-slate-100 text-slate-400"}`}>{proxyEnabled ? opponents[index] : "Away player"}</div>
+                  </div>
+                );
+              })}
+              <div className="rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm font-semibold text-slate-800 sm:col-span-2">
+                Frame 5 · Doubles
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  <div className="rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal">{lineupMode === "three" ? "Choose from Frames 1–3" : players[0]}</div>
+                  <div className="rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal">{lineupMode === "three" ? "Choose from Frames 1–3" : players[1]}</div>
+                </div>
+                {proxyEnabled ? <div className="mt-2 grid gap-2 sm:grid-cols-2"><div className="rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal">Jamie Smith (+4)</div><div className="rounded-lg border border-slate-300 bg-white px-3 py-2 font-normal">Lee Harris (0)</div></div> : null}
+              </div>
+            </div>
+            <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3">
+              <p className="font-semibold text-slate-950">Lineup actions</p>
+              <p className="mt-1 text-sm text-slate-600">Review all five frames before saving or submitting.</p>
+              <div className="mt-3 grid grid-cols-2 gap-2">
+                <button type="button" className="rounded-xl border border-slate-300 bg-white px-4 py-3 font-semibold text-slate-700">Save lineup draft</button>
+                <button type="button" onClick={() => setStage("scorecard")} className="rounded-xl bg-sky-700 px-4 py-3 font-semibold text-white">Submit team to opponent</button>
+              </div>
             </div>
           </section>
         ) : null}
