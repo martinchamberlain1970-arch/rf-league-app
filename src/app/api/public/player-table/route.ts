@@ -33,7 +33,9 @@ type FrameRow = {
   fixture_id: string;
   slot_type: "singles" | "doubles";
   home_player1_id: string | null;
+  home_player2_id: string | null;
   away_player1_id: string | null;
+  away_player2_id: string | null;
   home_forfeit: boolean | null;
   away_forfeit: boolean | null;
   winner_side: "home" | "away" | null;
@@ -57,6 +59,7 @@ export async function GET(req: NextRequest) {
   }
 
   const seasonIdParam = req.nextUrl.searchParams.get("seasonId")?.trim() ?? "";
+  const mode = req.nextUrl.searchParams.get("mode") === "doubles" ? "doubles" : "singles";
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
   const seasonsRes = await adminClient
@@ -74,7 +77,7 @@ export async function GET(req: NextRequest) {
     (seasonIdParam ? seasons.find((season) => season.id === seasonIdParam) : null) ?? seasons[0] ?? null;
 
   if (!selectedSeason) {
-    return NextResponse.json({ season: null, players: [] });
+    return NextResponse.json({ season: null, mode, players: [] });
   }
 
   const [teamsRes, membersRes, fixturesRes, framesRes, playersRes] = await Promise.all([
@@ -83,7 +86,7 @@ export async function GET(req: NextRequest) {
     adminClient.from("league_fixtures").select("id,season_id,status").eq("season_id", selectedSeason.id),
     adminClient
       .from("league_fixture_frames")
-      .select("fixture_id,slot_type,home_player1_id,away_player1_id,home_forfeit,away_forfeit,winner_side,home_points_scored,away_points_scored"),
+      .select("fixture_id,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_forfeit,away_forfeit,winner_side,home_points_scored,away_points_scored"),
     adminClient.from("players").select("id,display_name,full_name").eq("is_archived", false),
   ]);
 
@@ -113,56 +116,51 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  const singlesAppearanceByPlayer = new Map<string, Set<string>>();
-  const singlesPlayed = new Map<string, { won: number; lost: number; pointsFor: number; pointsAgainst: number }>();
+  const appearanceByPlayer = new Map<string, Set<string>>();
+  const resultsByPlayer = new Map<string, { won: number; lost: number; pointsFor: number; pointsAgainst: number }>();
   const fixtureIds = new Set(fixtures.filter((fixture) => fixture.status === "complete").map((fixture) => fixture.id));
 
-  for (const frame of frames.filter((row) => fixtureIds.has(row.fixture_id) && row.slot_type === "singles")) {
-    const homeId = frame.home_player1_id;
-    const awayId = frame.away_player1_id;
-    if (homeId) {
-      const set = singlesAppearanceByPlayer.get(homeId) ?? new Set<string>();
+  for (const frame of frames.filter((row) => fixtureIds.has(row.fixture_id) && row.slot_type === mode)) {
+    const homeIds = [frame.home_player1_id, mode === "doubles" ? frame.home_player2_id : null].filter(Boolean) as string[];
+    const awayIds = [frame.away_player1_id, mode === "doubles" ? frame.away_player2_id : null].filter(Boolean) as string[];
+    for (const playerId of [...homeIds, ...awayIds]) {
+      const set = appearanceByPlayer.get(playerId) ?? new Set<string>();
       set.add(frame.fixture_id);
-      singlesAppearanceByPlayer.set(homeId, set);
-    }
-    if (awayId) {
-      const set = singlesAppearanceByPlayer.get(awayId) ?? new Set<string>();
-      set.add(frame.fixture_id);
-      singlesAppearanceByPlayer.set(awayId, set);
+      appearanceByPlayer.set(playerId, set);
     }
 
     if (!frame.winner_side || frame.home_forfeit || frame.away_forfeit) continue;
     const homePoints = typeof frame.home_points_scored === "number" ? frame.home_points_scored : 0;
     const awayPoints = typeof frame.away_points_scored === "number" ? frame.away_points_scored : 0;
 
-    if (homeId) {
-      const prev = singlesPlayed.get(homeId) ?? { won: 0, lost: 0, pointsFor: 0, pointsAgainst: 0 };
+    for (const playerId of homeIds) {
+      const prev = resultsByPlayer.get(playerId) ?? { won: 0, lost: 0, pointsFor: 0, pointsAgainst: 0 };
       if (frame.winner_side === "home") prev.won += 1;
       else prev.lost += 1;
       prev.pointsFor += homePoints;
       prev.pointsAgainst += awayPoints;
-      singlesPlayed.set(homeId, prev);
+      resultsByPlayer.set(playerId, prev);
     }
-    if (awayId) {
-      const prev = singlesPlayed.get(awayId) ?? { won: 0, lost: 0, pointsFor: 0, pointsAgainst: 0 };
+    for (const playerId of awayIds) {
+      const prev = resultsByPlayer.get(playerId) ?? { won: 0, lost: 0, pointsFor: 0, pointsAgainst: 0 };
       if (frame.winner_side === "away") prev.won += 1;
       else prev.lost += 1;
       prev.pointsFor += awayPoints;
       prev.pointsAgainst += homePoints;
-      singlesPlayed.set(awayId, prev);
+      resultsByPlayer.set(playerId, prev);
     }
   }
 
   const rosterPlayerIds = new Set<string>(members.map((member) => member.player_id));
-  const playersTable = Array.from(new Set<string>([...rosterPlayerIds, ...singlesAppearanceByPlayer.keys(), ...singlesPlayed.keys()]))
+  const playersTable = Array.from(new Set<string>([...rosterPlayerIds, ...appearanceByPlayer.keys(), ...resultsByPlayer.keys()]))
     .map((playerId) => {
-      const result = singlesPlayed.get(playerId) ?? { won: 0, lost: 0, pointsFor: 0, pointsAgainst: 0 };
+      const result = resultsByPlayer.get(playerId) ?? { won: 0, lost: 0, pointsFor: 0, pointsAgainst: 0 };
       const played = result.won + result.lost;
       return {
         player_id: playerId,
         player_name: named(playerById.get(playerId)),
         team_name: playerTeamName.get(playerId) ?? "-",
-        appearances: singlesAppearanceByPlayer.get(playerId)?.size ?? 0,
+        appearances: appearanceByPlayer.get(playerId)?.size ?? 0,
         played,
         won: result.won,
         lost: result.lost,
@@ -180,6 +178,7 @@ export async function GET(req: NextRequest) {
       id: selectedSeason.id,
       name: selectedSeason.name,
     },
+    mode,
     players: playersTable,
   });
 }

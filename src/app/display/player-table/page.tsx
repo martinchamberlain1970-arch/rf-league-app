@@ -18,18 +18,22 @@ type PlayerRow = {
 
 type Payload = {
   season: { id: string; name: string } | null;
+  mode: "singles" | "doubles";
   players: PlayerRow[];
   error?: string;
 };
 
+type TableMode = "singles" | "doubles";
+
 export default function PublicPlayerTablePage() {
   const [data, setData] = useState<Payload | null>(null);
   const [updatedAt, setUpdatedAt] = useState<string>("");
+  const [mode, setMode] = useState<TableMode>("singles");
 
   useEffect(() => {
     let active = true;
     const load = async () => {
-      const resp = await fetch("/api/public/player-table", { cache: "no-store" });
+      const resp = await fetch(`/api/public/player-table?mode=${mode}`, { cache: "no-store" });
       const payload = (await resp.json()) as Payload;
       if (!active) return;
       setData(payload);
@@ -43,14 +47,28 @@ export default function PublicPlayerTablePage() {
       active = false;
       window.clearInterval(interval);
     };
-  }, []);
+  }, [mode]);
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6">
       <div className="mx-auto max-w-6xl space-y-4">
         <header className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/20 backdrop-blur">
           <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-300">Public Player Table</p>
-          <h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">Leading Players</h1>
+          <div className="mt-2 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+            <h1 className="text-2xl font-black tracking-tight text-white sm:text-3xl">Leading {mode === "singles" ? "Singles" : "Doubles"} Players</h1>
+            <div className="grid grid-cols-2 rounded-xl border border-white/15 bg-slate-950/50 p-1" aria-label="Player table type">
+              {(["singles", "doubles"] as const).map((option) => (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => setMode(option)}
+                  className={`rounded-lg px-4 py-2 text-sm font-bold capitalize ${mode === option ? "bg-cyan-400 text-slate-950" : "text-slate-300 hover:bg-white/10"}`}
+                >
+                  {option}
+                </button>
+              ))}
+            </div>
+          </div>
           <p className="mt-2 text-sm text-slate-300">{data?.season?.name ?? "Published league season"} · Updated {updatedAt || "--:--"}</p>
         </header>
 
@@ -91,6 +109,7 @@ export default function PublicPlayerTablePage() {
               </tbody>
             </table>
           </div>
+          {data && data.players.length === 0 ? <p className="border-t border-white/5 px-4 py-8 text-center text-slate-300">No completed {mode} frames have been recorded for this league yet.</p> : null}
         </section>
       </div>
     </main>
