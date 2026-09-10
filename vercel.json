@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "crons": [
+    {
+      "path": "/api/cron/premier-handicap-auto-attest",
+      "schedule": "0 18 10 9 *"
+    }
+  ]
+}

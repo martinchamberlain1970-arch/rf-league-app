@@ -125,15 +125,18 @@ export default function PremierHandicapConfirmationsPage() {
               <table className="w-full min-w-[760px] text-left text-sm">
                 <thead className="bg-slate-50"><tr><th className="p-4">Premier team</th><th className="p-4">Status</th><th className="p-4">Confirmed by</th><th className="p-4">Time</th><th className="p-4">Correction</th></tr></thead>
                 <tbody>
-                  {teams.map((team) => (
+                  {teams.map((team) => {
+                    const autoAttested = team.confirmation?.representative_name.startsWith("System auto-attestation") ?? false;
+                    return (
                     <tr key={team.id} className="border-t border-slate-200">
                       <td className="p-4 font-bold text-slate-950">{team.name}</td>
-                      <td className="p-4"><span className={`rounded-full px-3 py-1 text-xs font-bold ${team.confirmation ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>{team.confirmation ? "Confirmed" : "Awaiting check"}</span></td>
-                      <td className="p-4">{team.confirmation ? `${team.confirmation.representative_name} · ${team.confirmation.representative_role === "captain" ? "Captain" : "Vice-captain"}` : "—"}</td>
+                      <td className="p-4"><span className={`rounded-full px-3 py-1 text-xs font-bold ${autoAttested ? "bg-sky-100 text-sky-900" : team.confirmation ? "bg-emerald-100 text-emerald-800" : "bg-amber-100 text-amber-900"}`}>{autoAttested ? "Auto-attested" : team.confirmation ? "Confirmed" : "Awaiting check"}</span></td>
+                      <td className="p-4">{autoAttested ? "System deadline process" : team.confirmation ? `${team.confirmation.representative_name} · ${team.confirmation.representative_role === "captain" ? "Captain" : "Vice-captain"}` : "—"}</td>
                       <td className="p-4">{team.confirmation ? new Date(team.confirmation.confirmed_at).toLocaleString("en-GB") : "—"}</td>
                       <td className="p-4">{team.confirmation ? <button type="button" disabled={busy} onClick={() => void removeConfirmation(team)} className="rounded-lg border border-rose-300 px-3 py-2 font-bold text-rose-800 disabled:opacity-50">Remove and resubmit</button> : "—"}</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {teams.length === 0 ? <tr><td colSpan={5} className="p-6 text-center text-slate-500">Run the Premier handicap confirmation SQL to create the snapshot.</td></tr> : null}
                 </tbody>
               </table>

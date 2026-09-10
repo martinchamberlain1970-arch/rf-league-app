@@ -34,6 +34,7 @@ const ACTION_LABELS: Record<string, string> = {
   league_submission_sent: "Submitted fixture result",
   league_submission_approved: "Approved fixture result",
   league_submission_rejected: "Rejected fixture result",
+  premier_handicap_auto_attested: "Auto-attested Premier handicap confirmation",
 };
 
 function prettyAction(action: string) {
@@ -60,6 +61,9 @@ function detailLines(meta?: Record<string, unknown> | null) {
   push("Photo", meta.scorecard_photo_url ? "Attached" : null);
   push("Decision", meta.decision);
   push("Reason", meta.rejection_reason);
+  push("Team", meta.team_name);
+  push("Deadline", meta.deadline);
+  push("Auto-attested", meta.auto_attested_at);
   push("Device", meta.user_agent);
   return lines;
 }
