@@ -646,9 +646,14 @@ export default function CaptainResultsPage() {
         try {
           const savedDraft = JSON.parse(savedDraftRaw) as CaptainResultDraft;
           if (Array.isArray(savedDraft.slots) && savedDraft.slots.length > 0) {
-            setSlots(savedDraft.slots);
+            const savedSlotById = new Map(savedDraft.slots.map((slot) => [slot.id, slot]));
+            const restoredSlots = nextSlots.map((slot) => ({
+              ...slot,
+              ...(savedSlotById.get(slot.id) ?? {}),
+            }));
+            setSlots(restoredSlots);
             const savedNames: Record<string, string> = {};
-            for (const slot of savedDraft.slots) {
+            for (const slot of restoredSlots) {
               if (slot.home_nominated_name) savedNames[`${slot.id}:home`] = slot.home_nominated_name;
               if (slot.away_nominated_name) savedNames[`${slot.id}:away`] = slot.away_nominated_name;
             }
