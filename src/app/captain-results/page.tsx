@@ -1513,6 +1513,16 @@ export default function CaptainResultsPage() {
   };
 
   const validateLineupForSide = (side: "home" | "away") => {
+    if (isWinterFormat) {
+      const selectedSinglesIds = slots
+        .filter((slot) => slot.slot_type === "singles")
+        .filter((slot) => !(side === "home" ? slot.home_nominated || slot.home_forfeit : slot.away_nominated || slot.away_forfeit))
+        .map((slot) => (side === "home" ? slot.home_player1_id : slot.away_player1_id))
+        .filter((id): id is string => Boolean(id));
+      if (new Set(selectedSinglesIds).size !== selectedSinglesIds.length) {
+        return "The same player cannot be selected for more than one winter singles frame.";
+      }
+    }
     for (const slot of slots) {
       if (slot.slot_type === "doubles") {
         const p1 = side === "home" ? slot.home_player1_id : slot.away_player1_id;

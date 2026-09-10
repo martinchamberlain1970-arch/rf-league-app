@@ -184,6 +184,16 @@ export async function POST(req: NextRequest) {
     const frameFourName = side === "home" ? fourth?.home_nominated_name?.trim() : fourth?.away_nominated_name?.trim();
     const doublesFirstId = side === "home" ? doubles?.home_player1_id : doubles?.away_player1_id;
     const doublesSecondId = side === "home" ? doubles?.home_player2_id : doubles?.away_player2_id;
+    const selectedSinglesIds = [first, second, third, fourth]
+      .filter((patch) => patch && !(side === "home" ? patch.home_nominated || patch.home_forfeit : patch.away_nominated || patch.away_forfeit))
+      .map((patch) => (side === "home" ? patch?.home_player1_id : patch?.away_player1_id))
+      .filter((id): id is string => Boolean(id));
+    if (new Set(selectedSinglesIds).size !== selectedSinglesIds.length) {
+      return NextResponse.json(
+        { error: "The same player cannot be selected for more than one winter singles frame." },
+        { status: 400 }
+      );
+    }
     if (frameThreeForfeit) {
       if (!firstId || !secondId || firstId === secondId) {
         return NextResponse.json({ error: "Frames 1 and 2 must contain two different players before frame 3 can be recorded as No Show." }, { status: 400 });
