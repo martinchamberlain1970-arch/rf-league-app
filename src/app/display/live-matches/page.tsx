@@ -68,13 +68,13 @@ function PlayerBadge({
   return (
     <div className={`flex items-center gap-1.5 ${align === "right" ? "justify-end" : ""}`}>
       {align === "right" && (flag || player.nationality) ? (
-        <span className="text-[0.65rem] text-slate-300">{flag ? `${flag} ` : ""}{player.nationality ?? ""}</span>
+        <span className="text-[0.65rem] text-slate-300 2xl:text-xs">{flag ? `${flag} ` : ""}{player.nationality ?? ""}</span>
       ) : null}
-      <div className={`flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border text-[0.65rem] font-black ${avatarClass}`}>
+      <div className={`flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border text-[0.65rem] font-black 2xl:h-10 2xl:w-10 2xl:text-xs ${avatarClass}`}>
         {player.avatarUrl ? <img src={player.avatarUrl} alt={player.name} className="h-full w-full object-cover" /> : <span>{player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>}
       </div>
       {align === "left" && (flag || player.nationality) ? (
-        <span className="text-[0.65rem] text-slate-300">{flag ? `${flag} ` : ""}{player.nationality ?? ""}</span>
+        <span className="text-[0.65rem] text-slate-300 2xl:text-xs">{flag ? `${flag} ` : ""}{player.nationality ?? ""}</span>
       ) : null}
     </div>
   );
@@ -175,12 +175,12 @@ export default function PublicLiveMatchesPage() {
 
   return (
     <main className="min-h-screen overflow-x-hidden bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_55%)] p-2.5 text-white sm:p-3 xl:p-4">
-      <div className="mx-auto grid min-h-screen w-full min-w-0 max-w-7xl content-start gap-2.5 sm:gap-3">
-        <section className="min-w-0 rounded-2xl border border-white/10 bg-white/5 p-3 shadow-2xl backdrop-blur sm:p-4">
+      <div className="mx-auto grid min-h-screen w-full min-w-0 max-w-[2200px] content-start gap-2.5 sm:gap-3 2xl:gap-5">
+        <section className="min-w-0 rounded-2xl border border-white/10 bg-white/5 p-3 shadow-2xl backdrop-blur sm:p-4 2xl:rounded-[2rem] 2xl:p-6">
           <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-end lg:justify-between lg:gap-4">
             <div className="min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200/80 sm:text-sm sm:tracking-[0.35em]">Live Matches</p>
-              <h1 className="mt-1 text-xl font-black tracking-tight sm:text-2xl xl:text-3xl">{data.season?.name ?? "Published League Live Matches"}</h1>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-200/80 sm:text-sm sm:tracking-[0.35em] 2xl:text-base">Live Matches</p>
+              <h1 className="mt-1 text-xl font-black tracking-tight sm:text-2xl xl:text-3xl 2xl:mt-2 2xl:text-4xl">{data.season?.name ?? "Published League Live Matches"}</h1>
             </div>
             <div className="flex min-w-0 flex-wrap items-center gap-2 sm:gap-3">
               {data.liveMatches.length > 1 ? (
@@ -199,15 +199,15 @@ export default function PublicLiveMatchesPage() {
                   </select>
                 </label>
               ) : null}
-              <div className="rounded-full border border-rose-200/20 bg-rose-400/10 px-3 py-1.5 text-xs font-semibold text-rose-100 sm:px-4 sm:py-2 sm:text-sm">
+                <div className="rounded-full border border-rose-200/20 bg-rose-400/10 px-3 py-1.5 text-xs font-semibold text-rose-100 sm:px-4 sm:py-2 sm:text-sm 2xl:px-5 2xl:py-2.5 2xl:text-base">
                 {data.liveMatches.length} match{data.liveMatches.length === 1 ? "" : "es"} live
               </div>
               {totalPages > 1 ? (
-                <div className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-semibold text-cyan-100 sm:px-4 sm:py-2 sm:text-sm">
+                <div className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-semibold text-cyan-100 sm:px-4 sm:py-2 sm:text-sm 2xl:px-5 2xl:py-2.5 2xl:text-base">
                   Match {Math.min(pageIndex + 1, totalPages)} of {totalPages}
                 </div>
               ) : null}
-              <div className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-100 sm:px-4 sm:py-2 sm:text-sm">
+              <div className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-100 sm:px-4 sm:py-2 sm:text-sm 2xl:px-5 2xl:py-2.5 2xl:text-base">
                 Updated {generatedAt}
               </div>
             </div>
@@ -295,60 +295,60 @@ export default function PublicLiveMatchesPage() {
         {!loading && !data.error && data.liveMatches.length > 0 ? (
           <div className="hidden gap-3 lg:grid">
             {visibleMatches.map((match) => (
-              <section key={match.fixtureId} className="flex flex-col rounded-2xl border border-white/10 bg-white/6 p-3 shadow-2xl backdrop-blur">
+              <section key={match.fixtureId} className="flex flex-col rounded-2xl border border-white/10 bg-white/6 p-3 shadow-2xl backdrop-blur 2xl:rounded-[2rem] 2xl:p-6">
                 <div className="flex min-w-0 items-start justify-between gap-3">
                   <div>
-                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-cyan-200">
+                    <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-cyan-200 2xl:text-sm 2xl:tracking-[0.26em]">
                       {match.seasonName ? `${match.seasonName} · ` : ""}Week {match.weekNo ?? "-"}
                     </p>
-                    <h2 className="mt-1 text-xl font-black leading-tight xl:text-2xl">
+                    <h2 className="mt-1 text-xl font-black leading-tight xl:text-2xl 2xl:mt-2 2xl:text-4xl">
                       {match.homeTeam} <span className="text-cyan-200">vs.</span> {match.awayTeam}
                     </h2>
                   </div>
-                  <div className="shrink-0 rounded-xl border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-center">
-                    <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100">Frames</p>
-                    <p className="mt-0.5 text-xl font-black text-white">{match.overallScore}</p>
+                  <div className="shrink-0 rounded-xl border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-center 2xl:rounded-2xl 2xl:px-6 2xl:py-3">
+                    <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100 2xl:text-sm">Frames</p>
+                    <p className="mt-0.5 text-xl font-black text-white 2xl:text-4xl">{match.overallScore}</p>
                   </div>
                 </div>
 
-                <div className="mt-2 grid content-start gap-1.5 xl:grid-cols-2">
+                <div className="mt-2 grid content-start gap-1.5 xl:grid-cols-2 2xl:mt-4 2xl:gap-3">
                   {match.frameRows.map((frame) => (
-                    <div key={frame.id} className="rounded-xl border border-white/10 bg-slate-950/35 px-2.5 py-2">
+                    <div key={frame.id} className="rounded-xl border border-white/10 bg-slate-950/35 px-2.5 py-2 2xl:rounded-2xl 2xl:px-4 2xl:py-3">
                       {(() => {
                         const homeTone = sideHighlight(frame.frameStatus, "home");
                         const awayTone = sideHighlight(frame.frameStatus, "away");
                         return (
                           <>
                             <div className="flex flex-wrap items-center justify-between gap-2">
-                              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-300">{frame.title}</p>
+                              <p className="text-[0.68rem] font-semibold uppercase tracking-[0.16em] text-slate-300 2xl:text-sm">{frame.title}</p>
                               <div className="flex items-center gap-2">
-                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.68rem] font-semibold text-slate-200">
+                                <span className="rounded-full border border-white/10 bg-white/5 px-2 py-0.5 text-[0.68rem] font-semibold text-slate-200 2xl:px-3 2xl:py-1 2xl:text-sm">
                                   {frame.frameStatus}
                                 </span>
-                                <span className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-2 py-0.5 text-xs font-black text-cyan-100">
+                                <span className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-2 py-0.5 text-xs font-black text-cyan-100 2xl:px-3 2xl:py-1 2xl:text-base">
                                   {frame.scoreLabel}
                                 </span>
                               </div>
                             </div>
                             <div className="mt-1.5 rounded-xl border border-white/8 bg-white/[0.03] px-2.5 py-1.5">
-                              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-cyan-200/80">
+                              <p className="text-[0.65rem] font-semibold uppercase tracking-[0.14em] text-cyan-200/80 2xl:text-sm">
                                 {frame.startAmount > 0 ? `${frame.startRecipient} start ${frame.startAmount}` : "Level start"}
                               </p>
                               <div className="mt-1 grid grid-cols-[1fr_auto_1fr] items-center gap-2">
-                                <p className={`text-xs font-semibold leading-snug ${homeTone.nameClass}`}>
+                                <p className={`text-xs font-semibold leading-snug 2xl:text-xl ${homeTone.nameClass}`}>
                                   {stripHandicapSuffix(frame.homeName)}
                                 </p>
-                                <span className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-2 py-0.5 text-xs font-black text-cyan-100">
+                                <span className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-2 py-0.5 text-xs font-black text-cyan-100 2xl:px-4 2xl:py-1.5 2xl:text-xl">
                                   {frame.scoreLabel}
                                 </span>
-                                <p className={`text-right text-xs font-semibold leading-snug ${awayTone.nameClass}`}>
+                                <p className={`text-right text-xs font-semibold leading-snug 2xl:text-xl ${awayTone.nameClass}`}>
                                   {stripHandicapSuffix(frame.awayName)}
                                 </p>
                               </div>
                             </div>
-                            <div className="mt-1.5 grid gap-1 text-xs xl:grid-cols-[1fr_auto_1fr] xl:items-center">
+                            <div className="mt-1.5 grid gap-1 text-xs xl:grid-cols-[1fr_auto_1fr] xl:items-center 2xl:mt-3 2xl:text-base">
                               <div>
-                                <p className={`text-[0.62rem] uppercase tracking-[0.12em] ${homeTone.metaClass}`}>
+                                <p className={`text-[0.62rem] uppercase tracking-[0.12em] 2xl:text-sm ${homeTone.metaClass}`}>
                                   Hcp {frame.homeHandicapLabel}
                                 </p>
                                 <div className="mt-1 flex flex-wrap gap-1.5">
@@ -361,7 +361,7 @@ export default function PublicLiveMatchesPage() {
                               </div>
                               <p className="text-center text-cyan-200">vs.</p>
                               <div>
-                                <p className={`text-[0.62rem] uppercase tracking-[0.12em] xl:text-right ${awayTone.metaClass}`}>
+                                <p className={`text-[0.62rem] uppercase tracking-[0.12em] xl:text-right 2xl:text-sm ${awayTone.metaClass}`}>
                                   Hcp {frame.awayHandicapLabel}
                                 </p>
                                 <div className="mt-1 flex flex-wrap justify-start gap-1.5 xl:justify-end">
@@ -373,7 +373,7 @@ export default function PublicLiveMatchesPage() {
                                 </div>
                               </div>
                             </div>
-                            <p className="mt-1 text-[0.68rem] text-slate-300">{frame.startLabel}</p>
+                            <p className="mt-1 text-[0.68rem] text-slate-300 2xl:mt-2 2xl:text-sm">{frame.startLabel}</p>
                           </>
                         );
                       })()}
