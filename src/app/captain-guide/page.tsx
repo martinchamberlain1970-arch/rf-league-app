@@ -1,3 +1,4 @@
+import Image from "next/image";
 import Link from "next/link";
 import ScreenHeader from "@/components/ScreenHeader";
 
@@ -152,6 +153,59 @@ export default function CaptainGuidePage() {
             <li className="rounded-xl bg-white p-4"><strong>4. Review before submitting.</strong><br />Check every player, score and break. The home team normally submits the completed result.</li>
             <li className="rounded-xl bg-white p-4 md:col-span-2"><strong>5. If the app causes a problem.</strong><br />Keep the match moving, retain an accurate paper scorecard and message the League Secretary. A manual upload link can be supplied when needed, but it requires manual authorisation and will update more slowly.</li>
           </ol>
+        </section>
+
+        <section className="rounded-2xl border border-emerald-200 bg-white p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">Illustrated example</p>
+              <h2 className="mt-1 text-xl font-bold text-slate-950">Final scorecard and submission</h2>
+              <p className="mt-1 max-w-3xl text-sm text-slate-600">
+                Home players appear on the left, frame scores in the centre and away players on the right. Check that every frame and qualifying break is complete before submitting.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Link href="/captain-training" className="rounded-xl bg-emerald-700 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-800">
+                Practise safely
+              </Link>
+              <a href="/guides/Rack-and-Frame-Captain-and-Vice-Captain-Guide-2026-27.docx" download className="rounded-xl border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm font-semibold text-emerald-900 hover:bg-emerald-100">
+                Download Word guide
+              </a>
+            </div>
+          </div>
+          <div className="mt-4 grid items-start gap-4 lg:grid-cols-2">
+            <figure className="rounded-2xl border border-sky-200 bg-sky-50 p-4">
+              <figcaption>
+                <h3 className="font-bold text-slate-950">1. Enter and submit the home lineup</h3>
+                <p className="mt-1 text-sm text-slate-600">Choose the home player for every frame, save a draft while checking it, then select Submit lineup only when it is final.</p>
+              </figcaption>
+              <div className="mx-auto mt-3 max-w-sm overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <Image
+                  src="/guides/screenshots/captain-home-lineup-real.jpeg"
+                  alt="Real mobile captain screen showing home-player selectors for each frame, Save draft and Submit lineup"
+                  width={1290}
+                  height={2796}
+                  className="h-auto w-full"
+                />
+              </div>
+            </figure>
+            <figure className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
+              <figcaption>
+                <h3 className="font-bold text-slate-950">2. Review the completed scorecard</h3>
+                <p className="mt-1 text-sm text-slate-600">Confirm all four frame scores, player names and qualifying breaks with both teams before the final submission.</p>
+              </figcaption>
+              <div className="mt-3 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+                <Image
+                  src="/guides/screenshots/captain-final-scorecard-complete.png"
+                  alt="Completed captain scorecard with four frame scores, home players on the left, away players on the right, a recorded break and submission confirmation"
+                  width={1265}
+                  height={710}
+                  className="h-auto w-full"
+                />
+              </div>
+            </figure>
+          </div>
+          <p className="mt-3 text-sm text-slate-600">Training names and scores are examples only. The practice screen does not save anything to live league records.</p>
         </section>
 
         <section className="grid gap-4 md:grid-cols-2">
