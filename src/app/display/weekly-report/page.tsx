@@ -271,7 +271,7 @@ export default function PublicWeeklyReportPage() {
                 </p>
               </div>
               <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-semibold text-amber-100">
-                {(eloHandicapData?.changes ?? []).length} players changed Elo
+                {(eloHandicapData?.changes ?? []).length} players reviewed
               </span>
             </div>
 
@@ -288,7 +288,7 @@ export default function PublicWeeklyReportPage() {
               </p>
             ) : (eloHandicapData?.changes ?? []).length === 0 ? (
               <p className="mt-4 rounded-2xl border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-                No Elo changes have been recorded for this completed week yet.
+                No Elo or handicap changes have been recorded for this completed week yet.
               </p>
             ) : (
               <div className="mt-5 overflow-x-auto rounded-2xl border border-white/10">
