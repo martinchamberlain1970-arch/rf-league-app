@@ -7,6 +7,7 @@ import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
+import { competitionAgeRule } from "@/lib/public-competition-entry";
 
 type Competition = {
   id: string;
@@ -38,13 +39,6 @@ type Player = { id: string; display_name: string; full_name: string | null; date
 type AppUser = { id: string; linked_player_id: string | null };
 type Location = { id: string; name: string };
 type TeamEntryNote = { teamMemberNames?: string[] };
-
-function getMinimumAgeForCompetition(name: string) {
-  const lower = name.toLowerCase();
-  if (lower.includes("over 60")) return 60;
-  if (lower.includes("over 50")) return 50;
-  return null;
-}
 
 function calculateAgeYears(dobIso: string) {
   const dob = new Date(dobIso);
@@ -212,9 +206,9 @@ export default function CompetitionSignupsPage() {
       setMessage("Enter player 3 name to submit this triples entry.");
       return;
     }
-    const minAge = getMinimumAgeForCompetition(target.name);
+    const { minimum: minAge, maximum: maxAge } = competitionAgeRule(target.name);
     const dob = (dobByCompetitionId[competitionId] ?? linkedPlayerDob ?? "").trim();
-    if (minAge !== null) {
+    if (minAge !== null || maxAge !== null) {
       if (!dob) {
         setMessage(`Date of birth is required to enter ${target.name}. Update your profile date of birth or enter it here.`);
         return;
@@ -224,8 +218,12 @@ export default function CompetitionSignupsPage() {
         setMessage("Enter a valid date of birth.");
         return;
       }
-      if (age < minAge) {
+      if (minAge !== null && age < minAge) {
         setMessage(`You are not eligible for ${target.name}. Minimum age is ${minAge}.`);
+        return;
+      }
+      if (maxAge !== null && age > maxAge) {
+        setMessage(`You are not eligible for ${target.name}. Entrants must be under 25.`);
         return;
       }
     }
@@ -311,9 +309,10 @@ export default function CompetitionSignupsPage() {
               const full = c.max_entries ? approvedCount >= c.max_entries : false;
               const canEnter = !deadlinePassed && !full && (!userEntry || userEntry.status === "rejected" || userEntry.status === "withdrawn");
               const isAlreadyEntered = userEntry?.status === "approved";
-              const minAge = getMinimumAgeForCompetition(c.name);
+              const ageRule = competitionAgeRule(c.name);
+              const ageRestricted = ageRule.minimum !== null || ageRule.maximum !== null;
               const dobValue = dobByCompetitionId[c.id] ?? userEntry?.entrant_date_of_birth ?? linkedPlayerDob ?? "";
-              const requiresDobBeforeEntry = minAge !== null && !dobValue.trim();
+              const requiresDobBeforeEntry = ageRestricted && !dobValue.trim();
               const entrantsRequired = requiredEntrants(c);
               const extraNames = entryNamesByCompetitionId[c.id] ?? { second: "", third: "" };
               return (
@@ -367,7 +366,7 @@ export default function CompetitionSignupsPage() {
                         ) : null}
                       </div>
                     ) : null}
-                    {minAge !== null ? (
+                    {ageRestricted ? (
                       <div className="space-y-1">
                         <input
                           type="date"
@@ -428,7 +427,8 @@ export default function CompetitionSignupsPage() {
                     ) : null}
                     {deadlinePassed ? <span className="text-xs text-rose-700">Deadline passed</span> : null}
                     {full ? <span className="text-xs text-rose-700">Competition full</span> : null}
-                    {minAge !== null ? <span className="text-xs text-slate-600">Eligibility: age {minAge}+</span> : null}
+                    {ageRule.minimum !== null ? <span className="text-xs text-slate-600">Eligibility: age {ageRule.minimum}+</span> : null}
+                    {ageRule.maximum !== null ? <span className="text-xs text-slate-600">Eligibility: under 25</span> : null}
                     {entrantsRequired === 2 ? <span className="text-xs text-slate-600">Entry requires 2 players.</span> : null}
                     {entrantsRequired === 3 ? <span className="text-xs text-slate-600">Entry requires 3 players.</span> : null}
                   </div>

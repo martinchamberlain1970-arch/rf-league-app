@@ -238,7 +238,9 @@ export default function LeagueHubPage() {
       setLoading(true);
       setError("");
       try {
-        const query = selectedSeasonId ? `?seasonId=${encodeURIComponent(selectedSeasonId)}` : "";
+        const params = new URLSearchParams({ liveOnly: "1" });
+        if (selectedSeasonId) params.set("seasonId", selectedSeasonId);
+        const query = `?${params.toString()}`;
         const fixturesResponse = await fetch(`/api/public/fixtures${query}`, { cache: "no-store" });
         const fixturesPayload = await fixturesResponse.json();
         if (!fixturesResponse.ok) throw new Error(fixturesPayload.error ?? "The public league information could not be loaded.");

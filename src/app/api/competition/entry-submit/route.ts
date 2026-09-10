@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { competitionAgeRule } from "@/lib/public-competition-entry";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -25,13 +26,6 @@ const requiredEntrants = (competition: CompetitionRow) => {
   if (competition.match_mode === "doubles") return 2;
   return 1;
 };
-
-function getMinimumAgeForCompetition(name: string) {
-  const lower = name.toLowerCase();
-  if (lower.includes("over 60")) return 60;
-  if (lower.includes("over 50")) return 50;
-  return null;
-}
 
 function calculateAgeYears(dobIso: string) {
   const dob = new Date(dobIso);
@@ -114,9 +108,9 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  const minAge = getMinimumAgeForCompetition(competition.name);
+  const { minimum: minAge, maximum: maxAge } = competitionAgeRule(competition.name);
   const dob = entrantDateOfBirth ?? linkedPlayer.date_of_birth ?? null;
-  if (minAge !== null) {
+  if (minAge !== null || maxAge !== null) {
     if (!dob) {
       return NextResponse.json(
         { error: `Date of birth is required to enter ${competition.name}.` },
@@ -125,7 +119,8 @@ export async function POST(req: NextRequest) {
     }
     const age = calculateAgeYears(dob);
     if (age === null) return NextResponse.json({ error: "Enter a valid date of birth." }, { status: 400 });
-    if (age < minAge) return NextResponse.json({ error: `You are not eligible for ${competition.name}. Minimum age is ${minAge}.` }, { status: 400 });
+    if (minAge !== null && age < minAge) return NextResponse.json({ error: `You are not eligible for ${competition.name}. Minimum age is ${minAge}.` }, { status: 400 });
+    if (maxAge !== null && age > maxAge) return NextResponse.json({ error: `You are not eligible for ${competition.name}. Entrants must be under 25.` }, { status: 400 });
   }
 
   if (!linkedPlayer.date_of_birth && dob) {

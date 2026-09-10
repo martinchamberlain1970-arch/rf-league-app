@@ -53,13 +53,16 @@ export async function GET(req: NextRequest) {
 
   const requestedSeasonId = req.nextUrl.searchParams.get("seasonId")?.trim() ?? "";
   const draftToken = req.nextUrl.searchParams.get("draft")?.trim() ?? "";
+  const liveOnly = req.nextUrl.searchParams.get("liveOnly") === "1";
   const validDraftToken = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(draftToken);
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
-  const seasonsRes = await adminClient
+  let seasonsQuery = adminClient
     .from("league_seasons")
-    .select("id,name,created_at,is_published")
+    .select("id,name,created_at,is_published,is_active")
     .eq("is_published", true)
     .order("created_at", { ascending: false });
+  if (liveOnly) seasonsQuery = seasonsQuery.eq("is_active", true);
+  const seasonsRes = await seasonsQuery;
 
   if (seasonsRes.error) {
     return json({ error: seasonsRes.error.message }, 500);
@@ -122,7 +125,7 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  if (requestedSeasonId && !selectedSeason) {
+  if (requestedSeasonId && !selectedSeason && !liveOnly) {
     return json(
       {
         seasons: [],

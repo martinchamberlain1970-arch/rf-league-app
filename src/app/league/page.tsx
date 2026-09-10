@@ -282,6 +282,11 @@ const getMinimumAgeForCompetition = (name: string) => {
   if (lower.includes("over 50")) return 50;
   return null;
 };
+const getMaximumAgeForCompetition = (name: string) => {
+  const lower = name.toLowerCase();
+  if (lower.includes("under 25") || lower.includes("henry fidge")) return 24;
+  return null;
+};
 const calculateAgeYears = (dobIso: string | null | undefined) => {
   if (!dobIso) return null;
   const dob = new Date(`${dobIso}T12:00:00`);
@@ -584,6 +589,7 @@ const LEAGUE_KNOCKOUT_TEMPLATES = [
   { key: "handicap_doubles", name: "Handicap Doubles", match_mode: "doubles", best_of: 3 },
   { key: "jack_harvey", name: "Jack Harvey (Over 50s)", match_mode: "singles", best_of: 3 },
   { key: "fred_osbourne", name: "Fred Osbourne (Over 60s)", match_mode: "singles", best_of: 3 },
+  { key: "henry_fidge", name: "Henry Fidge Memorial Trophy (Under 25s)", match_mode: "singles", best_of: 3 },
   { key: "hamilton_cup", name: "Hamilton Cup (Singles Billiards)", match_mode: "singles", best_of: 1 },
   { key: "albery_cup", name: "Albery Cup (Billiards 3-Man Team)", match_mode: "doubles", best_of: 1 },
   { key: "hodge_cup", name: "Hodge Cup (Triples)", match_mode: "doubles", best_of: 9 },
@@ -5371,6 +5377,7 @@ function LeaguePageContent() {
       .filter((player) => player.location_id === locationId)
       .sort((a, b) => sortLabelByFirstName(named(a), named(b)));
     const minAge = getMinimumAgeForCompetition(competition.name);
+    const maxAge = getMaximumAgeForCompetition(competition.name);
 
     if (competition.max_entries) {
       const approvedCount = leagueCompetitionEntries.filter((entry) => entry.competition_id === competition.id && entry.status === "approved").length;
@@ -5391,13 +5398,13 @@ function LeaguePageContent() {
     const missingDobNames: string[] = [];
     const ineligibleNames: string[] = [];
     for (const player of clubPlayers) {
-      if (!selectedIds.has(player.id) || minAge === null) continue;
+      if (!selectedIds.has(player.id) || (minAge === null && maxAge === null)) continue;
       const age = calculateAgeYears(player.date_of_birth ?? null);
       if (!player.date_of_birth || age === null) {
         missingDobNames.push(named(player));
         continue;
       }
-      if (age < minAge) {
+      if ((minAge !== null && age < minAge) || (maxAge !== null && age > maxAge)) {
         ineligibleNames.push(named(player));
       }
     }
@@ -6772,6 +6779,7 @@ function LeaguePageContent() {
                       const isHamiltonComp = isHamiltonCompetitionName(c.name);
                       const isAlberyComp = isAlberyCompetitionName(c.name);
                       const minAge = getMinimumAgeForCompetition(c.name);
+                      const maxAge = getMaximumAgeForCompetition(c.name);
                       const entries = (competitionEntriesByCompetitionId.get(c.id) ?? []).filter((e) => e.status !== "withdrawn");
                       const pending = entries.filter((e) => e.status === "pending");
                       const approved = entries.filter((e) => e.status === "approved");
@@ -7143,8 +7151,9 @@ function LeaguePageContent() {
                                           );
                                           const checkboxLocked = Boolean(existingEntry && !canUntickOwnedPending);
                                           const age = calculateAgeYears(player.date_of_birth ?? null);
-                                          const needsDob = minAge !== null && (!player.date_of_birth || age === null);
-                                          const ageIneligible = minAge !== null && age !== null && age < minAge;
+                                          const ageRestricted = minAge !== null || maxAge !== null;
+                                          const needsDob = ageRestricted && (!player.date_of_birth || age === null);
+                                          const ageIneligible = age !== null && ((minAge !== null && age < minAge) || (maxAge !== null && age > maxAge));
                                           return (
                                             <label
                                               key={`${draftKey}:${player.id}`}
@@ -7164,7 +7173,7 @@ function LeaguePageContent() {
                                                 <div>
                                                   <p className="font-medium text-slate-900">{named(player)}</p>
                                                   <p className="text-xs text-slate-500">
-                                                    {minAge !== null
+                                                    {ageRestricted
                                                       ? needsDob
                                                         ? "DOB missing"
                                                         : ageIneligible

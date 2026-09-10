@@ -32,6 +32,11 @@ begin
     values ('Fred Osbourne (Over 60s)', 'snooker', 'knockout', 'singles', 1, false, false, false);
   end if;
 
+  if not exists (select 1 from public.competitions where name = 'Henry Fidge Memorial Trophy (Under 25s)') then
+    insert into public.competitions (name, sport_type, competition_format, match_mode, best_of, signup_open, is_archived, is_completed)
+    values ('Henry Fidge Memorial Trophy (Under 25s)', 'snooker', 'knockout', 'singles', 3, false, false, false);
+  end if;
+
   if not exists (select 1 from public.competitions where name = 'Hamilton Cup (Billiards Singles)') then
     insert into public.competitions (name, sport_type, competition_format, match_mode, best_of, signup_open, is_archived, is_completed)
     values ('Hamilton Cup (Billiards Singles)', 'snooker', 'knockout', 'singles', 1, false, false, false);
