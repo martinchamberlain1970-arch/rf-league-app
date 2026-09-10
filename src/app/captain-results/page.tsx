@@ -696,6 +696,45 @@ export default function CaptainResultsPage() {
     void loadBreaks(selectedFixture.id);
   }, [allSlots, awayLineupSubmitted, homeLineupSubmitted, homeSideCanManageScorecard, pendingSubmissionMap, selectedFixture]);
 
+  const repairWinterScorecard = useCallback(async () => {
+    if (!selectedFixture || !configuredAsWinter) return null;
+    const sessionRes = await supabase?.auth.getSession();
+    const token = sessionRes?.data.session?.access_token;
+    if (!token) {
+      setMessage("Your session has expired. Sign in again to load the complete scorecard.");
+      return null;
+    }
+    const response = await fetch("/api/league/ensure-fixture-frames", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ fixtureId: selectedFixture.id }),
+    });
+    const body = await response.json().catch(() => null);
+    if (!response.ok) {
+      setMessage(body?.error ?? "The complete winter scorecard could not be loaded. Refresh the page and try again.");
+      return null;
+    }
+    const repairedFrames = (body?.frames ?? []) as FrameSlot[];
+    const localById = new Map(slots.map((row) => [row.id, row]));
+    const localByPosition = new Map(slots.map((row) => [`${row.slot_type}:${row.slot_no}`, row]));
+    const mergedFrames = repairedFrames
+      .map((row) => ({
+        ...row,
+        ...(localById.get(row.id) ?? localByPosition.get(`${row.slot_type}:${row.slot_no}`) ?? {}),
+        id: row.id,
+        fixture_id: row.fixture_id,
+        slot_no: row.slot_no,
+        slot_type: row.slot_type,
+      }))
+      .sort((a, b) => a.slot_no - b.slot_no);
+    setSlots(mergedFrames);
+    setAllSlots((current) => [
+      ...current.filter((row) => row.fixture_id !== selectedFixture.id),
+      ...mergedFrames,
+    ]);
+    return mergedFrames;
+  }, [configuredAsWinter, selectedFixture, slots]);
+
   useEffect(() => {
     if (loading || !selectedFixture || !configuredAsWinter || fixtureHasWinterFrames) return;
     if (!slots.some((row) => row.fixture_id === selectedFixture.id)) return;
@@ -703,33 +742,12 @@ export default function CaptainResultsPage() {
     winterFrameRepairAttemptedRef.current.add(selectedFixture.id);
 
     void (async () => {
-      const sessionRes = await supabase?.auth.getSession();
-      const token = sessionRes?.data.session?.access_token;
-      if (!token) {
+      const repairedFrames = await repairWinterScorecard();
+      if (!repairedFrames) {
         winterFrameRepairAttemptedRef.current.delete(selectedFixture.id);
-        return;
       }
-      const response = await fetch("/api/league/ensure-fixture-frames", {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-        body: JSON.stringify({ fixtureId: selectedFixture.id }),
-      });
-      const body = await response.json().catch(() => null);
-      if (!response.ok) {
-        winterFrameRepairAttemptedRef.current.delete(selectedFixture.id);
-        setMessage(body?.error ?? "The complete winter scorecard could not be loaded. Refresh the page and try again.");
-        return;
-      }
-      const repairedFrames = (body?.frames ?? []) as FrameSlot[];
-      const localById = new Map(slots.map((row) => [row.id, row]));
-      const mergedFrames = repairedFrames.map((row) => ({ ...row, ...(localById.get(row.id) ?? {}) }));
-      setSlots(mergedFrames);
-      setAllSlots((current) => [
-        ...current.filter((row) => row.fixture_id !== selectedFixture.id),
-        ...mergedFrames,
-      ]);
     })();
-  }, [configuredAsWinter, fixtureHasWinterFrames, loading, selectedFixture, slots]);
+  }, [configuredAsWinter, fixtureHasWinterFrames, loading, repairWinterScorecard, selectedFixture, slots]);
 
   useEffect(() => {
     if (!selectedFixture || scorecardDirty) return;
@@ -1914,9 +1932,27 @@ export default function CaptainResultsPage() {
       setMessage(`Enter the 30+ break for Frame ${currentScorecardFrame.slot_no} before saving the frame.`);
       return;
     }
-    const isFinalFrame = scorecardCurrentIndex >= orderedScoreSlots.length - 1;
+    const doublesIsMissing = configuredAsWinter && !orderedScoreSlots.some((slot) => slot.slot_type === "doubles");
+    const mustContinueToDoubles =
+      doublesIsMissing && currentScorecardFrame.slot_type === "singles" && currentScorecardFrame.slot_no === 4;
+    const isFinalFrame = !mustContinueToDoubles && scorecardCurrentIndex >= orderedScoreSlots.length - 1;
     const saveResult = await saveProgress("manual", { quiet: true });
     if (!saveResult.saved) return;
+    if (mustContinueToDoubles) {
+      const repairedFrames = await repairWinterScorecard();
+      const doublesIndex = repairedFrames?.findIndex((slot) => slot.slot_type === "doubles") ?? -1;
+      if (doublesIndex < 0) {
+        setMessage("Frame 4 has been saved, but the doubles frame could not be opened. Refresh the page before continuing; the match has not been submitted.");
+        return;
+      }
+      setScorecardReviewMode(false);
+      setScorecardCurrentIndex(doublesIndex);
+      setInfo({
+        title: "Singles complete — doubles next",
+        description: "Frame 4 has been saved. Now enter both doubles pairs and the Frame 5 score before reviewing and submitting the match.",
+      });
+      return;
+    }
     if (isFinalFrame) {
       if (saveResult.allFramesComplete && !saveResult.hasUnsavedBreakDraft) {
         setScorecardReviewMode(true);
@@ -2516,7 +2552,8 @@ export default function CaptainResultsPage() {
                               </button>
                               {!scorecardReviewMode && currentScorecardFrame ? (
                                 <span className="rounded-full border border-cyan-200 bg-white px-3 py-1 text-xs font-semibold text-cyan-800">
-                                  Frame {currentScorecardFrame.slot_no} of {orderedScoreSlots.length}
+                                  Frame {currentScorecardFrame.slot_no} of {configuredAsWinter ? 5 : orderedScoreSlots.length}
+                                  {currentScorecardFrame.slot_type === "doubles" ? " · Doubles" : " · Singles"}
                                 </span>
                               ) : (
                                 <span className="rounded-full border border-cyan-200 bg-white px-3 py-1 text-xs font-semibold text-cyan-800">
@@ -2542,7 +2579,8 @@ export default function CaptainResultsPage() {
                             >
                               {orderedScoreSlots.map((slot, index) => (
                                 <option key={`frame-select-${slot.id}`} value={index}>
-                                  Frame {slot.slot_no}{isFrameComplete(slot) ? " - completed" : isFrameStarted(slot) ? " - in progress" : ""}
+                                  Frame {slot.slot_no} · {slot.slot_type === "doubles" ? "Doubles" : "Singles"}
+                                  {isFrameComplete(slot) ? " - completed" : isFrameStarted(slot) ? " - in progress" : ""}
                                 </option>
                               ))}
                               <option value="review" disabled={firstIncompleteScorecardIndex >= 0}>
@@ -2565,7 +2603,9 @@ export default function CaptainResultsPage() {
                                 }`}
                               >
                                 <div className="flex items-center justify-between gap-2">
-                                  <p className="font-semibold text-slate-900">Frame {slot.slot_no}</p>
+                                  <p className="font-semibold text-slate-900">
+                                    Frame {slot.slot_no} · {slot.slot_type === "doubles" ? "Doubles" : "Singles"}
+                                  </p>
                                   <span className="text-xs font-semibold text-slate-600">
                                     {isFrameComplete(slot)
                                       ? "Saved"
@@ -3070,6 +3110,7 @@ export default function CaptainResultsPage() {
                             <div>
                               <p className="text-sm font-semibold text-slate-900">
                                 Step 3 - finish Frame {currentScorecardFrame.slot_no}
+                                {currentScorecardFrame.slot_type === "doubles" ? " doubles" : ""}
                               </p>
                               <p className="mt-1 text-xs text-slate-700">
                                 This saves the score and any 30+ breaks together. Your work is also kept safely on this device while you enter it.
@@ -3089,7 +3130,13 @@ export default function CaptainResultsPage() {
                                 onClick={() => void saveAndContinueCurrentFrame()}
                                 className="min-h-11 rounded-xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white shadow-sm"
                               >
-                                {scorecardCurrentIndex >= orderedScoreSlots.length - 1 ? "Save final frame & review" : "Save frame & next"}
+                                {currentScorecardFrame.slot_type === "doubles"
+                                  ? "Save doubles & review"
+                                  : configuredAsWinter && currentScorecardFrame.slot_no === 4
+                                    ? "Save Frame 4 & go to doubles"
+                                    : scorecardCurrentIndex >= orderedScoreSlots.length - 1
+                                      ? "Save final frame & review"
+                                      : "Save frame & next"}
                               </button>
                             </div>
                           </div>
