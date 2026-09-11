@@ -31,6 +31,7 @@ type TeamMember = {
   player_id: string;
   is_captain: boolean;
   is_vice_captain: boolean;
+  is_match_scorer: boolean;
 };
 type Fixture = {
   id: string;
@@ -372,6 +373,12 @@ export default function CaptainResultsPage() {
       return;
     }
 
+    const memberPromise = (async () => {
+      const result = await client.from("league_team_members").select("season_id,team_id,player_id,is_captain,is_vice_captain,is_match_scorer");
+      if (!result.error || !result.error.message.toLowerCase().includes("is_match_scorer")) return result;
+      const fallback = await client.from("league_team_members").select("season_id,team_id,player_id,is_captain,is_vice_captain");
+      return { ...fallback, data: (fallback.data ?? []).map((member) => ({ ...member, is_match_scorer: false })) };
+    })();
     const [seasonRes, teamRes, memberRes, initialFixtureRes, slotRes, pendingRes, playerRes] = await Promise.all([
       client
         .from("league_seasons")
@@ -379,7 +386,7 @@ export default function CaptainResultsPage() {
         .eq("is_published", true)
         .order("created_at", { ascending: false }),
       client.from("league_teams").select("id,season_id,name"),
-      client.from("league_team_members").select("season_id,team_id,player_id,is_captain,is_vice_captain"),
+      memberPromise,
       client
         .from("league_fixtures")
         .select("id,season_id,home_team_id,away_team_id,fixture_date,week_no,status,pre_match_paper_record,pre_match_paper_at,pre_match_paper_by_user_id,home_lineup_submitted_at,home_lineup_submitted_by_user_id,away_lineup_submitted_at,away_lineup_submitted_by_user_id,proxy_entry_enabled,proxy_entry_confirmed_at,proxy_entry_confirmed_by_user_id,proxy_entry_by_team_side,proxy_entry_note")
@@ -472,12 +479,20 @@ export default function CaptainResultsPage() {
     void loadAll();
   }, [loadAll]);
 
-  const captainTeamIds = useMemo(() => {
+  const scoreEntryTeamIds = useMemo(() => {
     if (!linkedPlayerId) return new Set<string>();
     return new Set(
       members
-        .filter((m) => m.player_id === linkedPlayerId && (m.is_captain || m.is_vice_captain))
+        .filter((m) => m.player_id === linkedPlayerId && (m.is_captain || m.is_vice_captain || m.is_match_scorer))
         .map((m) => m.team_id)
+    );
+  }, [members, linkedPlayerId]);
+  const captainRoleTeamIds = useMemo(() => {
+    if (!linkedPlayerId) return new Set<string>();
+    return new Set(
+      members
+        .filter((member) => member.player_id === linkedPlayerId && (member.is_captain || member.is_vice_captain))
+        .map((member) => member.team_id)
     );
   }, [members, linkedPlayerId]);
 
@@ -488,9 +503,9 @@ export default function CaptainResultsPage() {
       fixtures.filter(
         (f) =>
           publishedSeasonIds.has(f.season_id) &&
-          (captainTeamIds.has(f.home_team_id) || captainTeamIds.has(f.away_team_id))
+          (scoreEntryTeamIds.has(f.home_team_id) || scoreEntryTeamIds.has(f.away_team_id))
       ),
-    [fixtures, publishedSeasonIds, captainTeamIds]
+    [fixtures, publishedSeasonIds, scoreEntryTeamIds]
   );
 
   const myCurrentWeekFixtures = useMemo(
@@ -504,10 +519,10 @@ export default function CaptainResultsPage() {
   );
   const selectedFixtureSide = useMemo<"home" | "away" | null>(() => {
     if (!selectedFixture) return null;
-    if (captainTeamIds.has(selectedFixture.home_team_id)) return "home";
-    if (captainTeamIds.has(selectedFixture.away_team_id)) return "away";
+    if (scoreEntryTeamIds.has(selectedFixture.home_team_id)) return "home";
+    if (scoreEntryTeamIds.has(selectedFixture.away_team_id)) return "away";
     return null;
-  }, [captainTeamIds, selectedFixture]);
+  }, [scoreEntryTeamIds, selectedFixture]);
   const preMatchPaperRecord = Boolean(selectedFixture?.pre_match_paper_record);
   const proxyEntryEnabled = Boolean(selectedFixture?.proxy_entry_enabled);
   const homeLineupSubmitted = Boolean(selectedFixture?.home_lineup_submitted_at);
@@ -517,6 +532,7 @@ export default function CaptainResultsPage() {
   const canEnableProxyEntry = Boolean(
     selectedFixture &&
       selectedFixtureSide &&
+      (captainRoleTeamIds.has(selectedFixture.home_team_id) || captainRoleTeamIds.has(selectedFixture.away_team_id)) &&
       !proxyEntryEnabled &&
       !preMatchPaperRecord &&
       !pendingByFixture.has(selectedFixture.id) &&
@@ -575,7 +591,7 @@ export default function CaptainResultsPage() {
   const lineupNextAction = preMatchPaperRecord
     ? "Paper lineup selected. You can move to the scorecard whenever you are ready."
     : proxyEntryEnabled && !awayLineupSubmitted
-      ? "Agreed proxy entry is active. One captain or vice-captain can now complete both teams in the app for tonight's fixture."
+      ? "Agreed proxy entry is active. An authorised match-night scorer can now complete both teams in the app for tonight's fixture."
     : awayLineupSubmitted
       ? "Both lineups are locked. You can now switch to the scorecard tab."
       : canEditSubmittedHomeLineup
@@ -1840,7 +1856,7 @@ export default function CaptainResultsPage() {
       setMessage("League officers manage results from League Manager rather than the captain submission screen.");
       return;
     }
-    if (!captainTeamIds.has(selectedFixture.home_team_id) && !captainTeamIds.has(selectedFixture.away_team_id)) {
+    if (!scoreEntryTeamIds.has(selectedFixture.home_team_id) && !scoreEntryTeamIds.has(selectedFixture.away_team_id)) {
       setMessage("You can only submit results for your own team fixtures.");
       return;
     }
@@ -2115,7 +2131,7 @@ export default function CaptainResultsPage() {
             </section>
           ) : null}
 
-          {admin.canManageLeague && captainTeamIds.size === 0 && !loading ? (
+          {admin.canManageLeague && scoreEntryTeamIds.size === 0 && !loading ? (
             <section className="rounded-2xl border border-teal-200 bg-teal-50 p-4 text-teal-950 shadow-sm">
               <p className="font-semibold">League officer view</p>
               <p className="mt-1 text-sm">A player-profile link is not required for your officer account. Captains and vice-captains enter line-ups and scores here; officers review results or enter an agreed proxy result through League Manager.</p>
@@ -2126,13 +2142,13 @@ export default function CaptainResultsPage() {
             </section>
           ) : null}
 
-          {linkedPlayerId && captainTeamIds.size === 0 && !admin.canManageLeague && !loading ? (
+          {linkedPlayerId && scoreEntryTeamIds.size === 0 && !admin.canManageLeague && !loading ? (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm">
-              You are not currently assigned as captain or vice-captain.
+              You are not currently assigned as captain, vice-captain or match-night scorer.
             </section>
           ) : null}
 
-          {linkedPlayerId && captainTeamIds.size > 0 ? (
+          {linkedPlayerId && scoreEntryTeamIds.size > 0 ? (
             <section className={`${sectionCardClass} ${sectionCardTintClass} space-y-4`}>
               <div>
                 <h2 className={sectionTitleClass}>Fixture Entry</h2>
@@ -2204,7 +2220,7 @@ export default function CaptainResultsPage() {
                   </div>
                   {proxyEntryEnabled ? (
                     <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3 text-sm text-violet-900">
-                      <strong>Agreed proxy entry:</strong> one captain or vice-captain is handling both teams in the app for tonight's fixture by agreement.
+                      <strong>Agreed proxy entry:</strong> one authorised match-night scorer is handling both teams in the app for tonight&apos;s fixture by agreement.
                     </div>
                   ) : selectedFixtureSide === "home" ? (
                     <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-900">
@@ -2305,7 +2321,7 @@ export default function CaptainResultsPage() {
                           <p className="text-sky-800"><strong>Paper record selected.</strong> Pre-match lineup is being handled off-app for this fixture.</p>
                         ) : null}
                         {proxyEntryEnabled ? (
-                          <p className="text-violet-800"><strong>Proxy entry active.</strong> One captain or vice-captain can enter both teams and submit the final result for this fixture by agreement.</p>
+                          <p className="text-violet-800"><strong>Proxy entry active.</strong> One authorised match-night scorer can enter both teams and submit the final result for this fixture by agreement.</p>
                         ) : null}
                       </div>
                     </div>
@@ -2317,7 +2333,7 @@ export default function CaptainResultsPage() {
                           <h3 className="text-base font-semibold text-slate-900">Lineup entry</h3>
                           <p className="mt-1 text-sm text-slate-600">
                             {proxyEntryEnabled
-                              ? `Enter the players for frames 1-${slots.length}. Agreed proxy entry is active, so one captain or vice-captain can complete both teams for tonight's fixture.`
+                              ? `Enter the players for frames 1-${slots.length}. Agreed proxy entry is active, so one authorised match-night scorer can complete both teams for tonight's fixture.`
                               : `Enter the players for frames 1-${slots.length}. Home team sends its lineup first. The away team then confirms against the home lineup already shown here.`}
                           </p>
                         </div>
@@ -2331,7 +2347,7 @@ export default function CaptainResultsPage() {
                             <div className="max-w-3xl">
                               <p className="text-sm font-semibold text-violet-950">Agreed proxy entry</p>
                               <p className="mt-1 text-sm text-violet-900">
-                                Use this only when both teams agree that one captain or vice-captain will enter both lineups. It unlocks the opponent&apos;s player fields on this screen so one person can complete both teams.
+                                Use this only when both teams agree that one authorised match-night scorer will enter both lineups. It unlocks the opponent&apos;s player fields on this screen so one person can complete both teams.
                               </p>
                             </div>
                             {canEnableProxyEntry ? (
@@ -2379,7 +2395,7 @@ export default function CaptainResultsPage() {
                       </div>
                       {proxyEntryEnabled ? (
                         <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50 px-3 py-2 text-sm text-violet-900">
-                          Use proxy entry only where both teams agree the logged-in captain or vice-captain will handle both lineups and the final result in the app tonight.
+                          Use proxy entry only where both teams agree the logged-in authorised match-night scorer will handle both lineups and the final result in the app tonight.
                         </div>
                       ) : selectedFixtureSide === "home" ? (
                         <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900">

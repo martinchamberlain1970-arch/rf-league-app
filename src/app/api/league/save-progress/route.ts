@@ -109,22 +109,26 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "This fixture is outside the score entry window." }, { status: 400 });
   }
 
-  const memberRes = await adminClient
+  let memberRes = await adminClient
     .from("league_team_members")
-    .select("team_id,is_captain,is_vice_captain")
+    .select("team_id,is_captain,is_vice_captain,is_match_scorer")
     .eq("season_id", fixture.season_id)
     .eq("player_id", linkedPlayerId)
     .or(`team_id.eq.${fixture.home_team_id},team_id.eq.${fixture.away_team_id}`);
+  if (memberRes.error && memberRes.error.message.toLowerCase().includes("is_match_scorer")) {
+    const fallback = await adminClient.from("league_team_members").select("team_id,is_captain,is_vice_captain").eq("season_id", fixture.season_id).eq("player_id", linkedPlayerId).or(`team_id.eq.${fixture.home_team_id},team_id.eq.${fixture.away_team_id}`);
+    memberRes = { ...fallback, data: (fallback.data ?? []).map((row) => ({ ...row, is_match_scorer: false })) } as unknown as typeof memberRes;
+  }
   if (memberRes.error) return NextResponse.json({ error: memberRes.error.message }, { status: 400 });
 
-  const allowedTeam = (memberRes.data ?? []).find((r: { team_id: string; is_captain: boolean; is_vice_captain: boolean }) => r.is_captain || r.is_vice_captain);
+  const allowedTeam = (memberRes.data ?? []).find((r) => r.is_captain || r.is_vice_captain || r.is_match_scorer);
   if (!allowedTeam) {
-    return NextResponse.json({ error: "Only the home captain or vice-captain can save live score progress." }, { status: 403 });
+    return NextResponse.json({ error: "Only an authorised match-night scorer can save live score progress." }, { status: 403 });
   }
   if (!fixture.proxy_entry_enabled && allowedTeam.team_id !== fixture.home_team_id) {
-    return NextResponse.json({ error: "Only the home captain or vice-captain can save live score progress." }, { status: 403 });
+    return NextResponse.json({ error: "Only an authorised home-team scorer can save live score progress." }, { status: 403 });
   }
-  const actorRole = allowedTeam.is_captain ? "captain" : "vice_captain";
+  const actorRole = allowedTeam.is_captain ? "captain" : allowedTeam.is_vice_captain ? "vice_captain" : "match_scorer";
   const actorSide = allowedTeam.team_id === fixture.home_team_id ? "home" : "away";
 
   const cleaned = frameResults

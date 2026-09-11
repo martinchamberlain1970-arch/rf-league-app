@@ -82,7 +82,7 @@ type Team = {
   vice_captain_email?: string | null;
   vice_captain_phone?: string | null;
 };
-type TeamMember = { id: string; season_id: string; team_id: string; player_id: string; is_captain: boolean; is_vice_captain: boolean };
+type TeamMember = { id: string; season_id: string; team_id: string; player_id: string; is_captain: boolean; is_vice_captain: boolean; is_match_scorer: boolean };
 type RegisteredTeam = { id: string; name: string; location_id: string | null };
 type RegisteredTeamMember = { id: string; team_id: string; player_id: string; is_captain: boolean; is_vice_captain: boolean };
 type LeagueEntryPackSummary = { team_id: string; season_id: string; status: "draft" | "submitted" | "approved" | "rejected" };
@@ -1720,6 +1720,15 @@ function LeaguePageContent() {
       return;
     }
     setLoading(true);
+    const membersPromise = (async () => {
+      const result = await client.from("league_team_members").select("id,season_id,team_id,player_id,is_captain,is_vice_captain,is_match_scorer");
+      if (!result.error || !result.error.message.toLowerCase().includes("is_match_scorer")) return result;
+      const fallback = await client.from("league_team_members").select("id,season_id,team_id,player_id,is_captain,is_vice_captain");
+      return {
+        ...fallback,
+        data: (fallback.data ?? []).map((member) => ({ ...member, is_match_scorer: false })),
+      };
+    })();
     const [
       authRes,
       locRes,
@@ -1750,7 +1759,7 @@ function LeaguePageContent() {
       client
         .from("league_teams")
         .select("id,season_id,location_id,name,is_active,captain_email,captain_phone,vice_captain_email,vice_captain_phone"),
-      client.from("league_team_members").select("id,season_id,team_id,player_id,is_captain,is_vice_captain"),
+      membersPromise,
       client.from("league_entry_packs").select("team_id,season_id,status"),
       client.from("league_fixtures").select("id,season_id,location_id,week_no,fixture_date,home_team_id,away_team_id,status,home_points,away_points").order("fixture_date", { ascending: true }),
       client.from("league_fixture_frames").select("id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_forfeit,away_forfeit,winner_side,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored"),
@@ -4882,7 +4891,7 @@ function LeaguePageContent() {
 
   const setSeasonRosterRole = async (
     member: TeamMember,
-    patch: { is_captain: boolean; is_vice_captain: boolean },
+    patch: { is_captain: boolean; is_vice_captain: boolean; is_match_scorer: boolean },
     clearField: "is_captain" | "is_vice_captain" | null
   ) => {
     const client = supabase;
@@ -4890,6 +4899,13 @@ function LeaguePageContent() {
     if (!canManage) {
       setMessage("League management access is required to set season roster roles.");
       return;
+    }
+    if (patch.is_match_scorer && !member.is_match_scorer) {
+      const scorerCount = members.filter((row) => row.team_id === member.team_id && row.is_match_scorer && row.id !== member.id).length;
+      if (scorerCount >= 2) {
+        setMessage("This team already has the maximum of two additional match-night scorers.");
+        return;
+      }
     }
     if (clearField) {
       const clear = await client.from("league_team_members").update({ [clearField]: false }).eq("team_id", member.team_id);
@@ -7604,9 +7620,11 @@ function LeaguePageContent() {
                   onRoleChange={(member, role, checked) => void setSeasonRosterRole(
                     member,
                     role === "captain"
-                      ? { is_captain: checked, is_vice_captain: checked ? false : member.is_vice_captain }
-                      : { is_vice_captain: checked, is_captain: checked ? false : member.is_captain },
-                    checked ? (role === "captain" ? "is_captain" : "is_vice_captain") : null
+                      ? { is_captain: checked, is_vice_captain: checked ? false : member.is_vice_captain, is_match_scorer: checked ? false : member.is_match_scorer }
+                      : role === "vice"
+                        ? { is_vice_captain: checked, is_captain: checked ? false : member.is_captain, is_match_scorer: checked ? false : member.is_match_scorer }
+                        : { is_match_scorer: checked, is_captain: checked ? false : member.is_captain, is_vice_captain: checked ? false : member.is_vice_captain },
+                    checked && role !== "scorer" ? (role === "captain" ? "is_captain" : "is_vice_captain") : null
                   )}
                   onRemoveMember={(memberId) => void removeSeasonRosterMember(memberId)}
                 />

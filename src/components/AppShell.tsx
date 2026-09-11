@@ -14,6 +14,7 @@ type NavigationItem = {
   href: string;
   label: string;
   captainOnly?: boolean;
+  scorerAllowed?: boolean;
   officerOnly?: boolean;
   administratorOnly?: boolean;
   ownerOnly?: boolean;
@@ -28,7 +29,7 @@ const navigationGroups: NavigationGroup[] = [
   {
     label: "Match night",
     items: [
-      { href: "/captain-results", label: "Line-ups & results", captainOnly: true },
+      { href: "/captain-results", label: "Line-ups & results", captainOnly: true, scorerAllowed: true },
       { href: "/player-additions", label: "Player additions", captainOnly: true },
       { href: "/reschedule-fixture", label: "Request a fixture date", captainOnly: true },
       { href: "/live-matches", label: "Live matches" },
@@ -259,6 +260,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const admin = useAdminStatus();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isCaptain, setIsCaptain] = useState(false);
+  const [isMatchScorer, setIsMatchScorer] = useState(false);
   const [teamNames, setTeamNames] = useState<string[]>([]);
   const [guard, setGuard] = useState({ enabled: false, message: "You have unsaved changes. Leave this screen?" });
   const [pendingAction, setPendingAction] = useState<{ type: "href"; href: string } | { type: "back" } | null>(null);
@@ -270,6 +272,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!enabled || canManageLeague || isAdministrator || !admin.userId) {
       setIsCaptain(false);
+      setIsMatchScorer(false);
       setTeamNames([]);
       return;
     }
@@ -283,15 +286,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       const seasonRes = await client.from("league_seasons").select("id").eq("is_active", true);
       const seasonIds = ((seasonRes.data ?? []) as Array<{ id: string }>).map((season) => season.id);
       if (!active) return;
-      type Membership = { team_id: string; is_captain: boolean; is_vice_captain?: boolean | null };
+      type Membership = { team_id: string; is_captain: boolean; is_vice_captain?: boolean | null; is_match_scorer?: boolean | null };
       let memberships: Membership[] = [];
       let teamTable = "league_teams";
       if (seasonIds.length > 0) {
-        const memberRes = await client
+        let memberRes = await client
           .from("league_team_members")
-          .select("team_id,is_captain,is_vice_captain")
+          .select("team_id,is_captain,is_vice_captain,is_match_scorer")
           .eq("player_id", playerId)
           .in("season_id", seasonIds);
+        if (memberRes.error && memberRes.error.message.toLowerCase().includes("is_match_scorer")) {
+          const fallback = await client.from("league_team_members").select("team_id,is_captain,is_vice_captain").eq("player_id", playerId).in("season_id", seasonIds);
+          memberRes = { ...fallback, data: (fallback.data ?? []).map((membership) => ({ ...membership, is_match_scorer: false })) } as unknown as typeof memberRes;
+        }
         if (!memberRes.error) memberships = (memberRes.data ?? []) as Membership[];
       }
       if (memberships.length === 0) {
@@ -305,7 +312,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         }
       }
       const captainMemberships = memberships.filter((membership) => membership.is_captain || Boolean(membership.is_vice_captain));
-      const teamIds = Array.from(new Set(captainMemberships.map((membership) => membership.team_id)));
+      const scorerMemberships = memberships.filter((membership) => Boolean(membership.is_match_scorer));
+      const authorisedMemberships = memberships.filter((membership) => membership.is_captain || Boolean(membership.is_vice_captain) || Boolean(membership.is_match_scorer));
+      const teamIds = Array.from(new Set(authorisedMemberships.map((membership) => membership.team_id)));
       let names: string[] = [];
       if (teamIds.length > 0) {
         const teamsRes = await client.from(teamTable).select("id,name").in("id", teamIds);
@@ -314,6 +323,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       }
       if (active) {
         setIsCaptain(captainMemberships.length > 0);
+        setIsMatchScorer(scorerMemberships.length > 0);
         setTeamNames(names);
       }
     };
@@ -352,14 +362,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           if (item.ownerOnly && !admin.isSuper) return false;
           if (item.officerOnly && !canManageLeague) return false;
           if (item.administratorOnly && !isAdministrator) return false;
-          if (item.captainOnly && !isCaptain && !canManageLeague) return false;
+          if (item.captainOnly && !isCaptain && !(item.scorerAllowed && isMatchScorer) && !canManageLeague) return false;
           return true;
         }),
     }))
-    .filter((group) => group.items.length > 0), [admin.isSuper, canManageLeague, isAdministrator, isCaptain]);
+    .filter((group) => group.items.length > 0), [admin.isSuper, canManageLeague, isAdministrator, isCaptain, isMatchScorer]);
 
   const details = useMemo(() => pageDetails(pathname, currentSearch, visibleGroups), [currentSearch, pathname, visibleGroups]);
-  const roleLabel = isCaptain && !canManageLeague ? "Captain / Vice-captain" : appRoleLabel(admin.role);
+  const roleLabel = isCaptain && !canManageLeague ? "Captain / Vice-captain" : isMatchScorer && !canManageLeague ? "Match-night scorer" : appRoleLabel(admin.role);
 
   const registerNavigationGuard = useCallback((guardEnabled: boolean, message: string) => {
     setGuard({ enabled: guardEnabled, message });

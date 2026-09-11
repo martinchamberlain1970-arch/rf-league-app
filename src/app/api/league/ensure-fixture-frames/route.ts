@@ -31,14 +31,18 @@ export async function POST(req: NextRequest) {
   const playerId = userRes.data?.linked_player_id as string | null | undefined;
   if (!playerId) return NextResponse.json({ error: "Your account is not linked to a player profile." }, { status: 403 });
 
-  const membershipRes = await admin
+  let membershipRes = await admin
     .from("league_team_members")
-    .select("team_id,is_captain,is_vice_captain")
+    .select("team_id,is_captain,is_vice_captain,is_match_scorer")
     .eq("season_id", fixtureRes.data.season_id)
     .eq("player_id", playerId)
     .in("team_id", [fixtureRes.data.home_team_id, fixtureRes.data.away_team_id]);
-  const permitted = (membershipRes.data ?? []).some((row) => row.is_captain || row.is_vice_captain);
-  if (membershipRes.error || !permitted) return NextResponse.json({ error: "Captain or vice-captain access is required." }, { status: 403 });
+  if (membershipRes.error && membershipRes.error.message.toLowerCase().includes("is_match_scorer")) {
+    const fallback = await admin.from("league_team_members").select("team_id,is_captain,is_vice_captain").eq("season_id", fixtureRes.data.season_id).eq("player_id", playerId).in("team_id", [fixtureRes.data.home_team_id, fixtureRes.data.away_team_id]);
+    membershipRes = { ...fallback, data: (fallback.data ?? []).map((row) => ({ ...row, is_match_scorer: false })) } as unknown as typeof membershipRes;
+  }
+  const permitted = (membershipRes.data ?? []).some((row) => row.is_captain || row.is_vice_captain || row.is_match_scorer);
+  if (membershipRes.error || !permitted) return NextResponse.json({ error: "Authorised match-night scorer access is required." }, { status: 403 });
 
   const seasonRes = await admin.from("league_seasons").select("singles_count,doubles_count").eq("id", fixtureRes.data.season_id).maybeSingle();
   if (seasonRes.error) return NextResponse.json({ error: seasonRes.error.message }, { status: 400 });

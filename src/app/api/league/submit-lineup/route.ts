@@ -106,30 +106,34 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Lineup submission is closed for this fixture." }, { status: 400 });
   }
 
-  const memberRes = await adminClient
+  let memberRes = await adminClient
     .from("league_team_members")
-    .select("team_id,is_captain,is_vice_captain")
+    .select("team_id,is_captain,is_vice_captain,is_match_scorer")
     .eq("season_id", fixture.season_id)
     .eq("player_id", linkedPlayerId)
     .or(`team_id.eq.${fixture.home_team_id},team_id.eq.${fixture.away_team_id}`);
 
+  if (memberRes.error && memberRes.error.message.toLowerCase().includes("is_match_scorer")) {
+    const fallback = await adminClient.from("league_team_members").select("team_id,is_captain,is_vice_captain").eq("season_id", fixture.season_id).eq("player_id", linkedPlayerId).or(`team_id.eq.${fixture.home_team_id},team_id.eq.${fixture.away_team_id}`);
+    memberRes = { ...fallback, data: (fallback.data ?? []).map((row) => ({ ...row, is_match_scorer: false })) } as unknown as typeof memberRes;
+  }
   if (memberRes.error) {
     return NextResponse.json({ error: memberRes.error.message }, { status: 400 });
   }
 
-  const roleRows = (memberRes.data ?? []) as Array<{ team_id: string; is_captain: boolean; is_vice_captain: boolean | null }>;
-  const allowedTeam = roleRows.find((row) => row.is_captain || Boolean(row.is_vice_captain));
+  const roleRows = memberRes.data ?? [];
+  const allowedTeam = roleRows.find((row) => row.is_captain || Boolean(row.is_vice_captain) || row.is_match_scorer);
   if (!allowedTeam) {
-    return NextResponse.json({ error: "Only captain or vice-captain for this fixture can submit a lineup." }, { status: 403 });
+    return NextResponse.json({ error: "Only an authorised match-night scorer for this fixture can submit a lineup." }, { status: 403 });
   }
-  const actorRole = allowedTeam.is_captain ? "captain" : "vice_captain";
+  const actorRole = allowedTeam.is_captain ? "captain" : allowedTeam.is_vice_captain ? "vice_captain" : "match_scorer";
 
   const proxyEntryEnabled = Boolean(fixture.proxy_entry_enabled);
   const actingSide = allowedTeam.team_id === fixture.home_team_id ? "home" : allowedTeam.team_id === fixture.away_team_id ? "away" : null;
 
   if (side === "home") {
     if (!proxyEntryEnabled && allowedTeam.team_id !== fixture.home_team_id) {
-      return NextResponse.json({ error: "Only the home captain or vice-captain can submit the home lineup." }, { status: 403 });
+      return NextResponse.json({ error: "Only an authorised home-team scorer can submit the home lineup." }, { status: 403 });
     }
     if (fixture.home_lineup_submitted_at || fixture.away_lineup_submitted_at) {
       return NextResponse.json({ error: "The home lineup has already been submitted for this fixture." }, { status: 400 });
@@ -138,7 +142,7 @@ export async function POST(req: NextRequest) {
 
   if (side === "away") {
     if (!proxyEntryEnabled && allowedTeam.team_id !== fixture.away_team_id) {
-      return NextResponse.json({ error: "Only the away captain or vice-captain can submit the away lineup." }, { status: 403 });
+      return NextResponse.json({ error: "Only an authorised away-team scorer can submit the away lineup." }, { status: 403 });
     }
     if (!fixture.home_lineup_submitted_at) {
       return NextResponse.json({ error: "The home lineup must be submitted first." }, { status: 400 });

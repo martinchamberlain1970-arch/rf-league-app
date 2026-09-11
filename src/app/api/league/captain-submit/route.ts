@@ -116,19 +116,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Fixture is not open yet. You can submit on the fixture date." }, { status: 400 });
   }
 
-  const memberRes = await adminClient
+  let memberRes = await adminClient
     .from("league_team_members")
-    .select("team_id,is_captain,is_vice_captain")
+    .select("team_id,is_captain,is_vice_captain,is_match_scorer")
     .eq("season_id", fixture.season_id)
     .eq("player_id", linkedPlayerId)
     .or(`team_id.eq.${fixture.home_team_id},team_id.eq.${fixture.away_team_id}`);
-  if (memberRes.error) return NextResponse.json({ error: memberRes.error.message }, { status: 400 });
-  const allowedTeam = (memberRes.data ?? []).find((r: { team_id: string; is_captain: boolean; is_vice_captain: boolean }) => r.is_captain || r.is_vice_captain);
-  if (!allowedTeam) return NextResponse.json({ error: "Only captain or vice-captain for this fixture can submit." }, { status: 403 });
-  if (!fixture.proxy_entry_enabled && allowedTeam.team_id !== fixture.home_team_id) {
-    return NextResponse.json({ error: "Only the home captain or vice-captain can submit the scorecard." }, { status: 403 });
+  if (memberRes.error && memberRes.error.message.toLowerCase().includes("is_match_scorer")) {
+    const fallback = await adminClient.from("league_team_members").select("team_id,is_captain,is_vice_captain").eq("season_id", fixture.season_id).eq("player_id", linkedPlayerId).or(`team_id.eq.${fixture.home_team_id},team_id.eq.${fixture.away_team_id}`);
+    memberRes = { ...fallback, data: (fallback.data ?? []).map((row) => ({ ...row, is_match_scorer: false })) } as unknown as typeof memberRes;
   }
-  const actorRole = allowedTeam.is_captain ? "captain" : "vice_captain";
+  if (memberRes.error) return NextResponse.json({ error: memberRes.error.message }, { status: 400 });
+  const allowedTeam = (memberRes.data ?? []).find((r) => r.is_captain || r.is_vice_captain || r.is_match_scorer);
+  if (!allowedTeam) return NextResponse.json({ error: "Only an authorised match-night scorer for this fixture can submit." }, { status: 403 });
+  if (!fixture.proxy_entry_enabled && allowedTeam.team_id !== fixture.home_team_id) {
+    return NextResponse.json({ error: "Only an authorised home-team scorer can submit the scorecard." }, { status: 403 });
+  }
+  const actorRole = allowedTeam.is_captain ? "captain" : allowedTeam.is_vice_captain ? "vice_captain" : "match_scorer";
   const submitterSide = allowedTeam.team_id === fixture.home_team_id ? "home" : allowedTeam.team_id === fixture.away_team_id ? "away" : null;
 
   const existingRes = await adminClient
@@ -230,7 +234,7 @@ export async function POST(req: NextRequest) {
 
   await sendPushToLeagueManagers(adminClient, {
     title: "League result awaiting approval",
-    body: "A captain or vice-captain has submitted a league scorecard for review.",
+    body: "An authorised team representative has submitted a league scorecard for review.",
     url: "/results",
     tag: `league-submission-${fixture.id}`,
   }, [userId]);

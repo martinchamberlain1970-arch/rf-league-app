@@ -91,9 +91,10 @@ export default function HomePage() {
   const [tonightLineupCount, setTonightLineupCount] = useState<number>(0);
   const [tonightLineupLabel, setTonightLineupLabel] = useState<string | null>(null);
   const [tonightLineupHref, setTonightLineupHref] = useState("/captain-results");
-  const [leagueRole, setLeagueRole] = useState<{ isCaptain: boolean; isViceCaptain: boolean; teamNames: string[] }>({
+  const [leagueRole, setLeagueRole] = useState<{ isCaptain: boolean; isViceCaptain: boolean; isMatchScorer: boolean; teamNames: string[] }>({
     isCaptain: false,
     isViceCaptain: false,
+    isMatchScorer: false,
     teamNames: [],
   });
   const [pendingFeatureRequests, setPendingFeatureRequests] = useState<Set<string>>(new Set());
@@ -319,13 +320,14 @@ export default function HomePage() {
     return fallback;
   };
   const hasCaptainRole = leagueRole.isCaptain || leagueRole.isViceCaptain;
+  const hasScoreEntryRole = hasCaptainRole || leagueRole.isMatchScorer;
   const roleGuideLabel = hasCaptainRole
     ? leagueRole.isCaptain && leagueRole.isViceCaptain
       ? "Captain / Vice-captain"
       : leagueRole.isCaptain
         ? "Captain"
         : "Vice-captain"
-    : "Player";
+    : leagueRole.isMatchScorer ? "Match-night scorer" : "Player";
   const priorityCards = useMemo<PriorityCard[]>(() => {
     if (admin.canManageLeague) {
       return [
@@ -352,7 +354,7 @@ export default function HomePage() {
         },
       ];
     }
-    if (hasCaptainRole) {
+    if (hasScoreEntryRole) {
       return [
         {
           href: tonightLineupHref,
@@ -366,7 +368,7 @@ export default function HomePage() {
               ? "A live fixture is waiting for lineup action from your side."
               : "Open your fixture to enter the pre-match lineup first, then submit the result later.",
         },
-        {
+        ...(hasCaptainRole ? [{
           href: "/reschedule-fixture",
           title: "Fixture Date Requests",
           value: outstandingFixtureCount,
@@ -376,7 +378,7 @@ export default function HomePage() {
             outstandingFixtureCount > 0
               ? "A fixture is waiting for review or a new agreed date."
               : "Request early play or track an approved outstanding fixture.",
-        },
+        } as PriorityCard] : []),
         {
           href: "/events?view=league",
           title: "Match Centre",
@@ -420,6 +422,7 @@ export default function HomePage() {
     admin.canManageLeague,
     fixtureChangeActionCount,
     hasCaptainRole,
+    hasScoreEntryRole,
     openEventsCount,
     outstandingFixtureCount,
     pendingRequestsCount,
@@ -599,10 +602,10 @@ export default function HomePage() {
     const run = async () => {
       const client = supabase;
       if (!client || admin.loading || admin.isSuper || !userPlayerId) {
-        setLeagueRole({ isCaptain: false, isViceCaptain: false, teamNames: [] });
+        setLeagueRole({ isCaptain: false, isViceCaptain: false, isMatchScorer: false, teamNames: [] });
         return;
       }
-      type RoleMembership = { team_id: string; is_captain: boolean; is_vice_captain?: boolean | null };
+      type RoleMembership = { team_id: string; is_captain: boolean; is_vice_captain?: boolean | null; is_match_scorer?: boolean | null };
       let rows: RoleMembership[] = [];
       let teamTable = "league_teams";
 
@@ -613,11 +616,15 @@ export default function HomePage() {
         .order("created_at", { ascending: false });
       const liveSeasonIds = ((seasonsRes.data ?? []) as Array<{ id: string }>).map((season) => season.id);
       if (!seasonsRes.error && liveSeasonIds.length > 0) {
-        const liveMembersRes = await client
+        let liveMembersRes = await client
           .from("league_team_members")
-          .select("team_id,is_captain,is_vice_captain")
+          .select("team_id,is_captain,is_vice_captain,is_match_scorer")
           .eq("player_id", userPlayerId)
           .in("season_id", liveSeasonIds);
+        if (liveMembersRes.error && liveMembersRes.error.message.toLowerCase().includes("is_match_scorer")) {
+          const fallback = await client.from("league_team_members").select("team_id,is_captain,is_vice_captain").eq("player_id", userPlayerId).in("season_id", liveSeasonIds);
+          liveMembersRes = { ...fallback, data: (fallback.data ?? []).map((row) => ({ ...row, is_match_scorer: false })) } as unknown as typeof liveMembersRes;
+        }
         if (!liveMembersRes.error) rows = (liveMembersRes.data ?? []) as RoleMembership[];
       }
 
@@ -628,7 +635,7 @@ export default function HomePage() {
           .select("team_id,is_captain,is_vice_captain")
           .eq("player_id", userPlayerId);
         if (registeredMembersRes.error || !registeredMembersRes.data) {
-          setLeagueRole({ isCaptain: false, isViceCaptain: false, teamNames: [] });
+          setLeagueRole({ isCaptain: false, isViceCaptain: false, isMatchScorer: false, teamNames: [] });
           return;
         }
         rows = registeredMembersRes.data as RoleMembership[];
@@ -647,6 +654,7 @@ export default function HomePage() {
       setLeagueRole({
         isCaptain: rows.some((r) => r.is_captain),
         isViceCaptain: rows.some((r) => Boolean(r.is_vice_captain)),
+        isMatchScorer: rows.some((r) => Boolean(r.is_match_scorer)),
         teamNames,
       });
     };
@@ -662,22 +670,26 @@ export default function HomePage() {
         setTonightLineupHref("/captain-results");
         return;
       }
-      const membersRes = await client
+      let membersRes = await client
         .from("league_team_members")
-        .select("team_id,is_captain,is_vice_captain")
+        .select("team_id,is_captain,is_vice_captain,is_match_scorer")
         .eq("player_id", userPlayerId);
+      if (membersRes.error && membersRes.error.message.toLowerCase().includes("is_match_scorer")) {
+        const fallback = await client.from("league_team_members").select("team_id,is_captain,is_vice_captain").eq("player_id", userPlayerId);
+        membersRes = { ...fallback, data: (fallback.data ?? []).map((row) => ({ ...row, is_match_scorer: false })) } as unknown as typeof membersRes;
+      }
       if (membersRes.error || !membersRes.data) {
         setTonightLineupCount(0);
         setTonightLineupLabel(null);
         setTonightLineupHref("/captain-results");
         return;
       }
-      const captainTeamIds = new Set(
-        (membersRes.data as Array<{ team_id: string; is_captain: boolean; is_vice_captain?: boolean | null }>)
-          .filter((row) => row.is_captain || Boolean(row.is_vice_captain))
+      const scoreEntryTeamIds = new Set(
+        (membersRes.data as Array<{ team_id: string; is_captain: boolean; is_vice_captain?: boolean | null; is_match_scorer?: boolean | null }>)
+          .filter((row) => row.is_captain || Boolean(row.is_vice_captain) || Boolean(row.is_match_scorer))
           .map((row) => row.team_id)
       );
-      if (captainTeamIds.size === 0) {
+      if (scoreEntryTeamIds.size === 0) {
         setTonightLineupCount(0);
         setTonightLineupLabel(null);
         setTonightLineupHref("/captain-results");
@@ -709,8 +721,8 @@ export default function HomePage() {
         if (fixture.pre_match_paper_record) return false;
         if (!isLineupWindowLive(fixture.fixture_date)) return false;
         if (fixture.status === "complete") return false;
-        const isHomeCaptain = captainTeamIds.has(fixture.home_team_id);
-        const isAwayCaptain = captainTeamIds.has(fixture.away_team_id);
+        const isHomeCaptain = scoreEntryTeamIds.has(fixture.home_team_id);
+        const isAwayCaptain = scoreEntryTeamIds.has(fixture.away_team_id);
         if (isHomeCaptain && !fixture.home_lineup_submitted_at && !fixture.away_lineup_submitted_at) return true;
         if (isAwayCaptain && Boolean(fixture.home_lineup_submitted_at) && !fixture.away_lineup_submitted_at) return true;
         return false;
@@ -718,7 +730,7 @@ export default function HomePage() {
       setTonightLineupCount(actionableFixtures.length);
       if (actionableFixtures.length === 1) {
         const fixture = actionableFixtures[0];
-        const myTeamId = captainTeamIds.has(fixture.home_team_id) ? fixture.home_team_id : fixture.away_team_id;
+        const myTeamId = scoreEntryTeamIds.has(fixture.home_team_id) ? fixture.home_team_id : fixture.away_team_id;
         const opponentId = myTeamId === fixture.home_team_id ? fixture.away_team_id : fixture.home_team_id;
         setTonightLineupLabel(teamNameById.get(opponentId) ? `vs. ${teamNameById.get(opponentId)}` : "Opponent due");
         setTonightLineupHref(`/captain-results?fixtureId=${fixture.id}`);
@@ -1089,7 +1101,7 @@ export default function HomePage() {
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-200">
                   {admin.canManageLeague
                     ? "Here’s what needs your attention across the league today."
-                    : hasCaptainRole
+                    : hasScoreEntryRole
                       ? "Your fixtures, lineup actions and league updates are ready below."
                       : "Your league fixtures, results and player information are ready below."}
                 </p>
@@ -1149,7 +1161,7 @@ export default function HomePage() {
             <section className={subtleCardClass}>
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-sm font-semibold text-slate-900">Welcome & User Guide</p>
-                {hasCaptainRole ? (
+                {hasScoreEntryRole ? (
                   <Link href={tonightLineupHref} className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">
                     {roleGuideLabel}
                   </Link>
@@ -1195,13 +1207,11 @@ export default function HomePage() {
                   </div>
                 </div>
               ) : null}
-              {hasCaptainRole ? (
+              {hasScoreEntryRole ? (
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Link href="/captain-guide" className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">
-                    Open captain guide
-                  </Link>
+                  {hasCaptainRole ? <Link href="/captain-guide" className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">Open captain guide</Link> : null}
                   <Link href={tonightLineupHref} className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                    Open captain results
+                    Open line-ups &amp; results
                   </Link>
                 </div>
               ) : null}
@@ -1215,9 +1225,9 @@ export default function HomePage() {
                 <div className="rounded-xl border border-slate-200 bg-white p-3">
                   <p className="text-xs uppercase tracking-wide text-slate-500">2. Submit</p>
                   <p className="mt-1 text-sm text-slate-800">
-                    {hasCaptainRole
-                      ? "Use Captain Results for pre-match lineups. Home teams should then submit the result by midnight on the following day."
-                      : "If assigned as captain/vice-captain, Captain Results is used for result submission."}
+                    {hasScoreEntryRole
+                      ? "Use Line-ups & results for pre-match lineups. The authorised home-team scorer should then submit the result by midnight on the following day."
+                      : "A captain, vice-captain or assigned match-night scorer uses Line-ups & results for result submission."}
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-white p-3">
@@ -1240,7 +1250,7 @@ export default function HomePage() {
                 </p>
               </div>
               <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
-                {admin.canManageLeague ? `${appRoleLabel(admin.role)} view` : hasCaptainRole ? "Captain workflow view" : "Player view"}
+                {admin.canManageLeague ? `${appRoleLabel(admin.role)} view` : hasCaptainRole ? "Captain workflow view" : leagueRole.isMatchScorer ? "Match-night scorer view" : "Player view"}
               </div>
             </div>
             <div className="mt-4 grid gap-3 lg:grid-cols-3">
