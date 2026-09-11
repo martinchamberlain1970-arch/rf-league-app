@@ -437,21 +437,30 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
       .filter((frame) => frame.fixture_id === fixture.id)
       .sort((a, b) => Number(a.slot_no ?? 0) - Number(b.slot_no ?? 0))
       .map((frame, index) => {
-        const homeName =
-          [playerNameMap.get(frame.home_player1_id ?? "") ?? null, playerNameMap.get(frame.home_player2_id ?? "") ?? null]
-            .filter(Boolean)
-            .join(" / ") || frame.home_nominated_name?.trim() || "TBC";
-        const awayName =
-          [playerNameMap.get(frame.away_player1_id ?? "") ?? null, playerNameMap.get(frame.away_player2_id ?? "") ?? null]
-            .filter(Boolean)
-            .join(" / ") || frame.away_nominated_name?.trim() || "TBC";
+        const homeName = frame.home_forfeit
+          ? "No show"
+          : [playerNameMap.get(frame.home_player1_id ?? "") ?? null, playerNameMap.get(frame.home_player2_id ?? "") ?? null]
+              .filter(Boolean)
+              .join(" / ") || frame.home_nominated_name?.trim() || "TBC";
+        const awayName = frame.away_forfeit
+          ? "No show"
+          : [playerNameMap.get(frame.away_player1_id ?? "") ?? null, playerNameMap.get(frame.away_player2_id ?? "") ?? null]
+              .filter(Boolean)
+              .join(" / ") || frame.away_nominated_name?.trim() || "TBC";
         const homePoints = typeof frame.home_points_scored === "number" ? frame.home_points_scored : null;
         const awayPoints = typeof frame.away_points_scored === "number" ? frame.away_points_scored : null;
+        const score = frame.home_forfeit && frame.away_forfeit
+          ? "No frame played"
+          : frame.home_forfeit || frame.away_forfeit
+            ? "Frame conceded"
+            : homePoints !== null && awayPoints !== null
+              ? `${homePoints}-${awayPoints}`
+              : "Awaiting score";
 
         return {
           label: `${(frame.slot_type ?? "frame").replace(/^./, (match) => match.toUpperCase())} ${frame.slot_no ?? index + 1}`,
           matchup: `${homeName} vs ${awayName}`,
-          score: homePoints !== null && awayPoints !== null ? `${homePoints}-${awayPoints}` : "Awaiting score",
+          score,
           winner: frame.winner_side === "home" ? homeName : frame.winner_side === "away" ? awayName : "No winner recorded",
         };
       });
