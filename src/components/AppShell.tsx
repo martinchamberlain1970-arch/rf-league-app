@@ -112,7 +112,16 @@ const alwaysBarePrefixes = [
   "/offline",
 ];
 
+const signedInDisplayRoutes = new Set([
+  "/display/fixtures",
+  "/display/league-table",
+  "/display/player-table",
+  "/display/handicaps",
+  "/display/high-breaks",
+]);
+
 function isAlwaysBarePath(pathname: string) {
+  if (signedInDisplayRoutes.has(pathname)) return false;
   return alwaysBarePrefixes.some((prefix) => pathname === prefix || pathname.startsWith(prefix));
 }
 
