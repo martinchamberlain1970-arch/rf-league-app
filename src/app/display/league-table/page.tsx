@@ -18,21 +18,36 @@ type LeagueRow = {
 
 type Payload = {
   season: { id: string; name: string } | null;
+  seasons: Array<{ id: string; name: string }>;
   leagueTable: LeagueRow[];
   error?: string;
 };
 
+function shortSeasonName(name: string) {
+  const season = name.match(/20\d{2}\s*(?:\/|-)\s*20?\d{2}/)?.[0]?.replace(/\s/g, "") ?? "";
+  if (/premier league/i.test(name)) return `Premier League${season ? ` ${season}` : ""}`;
+  if (/division\s*1/i.test(name)) return `Division 1${season ? ` ${season}` : ""}`;
+  return name;
+}
+
 export default function PublicLeagueTablePage() {
   const [data, setData] = useState<Payload | null>(null);
   const [updatedAt, setUpdatedAt] = useState<string>("");
+  const [selectedSeasonId, setSelectedSeasonId] = useState("");
+
+  useEffect(() => {
+    setSelectedSeasonId(new URLSearchParams(window.location.search).get("seasonId")?.trim() ?? "");
+  }, []);
 
   useEffect(() => {
     let active = true;
     const load = async () => {
-      const resp = await fetch("/api/public/league-board", { cache: "no-store" });
+      const query = selectedSeasonId ? `?seasonId=${encodeURIComponent(selectedSeasonId)}` : "";
+      const resp = await fetch(`/api/public/league-board${query}`, { cache: "no-store" });
       const payload = (await resp.json()) as Payload;
       if (!active) return;
       setData(payload);
+      setSelectedSeasonId((current) => current || payload.season?.id || "");
       setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     };
     void load();
@@ -43,7 +58,12 @@ export default function PublicLeagueTablePage() {
       active = false;
       window.clearInterval(interval);
     };
-  }, []);
+  }, [selectedSeasonId]);
+
+  const chooseSeason = (seasonId: string) => {
+    setSelectedSeasonId(seasonId);
+    window.history.replaceState(null, "", `${window.location.pathname}?seasonId=${encodeURIComponent(seasonId)}`);
+  };
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6">
@@ -52,6 +72,20 @@ export default function PublicLeagueTablePage() {
           <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-300">Public League Table</p>
           <h1 className="mt-2 text-2xl font-black tracking-tight text-white sm:text-3xl">{data?.season?.name ?? "League Table"}</h1>
           <p className="mt-2 text-sm text-slate-300">Updated {updatedAt || "--:--"}</p>
+          {(data?.seasons?.length ?? 0) > 1 ? (
+            <div className="mt-4 grid grid-cols-2 gap-1 rounded-xl border border-white/15 bg-slate-950/50 p-1" aria-label="League">
+              {(data?.seasons ?? []).map((season) => (
+                <button
+                  key={season.id}
+                  type="button"
+                  onClick={() => chooseSeason(season.id)}
+                  className={`rounded-lg px-3 py-2 text-sm font-bold ${(selectedSeasonId || data?.season?.id) === season.id ? "bg-cyan-400 text-slate-950" : "text-slate-300 hover:bg-white/10"}`}
+                >
+                  {shortSeasonName(season.name)}
+                </button>
+              ))}
+            </div>
+          ) : null}
         </header>
 
         {data?.error ? <section className="rounded-2xl border border-rose-400/40 bg-rose-500/10 p-4 text-rose-100">{data.error}</section> : null}

@@ -9,6 +9,7 @@ type SeasonRow = {
   id: string;
   name: string;
   is_published?: boolean | null;
+  is_active?: boolean | null;
   created_at?: string | null;
 };
 
@@ -88,7 +89,7 @@ export async function GET(req: NextRequest) {
 
   const seasonsRes = await adminClient
     .from("league_seasons")
-    .select("id,name,is_published,created_at")
+    .select("id,name,is_published,is_active,created_at")
     .eq("is_published", true)
     .order("created_at", { ascending: false });
 
@@ -96,7 +97,9 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: seasonsRes.error.message }, { status: 500 });
   }
 
-  const seasons = (seasonsRes.data ?? []) as SeasonRow[];
+  const publishedSeasons = (seasonsRes.data ?? []) as SeasonRow[];
+  const activeSeasons = publishedSeasons.filter((season) => season.is_active === true);
+  const seasons = activeSeasons.length > 0 ? activeSeasons : publishedSeasons;
   const selectedSeason =
     (seasonIdParam ? seasons.find((season) => season.id === seasonIdParam) : null) ??
     seasons[0] ??
@@ -105,6 +108,7 @@ export async function GET(req: NextRequest) {
   if (!selectedSeason) {
     return NextResponse.json({
       season: null,
+      seasons: [],
       leagueTable: [],
       topPlayers: [],
       topHighBreaks: [],
@@ -321,6 +325,7 @@ export async function GET(req: NextRequest) {
       id: selectedSeason.id,
       name: selectedSeason.name,
     },
+    seasons: seasons.map(({ id, name }) => ({ id, name })),
     leagueTable,
     topPlayers,
     topHighBreaks,

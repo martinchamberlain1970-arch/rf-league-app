@@ -63,7 +63,7 @@ const appAreas = [
   { title: "My Events", detail: "Your upcoming league and competition activity.", href: "/events" },
   { title: "Notifications", detail: "Reminders, requests and league messages.", href: "/notifications" },
   { title: "Competition Sign-ups", detail: "Enter open individual and team competitions.", href: "/signups" },
-  { title: "Handicaps", detail: "Current published handicaps and an explanation of the system.", href: "/handicaps" },
+  { title: "Handicaps", detail: "Current published handicaps and an explanation of the system.", href: "/display/handicaps" },
   { title: "Captain Guide", detail: "Use this if you are assigned as captain or vice-captain.", href: "/captain-guide" },
 ];
 

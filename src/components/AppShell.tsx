@@ -38,11 +38,11 @@ const navigationGroups: NavigationGroup[] = [
   {
     label: "League",
     items: [
-      { href: "/league?view=fixtures", label: "Fixtures & results" },
-      { href: "/league-hub?tab=table", label: "League tables" },
-      { href: "/league-hub?tab=players", label: "Player standings" },
-      { href: "/handicaps", label: "Published handicaps" },
-      { href: "/high-breaks", label: "High breaks" },
+      { href: "/display/fixtures", label: "Fixtures & results" },
+      { href: "/display/league-table", label: "League tables" },
+      { href: "/display/player-table", label: "Player standings" },
+      { href: "/display/handicaps", label: "Published handicaps" },
+      { href: "/display/high-breaks", label: "High breaks" },
       { href: "/hall-of-fame", label: "Hall of Fame" },
       { href: "/league-hub", label: "Public league hub" },
     ],

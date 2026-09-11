@@ -32,7 +32,7 @@ export default function ScreenHeader({
         { href: "/events?view=league", label: "League match centre" },
         { href: "/events", label: "Competitions" },
         { href: "/signups", label: "Competition entries" },
-        { href: "/high-breaks", label: "High breaks" },
+        { href: "/display/high-breaks", label: "High breaks" },
       ]
     : pathname === "/notifications" || pathname === "/documents" || pathname === "/help" || pathname === "/announcements"
       ? [
