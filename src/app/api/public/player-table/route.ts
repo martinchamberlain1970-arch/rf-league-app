@@ -114,9 +114,11 @@ export async function GET(req: NextRequest) {
   const playerById = new Map(players.map((player) => [player.id, player]));
   const teamById = new Map(teams.map((team) => [team.id, team]));
   const playerTeamName = new Map<string, string>();
+  const playerTeamId = new Map<string, string>();
   for (const member of members) {
     if (!playerTeamName.has(member.player_id)) {
       playerTeamName.set(member.player_id, teamById.get(member.team_id)?.name ?? "-");
+      playerTeamId.set(member.player_id, member.team_id);
     }
   }
 
@@ -178,6 +180,7 @@ export async function GET(req: NextRequest) {
       return {
         player_id: playerId,
         player_name: pairing ? pairingNames.join(" & ") : named(playerById.get(playerId)),
+        team_id: pairing ? null : playerTeamId.get(playerId) ?? null,
         team_name: pairing ? pairingTeams.join(" / ") : playerTeamName.get(playerId) ?? "-",
         appearances: appearanceByPlayer.get(playerId)?.size ?? 0,
         played,

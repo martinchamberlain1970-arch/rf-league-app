@@ -1,11 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 type PlayerRow = {
   rank: number;
   player_id: string;
   player_name: string;
+  team_id: string | null;
   team_name: string;
   appearances: number;
   played: number;
@@ -127,8 +129,20 @@ export default function PublicPlayerTablePage() {
                 {(data?.players ?? []).map((row) => (
                   <tr key={`${row.rank}-${row.player_id}`} className="border-t border-white/5 text-slate-100">
                     <td className="px-3 py-3 font-semibold text-cyan-300">{row.rank}</td>
-                    <td className="px-3 py-3 font-medium">{row.player_name}</td>
-                    <td className="px-3 py-3 text-slate-300">{row.team_name}</td>
+                    <td className="px-3 py-3 font-medium">
+                      {mode === "pairings" ? row.player_name : (
+                        <Link href={`/league-hub/player/${row.player_id}?seasonId=${encodeURIComponent(selectedSeasonId || data?.season?.id || "")}`} className="underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-200">
+                          {row.player_name}
+                        </Link>
+                      )}
+                    </td>
+                    <td className="px-3 py-3 text-slate-300">
+                      {row.team_id ? (
+                        <Link href={`/league-hub/team/${row.team_id}?seasonId=${encodeURIComponent(selectedSeasonId || data?.season?.id || "")}`} className="underline decoration-cyan-400/30 underline-offset-4 hover:text-cyan-200">
+                          {row.team_name}
+                        </Link>
+                      ) : row.team_name}
+                    </td>
                     <td className="px-3 py-3 text-center">{row.appearances}</td>
                     <td className="px-3 py-3 text-center">{row.played}</td>
                     <td className="px-3 py-3 text-center">{row.won}</td>

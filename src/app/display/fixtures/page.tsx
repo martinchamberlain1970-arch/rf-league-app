@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 type SeasonOption = {
@@ -11,6 +12,8 @@ type PublicFixture = {
   id: string;
   fixtureDate: string | null;
   weekNo: number | null;
+  homeTeamId: string | null;
+  awayTeamId: string | null;
   homeTeam: string;
   awayTeam: string;
   status: "pending" | "in_progress" | "complete" | "bye";
@@ -197,21 +200,25 @@ export default function PublicFixturesPage() {
             <div className="divide-y divide-white/5">
               {round.fixtures.map((fixture) => (
                 <article key={fixture.id} className="grid gap-2 px-4 py-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
-                  <p className="text-lg font-bold text-white sm:text-right">{fixture.homeTeam}</p>
+                  {fixture.homeTeamId ? (
+                    <Link href={`/league-hub/team/${fixture.homeTeamId}?seasonId=${encodeURIComponent(selectedSeasonId || data?.season?.id || "")}`} className="text-lg font-bold text-white underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-200 sm:text-right">{fixture.homeTeam}</Link>
+                  ) : <p className="text-lg font-bold text-white sm:text-right">{fixture.homeTeam}</p>}
                   <div className="min-w-20 text-center">
                     {fixture.status === "bye" ? (
                       <span className="inline-flex rounded-full bg-cyan-400/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-cyan-100">BYE</span>
                     ) : fixture.status === "complete" ? (
-                      <span className="inline-flex rounded-full bg-emerald-400/15 px-3 py-1 text-sm font-black text-emerald-100">
+                      <Link href={`/display/weekly-report?seasonId=${encodeURIComponent(selectedSeasonId || data?.season?.id || "")}&week=${fixture.weekNo ?? ""}&tab=matches#fixture-${fixture.id}`} className="inline-flex rounded-full bg-emerald-400/15 px-3 py-1 text-sm font-black text-emerald-100 underline decoration-emerald-300/50 underline-offset-4 hover:bg-emerald-400/25">
                         {fixture.homePoints ?? 0}–{fixture.awayPoints ?? 0}
-                      </span>
+                      </Link>
                     ) : fixture.status === "in_progress" ? (
                       <span className="inline-flex rounded-full bg-amber-400/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-amber-100">Live</span>
                     ) : (
                       <span className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">vs</span>
                     )}
                   </div>
-                  <p className="text-lg font-bold text-white">{fixture.awayTeam}</p>
+                  {fixture.awayTeamId ? (
+                    <Link href={`/league-hub/team/${fixture.awayTeamId}?seasonId=${encodeURIComponent(selectedSeasonId || data?.season?.id || "")}`} className="text-lg font-bold text-white underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-200">{fixture.awayTeam}</Link>
+                  ) : <p className="text-lg font-bold text-white">{fixture.awayTeam}</p>}
                 </article>
               ))}
             </div>

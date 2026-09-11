@@ -1,8 +1,13 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 type HubTab = "fixtures" | "results" | "table" | "players" | "breaks" | "handicaps" | "notices";
+
+function isPublicPlayerId(value: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
+}
 
 type SeasonOption = {
   id: string;
@@ -13,6 +18,8 @@ type PublicFixture = {
   id: string;
   fixtureDate: string | null;
   weekNo: number | null;
+  homeTeamId: string | null;
+  awayTeamId: string | null;
   homeTeam: string;
   awayTeam: string;
   status: "pending" | "in_progress" | "complete" | "bye";
@@ -27,6 +34,7 @@ type PublicFixture = {
 
 type LeagueRow = {
   rank: number;
+  team_id: string;
   team_name: string;
   played: number;
   won: number;
@@ -41,6 +49,7 @@ type PlayerRow = {
   rank: number;
   player_id: string;
   player_name: string;
+  team_id: string | null;
   team_name: string;
   appearances: number;
   played: number;
@@ -160,7 +169,7 @@ function groupFixtures(fixtures: PublicFixture[], newestFirst = false): FixtureG
   });
 }
 
-function FixturesPanel({ groups, results = false }: { groups: FixtureGroup[]; results?: boolean }) {
+function FixturesPanel({ groups, seasonId, results = false }: { groups: FixtureGroup[]; seasonId: string; results?: boolean }) {
   if (groups.length === 0) {
     return (
       <section className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-slate-300">
@@ -181,7 +190,11 @@ function FixturesPanel({ groups, results = false }: { groups: FixtureGroup[]; re
             {group.fixtures.map((fixture) => (
               <article key={fixture.id} className="grid gap-2 px-4 py-4 sm:grid-cols-[1fr_auto_1fr] sm:items-center">
                 <div className="sm:text-right">
-                  <p className="text-base font-bold text-white sm:text-lg">{fixture.homeTeam}</p>
+                  {fixture.homeTeamId ? (
+                    <Link href={`/league-hub/team/${fixture.homeTeamId}?seasonId=${encodeURIComponent(seasonId)}`} className="text-base font-bold text-white underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-200 sm:text-lg">
+                      {fixture.homeTeam}
+                    </Link>
+                  ) : <p className="text-base font-bold text-white sm:text-lg">{fixture.homeTeam}</p>}
                   {fixture.reschedule ? (
                     <div className="mt-2 flex flex-wrap items-center gap-2 sm:justify-end">
                       <span className="inline-flex rounded-full border border-amber-300/30 bg-amber-400/10 px-2.5 py-1 text-[0.68rem] font-bold uppercase tracking-wide text-amber-100">
@@ -197,9 +210,9 @@ function FixturesPanel({ groups, results = false }: { groups: FixtureGroup[]; re
                   {fixture.status === "bye" ? (
                     <span className="inline-flex rounded-full bg-cyan-400/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-cyan-100">BYE</span>
                   ) : fixture.status === "complete" ? (
-                    <span className="inline-flex rounded-full bg-emerald-400/15 px-3 py-1 text-base font-black text-emerald-100">
+                    <Link href={`/display/weekly-report?seasonId=${encodeURIComponent(seasonId)}&week=${fixture.weekNo ?? ""}&tab=matches#fixture-${fixture.id}`} className="inline-flex rounded-full bg-emerald-400/15 px-3 py-1 text-base font-black text-emerald-100 underline decoration-emerald-300/50 underline-offset-4 hover:bg-emerald-400/25" aria-label={`View ${fixture.homeTeam} versus ${fixture.awayTeam} match details`}>
                       {fixture.homePoints ?? 0}–{fixture.awayPoints ?? 0}
-                    </span>
+                    </Link>
                   ) : fixture.status === "in_progress" ? (
                     <span className="inline-flex rounded-full bg-amber-400/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-amber-100">Live</span>
                   ) : (
@@ -207,7 +220,11 @@ function FixturesPanel({ groups, results = false }: { groups: FixtureGroup[]; re
                   )}
                 </div>
                 <div>
-                  <p className="text-base font-bold text-white sm:text-lg">{fixture.awayTeam}</p>
+                  {fixture.awayTeamId ? (
+                    <Link href={`/league-hub/team/${fixture.awayTeamId}?seasonId=${encodeURIComponent(seasonId)}`} className="text-base font-bold text-white underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-200 sm:text-lg">
+                      {fixture.awayTeam}
+                    </Link>
+                  ) : <p className="text-base font-bold text-white sm:text-lg">{fixture.awayTeam}</p>}
                   {fixture.reschedule ? (
                     <p className="mt-2 text-xs text-slate-300">Originally {formatFixtureDate(fixture.reschedule.originalFixtureDate)}</p>
                   ) : null}
@@ -417,8 +434,8 @@ export default function LeagueHubPage() {
         {!error && loading ? <section className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-slate-200">Updating league information…</section> : null}
         {!error && !loading && !data.season ? <section className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-slate-200">No published league is currently available.</section> : null}
 
-        {!error && !loading && data.season && activeTab === "fixtures" ? <FixturesPanel groups={upcomingGroups} /> : null}
-        {!error && !loading && data.season && activeTab === "results" ? <FixturesPanel groups={resultGroups} results /> : null}
+        {!error && !loading && data.season && activeTab === "fixtures" ? <FixturesPanel groups={upcomingGroups} seasonId={data.season.id} /> : null}
+        {!error && !loading && data.season && activeTab === "results" ? <FixturesPanel groups={resultGroups} seasonId={data.season.id} results /> : null}
 
         {!error && !loading && data.season && activeTab === "table" ? (
           <section className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/80 shadow-xl shadow-black/10">
@@ -430,7 +447,7 @@ export default function LeagueHubPage() {
                 <tbody>
                   {data.leagueTable.map((row) => (
                     <tr key={row.team_name} className="border-t border-white/5 text-slate-100">
-                      <td className="px-3 py-3 font-semibold text-cyan-300">{row.rank}</td><td className="px-3 py-3 font-medium">{row.team_name}</td><td className="px-3 py-3 text-center">{row.played}</td><td className="px-3 py-3 text-center">{row.won}</td><td className="px-3 py-3 text-center">{row.lost}</td><td className="px-3 py-3 text-center">{row.frames_for}</td><td className="px-3 py-3 text-center">{row.frames_against}</td><td className="px-3 py-3 text-center">{row.frame_diff > 0 ? `+${row.frame_diff}` : row.frame_diff}</td><td className="px-3 py-3 text-center font-bold text-emerald-300">{row.points}</td>
+                      <td className="px-3 py-3 font-semibold text-cyan-300">{row.rank}</td><td className="px-3 py-3 font-medium"><Link href={`/league-hub/team/${row.team_id}?seasonId=${encodeURIComponent(data.season?.id ?? selectedSeasonId)}`} className="underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-200">{row.team_name}</Link></td><td className="px-3 py-3 text-center">{row.played}</td><td className="px-3 py-3 text-center">{row.won}</td><td className="px-3 py-3 text-center">{row.lost}</td><td className="px-3 py-3 text-center">{row.frames_for}</td><td className="px-3 py-3 text-center">{row.frames_against}</td><td className="px-3 py-3 text-center">{row.frame_diff > 0 ? `+${row.frame_diff}` : row.frame_diff}</td><td className="px-3 py-3 text-center font-bold text-emerald-300">{row.points}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -442,7 +459,7 @@ export default function LeagueHubPage() {
         {!error && !loading && data.season && activeTab === "players" ? (
           <section className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/80 shadow-xl shadow-black/10">
             {data.players.length === 0 ? <p className="p-8 text-center text-slate-300">Player standings will appear after results are approved.</p> : (
-              <div className="overflow-x-auto"><table className="min-w-full text-sm sm:text-base"><thead className="bg-white/5 text-left text-slate-300"><tr><th className="px-3 py-3">#</th><th className="px-3 py-3">Player</th><th className="px-3 py-3">Team</th><th className="px-3 py-3 text-center">App</th><th className="px-3 py-3 text-center">P</th><th className="px-3 py-3 text-center">W</th><th className="px-3 py-3 text-center">L</th><th className="px-3 py-3 text-center">Win %</th></tr></thead><tbody>{data.players.map((row) => <tr key={row.player_id} className="border-t border-white/5 text-slate-100"><td className="px-3 py-3 font-semibold text-cyan-300">{row.rank}</td><td className="px-3 py-3 font-medium">{row.player_name}</td><td className="px-3 py-3 text-slate-300">{row.team_name}</td><td className="px-3 py-3 text-center">{row.appearances}</td><td className="px-3 py-3 text-center">{row.played}</td><td className="px-3 py-3 text-center">{row.won}</td><td className="px-3 py-3 text-center">{row.lost}</td><td className="px-3 py-3 text-center font-bold text-emerald-300">{row.win_pct}%</td></tr>)}</tbody></table></div>
+              <div className="overflow-x-auto"><table className="min-w-full text-sm sm:text-base"><thead className="bg-white/5 text-left text-slate-300"><tr><th className="px-3 py-3">#</th><th className="px-3 py-3">Player</th><th className="px-3 py-3">Team</th><th className="px-3 py-3 text-center">App</th><th className="px-3 py-3 text-center">P</th><th className="px-3 py-3 text-center">W</th><th className="px-3 py-3 text-center">L</th><th className="px-3 py-3 text-center">Win %</th></tr></thead><tbody>{data.players.map((row) => <tr key={row.player_id} className="border-t border-white/5 text-slate-100"><td className="px-3 py-3 font-semibold text-cyan-300">{row.rank}</td><td className="px-3 py-3 font-medium"><Link href={`/league-hub/player/${row.player_id}?seasonId=${encodeURIComponent(data.season?.id ?? selectedSeasonId)}`} className="underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-200">{row.player_name}</Link></td><td className="px-3 py-3 text-slate-300">{row.team_id ? <Link href={`/league-hub/team/${row.team_id}?seasonId=${encodeURIComponent(data.season?.id ?? selectedSeasonId)}`} className="underline decoration-cyan-400/30 underline-offset-4 hover:text-cyan-200">{row.team_name}</Link> : row.team_name}</td><td className="px-3 py-3 text-center">{row.appearances}</td><td className="px-3 py-3 text-center">{row.played}</td><td className="px-3 py-3 text-center">{row.won}</td><td className="px-3 py-3 text-center">{row.lost}</td><td className="px-3 py-3 text-center font-bold text-emerald-300">{row.win_pct}%</td></tr>)}</tbody></table></div>
             )}
           </section>
         ) : null}
@@ -454,7 +471,7 @@ export default function LeagueHubPage() {
               <a href="/display/high-breaks" className="font-bold underline underline-offset-4">View category breakdown</a>
             </div>
             {data.breaks.length === 0 ? <p className="p-8 text-center text-slate-300">Breaks of 30 or more will appear after results are approved.</p> : (
-              <div className="overflow-x-auto"><table className="min-w-full text-sm sm:text-base"><thead className="bg-white/5 text-left text-slate-300"><tr><th className="px-3 py-3">#</th><th className="px-3 py-3">Player</th><th className="px-3 py-3 text-center">Highest</th><th className="px-3 py-3 text-center">100+</th><th className="px-3 py-3 text-center">30+</th></tr></thead><tbody>{data.breaks.map((row) => <tr key={row.key} className="border-t border-white/5 text-slate-100"><td className="px-3 py-3 font-semibold text-cyan-300">{row.rank}</td><td className="px-3 py-3 font-medium">{row.player_name}</td><td className="px-3 py-3 text-center text-lg font-black text-emerald-300">{row.high_break}</td><td className="px-3 py-3 text-center">{row.century_count}</td><td className="px-3 py-3 text-center">{row.breaks_30_plus}</td></tr>)}</tbody></table></div>
+              <div className="overflow-x-auto"><table className="min-w-full text-sm sm:text-base"><thead className="bg-white/5 text-left text-slate-300"><tr><th className="px-3 py-3">#</th><th className="px-3 py-3">Player</th><th className="px-3 py-3 text-center">Highest</th><th className="px-3 py-3 text-center">100+</th><th className="px-3 py-3 text-center">30+</th></tr></thead><tbody>{data.breaks.map((row) => <tr key={row.key} className="border-t border-white/5 text-slate-100"><td className="px-3 py-3 font-semibold text-cyan-300">{row.rank}</td><td className="px-3 py-3 font-medium">{isPublicPlayerId(row.key) ? <Link href={`/league-hub/player/${row.key}?seasonId=${encodeURIComponent(data.season?.id ?? selectedSeasonId)}`} className="underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-200">{row.player_name}</Link> : row.player_name}</td><td className="px-3 py-3 text-center text-lg font-black text-emerald-300">{row.high_break}</td><td className="px-3 py-3 text-center">{row.century_count}</td><td className="px-3 py-3 text-center">{row.breaks_30_plus}</td></tr>)}</tbody></table></div>
             )}
           </section>
         ) : null}
@@ -469,7 +486,7 @@ export default function LeagueHubPage() {
               <div className="border-b border-white/10 bg-cyan-400/10 px-4 py-3 text-sm text-cyan-100">The <strong>current handicap</strong> is the figure used on match night. Handicaps are reviewed periodically from approved results.</div>
             )}
             {data.handicaps.length === 0 ? <p className="p-8 text-center text-slate-300">No handicap information is currently available.</p> : (
-              <div className="overflow-x-auto"><table className="min-w-full text-sm sm:text-base"><thead className="bg-white/5 text-left text-slate-300"><tr><th className="px-3 py-3">#</th><th className="px-3 py-3">Player</th><th className="px-3 py-3 text-center">{/division 1/i.test(data.season.name) ? "Recorded handicap" : "Current handicap"}</th><th className="px-3 py-3 text-center">Elo</th><th className="px-3 py-3 text-center">Rated matches</th></tr></thead><tbody>{data.handicaps.map((row) => <tr key={row.player_id} className="border-t border-white/5 text-slate-100"><td className="px-3 py-3 font-semibold text-cyan-300">{row.rank}</td><td className="px-3 py-3 font-medium">{row.player_name}</td><td className="px-3 py-3 text-center text-lg font-black text-emerald-300">{formatHandicap(row.current_handicap)}</td><td className="px-3 py-3 text-center">{row.elo}</td><td className="px-3 py-3 text-center">{row.rated_matches}</td></tr>)}</tbody></table></div>
+              <div className="overflow-x-auto"><table className="min-w-full text-sm sm:text-base"><thead className="bg-white/5 text-left text-slate-300"><tr><th className="px-3 py-3">#</th><th className="px-3 py-3">Player</th><th className="px-3 py-3 text-center">{/division 1/i.test(data.season.name) ? "Recorded handicap" : "Current handicap"}</th><th className="px-3 py-3 text-center">Elo</th><th className="px-3 py-3 text-center">Rated matches</th></tr></thead><tbody>{data.handicaps.map((row) => <tr key={row.player_id} className="border-t border-white/5 text-slate-100"><td className="px-3 py-3 font-semibold text-cyan-300">{row.rank}</td><td className="px-3 py-3 font-medium"><Link href={`/league-hub/player/${row.player_id}?seasonId=${encodeURIComponent(data.season?.id ?? selectedSeasonId)}`} className="underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-200">{row.player_name}</Link></td><td className="px-3 py-3 text-center text-lg font-black text-emerald-300">{formatHandicap(row.current_handicap)}</td><td className="px-3 py-3 text-center">{row.elo}</td><td className="px-3 py-3 text-center">{row.rated_matches}</td></tr>)}</tbody></table></div>
             )}
           </section>
         ) : null}

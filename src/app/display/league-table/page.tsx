@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 type LeagueRow = {
   rank: number;
+  team_id: string;
   team_name: string;
   played: number;
   won: number;
@@ -74,7 +76,11 @@ export default function PublicLeagueTablePage() {
                 {(data?.leagueTable ?? []).map((row) => (
                   <tr key={row.team_name} className="border-t border-white/5 text-slate-100">
                     <td className="px-3 py-3 font-semibold text-cyan-300">{row.rank}</td>
-                    <td className="px-3 py-3 font-medium">{row.team_name}</td>
+                    <td className="px-3 py-3 font-medium">
+                      <Link href={`/league-hub/team/${row.team_id}?seasonId=${encodeURIComponent(data?.season?.id ?? "")}`} className="underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-200">
+                        {row.team_name}
+                      </Link>
+                    </td>
                     <td className="px-3 py-3 text-center">{row.played}</td>
                     <td className="px-3 py-3 text-center">{row.won}</td>
                     <td className="px-3 py-3 text-center">{row.lost}</td>

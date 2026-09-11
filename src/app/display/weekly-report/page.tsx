@@ -1,9 +1,12 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useState } from "react";
 
 type FixtureReport = {
   id: string;
+  homeTeamId: string;
+  awayTeamId: string;
   dateLabel: string;
   home: string;
   away: string;
@@ -18,6 +21,10 @@ type FixtureReport = {
   frameFacts: Array<{
     label: string;
     matchup: string;
+    homeLabel: string;
+    awayLabel: string;
+    homePlayers: Array<{ id: string; name: string }>;
+    awayPlayers: Array<{ id: string; name: string }>;
     score: string;
     winner: string;
     handicapNote: string;
@@ -84,6 +91,22 @@ function signed(value: number) {
   return value > 0 ? `+${value}` : `${value}`;
 }
 
+function PlayerLinks({ players, fallback, seasonId }: { players: Array<{ id: string; name: string }>; fallback: string; seasonId: string }) {
+  if (players.length === 0) return <>{fallback}</>;
+  return (
+    <>
+      {players.map((player, index) => (
+        <span key={player.id}>
+          {index > 0 ? " / " : ""}
+          <Link href={`/league-hub/player/${player.id}?seasonId=${encodeURIComponent(seasonId)}`} className="underline decoration-cyan-400/50 underline-offset-4 hover:text-cyan-200">
+            {player.name}
+          </Link>
+        </span>
+      ))}
+    </>
+  );
+}
+
 export default function PublicWeeklyReportPage() {
   const [data, setData] = useState<Payload | null>(null);
   const [eloHandicapData, setEloHandicapData] = useState<EloHandicapPayload | null>(null);
@@ -133,6 +156,14 @@ export default function PublicWeeklyReportPage() {
       window.clearInterval(interval);
     };
   }, [selectedSeasonId]);
+
+  useEffect(() => {
+    if (activeTab !== "matches" || !data?.fixtures.length || !window.location.hash) return;
+    const targetId = decodeURIComponent(window.location.hash.slice(1));
+    window.requestAnimationFrame(() => {
+      document.getElementById(targetId)?.scrollIntoView({ block: "start" });
+    });
+  }, [activeTab, data?.fixtures]);
 
   const displayedSeasonId = selectedSeasonId || data?.season?.id || "";
   const isDivisionOne = /division\s*1/i.test(data?.season?.name ?? "");
@@ -352,7 +383,7 @@ export default function PublicWeeklyReportPage() {
                     >
                       <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
                         <h3 className="min-w-0 break-words font-semibold text-white">
-                          {row.name}
+                          <Link href={`/league-hub/player/${row.playerId}?seasonId=${encodeURIComponent(displayedSeasonId)}`} className="underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-200">{row.name}</Link>
                         </h3>
                         <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-slate-300">
                           {row.ratedFrames} rated {row.ratedFrames === 1 ? "frame" : "frames"}
@@ -419,7 +450,7 @@ export default function PublicWeeklyReportPage() {
                     {(eloHandicapData?.changes ?? []).map((row) => (
                       <tr key={row.playerId} className="bg-slate-950/20">
                         <td className="px-4 py-3 text-white">
-                          <p className="font-semibold">{row.name}</p>
+                          <p className="font-semibold"><Link href={`/league-hub/player/${row.playerId}?seasonId=${encodeURIComponent(displayedSeasonId)}`} className="underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-200">{row.name}</Link></p>
                           <p className="mt-2 max-w-3xl break-words text-xs font-normal leading-5 text-slate-400 [overflow-wrap:anywhere]">
                             {row.reason}
                           </p>
@@ -463,7 +494,8 @@ export default function PublicWeeklyReportPage() {
           {(data?.fixtures ?? []).map((fixture) => (
             <article
               key={fixture.id}
-              className="rounded-3xl border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20"
+              id={`fixture-${fixture.id}`}
+              className="scroll-mt-28 rounded-3xl border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20"
             >
               <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                 <div>
@@ -471,7 +503,9 @@ export default function PublicWeeklyReportPage() {
                     Match Report
                   </p>
                   <h2 className="mt-2 text-2xl font-bold text-white">
-                    {fixture.home} vs {fixture.away}
+                    <Link href={`/league-hub/team/${fixture.homeTeamId}?seasonId=${encodeURIComponent(displayedSeasonId)}`} className="underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-200">{fixture.home}</Link>
+                    {" vs "}
+                    <Link href={`/league-hub/team/${fixture.awayTeamId}?seasonId=${encodeURIComponent(displayedSeasonId)}`} className="underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-200">{fixture.away}</Link>
                   </h2>
                   <p className="mt-1 text-sm text-slate-300">
                     {fixture.dateLabel} · Result {fixture.score}
@@ -502,7 +536,11 @@ export default function PublicWeeklyReportPage() {
                     className="rounded-2xl border border-white/10 bg-white/5 p-4"
                   >
                     <p className="text-sm font-semibold text-cyan-300">{frame.label}</p>
-                    <p className="mt-1 text-sm text-white">{frame.matchup}</p>
+                    <p className="mt-1 text-sm text-white">
+                      <PlayerLinks players={frame.homePlayers} fallback={frame.homeLabel} seasonId={displayedSeasonId} />
+                      {" vs "}
+                      <PlayerLinks players={frame.awayPlayers} fallback={frame.awayLabel} seasonId={displayedSeasonId} />
+                    </p>
                     <p className="mt-1 text-sm text-slate-300">
                       Score: {frame.score} · Winner: {frame.winner}
                     </p>

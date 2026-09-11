@@ -460,6 +460,14 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
         return {
           label: `${(frame.slot_type ?? "frame").replace(/^./, (match) => match.toUpperCase())} ${frame.slot_no ?? index + 1}`,
           matchup: `${homeName} vs ${awayName}`,
+          homeLabel: homeName,
+          awayLabel: awayName,
+          homePlayers: [frame.home_player1_id, frame.home_player2_id]
+            .filter((id): id is string => Boolean(id))
+            .map((id) => ({ id, name: playerNameMap.get(id) ?? "Player" })),
+          awayPlayers: [frame.away_player1_id, frame.away_player2_id]
+            .filter((id): id is string => Boolean(id))
+            .map((id) => ({ id, name: playerNameMap.get(id) ?? "Player" })),
           score,
           winner: frame.winner_side === "home" ? homeName : frame.winner_side === "away" ? awayName : "No winner recorded",
         };
@@ -467,6 +475,8 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
 
     return {
       id: fixture.id,
+      homeTeamId: fixture.home_team_id,
+      awayTeamId: fixture.away_team_id,
       date: fixture.fixture_date,
       dateLabel: fmtDate(fixture.fixture_date),
       home,
