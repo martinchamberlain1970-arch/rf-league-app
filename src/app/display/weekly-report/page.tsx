@@ -72,6 +72,14 @@ type EloHandicapPayload = {
   error?: string;
 };
 
+type ReportTab = "overview" | "elo" | "matches";
+
+const reportTabs: Array<{ id: ReportTab; label: string; description: string }> = [
+  { id: "overview", label: "Weekly overview", description: "Results and highlights" },
+  { id: "elo", label: "Elo & handicaps", description: "Player rating changes" },
+  { id: "matches", label: "Who played who", description: "Every frame and score" },
+];
+
 function signed(value: number) {
   return value > 0 ? `+${value}` : `${value}`;
 }
@@ -81,6 +89,14 @@ export default function PublicWeeklyReportPage() {
   const [eloHandicapData, setEloHandicapData] = useState<EloHandicapPayload | null>(null);
   const [selectedSeasonId, setSelectedSeasonId] = useState("");
   const [updatedAt, setUpdatedAt] = useState<string>("");
+  const [activeTab, setActiveTab] = useState<ReportTab>("overview");
+
+  useEffect(() => {
+    const requestedTab = new URLSearchParams(window.location.search).get("tab");
+    if (reportTabs.some((tab) => tab.id === requestedTab)) {
+      setActiveTab(requestedTab as ReportTab);
+    }
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -120,6 +136,15 @@ export default function PublicWeeklyReportPage() {
 
   const displayedSeasonId = selectedSeasonId || data?.season?.id || "";
   const isDivisionOne = /division\s*1/i.test(data?.season?.name ?? "");
+
+  function chooseTab(tab: ReportTab) {
+    setActiveTab(tab);
+    const nextUrl = new URL(window.location.href);
+    if (tab === "overview") nextUrl.searchParams.delete("tab");
+    else nextUrl.searchParams.set("tab", tab);
+    window.history.replaceState(null, "", `${nextUrl.pathname}${nextUrl.search}`);
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
 
   return (
     <main className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6">
@@ -169,7 +194,33 @@ export default function PublicWeeklyReportPage() {
           </section>
         ) : null}
 
-        {data?.summary ? (
+        <nav
+          aria-label="Weekly report sections"
+          className="sticky top-0 z-20 -mx-4 overflow-x-auto border-y border-white/10 bg-slate-950/95 px-4 py-3 shadow-lg backdrop-blur sm:mx-0 sm:rounded-2xl sm:border"
+        >
+          <div className="flex min-w-max gap-2 md:grid md:min-w-0 md:grid-cols-3">
+            {reportTabs.map((tab) => (
+              <button
+                key={tab.id}
+                type="button"
+                onClick={() => chooseTab(tab.id)}
+                aria-current={activeTab === tab.id ? "page" : undefined}
+                className={`min-w-44 rounded-xl px-4 py-3 text-left transition md:min-w-0 ${
+                  activeTab === tab.id
+                    ? "bg-cyan-400 text-slate-950"
+                    : "border border-white/10 bg-white/5 text-white hover:bg-white/10"
+                }`}
+              >
+                <span className="block text-sm font-black">{tab.label}</span>
+                <span className={`mt-0.5 block text-xs ${activeTab === tab.id ? "text-slate-800" : "text-slate-400"}`}>
+                  {tab.description}
+                </span>
+              </button>
+            ))}
+          </div>
+        </nav>
+
+        {activeTab === "overview" && data?.summary ? (
           <section className="grid gap-4 lg:grid-cols-2">
             <article className="rounded-3xl border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20">
               <p className="text-xs font-semibold uppercase tracking-[0.28em] text-cyan-300">
@@ -235,13 +286,13 @@ export default function PublicWeeklyReportPage() {
               </ul>
             </article>
           </section>
-        ) : (
+        ) : activeTab === "overview" ? (
           <section className="rounded-3xl border border-white/10 bg-slate-900/80 p-5 text-slate-300 shadow-2xl shadow-black/20">
             Weekly report appears when the latest published week is complete.
           </section>
-        )}
+        ) : null}
 
-        {(data?.deferredFixtures ?? []).length > 0 ? (
+        {activeTab === "overview" && (data?.deferredFixtures ?? []).length > 0 ? (
           <section className="rounded-3xl border border-sky-300/30 bg-sky-400/10 p-5 text-sky-50 shadow-2xl shadow-black/20">
             <p className="text-xs font-semibold uppercase tracking-[0.28em] text-sky-300">
               Deferred fixture
@@ -255,7 +306,8 @@ export default function PublicWeeklyReportPage() {
           </section>
         ) : null}
 
-        <section className={`rounded-3xl border bg-slate-900/80 p-5 shadow-2xl shadow-black/20 ${isDivisionOne ? "border-violet-300/20" : "border-amber-300/20"}`}>
+        {activeTab === "elo" ? (
+          <section className={`rounded-3xl border bg-slate-900/80 p-5 shadow-2xl shadow-black/20 ${isDivisionOne ? "border-violet-300/20" : "border-amber-300/20"}`}>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
               <div>
                 <p className="text-xs font-semibold uppercase tracking-[0.28em] text-amber-300">
@@ -399,8 +451,15 @@ export default function PublicWeeklyReportPage() {
               </>
             )}
           </section>
+        ) : null}
 
-        <section className="space-y-4">
+        {activeTab === "matches" ? (
+          <section className="space-y-4">
+          {(data?.fixtures ?? []).length === 0 ? (
+            <div className="rounded-3xl border border-white/10 bg-slate-900/80 p-6 text-center text-slate-300 shadow-2xl shadow-black/20">
+              Frame-by-frame match reports will appear after results are approved.
+            </div>
+          ) : null}
           {(data?.fixtures ?? []).map((fixture) => (
             <article
               key={fixture.id}
@@ -452,7 +511,8 @@ export default function PublicWeeklyReportPage() {
               </div>
             </article>
           ))}
-        </section>
+          </section>
+        ) : null}
       </div>
     </main>
   );
