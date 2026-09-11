@@ -36,12 +36,16 @@ export default function PublicCompetitionEntryPage() {
       if (!base.ok) return setMessage(result.error ?? "Form could not be loaded.");
       setTeams(result.teams ?? []); setCompetitions(result.competitions ?? []);
       const savedTeam = result.draft?.team_id ?? "";
-      setTeamId(savedTeam); setContactName(result.draft?.contact_name ?? ""); setContactPhone(result.draft?.contact_phone ?? ""); setStatus(result.draft?.status ?? "draft");
+      const savedContactName = result.draft?.contact_name ?? "";
+      setTeamId(savedTeam); setContactName(savedContactName); setContactPhone(result.draft?.contact_phone ?? ""); setStatus(result.draft?.status ?? "draft");
       setSelections(mergeSelections(result.competitions ?? [], result.draft?.selections ?? []));
       if (savedTeam) {
         const roster = await fetch(`/api/public/competition-entry-form?teamId=${savedTeam}`, { cache: "no-store" });
         const rosterResult = await roster.json();
-        if (roster.ok) setPlayers(rosterResult.players ?? []);
+        if (roster.ok) {
+          setPlayers(rosterResult.players ?? []);
+          if (!savedContactName) setContactName(rosterResult.captainName ?? "");
+        }
       }
     };
     void initialise();
@@ -55,6 +59,7 @@ export default function PublicCompetitionEntryPage() {
     const result = await response.json();
     if (!response.ok) return setMessage(result.error ?? "Team roster could not be loaded.");
     setPlayers(result.players ?? []);
+    setContactName(result.captainName ?? "");
   };
 
   const update = (competitionId: string, fn: (value: PublicCompetitionSelection) => PublicCompetitionSelection) => setSelections((current) => current.map((item) => item.competitionId === competitionId ? fn(item) : item));

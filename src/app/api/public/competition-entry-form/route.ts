@@ -24,14 +24,18 @@ async function formData(client: SupabaseClient, teamId?: string) {
     teams = (teamsRes.data ?? []) as typeof teams;
   }
   let players: Array<{ id: string; name: string }> = [];
+  let captainName: string | null = null;
   if (teamId && teams.some((team) => team.id === teamId)) {
-    const membersRes = await client.from("league_team_members").select("player_id").eq("team_id", teamId);
+    const membersRes = await client.from("league_team_members").select("player_id,is_captain").eq("team_id", teamId);
     if (membersRes.error) throw new Error(membersRes.error.message);
-    const ids = ((membersRes.data ?? []) as Array<{ player_id: string }>).map((member) => member.player_id);
+    const members = (membersRes.data ?? []) as Array<{ player_id: string; is_captain: boolean }>;
+    const ids = members.map((member) => member.player_id);
     if (ids.length) {
       const playersRes = await client.from("players").select("id,display_name,full_name").in("id", ids).eq("is_archived", false).order("display_name");
       if (playersRes.error) throw new Error(playersRes.error.message);
       players = ((playersRes.data ?? []) as Array<{ id: string; display_name: string; full_name: string | null }>).map((player) => ({ id: player.id, name: player.full_name?.trim() || player.display_name }));
+      const captainId = members.find((member) => member.is_captain)?.player_id;
+      captainName = players.find((player) => player.id === captainId)?.name ?? null;
     }
   }
   return {
@@ -39,6 +43,7 @@ async function formData(client: SupabaseClient, teamId?: string) {
     teams,
     competitions: competitions.filter((competition) => !competition.signup_deadline || competition.signup_deadline >= today()),
     players,
+    captainName,
   };
 }
 
