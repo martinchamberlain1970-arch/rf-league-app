@@ -124,6 +124,21 @@ function formatHandicap(value: number) {
   return value > 0 ? `+${value}` : `${value}`;
 }
 
+function localDateKey(date = new Date()) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function isUpcomingFixture(fixture: PublicFixture, today = localDateKey()) {
+  if (fixture.status === "complete") return false;
+  // A synthetic BYE is useful during its scheduled week, but is not an
+  // outstanding match and must not remain in the upcoming list afterwards.
+  if (fixture.status === "bye" && fixture.fixtureDate && fixture.fixtureDate < today) return false;
+  return true;
+}
+
 function groupFixtures(fixtures: PublicFixture[], newestFirst = false): FixtureGroup[] {
   const grouped = new Map<string, FixtureGroup>();
   for (const fixture of fixtures) {
@@ -304,7 +319,7 @@ export default function LeagueHubPage() {
   }, [selectedSeasonId]);
 
   const upcomingGroups = useMemo(
-    () => groupFixtures(data.fixtures.filter((fixture) => fixture.status !== "complete")),
+    () => groupFixtures(data.fixtures.filter((fixture) => isUpcomingFixture(fixture))),
     [data.fixtures]
   );
   const resultGroups = useMemo(
