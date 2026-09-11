@@ -267,10 +267,9 @@ function EventsPageContent() {
 
         const seasonsRes = await client
           .from("league_seasons")
-          .select("id,name,is_published,is_active,is_completed,created_at")
+          .select("id,name,is_published,is_active,created_at")
           .eq("is_published", true)
           .eq("is_active", true)
-          .eq("is_completed", false)
           .order("created_at", { ascending: false });
         const liveSeasons = (seasonsRes.data ?? []) as Array<{ id: string; name: string | null }>;
         const liveSeasonIds = liveSeasons.map((season) => season.id);

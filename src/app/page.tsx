@@ -610,7 +610,6 @@ export default function HomePage() {
         .from("league_seasons")
         .select("id")
         .eq("is_active", true)
-        .eq("is_completed", false)
         .order("created_at", { ascending: false });
       const liveSeasonIds = ((seasonsRes.data ?? []) as Array<{ id: string }>).map((season) => season.id);
       if (!seasonsRes.error && liveSeasonIds.length > 0) {

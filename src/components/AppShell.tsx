@@ -271,7 +271,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       const userRes = await client.from("app_users").select("linked_player_id").eq("id", admin.userId).maybeSingle();
       const playerId = userRes.data?.linked_player_id as string | null | undefined;
       if (!playerId || !active) return;
-      const seasonRes = await client.from("league_seasons").select("id").eq("is_active", true).eq("is_completed", false);
+      const seasonRes = await client.from("league_seasons").select("id").eq("is_active", true);
       const seasonIds = ((seasonRes.data ?? []) as Array<{ id: string }>).map((season) => season.id);
       if (!active) return;
       type Membership = { team_id: string; is_captain: boolean; is_vice_captain?: boolean | null };
