@@ -16,6 +16,7 @@ type TeamRow = {
   id: string;
   season_id: string;
   name: string;
+  is_active?: boolean | null;
 };
 
 type LocationRow = {
@@ -111,7 +112,7 @@ export async function GET(req: NextRequest) {
   }
 
   const [teamsRes, membersRes, fixturesRes, framesRes, playersRes, breaksRes, locationQueryRes] = await Promise.all([
-    adminClient.from("league_teams").select("id,season_id,name").eq("season_id", selectedSeason.id),
+    adminClient.from("league_teams").select("id,season_id,name,is_active").eq("season_id", selectedSeason.id),
     adminClient.from("league_team_members").select("season_id,team_id,player_id").eq("season_id", selectedSeason.id),
     adminClient
       .from("league_fixtures")
@@ -139,9 +140,15 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: firstError }, { status: 500 });
   }
 
-  const teams = (teamsRes.data ?? []) as TeamRow[];
-  const members = (membersRes.data ?? []) as MemberRow[];
-  const fixtures = ((fixturesRes.data ?? []) as FixtureRow[]).filter((fixture) => fixture.season_id === selectedSeason.id);
+  const teams = ((teamsRes.data ?? []) as TeamRow[]).filter((team) => team.is_active !== false);
+  const activeTeamIds = new Set(teams.map((team) => team.id));
+  const members = ((membersRes.data ?? []) as MemberRow[]).filter((member) => activeTeamIds.has(member.team_id));
+  const fixtures = ((fixturesRes.data ?? []) as FixtureRow[]).filter(
+    (fixture) =>
+      fixture.season_id === selectedSeason.id &&
+      activeTeamIds.has(fixture.home_team_id) &&
+      activeTeamIds.has(fixture.away_team_id)
+  );
   const frames = (framesRes.data ?? []) as FrameRow[];
   const players = (playersRes.data ?? []) as PlayerRow[];
   const breaks = (breaksRes.data ?? []) as BreakRow[];
