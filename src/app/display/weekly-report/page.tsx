@@ -291,8 +291,70 @@ export default function PublicWeeklyReportPage() {
                 No Elo or handicap changes have been recorded for this completed week yet.
               </p>
             ) : (
-              <div className="mt-5 overflow-x-auto rounded-2xl border border-white/10">
-                <table className="min-w-full divide-y divide-white/10 text-left text-sm">
+              <>
+                <div className="mt-5 space-y-3 lg:hidden">
+                  {(eloHandicapData?.changes ?? []).map((row) => (
+                    <article
+                      key={row.playerId}
+                      className="min-w-0 rounded-2xl border border-white/10 bg-slate-950/30 p-4"
+                    >
+                      <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+                        <h3 className="min-w-0 break-words font-semibold text-white">
+                          {row.name}
+                        </h3>
+                        <span className="shrink-0 rounded-full border border-white/10 bg-white/5 px-2.5 py-1 text-xs font-semibold text-slate-300">
+                          {row.ratedFrames} rated {row.ratedFrames === 1 ? "frame" : "frames"}
+                        </span>
+                      </div>
+
+                      <dl className="mt-4 grid gap-3 sm:grid-cols-2">
+                        <div className="min-w-0 rounded-xl border border-cyan-300/15 bg-cyan-300/5 p-3">
+                          <dt className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-cyan-300">
+                            Elo
+                          </dt>
+                          <dd className="mt-1 text-base font-semibold text-cyan-50">
+                            {row.previous} → {row.next}
+                          </dd>
+                        </div>
+                        <div className="min-w-0 rounded-xl border border-amber-300/15 bg-amber-300/5 p-3">
+                          <dt className="text-[0.68rem] font-semibold uppercase tracking-[0.18em] text-amber-300">
+                            {isDivisionOne ? "Playing start" : "Handicap"}
+                          </dt>
+                          <dd className="mt-1 break-words text-base font-semibold text-amber-50">
+                            {isDivisionOne ? (
+                              <>
+                                Scratch
+                                <span className="ml-2 text-xs font-normal text-slate-400">
+                                  indicative {signed(row.illustrativeHandicap ?? row.target)}
+                                </span>
+                              </>
+                            ) : (
+                              <>
+                                {signed(row.previousHandicap)} → {signed(row.nextHandicap)}
+                                <span className="ml-2 text-xs font-normal text-slate-400">
+                                  {row.handicapChangedThisWeek ? "changed" : "unchanged"}
+                                </span>
+                              </>
+                            )}
+                          </dd>
+                        </div>
+                      </dl>
+
+                      <p className="mt-4 break-words text-sm font-normal leading-6 text-slate-300 [overflow-wrap:anywhere]">
+                        {row.reason}
+                      </p>
+                    </article>
+                  ))}
+                </div>
+
+                <div className="mt-5 hidden overflow-x-auto rounded-2xl border border-white/10 lg:block">
+                  <table className="min-w-[960px] table-fixed divide-y divide-white/10 text-left text-sm">
+                  <colgroup>
+                    <col className="w-[58%]" />
+                    <col className="w-[14%]" />
+                    <col className="w-[10%]" />
+                    <col className="w-[18%]" />
+                  </colgroup>
                   <thead className="bg-white/5 text-xs uppercase tracking-[0.16em] text-slate-300">
                     <tr>
                       <th className="px-4 py-3">Player</th>
@@ -306,7 +368,7 @@ export default function PublicWeeklyReportPage() {
                       <tr key={row.playerId} className="bg-slate-950/20">
                         <td className="px-4 py-3 text-white">
                           <p className="font-semibold">{row.name}</p>
-                          <p className="mt-2 max-w-3xl text-xs font-normal leading-5 text-slate-400">
+                          <p className="mt-2 max-w-3xl break-words text-xs font-normal leading-5 text-slate-400 [overflow-wrap:anywhere]">
                             {row.reason}
                           </p>
                         </td>
@@ -333,7 +395,8 @@ export default function PublicWeeklyReportPage() {
                     ))}
                   </tbody>
                 </table>
-              </div>
+                </div>
+              </>
             )}
           </section>
 
