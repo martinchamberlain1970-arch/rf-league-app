@@ -47,6 +47,10 @@ type LeagueFramePerf = {
   home_player2_id: string | null;
   away_player1_id: string | null;
   away_player2_id: string | null;
+  home_nominated?: boolean | null;
+  away_nominated?: boolean | null;
+  home_nominated_name?: string | null;
+  away_nominated_name?: string | null;
   home_points_scored?: number | null;
   away_points_scored?: number | null;
   home_forfeit?: boolean | null;
@@ -373,7 +377,7 @@ function EventsPageContent() {
           fixtureIds.length
             ? client
                 .from("league_fixture_frames")
-                .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_points_scored,away_points_scored,home_forfeit,away_forfeit")
+                .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored,home_forfeit,away_forfeit")
                 .in("fixture_id", fixtureIds)
             : Promise.resolve({ data: [] as LeagueFramePerf[] }),
           client
@@ -1003,22 +1007,39 @@ function EventsPageContent() {
     const home = teamById.get(reportFixture.home_team_id) ?? "Home";
     const away = teamById.get(reportFixture.away_team_id) ?? "Away";
     const joined = (a: string | null, b: string | null) => [a, b].filter(Boolean).join(" / ");
+    const normalizedPlayerIds = new Map<string, string | null>();
+    for (const player of seasonPlayers) {
+      const name = (player.full_name?.trim() || player.display_name).trim().replace(/\s+/g, " ").toLowerCase();
+      if (!name) continue;
+      normalizedPlayerIds.set(name, normalizedPlayerIds.has(name) ? null : player.id);
+    }
+    const nominatedPlayerId = (playerId: string | null | undefined, nominatedName: string | null | undefined) => {
+      if (playerId) return playerId;
+      const key = nominatedName?.trim().replace(/\s+/g, " ").toLowerCase();
+      return key ? normalizedPlayerIds.get(key) ?? null : null;
+    };
     const playerHandicap = (playerId: string | null | undefined) =>
       Number(seasonPlayers.find((player) => player.id === playerId)?.snooker_handicap ?? 0);
     const frameRows = frames.map((fr, idx) => {
-      const homeName = joined(playerNameMap.get(fr.home_player1_id ?? "") ?? null, playerNameMap.get(fr.home_player2_id ?? "") ?? null) || "TBC";
-      const awayName = joined(playerNameMap.get(fr.away_player1_id ?? "") ?? null, playerNameMap.get(fr.away_player2_id ?? "") ?? null) || "TBC";
+      const homePrimaryId = nominatedPlayerId(fr.home_player1_id, fr.home_nominated_name);
+      const awayPrimaryId = nominatedPlayerId(fr.away_player1_id, fr.away_nominated_name);
+      const homePrimaryName = playerNameMap.get(homePrimaryId ?? "") ?? fr.home_nominated_name?.trim() ?? null;
+      const awayPrimaryName = playerNameMap.get(awayPrimaryId ?? "") ?? fr.away_nominated_name?.trim() ?? null;
+      const homeNameBase = joined(homePrimaryName, playerNameMap.get(fr.home_player2_id ?? "") ?? null) || "TBC";
+      const awayNameBase = joined(awayPrimaryName, playerNameMap.get(fr.away_player2_id ?? "") ?? null) || "TBC";
+      const homeName = fr.home_nominated && homeNameBase !== "TBC" ? `${homeNameBase} (N)` : homeNameBase;
+      const awayName = fr.away_nominated && awayNameBase !== "TBC" ? `${awayNameBase} (N)` : awayNameBase;
       const winner = fr.winner_side === "home" ? homeName : fr.winner_side === "away" ? awayName : "No winner";
       const homePoints = typeof fr.home_points_scored === "number" ? fr.home_points_scored : null;
       const awayPoints = typeof fr.away_points_scored === "number" ? fr.away_points_scored : null;
       const homeHandicap =
         fr.slot_type === "doubles"
           ? (playerHandicap(fr.home_player1_id) + playerHandicap(fr.home_player2_id)) / 2
-          : playerHandicap(fr.home_player1_id);
+          : playerHandicap(homePrimaryId);
       const awayHandicap =
         fr.slot_type === "doubles"
           ? (playerHandicap(fr.away_player1_id) + playerHandicap(fr.away_player2_id)) / 2
-          : playerHandicap(fr.away_player1_id);
+          : playerHandicap(awayPrimaryId);
       const adjusted =
         homePoints !== null && awayPoints !== null
           ? calculateAdjustedScoresWithCap(homePoints, awayPoints, homeHandicap, awayHandicap)
