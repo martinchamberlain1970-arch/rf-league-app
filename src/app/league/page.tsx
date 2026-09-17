@@ -1729,6 +1729,21 @@ function LeaguePageContent() {
         data: (fallback.data ?? []).map((member) => ({ ...member, is_match_scorer: false })),
       };
     })();
+    const slotsPromise = (async () => {
+      const pageSize = 1000;
+      const rows: FrameSlot[] = [];
+      for (let from = 0; ; from += pageSize) {
+        const page = await client
+          .from("league_fixture_frames")
+          .select("id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_forfeit,away_forfeit,winner_side,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored")
+          .order("id", { ascending: true })
+          .range(from, from + pageSize - 1);
+        if (page.error) return { data: null, error: page.error };
+        const pageRows = (page.data ?? []) as FrameSlot[];
+        rows.push(...pageRows);
+        if (pageRows.length < pageSize) return { data: rows, error: null };
+      }
+    })();
     const [
       authRes,
       locRes,
@@ -1762,7 +1777,7 @@ function LeaguePageContent() {
       membersPromise,
       client.from("league_entry_packs").select("team_id,season_id,status"),
       client.from("league_fixtures").select("id,season_id,location_id,week_no,fixture_date,home_team_id,away_team_id,status,home_points,away_points").order("fixture_date", { ascending: true }),
-      client.from("league_fixture_frames").select("id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_forfeit,away_forfeit,winner_side,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored"),
+      slotsPromise,
       client.from("league_table").select("team_id,team_name,played,points,frames_for,frames_against,frame_diff"),
       client
         .from("league_result_submissions")

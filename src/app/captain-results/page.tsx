@@ -379,7 +379,7 @@ export default function CaptainResultsPage() {
       const fallback = await client.from("league_team_members").select("season_id,team_id,player_id,is_captain,is_vice_captain");
       return { ...fallback, data: (fallback.data ?? []).map((member) => ({ ...member, is_match_scorer: false })) };
     })();
-    const [seasonRes, teamRes, memberRes, initialFixtureRes, slotRes, pendingRes, playerRes] = await Promise.all([
+    const [seasonRes, teamRes, memberRes, initialFixtureRes, pendingRes, playerRes] = await Promise.all([
       client
         .from("league_seasons")
         .select("id,name,is_published,handicap_enabled,handicap_max_start,handicap_review_interval_weeks,rating_tracking_enabled,miss_rule,singles_count,doubles_count")
@@ -391,10 +391,6 @@ export default function CaptainResultsPage() {
         .from("league_fixtures")
         .select("id,season_id,home_team_id,away_team_id,fixture_date,week_no,status,pre_match_paper_record,pre_match_paper_at,pre_match_paper_by_user_id,home_lineup_submitted_at,home_lineup_submitted_by_user_id,away_lineup_submitted_at,away_lineup_submitted_by_user_id,proxy_entry_enabled,proxy_entry_confirmed_at,proxy_entry_confirmed_by_user_id,proxy_entry_by_team_side,proxy_entry_note")
         .order("fixture_date", { ascending: true }),
-      client
-        .from("league_fixture_frames")
-        .select("id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_forfeit,away_forfeit,winner_side,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored")
-        .order("slot_no", { ascending: true }),
       client.from("league_result_submissions").select("fixture_id,status,frame_results,scorecard_photo_url").eq("status", "pending"),
       client.from("players").select("id,display_name,full_name,snooker_handicap,rating_snooker").eq("is_archived", false),
     ]);
@@ -422,6 +418,40 @@ export default function CaptainResultsPage() {
         }));
       fixtureError = fallbackFixtureRes.error?.message ?? null;
     }
+
+    // Only fetch frames that this scorer can currently work on. Fetching the
+    // complete historical frame table eventually exceeds PostgREST's default
+    // 1,000-row response limit; because the rows are ordered by slot number,
+    // that truncation can omit the doubles row (slot 5) while leaving the four
+    // singles visible.
+    const publishedSeasonIds = new Set((seasonRes.data ?? []).map((season) => season.id));
+    const scorerTeamIds = new Set(
+      (memberRes.data ?? [])
+        .filter(
+          (member) =>
+            member.player_id === playerId &&
+            (member.is_captain || member.is_vice_captain || member.is_match_scorer)
+        )
+        .map((member) => member.team_id)
+    );
+    const relevantFixtureIds = fixtureRows
+      .filter(
+        (fixture) =>
+          publishedSeasonIds.has(fixture.season_id) &&
+          fixture.status !== "complete" &&
+          fixture.status !== "bye" &&
+          isFixtureOpenForSubmission(fixture.fixture_date) &&
+          (scorerTeamIds.has(fixture.home_team_id) || scorerTeamIds.has(fixture.away_team_id))
+      )
+      .map((fixture) => fixture.id);
+    const slotRes = relevantFixtureIds.length
+      ? await client
+          .from("league_fixture_frames")
+          .select("id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_forfeit,away_forfeit,winner_side,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored")
+          .in("fixture_id", relevantFixtureIds)
+          .order("fixture_id", { ascending: true })
+          .order("slot_no", { ascending: true })
+      : { data: [], error: null };
 
     const firstError =
       seasonRes.error?.message ||
