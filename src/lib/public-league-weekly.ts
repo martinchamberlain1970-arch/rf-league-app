@@ -770,7 +770,33 @@ export async function buildPublicWeeklyHandicapReview(
       const startingRating = currentRating - delta;
       const startingTarget = targetHandicapFromElo(startingRating);
       const target = targetHandicapFromElo(currentRating);
-      const handicapChange = handicapChangeByPlayer.get(player.id) ?? null;
+      const recordedHandicapChange = handicapChangeByPlayer.get(player.id) ?? null;
+      const legacyBoundaryTarget = Math.round((1000 - currentRating) / 20) * 4;
+      let handicapChange = recordedHandicapChange
+        ? { ...recordedHandicapChange }
+        : null;
+
+      // Before the boundary fix, JavaScript treated negative half values
+      // differently from PostgreSQL. Collapse the resulting audit round-trip
+      // in published reports while the data migration preserves and
+      // neutralises the underlying audit rows. For example, Elo 1030 must not
+      // appear to move -8 -> -4 -> -8 across consecutive reviews.
+      if (
+        handicapChange &&
+        legacyBoundaryTarget !== target &&
+        currentHandicap === target
+      ) {
+        if (handicapChange.next === legacyBoundaryTarget) {
+          handicapChange.next = target;
+        }
+        if (
+          delta === 0 &&
+          handicapChange.previous === legacyBoundaryTarget &&
+          handicapChange.next === target
+        ) {
+          handicapChange.previous = target;
+        }
+      }
       const ratedFrames = ratedFramesByPlayer.get(player.id) ?? 0;
       const name = named(player);
       const frameEvents = eventsByPlayer.get(player.id) ?? [];

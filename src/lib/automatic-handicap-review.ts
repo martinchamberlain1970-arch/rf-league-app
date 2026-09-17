@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { targetHandicapFromElo } from "@/lib/snooker-rating";
 
 export type AutomaticHandicapReviewResult = {
   applied: boolean;
@@ -7,10 +8,6 @@ export type AutomaticHandicapReviewResult = {
   reviewed?: number;
   changed?: number;
 };
-
-function targetHandicap(rating: number) {
-  return Math.round(((1000 - rating) / 5) / 4) * 4;
-}
 
 async function realignPreviouslyReviewedWeek(
   adminClient: SupabaseClient,
@@ -75,7 +72,7 @@ async function realignPreviouslyReviewedWeek(
     .map((player) => {
       const previous = Number(player.snooker_handicap ?? 0);
       const rating = Number(player.rating_snooker ?? 1000);
-      return { id: player.id, previous, next: targetHandicap(rating), rating };
+      return { id: player.id, previous, next: targetHandicapFromElo(rating), rating };
     })
     .filter((row) => row.previous !== row.next);
 

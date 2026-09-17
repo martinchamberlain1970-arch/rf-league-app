@@ -114,8 +114,18 @@ async function resolveLegacyNominatedPlayerIds(
 }
 
 export function targetHandicapFromElo(rating: number) {
-  const raw = (1000 - rating) / 5;
-  return Math.round(raw / 4) * 4;
+  const handicapBands = (1000 - rating) / 20;
+
+  // JavaScript rounds negative half values towards zero, whereas PostgreSQL
+  // rounds them away from zero. Use an explicit rule so exact Elo boundaries
+  // are identical in the app and in the automatic database review: 1029 stays
+  // at -4 and 1030 starts the -8 band (likewise 1049/-8 and 1050/-12).
+  const roundedBands =
+    handicapBands < 0
+      ? -Math.round(Math.abs(handicapBands))
+      : Math.round(handicapBands);
+
+  return roundedBands * 4;
 }
 
 export async function resolveCanonicalPlayerId(
