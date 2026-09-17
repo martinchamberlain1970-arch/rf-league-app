@@ -360,7 +360,11 @@ export default function PublicWeeklyReportPage() {
 
             {eloHandicapData?.reviewNote ? (
               <div className="mt-5 rounded-2xl border border-amber-300/30 bg-amber-300/10 p-4 text-sm leading-6 text-amber-50">
-                <p className="font-semibold">Why some Week 1 handicap movements look unusually large</p>
+                <p className="font-semibold">
+                  {eloHandicapData.week === 2
+                    ? "System correction applied to the Week 2 review"
+                    : "Why some Week 1 handicap movements look unusually large"}
+                </p>
                 <p className="mt-1">{eloHandicapData.reviewNote}</p>
               </div>
             ) : null}

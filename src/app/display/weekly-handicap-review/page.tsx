@@ -131,7 +131,11 @@ export default function PublicWeeklyHandicapReviewPage() {
 
         {data?.reviewNote ? (
           <section className="rounded-2xl border border-amber-400/30 bg-amber-500/10 p-4 text-sm leading-6 text-amber-50">
-            <p className="font-semibold">Why some Week 1 handicap movements look unusually large</p>
+            <p className="font-semibold">
+              {data.week === 2
+                ? "System correction applied to the Week 2 review"
+                : "Why some Week 1 handicap movements look unusually large"}
+            </p>
             <p className="mt-1">{data.reviewNote}</p>
           </section>
         ) : null}
