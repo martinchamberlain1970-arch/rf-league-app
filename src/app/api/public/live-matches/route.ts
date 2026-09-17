@@ -152,6 +152,24 @@ export async function GET(req: NextRequest) {
   const selectedSeasonIds = selectedSeasons.map((season) => season.id);
   const seasonById = new Map(selectedSeasons.map((season) => [season.id, season]));
 
+  const framesPromise = (async () => {
+    const pageSize = 1000;
+    const rows: FrameRow[] = [];
+    for (let from = 0; ; from += pageSize) {
+      const page = await adminClient
+        .from("league_fixture_frames")
+        .select(
+          "id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_nominated_name,away_nominated_name,home_forfeit,away_forfeit,winner_side,home_points_scored,away_points_scored"
+        )
+        .order("id", { ascending: true })
+        .range(from, from + pageSize - 1);
+      if (page.error) return { data: null, error: page.error };
+      const pageRows = (page.data ?? []) as FrameRow[];
+      rows.push(...pageRows);
+      if (pageRows.length < pageSize) return { data: rows, error: null };
+    }
+  })();
+
   const [teamsRes, fixturesRes, framesRes, playersQueryRes] = await Promise.all([
     adminClient.from("league_teams").select("id,season_id,name").in("season_id", selectedSeasonIds),
     adminClient
@@ -161,11 +179,7 @@ export async function GET(req: NextRequest) {
       )
       .in("season_id", selectedSeasonIds)
       .order("fixture_date", { ascending: true }),
-    adminClient
-      .from("league_fixture_frames")
-      .select(
-        "id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_nominated_name,away_nominated_name,home_forfeit,away_forfeit,winner_side,home_points_scored,away_points_scored"
-      ),
+    framesPromise,
     adminClient
       .from("players")
       .select("id,display_name,full_name,avatar_url,snooker_handicap,nationality_name,country_code")
