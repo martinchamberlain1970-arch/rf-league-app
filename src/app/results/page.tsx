@@ -117,6 +117,17 @@ type FixtureChangeRequest = {
 
 const named = (p?: PlayerRow | null) => (p ? (p.full_name?.trim() ? p.full_name : p.display_name) : "Unknown");
 
+function submittedMatchScore(submission: LeagueSubmission) {
+  return (submission.frame_results ?? []).reduce(
+    (score, frame) => {
+      if (frame.winner_side === "home") score.home += 1;
+      if (frame.winner_side === "away") score.away += 1;
+      return score;
+    },
+    { home: 0, away: 0 },
+  );
+}
+
 function ResultsQueuePageContent() {
   const admin = useAdminStatus();
   const router = useRouter();
@@ -914,6 +925,7 @@ function ResultsQueuePageContent() {
                   const home = f ? teamById.get(f.home_team_id) ?? "Home" : "Home";
                   const away = f ? teamById.get(f.away_team_id) ?? "Away" : "Away";
                   const seasonName = f ? seasonById.get(f.season_id) ?? "League" : "League";
+                  const score = submittedMatchScore(s);
                   return (
                     <div key={s.id} className={itemClass}>
                       <p className="text-sm text-slate-600">{seasonName}</p>
@@ -921,6 +933,7 @@ function ResultsQueuePageContent() {
                         <p className="text-xl font-semibold text-slate-900">{home} vs {away}</p>
                         <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold uppercase ${statusChipClass(s.status)}`}>{s.status}</span>
                       </div>
+                      <p className="mt-1 text-sm font-semibold text-slate-800">Match score: {score.home}–{score.away}</p>
                     </div>
                   );
                 })}
@@ -943,6 +956,7 @@ function ResultsQueuePageContent() {
                     const seasonName = f ? seasonById.get(f.season_id) ?? "League" : "League";
                     const frameRows = [...(s.frame_results ?? [])].sort((a, b) => a.slot_no - b.slot_no);
                     const submittedBreaks = frameRows.flatMap((r) => r.break_entries ?? []);
+                    const score = submittedMatchScore(s);
                     const isExpanded = expandedPending.has(s.id);
                     return (
                       <div key={s.id} className={itemClass}>
@@ -964,6 +978,7 @@ function ResultsQueuePageContent() {
                             {isExpanded ? "Hide details" : "Show details"}
                           </button>
                         </div>
+                        <p className="mt-1 text-base font-bold text-slate-900">Match score: {score.home}–{score.away}</p>
                         <p className="text-xs text-slate-600">Submitted: {new Date(s.created_at).toLocaleString()}</p>
                         {s.submission_source === "public_paper" ? <div className="mt-2 rounded-lg border border-cyan-200 bg-cyan-50 p-3 text-sm text-cyan-950"><p><strong>Paper scorecard fallback</strong> · Submitted by {s.public_submitter_name || "unnamed representative"}{s.public_submitter_team_id ? ` for ${teamById.get(s.public_submitter_team_id) ?? "the selected team"}` : ""}.</p><p className="mt-1 text-xs">Both-team agreement was {s.public_both_teams_confirmed ? "confirmed" : "not confirmed"}. Approval controls the official result.</p>{s.scorecard_photo_path && !s.scorecard_evidence_deleted_at ? <button type="button" onClick={() => void openScorecardEvidence(s.id)} className="mt-2 rounded-lg border border-cyan-400 bg-white px-3 py-2 text-xs font-bold text-cyan-900">Open temporary scorecard photo</button> : <p className="mt-1 text-xs font-semibold">No temporary photograph is available.</p>}</div> : null}
 
@@ -1044,12 +1059,14 @@ function ResultsQueuePageContent() {
                     const f = fixtureById.get(s.fixture_id);
                     const home = f ? teamById.get(f.home_team_id) ?? "Home" : "Home";
                     const away = f ? teamById.get(f.away_team_id) ?? "Away" : "Away";
+                    const score = submittedMatchScore(s);
                     return (
                       <div key={s.id} className={itemClass}>
                         <div className="flex flex-wrap items-center justify-between gap-2">
                           <p className="text-xl font-semibold text-slate-900">{home} vs {away}</p>
                           <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold uppercase ${statusChipClass(s.status)}`}>{s.status}</span>
                         </div>
+                        <p className="mt-1 text-sm font-semibold text-slate-800">Match score: {score.home}–{score.away}</p>
                         {s.status === "rejected" && s.rejection_reason ? <p className="text-xs text-rose-700">Reason: {s.rejection_reason}</p> : null}
                       </div>
                     );
