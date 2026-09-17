@@ -1,5 +1,6 @@
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { targetHandicapFromElo } from "@/lib/snooker-rating";
+import { countsForIndividualStatistics } from "@/lib/league-player-statistics";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -50,6 +51,8 @@ type FrameRow = {
   away_points_scored: number | null;
   home_forfeit: boolean | null;
   away_forfeit: boolean | null;
+  home_nominated: boolean | null;
+  away_nominated: boolean | null;
 };
 
 type PlayerRow = {
@@ -208,7 +211,7 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
       .order("fixture_date", { ascending: true }),
     adminClient
       .from("league_fixture_frames")
-      .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored,home_forfeit,away_forfeit"),
+      .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored,home_forfeit,away_forfeit"),
     adminClient
       .from("players")
       .select("id,display_name,full_name,rating_snooker,snooker_handicap")
@@ -523,7 +526,7 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
   }
 
   for (const frame of weekFrames) {
-    if (!frame.winner_side || frame.home_forfeit || frame.away_forfeit) continue;
+    if (!countsForIndividualStatistics(frame)) continue;
     const homeIds = [frame.home_player1_id, frame.home_player2_id].filter(Boolean) as string[];
     const awayIds = [frame.away_player1_id, frame.away_player2_id].filter(Boolean) as string[];
     const ids = frame.winner_side === "home" ? homeIds : awayIds;

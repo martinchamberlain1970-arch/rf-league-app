@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { countsForIndividualStatistics } from "@/lib/league-player-statistics";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -39,6 +40,8 @@ type FrameRow = {
   away_player2_id: string | null;
   home_forfeit: boolean | null;
   away_forfeit: boolean | null;
+  home_nominated: boolean | null;
+  away_nominated: boolean | null;
   winner_side: "home" | "away" | null;
   home_points_scored?: number | null;
   away_points_scored?: number | null;
@@ -90,7 +93,7 @@ export async function GET(req: NextRequest) {
     adminClient.from("league_fixtures").select("id,season_id,status").eq("season_id", selectedSeason.id),
     adminClient
       .from("league_fixture_frames")
-      .select("fixture_id,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_forfeit,away_forfeit,winner_side,home_points_scored,away_points_scored"),
+      .select("fixture_id,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_forfeit,away_forfeit,home_nominated,away_nominated,winner_side,home_points_scored,away_points_scored"),
     adminClient.from("players").select("id,display_name,full_name").eq("is_archived", false),
   ]);
 
@@ -129,6 +132,7 @@ export async function GET(req: NextRequest) {
 
   const frameType = mode === "singles" ? "singles" : "doubles";
   for (const frame of frames.filter((row) => fixtureIds.has(row.fixture_id) && row.slot_type === frameType)) {
+    if (!countsForIndividualStatistics(frame)) continue;
     const homePlayerIds = [frame.home_player1_id, frameType === "doubles" ? frame.home_player2_id : null].filter(Boolean) as string[];
     const awayPlayerIds = [frame.away_player1_id, frameType === "doubles" ? frame.away_player2_id : null].filter(Boolean) as string[];
     const pairingKey = (playerIds: string[]) => {
@@ -147,7 +151,6 @@ export async function GET(req: NextRequest) {
       appearanceByPlayer.set(playerId, set);
     }
 
-    if (!frame.winner_side || frame.home_forfeit || frame.away_forfeit) continue;
     const homePoints = typeof frame.home_points_scored === "number" ? frame.home_points_scored : 0;
     const awayPoints = typeof frame.away_points_scored === "number" ? frame.away_points_scored : 0;
 

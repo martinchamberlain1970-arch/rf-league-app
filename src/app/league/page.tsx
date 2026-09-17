@@ -3,6 +3,7 @@
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { countsForIndividualStatistics } from "@/lib/league-player-statistics";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import useAdminStatus from "@/components/useAdminStatus";
@@ -6119,6 +6120,7 @@ function LeaguePageContent() {
     const fixtureIds = new Set(seasonFixtures.map((f) => f.id));
     const seasonSlots = slots.filter((s) => fixtureIds.has(s.fixture_id));
     for (const slot of seasonSlots) {
+      if (!countsForIndividualStatistics(slot)) continue;
       const homeIds = [slot.home_player1_id, slot.home_player2_id].filter(Boolean) as string[];
       const awayIds = [slot.away_player1_id, slot.away_player2_id].filter(Boolean) as string[];
       const allIds = [...homeIds, ...awayIds];
@@ -6136,8 +6138,6 @@ function LeaguePageContent() {
         }
       }
 
-      if (!slot.winner_side) continue;
-      if (slot.home_forfeit || slot.away_forfeit) continue;
       const homePoints = typeof slot.home_points_scored === "number" ? slot.home_points_scored : 0;
       const awayPoints = typeof slot.away_points_scored === "number" ? slot.away_points_scored : 0;
       if (slot.slot_type === "singles") {

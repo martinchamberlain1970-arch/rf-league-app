@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { targetHandicapFromElo } from "@/lib/snooker-rating";
 import { requireLeagueManager } from "@/lib/server-role";
+import { countsForIndividualStatistics } from "@/lib/league-player-statistics";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -36,6 +37,8 @@ type FrameRow = {
   winner_side: "home" | "away" | null;
   home_forfeit: boolean | null;
   away_forfeit: boolean | null;
+  home_nominated: boolean | null;
+  away_nominated: boolean | null;
   home_player1_id: string | null;
   home_player2_id: string | null;
   away_player1_id: string | null;
@@ -84,7 +87,7 @@ function buildFormSummaries(fixtures: FixtureRow[], frames: FrameRow[], breaks: 
   }
 
   const orderedFrames = frames
-    .filter((frame) => frame.winner_side && !frame.home_forfeit && !frame.away_forfeit)
+    .filter(countsForIndividualStatistics)
     .sort(
       (a, b) =>
         (fixtureDateById.get(a.fixture_id) ?? "").localeCompare(fixtureDateById.get(b.fixture_id) ?? "") ||
@@ -260,7 +263,7 @@ export async function GET(req: NextRequest) {
       ? await Promise.all([
           adminClient
             .from("league_fixture_frames")
-            .select("fixture_id,slot_no,winner_side,home_forfeit,away_forfeit,home_player1_id,home_player2_id,away_player1_id,away_player2_id")
+            .select("fixture_id,slot_no,winner_side,home_forfeit,away_forfeit,home_nominated,away_nominated,home_player1_id,home_player2_id,away_player1_id,away_player2_id")
             .in("fixture_id", fixtureIds),
           adminClient
             .from("league_fixture_breaks")
