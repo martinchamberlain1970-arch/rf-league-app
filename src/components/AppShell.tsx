@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AppShellContextProvider } from "@/components/AppShellContext";
@@ -9,6 +10,7 @@ import useAdminStatus from "@/components/useAdminStatus";
 import { appRoleLabel } from "@/lib/app-roles";
 import { logAudit } from "@/lib/audit";
 import { supabase } from "@/lib/supabase";
+import { startGlobalProgress } from "@/components/GlobalProgress";
 
 type NavigationItem = {
   href: string;
@@ -180,7 +182,7 @@ function NavigationContent({
     <div className="flex h-full min-h-0 flex-col bg-[#0b1730] text-white">
       <div className="border-b border-white/10 px-5 py-5">
         <Link href="/" onClick={(event) => onNavigate("/", event)} className="flex items-center gap-3">
-          <span className="grid h-10 w-10 place-items-center rounded-xl bg-gradient-to-br from-cyan-300 to-teal-500 text-xs font-black text-[#0b1730] shadow-lg shadow-cyan-950/30">R&amp;F</span>
+          <Image src="/icons/rack-frame-icon-192-v2.png" alt="Rack & Frame" width={44} height={44} priority className="h-11 w-11 rounded-xl shadow-lg shadow-cyan-950/30 ring-1 ring-white/15" />
           <span>
             <span className="block text-sm font-black tracking-wide">Rack &amp; Frame</span>
             <span className="block text-xs text-slate-400">League Manager</span>
@@ -377,6 +379,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const completeNavigation = useCallback((action: { type: "href"; href: string } | { type: "back" }) => {
     setMobileOpen(false);
+    startGlobalProgress("navigation");
     if (action.type === "back") router.back();
     else router.push(action.href);
   }, [router]);
@@ -392,10 +395,14 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   const requestBack = useCallback(() => {
     if (guard.enabled) setPendingAction({ type: "back" });
-    else router.back();
+    else {
+      startGlobalProgress("navigation");
+      router.back();
+    }
   }, [guard.enabled, router]);
 
   const onSignOut = useCallback(async () => {
+    startGlobalProgress("navigation");
     await logAudit("auth_sign_out", { entityType: "auth", summary: "User signed out." });
     if (supabase) await supabase.auth.signOut();
     router.replace("/auth/sign-in");

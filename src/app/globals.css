@@ -1,5 +1,38 @@
 @import "tailwindcss";
 
+@keyframes rf-progress-slide {
+  0% { transform: translateX(-110%); }
+  55% { transform: translateX(85%); }
+  100% { transform: translateX(230%); }
+}
+
+.rf-global-progress {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 200;
+  height: 4px;
+  overflow: hidden;
+  pointer-events: none;
+  background: transparent;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.rf-global-progress--visible {
+  opacity: 1;
+  background: rgb(207 250 254 / 0.75);
+}
+
+.rf-global-progress__bar {
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: 9999px;
+  background: linear-gradient(90deg, #22d3ee, #0d9488, #fbbf24);
+  box-shadow: 0 0 12px rgb(34 211 238 / 0.8);
+  animation: rf-progress-slide 1.15s ease-in-out infinite;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
