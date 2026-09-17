@@ -83,6 +83,12 @@ type Announcement = {
   updated_at: string | null;
 };
 
+type LeagueNotice = {
+  id: string;
+  title: string;
+  body: string;
+};
+
 type HubData = {
   seasons: SeasonOption[];
   season: SeasonOption | null;
@@ -109,6 +115,40 @@ const tabs: Array<{ id: HubTab; label: string; shortLabel: string }> = [
   { id: "breaks", label: "High Breaks", shortLabel: "Breaks" },
   { id: "handicaps", label: "Handicaps", shortLabel: "Handicaps" },
   { id: "notices", label: "League Notices", shortLabel: "Notices" },
+];
+
+const premierLeagueNotices: LeagueNotice[] = [
+  {
+    id: "premier-miss-rule-referee-authority",
+    title: "📢 Premier League – Miss Rule and Referee Authority",
+    body: `As voted and agreed at the AGM, an amended miss rule applies to all Premier League fixtures.
+
+Where a player is snookered, a miss may be called. Following the first and second misses, the balls may be replaced at the non-offending player’s request. After the third attempt, the balls will not be replaced again and will remain where they finish.
+
+The referee should advise both players after the second miss that the next attempt will be the final one from the replaced position.
+
+This proposal was made by Raj Puri and seconded by Mark P.
+
+The AGM also agreed that the referee’s decision is final and must not be argued. This was proposed by Trevor Gibb and seconded by Giuseppe.
+
+These rules apply to the Premier League ONLY.`,
+  },
+  {
+    id: "premier-elo-band-boundaries",
+    title: "📢 Premier League – Elo Band Boundaries and Handicaps",
+    body: `A slight clarification has been made to the Elo-to-handicap banding at exact boundary values. Each boundary now belongs to the new band.
+
+For example:
+• Elo up to and including 1029 = handicap -4
+• Elo from 1030 to 1049 = handicap -8
+• Elo from 1050 to 1069 = handicap -12
+
+This makes the app display and the automatic handicap review use the same boundaries. The live playing handicaps and Elo results were correct; the adjustment removes an ambiguity that could display a false four-point gap or a handicap movement that had not actually occurred. No match results or Elo values have been changed.
+
+The scheduled reviews during the first four weeks will ensure that any remaining minor discrepancies affecting a small number of players are resolved by the end of Week 4.
+
+If you have any questions, please contact Martin Chamberlain, League Secretary.`,
+  },
 ];
 
 function shortLeagueName(value: string) {
@@ -343,6 +383,10 @@ export default function LeagueHubPage() {
     () => groupFixtures(data.fixtures.filter((fixture) => fixture.status === "complete"), true),
     [data.fixtures]
   );
+  const leagueNotices = useMemo(
+    () => (/premier league/i.test(data.season?.name ?? "") ? premierLeagueNotices : []),
+    [data.season?.name]
+  );
 
   function updateLocation(tab: HubTab, seasonId = selectedSeasonId) {
     const params = new URLSearchParams();
@@ -492,13 +536,24 @@ export default function LeagueHubPage() {
         ) : null}
 
         {!error && !loading && data.season && activeTab === "notices" ? (
-          data.announcement ? (
-            <section className="rounded-3xl border border-amber-300/20 bg-amber-400/10 p-6 shadow-xl shadow-black/10">
-              <p className="text-xs font-bold uppercase tracking-[0.25em] text-amber-200">Current league notice</p>
-              <h2 className="mt-2 text-2xl font-black text-white">{data.announcement.title || "League announcement"}</h2>
-              <p className="mt-4 whitespace-pre-wrap text-base leading-7 text-slate-100">{data.announcement.body}</p>
-              {data.announcement.updated_at ? <p className="mt-5 text-xs text-amber-100/70">Updated {new Date(data.announcement.updated_at).toLocaleString("en-GB")}</p> : null}
-            </section>
+          leagueNotices.length > 0 || data.announcement ? (
+            <div className="space-y-4">
+              {leagueNotices.map((notice) => (
+                <section key={notice.id} className="rounded-3xl border border-amber-300/20 bg-amber-400/10 p-6 shadow-xl shadow-black/10">
+                  <p className="text-xs font-bold uppercase tracking-[0.25em] text-amber-200">League notice</p>
+                  <h2 className="mt-2 text-2xl font-black text-white">{notice.title}</h2>
+                  <p className="mt-4 whitespace-pre-wrap text-base leading-7 text-slate-100">{notice.body}</p>
+                </section>
+              ))}
+              {data.announcement ? (
+                <section className="rounded-3xl border border-amber-300/20 bg-amber-400/10 p-6 shadow-xl shadow-black/10">
+                  <p className="text-xs font-bold uppercase tracking-[0.25em] text-amber-200">Current league notice</p>
+                  <h2 className="mt-2 text-2xl font-black text-white">{data.announcement.title || "League announcement"}</h2>
+                  <p className="mt-4 whitespace-pre-wrap text-base leading-7 text-slate-100">{data.announcement.body}</p>
+                  {data.announcement.updated_at ? <p className="mt-5 text-xs text-amber-100/70">Updated {new Date(data.announcement.updated_at).toLocaleString("en-GB")}</p> : null}
+                </section>
+              ) : null}
+            </div>
           ) : (
             <section className="rounded-3xl border border-white/10 bg-white/5 p-8 text-center text-slate-300">There are no current league notices.</section>
           )
