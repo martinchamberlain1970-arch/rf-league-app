@@ -44,6 +44,7 @@ const navigationGroups: NavigationGroup[] = [
       { href: "/display/fixtures", label: "Fixtures & results" },
       { href: "/display/league-table", label: "League tables" },
       { href: "/display/player-table", label: "Player standings" },
+      { href: "/display/weekly-report", label: "Weekly report" },
       { href: "/display/handicaps", label: "Published handicaps" },
       { href: "/display/high-breaks", label: "High breaks" },
       { href: "/hall-of-fame", label: "Hall of Fame" },
@@ -118,6 +119,7 @@ const signedInDisplayRoutes = new Set([
   "/display/fixtures",
   "/display/league-table",
   "/display/player-table",
+  "/display/weekly-report",
   "/display/handicaps",
   "/display/high-breaks",
 ]);
