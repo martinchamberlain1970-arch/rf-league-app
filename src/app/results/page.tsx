@@ -118,6 +118,15 @@ type FixtureChangeRequest = {
 
 const named = (p?: PlayerRow | null) => (p ? (p.full_name?.trim() ? p.full_name : p.display_name) : "Unknown");
 
+function isMissingOptionalTable(message?: string | null) {
+  const normalized = (message ?? "").toLowerCase();
+  return (
+    normalized.includes("could not find the table") ||
+    normalized.includes("does not exist") ||
+    normalized.includes("schema cache")
+  );
+}
+
 function submittedMatchScore(submission: LeagueSubmission) {
   return (submission.frame_results ?? []).reduce(
     (score, frame) => {
@@ -221,11 +230,11 @@ function ResultsQueuePageContent() {
       loadedFixtureChangeRequests = payload.rows ?? [];
       setFixtureChangeRequests(loadedFixtureChangeRequests);
     }
-    if (competitionSubmissionRes.error) {
+    if (competitionSubmissionRes.error && !isMissingOptionalTable(competitionSubmissionRes.error.message)) {
       setMessage(competitionSubmissionRes.error.message || "Failed to load competition results queue.");
       return;
     }
-    const competitionSubmissionRows = competitionSubmissionRes.data ?? [];
+    const competitionSubmissionRows = competitionSubmissionRes.error ? [] : competitionSubmissionRes.data ?? [];
     setCompetitionSubmissions(competitionSubmissionRows);
 
     const fixtureIds = Array.from(
