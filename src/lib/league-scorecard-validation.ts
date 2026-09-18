@@ -4,6 +4,8 @@ export type ScorecardFrameForValidation = {
   winner_side?: "home" | "away" | null;
   home_forfeit?: boolean;
   away_forfeit?: boolean;
+  home_points_scored?: number | null;
+  away_points_scored?: number | null;
 };
 
 export function expectedLeagueScorecardFrames(singlesCount: number, doublesCount: number) {
@@ -56,6 +58,26 @@ export function validateCompleteLeagueScorecard(
     return {
       valid: false as const,
       error: `Not all frames have been played or recorded. Complete ${incomplete.map((row) => frameLabel(row.slot_no, row.slot_type)).join(", ")} before submitting.`,
+    };
+  }
+
+  const scoreContradictions = expected.filter(({ slot_no }) => {
+    const row = rowsBySlot.get(slot_no)?.[0];
+    if (!row || row.home_forfeit || row.away_forfeit) return false;
+    if (
+      typeof row.home_points_scored !== "number" ||
+      typeof row.away_points_scored !== "number"
+    ) {
+      return false;
+    }
+    if (row.home_points_scored === row.away_points_scored) return true;
+    const scoreWinner = row.home_points_scored > row.away_points_scored ? "home" : "away";
+    return row.winner_side !== scoreWinner;
+  });
+  if (scoreContradictions.length > 0) {
+    return {
+      valid: false as const,
+      error: `The selected winner does not match the final scoreboard points for ${scoreContradictions.map((row) => frameLabel(row.slot_no, row.slot_type)).join(", ")}. Enter the final points after any handicap start has been included.`,
     };
   }
 

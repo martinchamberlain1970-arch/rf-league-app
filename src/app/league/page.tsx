@@ -4193,19 +4193,8 @@ function LeaguePageContent() {
     const homePts = typeof row.home_points_scored === "number" ? row.home_points_scored : null;
     const awayPts = typeof row.away_points_scored === "number" ? row.away_points_scored : null;
     if (homePts === null || awayPts === null) return null;
-    if (row.slot_type === "doubles") {
-      const fixture = fixtureById.get(row.fixture_id);
-      const season = fixture ? seasonById.get(fixture.season_id) : null;
-      if (season?.handicap_enabled) {
-        const playerHcp = (playerId: string | null | undefined) => Number(playerById.get(playerId ?? "")?.snooker_handicap ?? 0);
-        const homeHandicap = (playerHcp(row.home_player1_id) + playerHcp(row.home_player2_id)) / 2;
-        const awayHandicap = (playerHcp(row.away_player1_id) + playerHcp(row.away_player2_id)) / 2;
-        const adjusted = calculateAdjustedScoresWithCap(homePts, awayPts, homeHandicap, awayHandicap, currentSeasonHandicapCap);
-        if (adjusted.homeAdjusted > adjusted.awayAdjusted) return "home";
-        if (adjusted.awayAdjusted > adjusted.homeAdjusted) return "away";
-        return null;
-      }
-    }
+    // Captains enter the final scoreboard totals after any handicap start has
+    // already been applied. Do not add the start again when deriving a winner.
     if (homePts > awayPts) return "home";
     if (awayPts > homePts) return "away";
     return null;
@@ -8470,7 +8459,7 @@ function LeaguePageContent() {
                       </p>
                     ) : null}
                     {currentSeason?.handicap_enabled && currentSeasonDoublesCount > 0 ? (
-                      <p className="mt-1 text-xs text-slate-600">Doubles handicap uses (player 1 + player 2) ÷ 2 per team.</p>
+                      <p className="mt-1 text-xs text-slate-600">Doubles handicap uses (player 1 + player 2) ÷ 2 per team. Enter each side&apos;s final scoreboard total after the start has been included.</p>
                     ) : null}
                     {isCurrentFixtureLocked && !canManage ? (
                       <p className="mt-2 inline-flex rounded-lg border border-emerald-300 bg-emerald-100 px-2 py-1 text-xs font-medium text-emerald-900">

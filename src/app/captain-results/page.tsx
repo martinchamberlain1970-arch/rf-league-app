@@ -1343,14 +1343,9 @@ export default function CaptainResultsPage() {
     const homePts = typeof row.home_points_scored === "number" ? row.home_points_scored : null;
     const awayPts = typeof row.away_points_scored === "number" ? row.away_points_scored : null;
     if (homePts === null || awayPts === null) return null;
-    if (row.slot_type === "doubles" && selectedSeason?.handicap_enabled) {
-      const home = (playerHandicap(row.home_player1_id) + playerHandicap(row.home_player2_id)) / 2;
-      const away = (playerHandicap(row.away_player1_id) + playerHandicap(row.away_player2_id)) / 2;
-      const adjusted = calculateAdjustedScoresWithCap(homePts, awayPts, home, away, selectedSeasonHandicapCap);
-      if (adjusted.homeAdjusted > adjusted.awayAdjusted) return "home";
-      if (adjusted.awayAdjusted > adjusted.homeAdjusted) return "away";
-      return null;
-    }
+    // The entered figures are the final scoreboard totals, including any
+    // handicap start shown above. Comparing them directly prevents the start
+    // from being counted twice in doubles.
     if (homePts > awayPts) return "home";
     if (awayPts > homePts) return "away";
     return null;
@@ -2562,7 +2557,7 @@ export default function CaptainResultsPage() {
                         )}
                         {selectedSeason?.handicap_enabled ? (
                           <div className="mt-1 space-y-1">
-                            <p>In doubles, team handicap = (player 1 handicap + player 2 handicap) ÷ 2. {selectedSeasonHandicapCap === null ? "The full difference applies with no cap." : `The live start is capped at ${selectedSeasonHandicapCap}.`}</p>
+                            <p>In doubles, team handicap = (player 1 handicap + player 2 handicap) ÷ 2. {selectedSeasonHandicapCap === null ? "The full difference applies with no cap." : `The live start is capped at ${selectedSeasonHandicapCap}.`} Enter each side&apos;s final scoreboard total after this start has been included.</p>
                             <p>Reviewed handicaps still show the full assessed gap, but the frame start is capped to keep matches competitive.</p>
                             <p>{selectedSeasonHandicapCap === null ? "Premier League starts are uncapped under the current league rules." : `This league limits the live start to ${selectedSeasonHandicapCap} points.`}</p>
                           </div>

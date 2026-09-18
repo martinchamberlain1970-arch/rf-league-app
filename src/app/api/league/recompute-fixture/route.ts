@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { rebuildLeagueFixtureSnookerRatings } from "@/lib/snooker-rating";
+import { validateCompleteLeagueScorecard } from "@/lib/league-scorecard-validation";
 import { requireLeagueManager } from "@/lib/server-role";
 import { applyDuePremierHandicapReview, type AutomaticHandicapReviewResult } from "@/lib/automatic-handicap-review";
 
@@ -124,6 +125,22 @@ export async function POST(req: NextRequest) {
   }
 
   const rows = (framesRes.data ?? []) as FrameRow[];
+  const scorecardValidation = validateCompleteLeagueScorecard(
+    rows.map((row) => ({
+      slot_no: row.slot_no,
+      slot_type: row.home_player2_id || row.away_player2_id ? "doubles" : "singles",
+      winner_side: row.winner_side,
+      home_forfeit: row.home_forfeit,
+      away_forfeit: row.away_forfeit,
+      home_points_scored: row.home_points_scored,
+      away_points_scored: row.away_points_scored,
+    })),
+    season.singles_count ?? 4,
+    season.doubles_count ?? 1
+  );
+  if (!scorecardValidation.valid) {
+    return NextResponse.json({ error: scorecardValidation.error }, { status: 400 });
+  }
   let homePoints = rows.filter((r) => r.winner_side === "home").length;
   let awayPoints = rows.filter((r) => r.winner_side === "away").length;
 
