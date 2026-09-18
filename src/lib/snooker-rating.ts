@@ -15,6 +15,7 @@ type ApplyGroupRatingArgs = {
   groupBIds: string[];
   scoreA: number;
   scoreB: number;
+  ratingWeight?: number;
   notes?: string | null;
   metadata?: Record<string, unknown>;
 };
@@ -157,6 +158,7 @@ export async function applyGroupSnookerRating({
   groupBIds,
   scoreA,
   scoreB,
+  ratingWeight = 1,
   notes,
   metadata,
 }: ApplyGroupRatingArgs) {
@@ -239,8 +241,12 @@ export async function applyGroupSnookerRating({
 
     const expectedA = expectedScore(sideAAvgRating, sideBAvgRating);
     const actualA = scoreA > scoreB ? 1 : scoreA < scoreB ? 0 : 0.5;
-    const k = Math.max(kFactor(sideAAvgRating, sideAAvgMatches), kFactor(sideBAvgRating, sideBAvgMatches));
-    const deltaA = Math.round(k * (actualA - expectedA));
+    const baseK = Math.max(kFactor(sideAAvgRating, sideAAvgMatches), kFactor(sideBAvgRating, sideBAvgMatches));
+    const safeRatingWeight = Number.isFinite(ratingWeight)
+      ? Math.min(1, Math.max(0, ratingWeight))
+      : 1;
+    const effectiveK = baseK * safeRatingWeight;
+    const deltaA = Math.round(effectiveK * (actualA - expectedA));
     const deltaB = -deltaA;
 
     const eventRows: Array<Record<string, unknown>> = [];
@@ -322,7 +328,9 @@ export async function applyGroupSnookerRating({
           score_b: scoreB,
           delta_a: deltaA,
           delta_b: deltaB,
-          k_factor: k,
+          k_factor: effectiveK,
+          base_k_factor: baseK,
+          rating_weight: safeRatingWeight,
           expected_a: expectedA,
           ...metadata,
         },
@@ -337,7 +345,7 @@ export async function applyGroupSnookerRating({
       deltaA,
       deltaB,
       expectedA,
-      k,
+      k: effectiveK,
     };
   } catch (error) {
     await adminClient
@@ -483,6 +491,28 @@ export async function rebuildLeagueFixtureSnookerRatings({
   metadata,
 }: LeagueFixtureRatingArgs) {
   const resolvedFrames = await resolveLegacyNominatedPlayerIds(adminClient, frames);
+  const fixtureContextRes = await adminClient
+    .from("league_fixtures")
+    .select("season_id,week_no")
+    .eq("id", fixtureId)
+    .maybeSingle();
+  if (fixtureContextRes.error) throw new Error(fixtureContextRes.error.message);
+  const resolvedSeasonId = seasonId ?? fixtureContextRes.data?.season_id ?? null;
+  const seasonContextRes = resolvedSeasonId
+    ? await adminClient
+        .from("league_seasons")
+        .select("name")
+        .eq("id", resolvedSeasonId)
+        .maybeSingle()
+    : { data: null, error: null };
+  if (seasonContextRes.error) throw new Error(seasonContextRes.error.message);
+  const fixtureWeekNo = Number(fixtureContextRes.data?.week_no ?? 0);
+  const isPremier2026Season = Boolean(
+    /premier league/i.test(seasonContextRes.data?.name ?? "") &&
+      (/2026\/2027/.test(seasonContextRes.data?.name ?? "") ||
+        /2026-27/.test(seasonContextRes.data?.name ?? ""))
+  );
+  const useHalfWeightForDoubles = isPremier2026Season && fixtureWeekNo >= 3;
   const summarySourceId = `league_fixture:${fixtureId}`;
   const touchedPlayerIds = uniqueIds(
     resolvedFrames.flatMap((frame) => [
@@ -533,6 +563,7 @@ export async function rebuildLeagueFixtureSnookerRatings({
 
     const scoreA = frame.winner_side === "home" ? 1 : 0;
     const scoreB = frame.winner_side === "away" ? 1 : 0;
+    const ratingWeight = isDoubles && useHalfWeightForDoubles ? 0.5 : 1;
     const result = await applyGroupSnookerRating({
       adminClient,
       sourceApp: "league",
@@ -541,11 +572,17 @@ export async function rebuildLeagueFixtureSnookerRatings({
       groupBIds: awayIds,
       scoreA,
       scoreB,
+      ratingWeight,
       notes: notes ?? `League fixture ${fixtureId} frame ${frame.slot_no}`,
       metadata: {
         fixture_id: fixtureId,
-        season_id: seasonId ?? null,
+        season_id: resolvedSeasonId,
         rating_mode: "per_frame",
+        rating_weight: ratingWeight,
+        rating_weight_rule:
+          ratingWeight === 0.5
+            ? "Premier League doubles from Week 3: 50% Elo weighting"
+            : "Standard Elo weighting",
         slot_no: frame.slot_no,
         slot_type: frame.slot_type ?? "singles",
         ...metadata,
@@ -587,8 +624,9 @@ export async function rebuildLeagueFixtureSnookerRatings({
         error_message: null,
         metadata: {
           fixture_id: fixtureId,
-          season_id: seasonId ?? null,
+          season_id: resolvedSeasonId,
           rating_mode: "per_frame",
+          premier_doubles_half_weight_from_week: isPremier2026Season ? 3 : null,
           rated_frame_count: ratedFrames.length,
           player_deltas: Array.from(playerDeltaMap.entries()).map(([player_id, value]) => ({
             player_id,

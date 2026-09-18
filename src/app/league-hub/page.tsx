@@ -149,6 +149,19 @@ The scheduled reviews during the first four weeks will ensure that any remaining
 
 If you have any questions, please contact Martin Chamberlain, League Secretary.`,
   },
+  {
+    id: "premier-doubles-elo-weighting",
+    title: "📢 Premier League – Doubles Elo Weighting from Week 3",
+    body: `From Week 3 onwards, Premier League doubles results will carry 50% of the normal Elo weighting applied to a singles result.
+
+This reflects the way the playing start is calculated in doubles, where the two players’ combined handicaps are divided by two. It also recognises that a doubles result is shared with a partner and should therefore have less influence on an individual player’s Elo and future handicap than a singles result.
+
+Singles results will continue to receive the normal 100% Elo weighting. The expected doubles result will continue to be calculated from the average Elo of each pairing, with both partners receiving the same reduced movement.
+
+This change applies prospectively from Week 3. Weeks 1 and 2 will not be recalculated and no previous results, Elo values or handicaps will be changed retrospectively.
+
+If you have any questions, please contact Martin Chamberlain, League Secretary.`,
+  },
 ];
 
 function shortLeagueName(value: string) {
