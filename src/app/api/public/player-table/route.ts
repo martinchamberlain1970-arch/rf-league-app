@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { countsForIndividualStatistics } from "@/lib/league-player-statistics";
+import { fetchAllSupabasePagesByChunks } from "@/lib/supabase-pagination";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -107,10 +108,14 @@ export async function GET(req: NextRequest) {
   const fixtures = ((fixturesRes.data ?? []) as FixtureRow[]).filter((fixture) => fixture.season_id === selectedSeason.id);
   const completeFixtureIds = fixtures.filter((fixture) => fixture.status === "complete").map((fixture) => fixture.id);
   const framesRes = completeFixtureIds.length > 0
-    ? await adminClient
-        .from("league_fixture_frames")
-        .select("fixture_id,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_forfeit,away_forfeit,home_nominated,away_nominated,winner_side,home_points_scored,away_points_scored")
-        .in("fixture_id", completeFixtureIds)
+    ? await fetchAllSupabasePagesByChunks<FrameRow, string>(completeFixtureIds, (chunk, from, to) =>
+        adminClient
+          .from("league_fixture_frames")
+          .select("fixture_id,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_forfeit,away_forfeit,home_nominated,away_nominated,winner_side,home_points_scored,away_points_scored")
+          .in("fixture_id", chunk)
+          .order("fixture_id", { ascending: true })
+          .range(from, to)
+      )
     : { data: [], error: null };
   const frameRows = (framesRes.data ?? []) as FrameRow[];
   const playerIds = Array.from(new Set([

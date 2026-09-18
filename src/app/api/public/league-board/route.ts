@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { GREENHITHE_LEGION_LOCATION_NAME } from "@/lib/public-team-display";
 import { countsForIndividualStatistics } from "@/lib/league-player-statistics";
+import { fetchAllSupabasePagesByChunks } from "@/lib/supabase-pagination";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -151,15 +152,23 @@ export async function GET(req: NextRequest) {
   const fixtureIdList = fixtures.map((fixture) => fixture.id);
   const [framesRes, breaksRes] = fixtureIdList.length > 0
     ? await Promise.all([
-        adminClient
-          .from("league_fixture_frames")
-          .select("fixture_id,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_forfeit,away_forfeit,home_nominated,away_nominated,winner_side,home_points_scored,away_points_scored")
-          .in("fixture_id", fixtureIdList),
-        adminClient
-          .from("league_fixture_breaks")
-          .select("fixture_id,player_id,entered_player_name,break_value")
-          .in("fixture_id", fixtureIdList)
-          .gte("break_value", 30),
+        fetchAllSupabasePagesByChunks<FrameRow, string>(fixtureIdList, (chunk, from, to) =>
+          adminClient
+            .from("league_fixture_frames")
+            .select("fixture_id,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_forfeit,away_forfeit,home_nominated,away_nominated,winner_side,home_points_scored,away_points_scored")
+            .in("fixture_id", chunk)
+            .order("fixture_id", { ascending: true })
+            .range(from, to)
+        ),
+        fetchAllSupabasePagesByChunks<BreakRow, string>(fixtureIdList, (chunk, from, to) =>
+          adminClient
+            .from("league_fixture_breaks")
+            .select("fixture_id,player_id,entered_player_name,break_value")
+            .in("fixture_id", chunk)
+            .gte("break_value", 30)
+            .order("fixture_id", { ascending: true })
+            .range(from, to)
+        ),
       ])
     : [
         { data: [], error: null },

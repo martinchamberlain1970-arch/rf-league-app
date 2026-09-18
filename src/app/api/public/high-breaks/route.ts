@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { fetchAllSupabasePages, fetchAllSupabasePagesByChunks } from "@/lib/supabase-pagination";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -131,37 +132,112 @@ export async function GET(req: NextRequest) {
   const seasonIdParam = req.nextUrl.searchParams.get("seasonId")?.trim() ?? "all";
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
-  const [seasonsRes, teamsRes, fixturesRes, breaksRes, playersRes, competitionsRes, competitionMatchesRes, competitionBreaksRes] = await Promise.all([
-    adminClient.from("league_seasons").select("id,name,is_published").eq("is_published", true).order("created_at", { ascending: false }),
-    adminClient.from("league_teams").select("id,name"),
-    adminClient.from("league_fixtures").select("id,season_id,fixture_date,home_team_id,away_team_id,status").eq("status", "complete"),
-    adminClient.from("league_fixture_breaks").select("fixture_id,player_id,entered_player_name,break_value").gte("break_value", 30).order("break_value", { ascending: false }),
-    adminClient.from("players").select("id,display_name,full_name").eq("is_archived", false),
-    adminClient.from("competitions").select("id,name,sport_type"),
-    adminClient.from("matches").select("id,competition_id,status,round_no,match_no").eq("status", "complete"),
-    adminClient.from("competition_match_breaks").select("match_id,competition_id,player_id,entered_player_name,break_value,created_at").gte("break_value", 30).order("break_value", { ascending: false }),
-  ]);
-
-  const firstError =
-    seasonsRes.error?.message ||
-    teamsRes.error?.message ||
-    fixturesRes.error?.message ||
-    breaksRes.error?.message ||
-    playersRes.error?.message ||
-    competitionsRes.error?.message ||
-    competitionMatchesRes.error?.message ||
-    competitionBreaksRes.error?.message;
-
-  if (firstError) {
-    return NextResponse.json({ error: firstError }, { status: 500 });
+  const seasonsRes = await adminClient
+    .from("league_seasons")
+    .select("id,name,is_published")
+    .eq("is_published", true)
+    .order("created_at", { ascending: false });
+  if (seasonsRes.error) {
+    return NextResponse.json({ error: seasonsRes.error.message }, { status: 500 });
   }
 
   const seasons = (seasonsRes.data ?? []) as SeasonRow[];
-  const teams = (teamsRes.data ?? []) as TeamRow[];
+  const selectedSeason = seasonIdParam === "all" ? null : seasons.find((season) => season.id === seasonIdParam) ?? null;
+  if (seasonIdParam !== "all" && !selectedSeason) {
+    return NextResponse.json({ error: "Choose a published league season." }, { status: 400 });
+  }
+  const selectedSeasonIds = selectedSeason ? [selectedSeason.id] : seasons.map((season) => season.id);
+  const [fixturesRes, competitionsRes, playersRes] = await Promise.all([
+    selectedSeasonIds.length > 0
+      ? fetchAllSupabasePages<FixtureRow>((from, to) =>
+          adminClient
+            .from("league_fixtures")
+            .select("id,season_id,fixture_date,home_team_id,away_team_id,status")
+            .in("season_id", selectedSeasonIds)
+            .eq("status", "complete")
+            .order("id", { ascending: true })
+            .range(from, to)
+        )
+      : Promise.resolve({ data: [], error: null }),
+    fetchAllSupabasePages<CompetitionRow>((from, to) =>
+      adminClient
+        .from("competitions")
+        .select("id,name,sport_type")
+        .order("id", { ascending: true })
+        .range(from, to)
+    ),
+    fetchAllSupabasePages<PlayerRow>((from, to) =>
+      adminClient
+        .from("players")
+        .select("id,display_name,full_name")
+        .eq("is_archived", false)
+        .order("id", { ascending: true })
+        .range(from, to)
+    ),
+  ]);
+  const initialError = fixturesRes.error?.message || competitionsRes.error?.message || playersRes.error?.message;
+  if (initialError) {
+    return NextResponse.json({ error: initialError }, { status: 500 });
+  }
+
   const fixtures = (fixturesRes.data ?? []) as FixtureRow[];
+  const fixtureIds = fixtures.map((fixture) => fixture.id);
+  const teamIds = Array.from(new Set(fixtures.flatMap((fixture) => [fixture.home_team_id, fixture.away_team_id])));
+  const competitions = (competitionsRes.data ?? []) as CompetitionRow[];
+  const snookerCompetitionIds = competitions
+    .filter((competition) => String(competition.sport_type ?? "").toLowerCase() === "snooker")
+    .map((competition) => competition.id);
+  const [teamsRes, breaksRes, competitionMatchesRes, competitionBreaksRes] = await Promise.all([
+    fetchAllSupabasePagesByChunks<TeamRow, string>(teamIds, (chunk, from, to) =>
+      adminClient
+        .from("league_teams")
+        .select("id,name")
+        .in("id", chunk)
+        .order("id", { ascending: true })
+        .range(from, to)
+    ),
+    fetchAllSupabasePagesByChunks<BreakRow, string>(fixtureIds, (chunk, from, to) =>
+      adminClient
+        .from("league_fixture_breaks")
+        .select("fixture_id,player_id,entered_player_name,break_value")
+        .in("fixture_id", chunk)
+        .gte("break_value", 30)
+        .order("fixture_id", { ascending: true })
+        .order("break_value", { ascending: false })
+        .range(from, to)
+    ),
+    fetchAllSupabasePagesByChunks<CompetitionMatchRow, string>(snookerCompetitionIds, (chunk, from, to) =>
+      adminClient
+        .from("matches")
+        .select("id,competition_id,status,round_no,match_no")
+        .in("competition_id", chunk)
+        .eq("status", "complete")
+        .order("id", { ascending: true })
+        .range(from, to)
+    ),
+    fetchAllSupabasePagesByChunks<CompetitionBreakRow, string>(snookerCompetitionIds, (chunk, from, to) =>
+      adminClient
+        .from("competition_match_breaks")
+        .select("match_id,competition_id,player_id,entered_player_name,break_value,created_at")
+        .in("competition_id", chunk)
+        .gte("break_value", 30)
+        .order("competition_id", { ascending: true })
+        .order("match_id", { ascending: true })
+        .range(from, to)
+    ),
+  ]);
+  const detailError =
+    teamsRes.error?.message ||
+    breaksRes.error?.message ||
+    competitionMatchesRes.error?.message ||
+    competitionBreaksRes.error?.message;
+  if (detailError) {
+    return NextResponse.json({ error: detailError }, { status: 500 });
+  }
+
+  const teams = (teamsRes.data ?? []) as TeamRow[];
   const breaks = (breaksRes.data ?? []) as BreakRow[];
   const players = (playersRes.data ?? []) as PlayerRow[];
-  const competitions = (competitionsRes.data ?? []) as CompetitionRow[];
   const competitionMatches = (competitionMatchesRes.data ?? []) as CompetitionMatchRow[];
   const competitionBreaks = (competitionBreaksRes.data ?? []) as CompetitionBreakRow[];
 

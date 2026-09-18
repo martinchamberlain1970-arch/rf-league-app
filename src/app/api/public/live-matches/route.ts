@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { calculateAdjustedScoresWithCap, MAX_SNOOKER_START } from "@/lib/snooker-handicap";
+import { fetchAllSupabasePages } from "@/lib/supabase-pagination";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -152,25 +153,7 @@ export async function GET(req: NextRequest) {
   const selectedSeasonIds = selectedSeasons.map((season) => season.id);
   const seasonById = new Map(selectedSeasons.map((season) => [season.id, season]));
 
-  const framesPromise = (async () => {
-    const pageSize = 1000;
-    const rows: FrameRow[] = [];
-    for (let from = 0; ; from += pageSize) {
-      const page = await adminClient
-        .from("league_fixture_frames")
-        .select(
-          "id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_nominated_name,away_nominated_name,home_forfeit,away_forfeit,winner_side,home_points_scored,away_points_scored"
-        )
-        .order("id", { ascending: true })
-        .range(from, from + pageSize - 1);
-      if (page.error) return { data: null, error: page.error };
-      const pageRows = (page.data ?? []) as FrameRow[];
-      rows.push(...pageRows);
-      if (pageRows.length < pageSize) return { data: rows, error: null };
-    }
-  })();
-
-  const [teamsRes, fixturesRes, framesRes, playersQueryRes] = await Promise.all([
+  const [teamsRes, fixturesRes] = await Promise.all([
     adminClient.from("league_teams").select("id,season_id,name").in("season_id", selectedSeasonIds),
     adminClient
       .from("league_fixtures")
@@ -179,46 +162,15 @@ export async function GET(req: NextRequest) {
       )
       .in("season_id", selectedSeasonIds)
       .order("fixture_date", { ascending: true }),
-    framesPromise,
-    adminClient
-      .from("players")
-      .select("id,display_name,full_name,avatar_url,snooker_handicap,nationality_name,country_code")
-      .eq("is_archived", false),
   ]);
 
-  let playersData = (playersQueryRes.data ?? []) as PlayerSelectRow[];
-  let playersError = playersQueryRes.error?.message ?? null;
-  if (playersQueryRes.error && isMissingColumnError(playersQueryRes.error.message)) {
-    const fallbackPlayersRes = await adminClient
-      .from("players")
-      .select("id,display_name,full_name,avatar_url,snooker_handicap")
-      .eq("is_archived", false);
-    playersData = ((fallbackPlayersRes.data ?? []) as Array<{
-      id: string;
-      display_name: string;
-      full_name: string | null;
-      avatar_url?: string | null;
-      snooker_handicap?: number | null;
-    }>).map((row) => ({
-      ...row,
-      nationality_name: null,
-      country_code: null,
-    }));
-    playersError = fallbackPlayersRes.error?.message ?? null;
-  }
-
-  const firstError = teamsRes.error?.message || fixturesRes.error?.message || framesRes.error?.message || playersError;
+  const firstError = teamsRes.error?.message || fixturesRes.error?.message;
   if (firstError) {
     return NextResponse.json({ error: firstError }, { status: 500 });
   }
 
   const teams = (teamsRes.data ?? []) as TeamRow[];
   const fixtures = ((fixturesRes.data ?? []) as FixtureRow[]).filter((fixture) => seasonById.has(fixture.season_id));
-  const frames = (framesRes.data ?? []) as FrameRow[];
-  const players = playersData as PlayerRow[];
-
-  const teamById = new Map(teams.map((team) => [team.id, team]));
-  const playerById = new Map(players.map((player) => [player.id, player]));
 
   const matchNightCandidates = fixtures.filter((fixture) => {
     if (fixture.pre_match_paper_record) return false;
@@ -249,6 +201,70 @@ export async function GET(req: NextRequest) {
         statusRank(a.status) - statusRank(b.status)
       );
     });
+
+  const liveFixtureIds = liveFixtures.map((fixture) => fixture.id);
+  const framesRes = liveFixtureIds.length > 0
+    ? await fetchAllSupabasePages<FrameRow>((from, to) =>
+        adminClient
+          .from("league_fixture_frames")
+          .select(
+            "id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_nominated_name,away_nominated_name,home_forfeit,away_forfeit,winner_side,home_points_scored,away_points_scored"
+          )
+          .in("fixture_id", liveFixtureIds)
+          .order("id", { ascending: true })
+          .range(from, to)
+      )
+    : { data: [], error: null };
+  if (framesRes.error) {
+    return NextResponse.json({ error: framesRes.error.message }, { status: 500 });
+  }
+  const frames = (framesRes.data ?? []) as FrameRow[];
+  const playerIds = Array.from(new Set(
+    frames.flatMap((frame) => [
+      frame.home_player1_id,
+      frame.home_player2_id,
+      frame.away_player1_id,
+      frame.away_player2_id,
+    ]).filter((id): id is string => Boolean(id))
+  ));
+
+  let playersData: PlayerSelectRow[] = [];
+  let playersError: string | null = null;
+  if (playerIds.length > 0) {
+    const playersQueryRes = await adminClient
+      .from("players")
+      .select("id,display_name,full_name,avatar_url,snooker_handicap,nationality_name,country_code")
+      .in("id", playerIds)
+      .eq("is_archived", false);
+    playersData = (playersQueryRes.data ?? []) as PlayerSelectRow[];
+    playersError = playersQueryRes.error?.message ?? null;
+    if (playersQueryRes.error && isMissingColumnError(playersQueryRes.error.message)) {
+      const fallbackPlayersRes = await adminClient
+        .from("players")
+        .select("id,display_name,full_name,avatar_url,snooker_handicap")
+        .in("id", playerIds)
+        .eq("is_archived", false);
+      playersData = ((fallbackPlayersRes.data ?? []) as Array<{
+        id: string;
+        display_name: string;
+        full_name: string | null;
+        avatar_url?: string | null;
+        snooker_handicap?: number | null;
+      }>).map((row) => ({
+        ...row,
+        nationality_name: null,
+        country_code: null,
+      }));
+      playersError = fallbackPlayersRes.error?.message ?? null;
+    }
+  }
+  if (playersError) {
+    return NextResponse.json({ error: playersError }, { status: 500 });
+  }
+
+  const players = playersData as PlayerRow[];
+  const teamById = new Map(teams.map((team) => [team.id, team]));
+  const playerById = new Map(players.map((player) => [player.id, player]));
 
   const liveMatches = liveFixtures.map((fixture) => {
     const fixtureSeason = seasonById.get(fixture.season_id) ?? selectedSeasons[0];

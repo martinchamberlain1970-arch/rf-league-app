@@ -1,4 +1,5 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { fetchAllSupabasePages, fetchAllSupabasePagesByChunks } from "@/lib/supabase-pagination";
 
 type RatedPlayer = {
   id: string;
@@ -85,10 +86,14 @@ async function resolveLegacyNominatedPlayerIds(
   );
   if (unresolvedNames.length === 0) return frames;
 
-  const playersRes = await adminClient
-    .from("players")
-    .select("id,display_name,full_name")
-    .eq("is_archived", false);
+  const playersRes = await fetchAllSupabasePages<{ id: string; display_name: string | null; full_name: string | null }>((from, to) =>
+    adminClient
+      .from("players")
+      .select("id,display_name,full_name")
+      .eq("is_archived", false)
+      .order("id", { ascending: true })
+      .range(from, to)
+  );
   if (playersRes.error) throw new Error(playersRes.error.message);
 
   const idsByName = new Map<string, string[]>();
@@ -452,11 +457,15 @@ async function rebuildSnookerRatedMatchCounts(adminClient: SupabaseClient, playe
   if (uniquePlayerIds.length === 0) return;
 
   const [eventsRes, playersRes] = await Promise.all([
-    adminClient
-      .from("rating_events")
-      .select("player_id")
-      .eq("source_app", "league")
-      .in("player_id", uniquePlayerIds),
+    fetchAllSupabasePagesByChunks<{ player_id: string | null }, string>(uniquePlayerIds, (chunk, from, to) =>
+      adminClient
+        .from("rating_events")
+        .select("player_id")
+        .eq("source_app", "league")
+        .in("player_id", chunk)
+        .order("id", { ascending: true })
+        .range(from, to)
+    ),
     adminClient
       .from("players")
       .select("id")

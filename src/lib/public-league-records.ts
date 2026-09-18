@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import { fetchAllSupabasePagesByChunks } from "@/lib/supabase-pagination";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -105,7 +106,7 @@ export async function loadPublicLeagueRecordContext(seasonId: string): Promise<P
   if (seasonRes.error) throw new Error(seasonRes.error.message);
   if (!seasonRes.data) throw new Error("This league is not currently published and live.");
 
-  const [teamsRes, membersRes, fixturesRes, playersRes] = await Promise.all([
+  const [teamsRes, membersRes, fixturesRes] = await Promise.all([
     admin.from("league_teams").select("id,name,is_active").eq("season_id", seasonId),
     admin.from("league_team_members").select("team_id,player_id").eq("season_id", seasonId),
     admin
@@ -114,12 +115,8 @@ export async function loadPublicLeagueRecordContext(seasonId: string): Promise<P
       .eq("season_id", seasonId)
       .order("week_no", { ascending: true })
       .order("fixture_date", { ascending: true }),
-    admin
-      .from("players")
-      .select("id,display_name,full_name,rating_snooker,snooker_handicap")
-      .eq("is_archived", false),
   ]);
-  const firstError = teamsRes.error?.message || membersRes.error?.message || fixturesRes.error?.message || playersRes.error?.message;
+  const firstError = teamsRes.error?.message || membersRes.error?.message || fixturesRes.error?.message;
   if (firstError) throw new Error(firstError);
 
   const teamRows = ((teamsRes.data ?? []) as TeamRow[]).filter((team) => team.is_active !== false);
@@ -130,18 +127,41 @@ export async function loadPublicLeagueRecordContext(seasonId: string): Promise<P
   );
   const fixtureIds = fixtureRows.map((fixture) => fixture.id);
   const framesRes = fixtureIds.length
-    ? await admin
-        .from("league_fixture_frames")
-        .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_forfeit,away_forfeit,home_nominated,away_nominated,home_points_scored,away_points_scored")
-        .in("fixture_id", fixtureIds)
-        .order("slot_no", { ascending: true })
+    ? await fetchAllSupabasePagesByChunks<FrameRow, string>(fixtureIds, (chunk, from, to) =>
+        admin
+          .from("league_fixture_frames")
+          .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_forfeit,away_forfeit,home_nominated,away_nominated,home_points_scored,away_points_scored")
+          .in("fixture_id", chunk)
+          .order("fixture_id", { ascending: true })
+          .order("slot_no", { ascending: true })
+          .range(from, to)
+      )
     : { data: [], error: null };
   if (framesRes.error) throw new Error(framesRes.error.message);
+  const frameRows = (framesRes.data ?? []) as FrameRow[];
+  const memberRows = ((membersRes.data ?? []) as MemberRow[]).filter((member) => activeTeamIds.has(member.team_id));
+  const playerIds = Array.from(new Set([
+    ...memberRows.map((member) => member.player_id),
+    ...frameRows.flatMap((frame) => [
+      frame.home_player1_id,
+      frame.home_player2_id,
+      frame.away_player1_id,
+      frame.away_player2_id,
+    ]).filter((id): id is string => Boolean(id)),
+  ]));
+  const playersRes = playerIds.length > 0
+    ? await admin
+        .from("players")
+        .select("id,display_name,full_name,rating_snooker,snooker_handicap")
+        .in("id", playerIds)
+        .eq("is_archived", false)
+    : { data: [], error: null };
+  if (playersRes.error) throw new Error(playersRes.error.message);
 
   return {
     season: { id: (seasonRes.data as SeasonRow).id, name: (seasonRes.data as SeasonRow).name },
     teams: teamRows.map((team) => ({ id: team.id, name: team.name })),
-    members: ((membersRes.data ?? []) as MemberRow[]).filter((member) => activeTeamIds.has(member.team_id)),
+    members: memberRows,
     players: ((playersRes.data ?? []) as PlayerRow[]).map((player) => ({
       id: player.id,
       name: playerName(player),
@@ -160,7 +180,7 @@ export async function loadPublicLeagueRecordContext(seasonId: string): Promise<P
       homePoints: fixture.home_points,
       awayPoints: fixture.away_points,
     })),
-    frames: ((framesRes.data ?? []) as FrameRow[]).map((frame) => ({
+    frames: frameRows.map((frame) => ({
       fixtureId: frame.fixture_id,
       slotNo: Number(frame.slot_no),
       slotType: frame.slot_type,

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { targetHandicapFromElo } from "@/lib/snooker-rating";
+import { fetchAllSupabasePages, fetchAllSupabasePagesByChunks } from "@/lib/supabase-pagination";
 import { requireLeagueManager } from "@/lib/server-role";
 import { countsForIndividualStatistics } from "@/lib/league-player-statistics";
 
@@ -234,17 +235,25 @@ export async function GET(req: NextRequest) {
       .select("id,full_name,display_name,rating_snooker,snooker_handicap,snooker_handicap_base,rated_matches_snooker,is_archived")
       .in("id", playerIds)
       .eq("is_archived", false),
-    adminClient
-      .from("rating_events")
-      .select("player_id,rating_after,created_at")
-      .in("player_id", playerIds)
-      .order("created_at", { ascending: false }),
+    fetchAllSupabasePagesByChunks<RatingEventRow, string>(playerIds, (chunk, from, to) =>
+      adminClient
+        .from("rating_events")
+        .select("player_id,rating_after,created_at")
+        .in("player_id", chunk)
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to)
+    ),
     selectedSeason?.id
-      ? adminClient
-          .from("league_fixtures")
-          .select("id,fixture_date,status")
-          .eq("season_id", selectedSeason.id)
-          .eq("status", "complete")
+      ? fetchAllSupabasePages<FixtureRow>((from, to) =>
+          adminClient
+            .from("league_fixtures")
+            .select("id,fixture_date,status")
+            .eq("season_id", selectedSeason.id)
+            .eq("status", "complete")
+            .order("id", { ascending: true })
+            .range(from, to)
+        )
       : Promise.resolve({ data: [], error: null }),
   ]);
 
@@ -261,15 +270,24 @@ export async function GET(req: NextRequest) {
   const [framesRes, breaksRes] =
     fixtureIds.length > 0
       ? await Promise.all([
-          adminClient
-            .from("league_fixture_frames")
-            .select("fixture_id,slot_no,winner_side,home_forfeit,away_forfeit,home_nominated,away_nominated,home_player1_id,home_player2_id,away_player1_id,away_player2_id")
-            .in("fixture_id", fixtureIds),
-          adminClient
-            .from("league_fixture_breaks")
-            .select("fixture_id,player_id,break_value")
-            .in("fixture_id", fixtureIds)
-            .gte("break_value", 30),
+          fetchAllSupabasePagesByChunks<FrameRow, string>(fixtureIds, (chunk, from, to) =>
+            adminClient
+              .from("league_fixture_frames")
+              .select("fixture_id,slot_no,winner_side,home_forfeit,away_forfeit,home_nominated,away_nominated,home_player1_id,home_player2_id,away_player1_id,away_player2_id")
+              .in("fixture_id", chunk)
+              .order("fixture_id", { ascending: true })
+              .order("slot_no", { ascending: true })
+              .range(from, to)
+          ),
+          fetchAllSupabasePagesByChunks<BreakRow, string>(fixtureIds, (chunk, from, to) =>
+            adminClient
+              .from("league_fixture_breaks")
+              .select("fixture_id,player_id,break_value")
+              .in("fixture_id", chunk)
+              .gte("break_value", 30)
+              .order("fixture_id", { ascending: true })
+              .range(from, to)
+          ),
         ])
       : [{ data: [], error: null }, { data: [], error: null }];
 

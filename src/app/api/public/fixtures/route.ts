@@ -158,7 +158,7 @@ export async function GET(req: NextRequest) {
     return json({ seasons: [], season: null, fixtures: [] });
   }
 
-  const [teamsRes, fixturesRes, fixtureChangesRes] = await Promise.all([
+  const [teamsRes, fixturesRes] = await Promise.all([
     adminClient
       .from("league_teams")
       .select("id,name,is_active")
@@ -170,14 +170,9 @@ export async function GET(req: NextRequest) {
       .order("week_no", { ascending: true })
       .order("fixture_date", { ascending: true })
       .order("id", { ascending: true }),
-    adminClient
-      .from("league_fixture_change_requests")
-      .select("fixture_id,original_fixture_date,agreed_fixture_date,status,created_at")
-      .eq("status", "rescheduled")
-      .order("created_at", { ascending: false }),
   ]);
 
-  const firstError = teamsRes.error?.message || fixturesRes.error?.message || fixtureChangesRes.error?.message;
+  const firstError = teamsRes.error?.message || fixturesRes.error?.message;
   if (firstError) {
     return json({ error: firstError }, 500);
   }
@@ -186,6 +181,18 @@ export async function GET(req: NextRequest) {
   const activeTeams = teams.filter((team) => team.is_active !== false);
   const teamNameById = new Map(teams.map((team) => [team.id, team.name]));
   const fixtures = (fixturesRes.data ?? []) as FixtureRow[];
+  const fixtureIds = fixtures.map((fixture) => fixture.id);
+  const fixtureChangesRes = fixtureIds.length > 0
+    ? await adminClient
+        .from("league_fixture_change_requests")
+        .select("fixture_id,original_fixture_date,agreed_fixture_date,status,created_at")
+        .in("fixture_id", fixtureIds)
+        .eq("status", "rescheduled")
+        .order("created_at", { ascending: false })
+    : { data: [], error: null };
+  if (fixtureChangesRes.error) {
+    return json({ error: fixtureChangesRes.error.message }, 500);
+  }
   const latestRescheduleByFixtureId = new Map<string, FixtureChangeRow>();
   for (const change of (fixtureChangesRes.data ?? []) as FixtureChangeRow[]) {
     if (!latestRescheduleByFixtureId.has(change.fixture_id)) {

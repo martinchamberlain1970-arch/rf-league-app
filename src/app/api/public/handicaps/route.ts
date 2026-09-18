@@ -62,22 +62,27 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ season: null, seasons: [], isInformationOnly: false, handicaps: [] });
   }
 
-  const [playersRes, membersRes] = await Promise.all([
-    adminClient
-      .from("players")
-      .select("id,display_name,full_name,claimed_by,rating_snooker,rated_matches_snooker,snooker_handicap,snooker_handicap_base")
-      .eq("is_archived", false),
-    adminClient.from("league_team_members").select("season_id,player_id").eq("season_id", selectedSeason.id),
-  ]);
-
-  const firstError = playersRes.error?.message || membersRes.error?.message;
-  if (firstError) {
-    return NextResponse.json({ error: firstError }, { status: 500 });
+  const membersRes = await adminClient
+    .from("league_team_members")
+    .select("season_id,player_id")
+    .eq("season_id", selectedSeason.id);
+  if (membersRes.error) {
+    return NextResponse.json({ error: membersRes.error.message }, { status: 500 });
   }
 
-  const players = (playersRes.data ?? []) as PlayerRow[];
   const members = (membersRes.data ?? []) as LeagueTeamMemberRow[];
   const rosterPlayerIds = new Set(members.map((member) => member.player_id));
+  const playersRes = rosterPlayerIds.size > 0
+    ? await adminClient
+        .from("players")
+        .select("id,display_name,full_name,claimed_by,rating_snooker,rated_matches_snooker,snooker_handicap,snooker_handicap_base")
+        .in("id", Array.from(rosterPlayerIds))
+        .eq("is_archived", false)
+    : { data: [], error: null };
+  if (playersRes.error) {
+    return NextResponse.json({ error: playersRes.error.message }, { status: 500 });
+  }
+  const players = (playersRes.data ?? []) as PlayerRow[];
 
   const handicaps = players
     .filter((player) => rosterPlayerIds.has(player.id))

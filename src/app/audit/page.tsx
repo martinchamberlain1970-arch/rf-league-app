@@ -38,6 +38,7 @@ const ACTION_LABELS: Record<string, string> = {
 };
 
 const AUDIT_PAGE_SIZE = 50;
+const AUDIT_DATABASE_PAGE_SIZE = 500;
 
 function prettyAction(action: string) {
   return ACTION_LABELS[action] ?? action.replaceAll("_", " ");
@@ -77,6 +78,8 @@ export default function AuditPage() {
   const [query, setQuery] = useState("");
   const [visibleCount, setVisibleCount] = useState(AUDIT_PAGE_SIZE);
   const [message, setMessage] = useState<string | null>(null);
+  const [hasOlderRows, setHasOlderRows] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
 
   useEffect(() => {
     const run = async () => {
@@ -96,9 +99,14 @@ export default function AuditPage() {
         .from("audit_logs")
         .select("id,created_at,actor_email,actor_role,action,entity_type,entity_id,summary,meta")
         .order("created_at", { ascending: false })
-        .limit(1500);
+        .order("id", { ascending: false })
+        .range(0, AUDIT_DATABASE_PAGE_SIZE - 1);
       if (res.error) setMessage(res.error.message);
-      else setRows((res.data ?? []) as AuditRow[]);
+      else {
+        const loadedRows = (res.data ?? []) as AuditRow[];
+        setRows(loadedRows);
+        setHasOlderRows(loadedRows.length === AUDIT_DATABASE_PAGE_SIZE);
+      }
       setLoading(false);
     };
     run();
@@ -119,6 +127,27 @@ export default function AuditPage() {
   }, [query]);
 
   const visibleRows = filtered.slice(0, visibleCount);
+
+  const loadOlderRows = async () => {
+    const client = supabase;
+    if (!client || loadingOlder || !hasOlderRows) return;
+    setLoadingOlder(true);
+    const from = rows.length;
+    const res = await client
+      .from("audit_logs")
+      .select("id,created_at,actor_email,actor_role,action,entity_type,entity_id,summary,meta")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(from, from + AUDIT_DATABASE_PAGE_SIZE - 1);
+    if (res.error) {
+      setMessage(res.error.message);
+    } else {
+      const olderRows = (res.data ?? []) as AuditRow[];
+      setRows((current) => [...current, ...olderRows]);
+      setHasOlderRows(olderRows.length === AUDIT_DATABASE_PAGE_SIZE);
+    }
+    setLoadingOlder(false);
+  };
 
   return (
     <main className="min-h-screen bg-slate-100 p-4 sm:p-6">
@@ -141,7 +170,7 @@ export default function AuditPage() {
               <div className="mb-4 flex flex-col gap-3 border-b border-slate-100 pb-4 lg:flex-row lg:items-end lg:justify-between">
                 <div>
                   <p className="text-xs font-bold uppercase tracking-[0.18em] text-teal-700">Activity history</p>
-                  <h2 className="mt-1 text-xl font-black text-slate-950">{filtered.length.toLocaleString()} audit entr{filtered.length === 1 ? "y" : "ies"}</h2>
+                  <h2 className="mt-1 text-xl font-black text-slate-950">{filtered.length.toLocaleString()} loaded audit entr{filtered.length === 1 ? "y" : "ies"}</h2>
                   <p className="mt-1 text-sm text-slate-600">Most recent activity appears first. Open an entry only when you need its technical details.</p>
                 </div>
                 <p className="rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600">
@@ -218,6 +247,17 @@ export default function AuditPage() {
                         className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-bold text-slate-700 shadow-sm hover:border-teal-300 hover:bg-teal-50"
                       >
                         Load 50 more entries
+                      </button>
+                    </div>
+                  ) : hasOlderRows ? (
+                    <div className="flex justify-center pt-2">
+                      <button
+                        type="button"
+                        onClick={loadOlderRows}
+                        disabled={loadingOlder}
+                        className="rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-bold text-slate-700 shadow-sm hover:border-teal-300 hover:bg-teal-50 disabled:cursor-wait disabled:opacity-60"
+                      >
+                        {loadingOlder ? "Loading older activity..." : "Load older activity"}
                       </button>
                     </div>
                   ) : null}
