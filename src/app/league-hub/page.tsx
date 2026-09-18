@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 
 type HubTab = "fixtures" | "results" | "table" | "players" | "breaks" | "handicaps" | "notices";
+type PlayerTableMode = "singles" | "doubles" | "pairings";
 
 function isPublicPlayerId(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
@@ -55,6 +56,8 @@ type PlayerRow = {
   played: number;
   won: number;
   lost: number;
+  points_for: number;
+  points_against: number;
   win_pct: number;
 };
 
@@ -94,7 +97,7 @@ type HubData = {
   season: SeasonOption | null;
   fixtures: PublicFixture[];
   leagueTable: LeagueRow[];
-  players: PlayerRow[];
+  playerTables: Record<PlayerTableMode, PlayerRow[]>;
   breaks: HighBreakRow[];
   handicaps: HandicapRow[];
   announcement: Announcement | null;
@@ -115,6 +118,12 @@ const tabs: Array<{ id: HubTab; label: string; shortLabel: string }> = [
   { id: "breaks", label: "High Breaks", shortLabel: "Breaks" },
   { id: "handicaps", label: "Handicaps", shortLabel: "Handicaps" },
   { id: "notices", label: "League Notices", shortLabel: "Notices" },
+];
+
+const playerTableModes: Array<{ id: PlayerTableMode; label: string; description: string }> = [
+  { id: "singles", label: "Singles", description: "Individual singles-frame records" },
+  { id: "doubles", label: "Doubles players", description: "Each player’s doubles-frame record" },
+  { id: "pairings", label: "Doubles pairings", description: "Partners ranked together as a pairing" },
 ];
 
 const premierLeagueNotices: LeagueNotice[] = [
@@ -299,7 +308,7 @@ export default function LeagueHubPage() {
     season: null,
     fixtures: [],
     leagueTable: [],
-    players: [],
+    playerTables: { singles: [], doubles: [], pairings: [] },
     breaks: [],
     handicaps: [],
     announcement: null,
@@ -308,6 +317,7 @@ export default function LeagueHubPage() {
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState("");
   const [copied, setCopied] = useState(false);
+  const [playerTableMode, setPlayerTableMode] = useState<PlayerTableMode>("singles");
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -339,23 +349,29 @@ export default function LeagueHubPage() {
         }
 
         const seasonQuery = `?seasonId=${encodeURIComponent(resolvedSeasonId)}`;
-        const [boardResponse, playersResponse, breaksResponse, handicapsResponse, announcementResponse] = await Promise.all([
+        const [boardResponse, singlesResponse, doublesResponse, pairingsResponse, breaksResponse, handicapsResponse, announcementResponse] = await Promise.all([
           fetch(`/api/public/league-board${seasonQuery}`, { cache: "no-store" }),
-          fetch(`/api/public/player-table${seasonQuery}`, { cache: "no-store" }),
+          fetch(`/api/public/player-table${seasonQuery}&mode=singles`, { cache: "no-store" }),
+          fetch(`/api/public/player-table${seasonQuery}&mode=doubles`, { cache: "no-store" }),
+          fetch(`/api/public/player-table${seasonQuery}&mode=pairings`, { cache: "no-store" }),
           fetch(`/api/public/high-breaks${seasonQuery}`, { cache: "no-store" }),
           fetch(`/api/public/handicaps${seasonQuery}`, { cache: "no-store" }),
           fetch("/api/public/announcements", { cache: "no-store" }),
         ]);
-        const [boardPayload, playersPayload, breaksPayload, handicapsPayload, announcementPayload] = await Promise.all([
+        const [boardPayload, singlesPayload, doublesPayload, pairingsPayload, breaksPayload, handicapsPayload, announcementPayload] = await Promise.all([
           boardResponse.json(),
-          playersResponse.json(),
+          singlesResponse.json(),
+          doublesResponse.json(),
+          pairingsResponse.json(),
           breaksResponse.json(),
           handicapsResponse.json(),
           announcementResponse.json(),
         ]);
         const failedMessage =
           (!boardResponse.ok && boardPayload.error) ||
-          (!playersResponse.ok && playersPayload.error) ||
+          (!singlesResponse.ok && singlesPayload.error) ||
+          (!doublesResponse.ok && doublesPayload.error) ||
+          (!pairingsResponse.ok && pairingsPayload.error) ||
           (!breaksResponse.ok && breaksPayload.error) ||
           (!handicapsResponse.ok && handicapsPayload.error) ||
           (!announcementResponse.ok && announcementPayload.error);
@@ -367,7 +383,11 @@ export default function LeagueHubPage() {
           season: fixturesPayload.season ?? null,
           fixtures: fixturesPayload.fixtures ?? [],
           leagueTable: boardPayload.leagueTable ?? [],
-          players: playersPayload.players ?? [],
+          playerTables: {
+            singles: singlesPayload.players ?? [],
+            doubles: doublesPayload.players ?? [],
+            pairings: pairingsPayload.players ?? [],
+          },
           breaks: breaksPayload.rows ?? [],
           handicaps: handicapsPayload.handicaps ?? [],
           announcement: announcementPayload.announcement ?? null,
@@ -515,8 +535,50 @@ export default function LeagueHubPage() {
 
         {!error && !loading && data.season && activeTab === "players" ? (
           <section className="overflow-hidden rounded-3xl border border-white/10 bg-slate-900/80 shadow-xl shadow-black/10">
-            {data.players.length === 0 ? <p className="p-8 text-center text-slate-300">Player standings will appear after results are approved.</p> : (
-              <div className="overflow-x-auto"><table className="min-w-full text-sm sm:text-base"><thead className="bg-white/5 text-left text-slate-300"><tr><th className="px-3 py-3">#</th><th className="px-3 py-3">Player</th><th className="px-3 py-3">Team</th><th className="px-3 py-3 text-center">App</th><th className="px-3 py-3 text-center">P</th><th className="px-3 py-3 text-center">W</th><th className="px-3 py-3 text-center">L</th><th className="px-3 py-3 text-center">Win %</th></tr></thead><tbody>{data.players.map((row) => <tr key={row.player_id} className="border-t border-white/5 text-slate-100"><td className="px-3 py-3 font-semibold text-cyan-300">{row.rank}</td><td className="px-3 py-3 font-medium"><Link href={`/league-hub/player/${row.player_id}?seasonId=${encodeURIComponent(data.season?.id ?? selectedSeasonId)}`} className="underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-200">{row.player_name}</Link></td><td className="px-3 py-3 text-slate-300">{row.team_id ? <Link href={`/league-hub/team/${row.team_id}?seasonId=${encodeURIComponent(data.season?.id ?? selectedSeasonId)}`} className="underline decoration-cyan-400/30 underline-offset-4 hover:text-cyan-200">{row.team_name}</Link> : row.team_name}</td><td className="px-3 py-3 text-center">{row.appearances}</td><td className="px-3 py-3 text-center">{row.played}</td><td className="px-3 py-3 text-center">{row.won}</td><td className="px-3 py-3 text-center">{row.lost}</td><td className="px-3 py-3 text-center font-bold text-emerald-300">{row.win_pct}%</td></tr>)}</tbody></table></div>
+            <div className="border-b border-white/10 bg-white/[0.03] p-4">
+              <div className="grid gap-2 sm:grid-cols-3" aria-label="Player standings type">
+                {playerTableModes.map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setPlayerTableMode(option.id)}
+                    aria-pressed={playerTableMode === option.id}
+                    className={`rounded-2xl border px-4 py-3 text-left transition ${
+                      playerTableMode === option.id
+                        ? "border-cyan-300 bg-cyan-400 text-slate-950"
+                        : "border-white/10 bg-white/5 text-slate-100 hover:bg-white/10"
+                    }`}
+                  >
+                    <span className="block text-sm font-black">{option.label}</span>
+                    <span className={`mt-1 block text-xs ${playerTableMode === option.id ? "text-slate-800" : "text-slate-400"}`}>{option.description}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+            {data.playerTables[playerTableMode].length === 0 ? (
+              <p className="p-8 text-center text-slate-300">
+                {playerTableMode === "pairings" ? "Doubles pairings will appear after completed doubles frames are approved." : `${playerTableMode === "singles" ? "Singles" : "Doubles"} standings will appear after results are approved.`}
+              </p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm sm:text-base">
+                  <thead className="bg-white/5 text-left text-slate-300">
+                    <tr><th className="px-3 py-3">#</th><th className="px-3 py-3">{playerTableMode === "pairings" ? "Pairing" : "Player"}</th><th className="px-3 py-3">Team</th><th className="px-3 py-3 text-center">App</th><th className="px-3 py-3 text-center">P</th><th className="px-3 py-3 text-center">W</th><th className="px-3 py-3 text-center">L</th><th className="px-3 py-3 text-center">PF</th><th className="px-3 py-3 text-center">PA</th><th className="px-3 py-3 text-center">Win %</th></tr>
+                  </thead>
+                  <tbody>
+                    {data.playerTables[playerTableMode].map((row) => (
+                      <tr key={row.player_id} className="border-t border-white/5 text-slate-100">
+                        <td className="px-3 py-3 font-semibold text-cyan-300">{row.rank}</td>
+                        <td className="px-3 py-3 font-medium">
+                          {playerTableMode === "pairings" ? row.player_name : <Link href={`/league-hub/player/${row.player_id}?seasonId=${encodeURIComponent(data.season?.id ?? selectedSeasonId)}`} className="underline decoration-cyan-400/40 underline-offset-4 hover:text-cyan-200">{row.player_name}</Link>}
+                        </td>
+                        <td className="px-3 py-3 text-slate-300">{row.team_id ? <Link href={`/league-hub/team/${row.team_id}?seasonId=${encodeURIComponent(data.season?.id ?? selectedSeasonId)}`} className="underline decoration-cyan-400/30 underline-offset-4 hover:text-cyan-200">{row.team_name}</Link> : row.team_name}</td>
+                        <td className="px-3 py-3 text-center">{row.appearances}</td><td className="px-3 py-3 text-center">{row.played}</td><td className="px-3 py-3 text-center">{row.won}</td><td className="px-3 py-3 text-center">{row.lost}</td><td className="px-3 py-3 text-center">{row.points_for}</td><td className="px-3 py-3 text-center">{row.points_against}</td><td className="px-3 py-3 text-center font-bold text-emerald-300">{row.win_pct}%</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             )}
           </section>
         ) : null}
