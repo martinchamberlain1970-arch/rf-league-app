@@ -3,6 +3,7 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { requireLeagueManager } from "@/lib/server-role";
 import { logServerAudit } from "@/lib/server-audit";
 import { buildLeagueInvoicePreview } from "@/lib/league-invoice";
+import { fetchAllSupabasePages } from "@/lib/supabase-pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -33,13 +34,27 @@ function responseForError(error: unknown) {
 
 async function loadBillingData(client: SupabaseClient) {
   const [seasonsRes, teamsRes, locationsRes, playersRes, membersRes, competitionsRes, entriesRes] = await Promise.all([
-    client.from("league_seasons").select("id,name,is_active,is_published,created_at").order("created_at", { ascending: false }),
-    client.from("league_teams").select("id,season_id,location_id,name,is_active"),
-    client.from("locations").select("id,name").order("name"),
-    client.from("players").select("id,display_name,full_name,location_id"),
-    client.from("league_team_members").select("team_id,player_id,is_captain,is_vice_captain"),
-    client.from("competitions").select("id,name,signup_open,signup_deadline,is_archived,is_completed,created_at").eq("competition_format", "knockout").order("created_at", { ascending: false }),
-    client.from("competition_entries").select("id,competition_id,player_id,status,note"),
+    fetchAllSupabasePages((from, to) =>
+      client.from("league_seasons").select("id,name,is_active,is_published,created_at").order("created_at", { ascending: false }).order("id", { ascending: true }).range(from, to)
+    ),
+    fetchAllSupabasePages((from, to) =>
+      client.from("league_teams").select("id,season_id,location_id,name,is_active").order("id", { ascending: true }).range(from, to)
+    ),
+    fetchAllSupabasePages((from, to) =>
+      client.from("locations").select("id,name").order("name", { ascending: true }).order("id", { ascending: true }).range(from, to)
+    ),
+    fetchAllSupabasePages((from, to) =>
+      client.from("players").select("id,display_name,full_name,location_id").order("id", { ascending: true }).range(from, to)
+    ),
+    fetchAllSupabasePages((from, to) =>
+      client.from("league_team_members").select("team_id,player_id,is_captain,is_vice_captain").order("team_id", { ascending: true }).order("player_id", { ascending: true }).range(from, to)
+    ),
+    fetchAllSupabasePages((from, to) =>
+      client.from("competitions").select("id,name,signup_open,signup_deadline,is_archived,is_completed,created_at").eq("competition_format", "knockout").order("created_at", { ascending: false }).order("id", { ascending: true }).range(from, to)
+    ),
+    fetchAllSupabasePages((from, to) =>
+      client.from("competition_entries").select("id,competition_id,player_id,status,note").order("id", { ascending: true }).range(from, to)
+    ),
   ]);
   const firstError = seasonsRes.error?.message || teamsRes.error?.message || locationsRes.error?.message || playersRes.error?.message || membersRes.error?.message || competitionsRes.error?.message || entriesRes.error?.message;
   if (firstError) throw new Error(firstError);

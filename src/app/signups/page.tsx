@@ -8,6 +8,7 @@ import MessageModal from "@/components/MessageModal";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
 import { competitionAgeRule } from "@/lib/public-competition-entry";
+import { fetchAllSupabasePages } from "@/lib/supabase-pagination";
 
 type Competition = {
   id: string;
@@ -114,20 +115,30 @@ export default function CompetitionSignupsPage() {
         .eq("is_completed", false)
         .eq("signup_open", true)
         .order("name"),
-      client
-        .from("competition_entries")
-        .select("id,competition_id,requester_user_id,player_id,entrant_date_of_birth,status,created_at,reviewed_at,note")
-        .order("created_at", { ascending: false }),
-      client.from("players").select("id,display_name,full_name,date_of_birth"),
+      fetchAllSupabasePages<Entry>((from, to) =>
+        client
+          .from("competition_entries")
+          .select("id,competition_id,requester_user_id,player_id,entrant_date_of_birth,status,created_at,reviewed_at,note")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to)
+      ),
+      fetchAllSupabasePages<Player>((from, to) =>
+        client.from("players").select("id,display_name,full_name,date_of_birth").order("id", { ascending: true }).range(from, to)
+      ),
       client.from("app_users").select("id,linked_player_id").eq("id", uid).maybeSingle(),
       client.from("locations").select("id,name"),
     ]);
     let entryRows: Entry[] = [];
     if (entryResWithDob.error && entryResWithDob.error.message.toLowerCase().includes("entrant_date_of_birth")) {
-      const entryResFallback = await client
-        .from("competition_entries")
-        .select("id,competition_id,requester_user_id,player_id,status,created_at,reviewed_at,note")
-        .order("created_at", { ascending: false });
+      const entryResFallback = await fetchAllSupabasePages<Entry>((from, to) =>
+        client
+          .from("competition_entries")
+          .select("id,competition_id,requester_user_id,player_id,status,created_at,reviewed_at,note")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to)
+      );
       if (entryResFallback.error) {
         setMessage(compRes.error?.message || entryResFallback.error?.message || playerResWithDob.error?.message || locationRes.error?.message || "Failed to load sign-ups.");
         return;
@@ -142,7 +153,9 @@ export default function CompetitionSignupsPage() {
 
     let playerRows: Player[] = [];
     if (playerResWithDob.error && playerResWithDob.error.message.toLowerCase().includes("date_of_birth")) {
-      const playerResFallback = await client.from("players").select("id,display_name,full_name");
+      const playerResFallback = await fetchAllSupabasePages<Player>((from, to) =>
+        client.from("players").select("id,display_name,full_name").order("id", { ascending: true }).range(from, to)
+      );
       if (playerResFallback.error) {
         setMessage(compRes.error?.message || playerResFallback.error?.message || locationRes.error?.message || "Failed to load sign-ups.");
         return;

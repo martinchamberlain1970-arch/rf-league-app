@@ -9,6 +9,7 @@ import useAdminStatus from "@/components/useAdminStatus";
 import ConfirmModal from "@/components/ConfirmModal";
 import InfoModal from "@/components/InfoModal";
 import MessageModal from "@/components/MessageModal";
+import { fetchAllSupabasePages } from "@/lib/supabase-pagination";
 
 type Player = { id: string; full_name: string | null; display_name: string };
 type AppUser = { id: string; email: string | null; linked_player_id: string | null; role?: string | null };
@@ -57,18 +58,30 @@ export default function SignupRequestsPage() {
       return m.includes("could not find the table") || m.includes("does not exist");
     };
     const [claimRes, locRes, playerRes, userRes] = await Promise.all([
-      client
-        .from("player_claim_requests")
-        .select("id,player_id,requester_user_id,requested_full_name,status,created_at")
-        .eq("status", "pending")
-        .order("created_at", { ascending: false }),
-      client
-        .from("location_requests")
-        .select("id,requester_user_id,requester_email,requester_full_name,requested_location_name,status,created_at")
-        .eq("status", "pending")
-        .order("created_at", { ascending: false }),
-      client.from("players").select("id,full_name,display_name"),
-      client.from("app_users").select("id,email,linked_player_id,role"),
+      fetchAllSupabasePages<ClaimRequest>((from, to) =>
+        client
+          .from("player_claim_requests")
+          .select("id,player_id,requester_user_id,requested_full_name,status,created_at")
+          .eq("status", "pending")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to)
+      ),
+      fetchAllSupabasePages<LocationRequest>((from, to) =>
+        client
+          .from("location_requests")
+          .select("id,requester_user_id,requester_email,requester_full_name,requested_location_name,status,created_at")
+          .eq("status", "pending")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to)
+      ),
+      fetchAllSupabasePages<Player>((from, to) =>
+        client.from("players").select("id,full_name,display_name").order("id", { ascending: true }).range(from, to)
+      ),
+      fetchAllSupabasePages<AppUser>((from, to) =>
+        client.from("app_users").select("id,email,linked_player_id,role").order("id", { ascending: true }).range(from, to)
+      ),
     ]);
 
     const firstError =

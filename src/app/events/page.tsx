@@ -12,6 +12,7 @@ import { calculateAdjustedScoresWithCap } from "@/lib/snooker-handicap";
 import ConfirmModal from "@/components/ConfirmModal";
 import InfoModal from "@/components/InfoModal";
 import MessageModal from "@/components/MessageModal";
+import { fetchAllSupabasePages, fetchAllSupabasePagesByChunks } from "@/lib/supabase-pagination";
 
 type Competition = {
   id: string;
@@ -27,6 +28,7 @@ type Competition = {
 };
 
 type MatchRow = {
+  id: string;
   competition_id: string;
   status: "pending" | "in_progress" | "complete" | "bye";
   updated_at: string;
@@ -297,12 +299,23 @@ function EventsPageContent() {
         const memberTeamIds = Array.from(new Set(members.map((m) => m.team_id)));
 
         const [teamsRes, fixturesRes, sessionRes] = await Promise.all([
-          client.from("league_teams").select("id,name,season_id").in("season_id", relevantSeasonIds),
-          client
-            .from("league_fixtures")
-            .select("id,season_id,week_no,fixture_date,home_team_id,away_team_id,status,home_points,away_points")
-            .in("season_id", relevantSeasonIds)
-            .order("fixture_date", { ascending: true }),
+          fetchAllSupabasePagesByChunks<LeagueTeam, string>(relevantSeasonIds, (chunk, from, to) =>
+            client
+              .from("league_teams")
+              .select("id,name,season_id")
+              .in("season_id", chunk)
+              .order("id", { ascending: true })
+              .range(from, to)
+          ),
+          fetchAllSupabasePagesByChunks<LeagueFixture, string>(relevantSeasonIds, (chunk, from, to) =>
+            client
+              .from("league_fixtures")
+              .select("id,season_id,week_no,fixture_date,home_team_id,away_team_id,status,home_points,away_points")
+              .in("season_id", chunk)
+              .order("fixture_date", { ascending: true })
+              .order("id", { ascending: true })
+              .range(from, to)
+          ),
           client.auth.getSession(),
         ]);
         const teamMap = new Map(((teamsRes.data ?? []) as LeagueTeam[]).map((t) => [t.id, t.name]));
@@ -369,31 +382,56 @@ function EventsPageContent() {
         setSeasonFixtures(allSeasonFixtures);
         const fixtureIds = allSeasonFixtures.map((f) => f.id);
         const ratingSourceIds = fixtureIds.map((id) => `league_fixture:${id}`);
-        const [membersResAll, framesResAll, playersResAll, receiptResAll] = await Promise.all([
-          client
-            .from("league_team_members")
-            .select("season_id,team_id,player_id")
-            .in("season_id", relevantSeasonIds),
-          fixtureIds.length
-            ? client
-                .from("league_fixture_frames")
-                .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored,home_forfeit,away_forfeit")
-                .in("fixture_id", fixtureIds)
-            : Promise.resolve({ data: [] as LeagueFramePerf[] }),
+        const [membersResAll, framesResAll, receiptResAll] = await Promise.all([
+          fetchAllSupabasePagesByChunks<LeagueTeamMember, string>(relevantSeasonIds, (chunk, from, to) =>
+            client
+              .from("league_team_members")
+              .select("season_id,team_id,player_id")
+              .in("season_id", chunk)
+              .order("id", { ascending: true })
+              .range(from, to)
+          ),
+          fetchAllSupabasePagesByChunks<LeagueFramePerf, string>(fixtureIds, (chunk, from, to) =>
+            client
+              .from("league_fixture_frames")
+              .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored,home_forfeit,away_forfeit")
+              .in("fixture_id", chunk)
+              .order("fixture_id", { ascending: true })
+              .order("slot_no", { ascending: true })
+              .range(from, to)
+          ),
+          fetchAllSupabasePagesByChunks<RatingReceipt, string>(ratingSourceIds, (chunk, from, to) =>
+            client
+              .from("rating_result_receipts")
+              .select("source_result_id,status,metadata")
+              .eq("source_app", "league")
+              .in("source_result_id", chunk)
+              .order("source_result_id", { ascending: true })
+              .range(from, to)
+          ),
+        ]);
+        const seasonMembers = (membersResAll.data ?? []) as LeagueTeamMember[];
+        const seasonFrames = (framesResAll.data ?? []) as LeagueFramePerf[];
+        const seasonPlayerIds = Array.from(new Set([
+          ...seasonMembers.map((member) => member.player_id),
+          ...seasonFrames.flatMap((frame) => [
+            frame.home_player1_id,
+            frame.home_player2_id,
+            frame.away_player1_id,
+            frame.away_player2_id,
+          ]).filter((id): id is string => Boolean(id)),
+        ]));
+        const playersResAll = await fetchAllSupabasePagesByChunks<LeaguePlayer, string>(seasonPlayerIds, (chunk, from, to) =>
           client
             .from("players")
             .select("id,display_name,full_name,rating_snooker,snooker_handicap")
-            .eq("is_archived", false),
-          ratingSourceIds.length
-            ? client
-                .from("rating_result_receipts")
-                .select("source_result_id,status,metadata")
-                .eq("source_app", "league")
-                .in("source_result_id", ratingSourceIds)
-            : Promise.resolve({ data: [] as RatingReceipt[] }),
-        ]);
-        setSeasonMembers((membersResAll.data ?? []) as LeagueTeamMember[]);
-        setSeasonFrames((framesResAll.data ?? []) as LeagueFramePerf[]);
+            .in("id", chunk)
+            .eq("is_archived", false)
+            .order("id", { ascending: true })
+            .range(from, to)
+        );
+        setSeasonMembers(seasonMembers);
+        setSeasonFrames(seasonFrames);
         setSeasonPlayers((playersResAll.data ?? []) as LeaguePlayer[]);
         setRatingReceipts((receiptResAll.data ?? []) as RatingReceipt[]);
 
@@ -493,20 +531,32 @@ function EventsPageContent() {
         return;
       }
 
-      const matchesPromise = client
-        .from("matches")
-        .select("competition_id,status,updated_at,is_archived");
-      const compRes = await client
-        .from("competitions")
-        .select("id,name,sport_type,competition_format,match_mode,best_of,is_practice,is_archived,is_completed,created_at")
-        .order("created_at", { ascending: false });
+      const matchesPromise = fetchAllSupabasePages<MatchRow>((from, to) =>
+        client
+          .from("matches")
+          .select("id,competition_id,status,updated_at,is_archived")
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
+      const compRes = await fetchAllSupabasePages<Competition>((from, to) =>
+        client
+          .from("competitions")
+          .select("id,name,sport_type,competition_format,match_mode,best_of,is_practice,is_archived,is_completed,created_at")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to)
+      );
       let competitionRows = compRes.data as Competition[] | null;
       let competitionError = compRes.error;
       if (competitionError && isMissingCompetitionColumn(competitionError.message, "is_practice")) {
-        const legacyRes = await client
-          .from("competitions")
-          .select("id,name,sport_type,competition_format,match_mode,best_of,is_archived,is_completed,created_at")
-          .order("created_at", { ascending: false });
+        const legacyRes = await fetchAllSupabasePages<Omit<Competition, "is_practice">>((from, to) =>
+          client
+            .from("competitions")
+            .select("id,name,sport_type,competition_format,match_mode,best_of,is_archived,is_completed,created_at")
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(from, to)
+        );
         competitionRows = legacyRes.data?.map((competition) => ({ ...competition, is_practice: false })) as Competition[] | null;
         competitionError = legacyRes.error;
       }

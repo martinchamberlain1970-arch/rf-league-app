@@ -12,6 +12,7 @@ import InfoModal from "@/components/InfoModal";
 import MessageModal from "@/components/MessageModal";
 import { useAppDialog } from "@/components/AppDialogProvider";
 import { appRoleLabel, isSuperRole, normalizeAppRole, type AppRole } from "@/lib/app-roles";
+import { fetchAllSupabasePages } from "@/lib/supabase-pagination";
 
 type Player = {
   id: string;
@@ -291,10 +292,14 @@ function PlayersPageContent() {
       return;
     }
     setLoading(true);
-    const { data, error } = await client
-      .from("players")
-      .select("id,display_name,full_name,date_of_birth,avatar_url,is_archived,claimed_by,location_id,age_band,guardian_consent,guardian_user_id")
-      .order("display_name", { ascending: true });
+    const { data, error } = await fetchAllSupabasePages<Player>((from, to) =>
+      client
+        .from("players")
+        .select("id,display_name,full_name,date_of_birth,avatar_url,is_archived,claimed_by,location_id,age_band,guardian_consent,guardian_user_id")
+        .order("display_name", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to)
+    );
     setLoading(false);
     if (error || !data) {
       setMessage(`Failed to load players: ${error?.message ?? "Unknown error"}`);
@@ -314,10 +319,14 @@ function PlayersPageContent() {
   const loadClaims = async () => {
     const client = supabase;
     if (!client) return;
-    const { data, error } = await client
-      .from("player_claim_requests")
-      .select("id,player_id,requester_user_id,requested_full_name,requested_date_of_birth,status,created_at")
-      .order("created_at", { ascending: false });
+    const { data, error } = await fetchAllSupabasePages<ClaimRequest>((from, to) =>
+      client
+        .from("player_claim_requests")
+        .select("id,player_id,requester_user_id,requested_full_name,requested_date_of_birth,status,created_at")
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to)
+    );
     if (error || !data) return;
     setClaims(data as ClaimRequest[]);
   };
@@ -418,18 +427,26 @@ function PlayersPageContent() {
   const loadUsers = async () => {
     const client = supabase;
     if (!client) return;
-    const withRole = await client
-      .from("app_users")
-      .select("id,email,linked_player_id,created_at,role,quick_match_enabled,competition_create_enabled")
-      .order("created_at", { ascending: false });
+    const withRole = await fetchAllSupabasePages<AppUser>((from, to) =>
+      client
+        .from("app_users")
+        .select("id,email,linked_player_id,created_at,role,quick_match_enabled,competition_create_enabled")
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to)
+    );
     if (!withRole.error && withRole.data) {
       setAppUsers(withRole.data as AppUser[]);
       return;
     }
-    const { data, error } = await client
-      .from("app_users")
-      .select("id,email,linked_player_id,created_at")
-      .order("created_at", { ascending: false });
+    const { data, error } = await fetchAllSupabasePages<AppUser>((from, to) =>
+      client
+        .from("app_users")
+        .select("id,email,linked_player_id,created_at")
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to)
+    );
     if (error || !data) return;
     setAppUsers(data as AppUser[]);
   };

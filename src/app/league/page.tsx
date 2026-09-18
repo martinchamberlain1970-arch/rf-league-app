@@ -32,6 +32,7 @@ import SeasonRosterEditor from "@/components/league/SeasonRosterEditor";
 import { useAppDialog } from "@/components/AppDialogProvider";
 import { supabase } from "@/lib/supabase";
 import { calculateAdjustedScoresWithCap, MAX_SNOOKER_START } from "@/lib/snooker-handicap";
+import { fetchAllSupabasePages } from "@/lib/supabase-pagination";
 
 type Location = {
   id: string;
@@ -1722,29 +1723,33 @@ function LeaguePageContent() {
     }
     setLoading(true);
     const membersPromise = (async () => {
-      const result = await client.from("league_team_members").select("id,season_id,team_id,player_id,is_captain,is_vice_captain,is_match_scorer");
+      const result = await fetchAllSupabasePages<TeamMember>((from, to) =>
+        client
+          .from("league_team_members")
+          .select("id,season_id,team_id,player_id,is_captain,is_vice_captain,is_match_scorer")
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
       if (!result.error || !result.error.message.toLowerCase().includes("is_match_scorer")) return result;
-      const fallback = await client.from("league_team_members").select("id,season_id,team_id,player_id,is_captain,is_vice_captain");
+      const fallback = await fetchAllSupabasePages<Omit<TeamMember, "is_match_scorer">>((from, to) =>
+        client
+          .from("league_team_members")
+          .select("id,season_id,team_id,player_id,is_captain,is_vice_captain")
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
       return {
         ...fallback,
         data: (fallback.data ?? []).map((member) => ({ ...member, is_match_scorer: false })),
       };
     })();
-    const slotsPromise = (async () => {
-      const pageSize = 1000;
-      const rows: FrameSlot[] = [];
-      for (let from = 0; ; from += pageSize) {
-        const page = await client
+    const slotsPromise = fetchAllSupabasePages<FrameSlot>((from, to) =>
+      client
           .from("league_fixture_frames")
           .select("id,fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_forfeit,away_forfeit,winner_side,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored")
           .order("id", { ascending: true })
-          .range(from, from + pageSize - 1);
-        if (page.error) return { data: null, error: page.error };
-        const pageRows = (page.data ?? []) as FrameSlot[];
-        rows.push(...pageRows);
-        if (pageRows.length < pageSize) return { data: rows, error: null };
-      }
-    })();
+          .range(from, to)
+    );
     const [
       authRes,
       locRes,
@@ -1764,47 +1769,109 @@ function LeaguePageContent() {
     ] = await Promise.all([
       client.auth.getUser(),
       client.from("locations").select("id,name,address,contact_phone,contact_email,snooker_table_count").order("name"),
-      client
-        .from("players")
-        .select("id,display_name,full_name,location_id,claimed_by,date_of_birth,rating_snooker,snooker_handicap,snooker_handicap_base")
-        .eq("is_archived", false),
+      fetchAllSupabasePages<Player>((from, to) =>
+        client
+          .from("players")
+          .select("id,display_name,full_name,location_id,claimed_by,date_of_birth,rating_snooker,snooker_handicap,snooker_handicap_base")
+          .eq("is_archived", false)
+          .order("id", { ascending: true })
+          .range(from, to)
+      ),
       client
         .from("league_seasons")
         .select("id,name,location_id,is_active,is_published,published_at,created_at,handicap_enabled,handicap_max_start,handicap_review_interval_weeks,rating_tracking_enabled,fixture_cycles,miss_rule,singles_count,doubles_count")
         .order("created_at", { ascending: false }),
-      client
-        .from("league_teams")
-        .select("id,season_id,location_id,name,is_active,captain_email,captain_phone,vice_captain_email,vice_captain_phone"),
+      fetchAllSupabasePages<Team>((from, to) =>
+        client
+          .from("league_teams")
+          .select("id,season_id,location_id,name,is_active,captain_email,captain_phone,vice_captain_email,vice_captain_phone")
+          .order("id", { ascending: true })
+          .range(from, to)
+      ),
       membersPromise,
-      client.from("league_entry_packs").select("team_id,season_id,status"),
-      client.from("league_fixtures").select("id,season_id,location_id,week_no,fixture_date,home_team_id,away_team_id,status,home_points,away_points").order("fixture_date", { ascending: true }),
+      fetchAllSupabasePages<LeagueEntryPackSummary>((from, to) =>
+        client
+          .from("league_entry_packs")
+          .select("team_id,season_id,status")
+          .order("season_id", { ascending: true })
+          .order("team_id", { ascending: true })
+          .range(from, to)
+      ),
+      fetchAllSupabasePages<Fixture>((from, to) =>
+        client
+          .from("league_fixtures")
+          .select("id,season_id,location_id,week_no,fixture_date,home_team_id,away_team_id,status,home_points,away_points")
+          .order("fixture_date", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to)
+      ),
       slotsPromise,
-      client.from("league_table").select("team_id,team_name,played,points,frames_for,frames_against,frame_diff"),
-      client
-        .from("league_result_submissions")
-        .select("id,fixture_id,season_id,location_id,submitted_by_user_id,submitter_team_id,frame_results,scorecard_photo_url,status,rejection_reason,created_at")
-        .order("created_at", { ascending: false }),
-      client
-        .from("league_handicap_history")
-        .select("id,player_id,season_id,fixture_id,change_type,delta,previous_handicap,new_handicap,reason,changed_by_user_id,created_at")
-        .order("created_at", { ascending: false })
-        .limit(800),
-      client
-        .from("competitions")
-        .select("id,name,sport_type,competition_format,match_mode,best_of,knockout_round_best_of,signup_open,signup_deadline,final_scheduled_at,final_venue_location_id,max_entries,is_archived,is_completed,created_at")
-        .order("created_at", { ascending: false }),
-      client
-        .from("competition_entries")
-        .select("id,competition_id,requester_user_id,player_id,status,created_at")
-        .order("created_at", { ascending: false }),
-      client
-        .from("competition_round_deadlines")
-        .select("id,competition_id,round_no,deadline_at,created_at")
-        .order("competition_id", { ascending: true })
-        .order("round_no", { ascending: true }),
+      fetchAllSupabasePages<TableRow>((from, to) =>
+        client
+          .from("league_table")
+          .select("team_id,team_name,played,points,frames_for,frames_against,frame_diff")
+          .order("team_id", { ascending: true })
+          .range(from, to)
+      ),
+      fetchAllSupabasePages<LeagueSubmission>((from, to) =>
+        client
+          .from("league_result_submissions")
+          .select("id,fixture_id,season_id,location_id,submitted_by_user_id,submitter_team_id,frame_results,scorecard_photo_url,status,rejection_reason,created_at")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to)
+      ),
+      fetchAllSupabasePages<HandicapHistoryEntry>((from, to) =>
+        client
+          .from("league_handicap_history")
+          .select("id,player_id,season_id,fixture_id,change_type,delta,previous_handicap,new_handicap,reason,changed_by_user_id,created_at")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to)
+      ),
+      fetchAllSupabasePages<LeagueCompetition>((from, to) =>
+        client
+          .from("competitions")
+          .select("id,name,sport_type,competition_format,match_mode,best_of,knockout_round_best_of,signup_open,signup_deadline,final_scheduled_at,final_venue_location_id,max_entries,is_archived,is_completed,created_at")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to)
+      ),
+      fetchAllSupabasePages<LeagueCompetitionEntry>((from, to) =>
+        client
+          .from("competition_entries")
+          .select("id,competition_id,requester_user_id,player_id,status,created_at")
+          .order("created_at", { ascending: false })
+          .order("id", { ascending: false })
+          .range(from, to)
+      ),
+      fetchAllSupabasePages<CompetitionRoundDeadline>((from, to) =>
+        client
+          .from("competition_round_deadlines")
+          .select("id,competition_id,round_no,deadline_at,created_at")
+          .order("competition_id", { ascending: true })
+          .order("round_no", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to)
+      ),
     ]);
-    const regTeamsRes = await client.from("league_registered_teams").select("id,name,location_id").order("name");
-    const regMembersRes = await client.from("league_registered_team_members").select("id,team_id,player_id,is_captain,is_vice_captain");
+    const [regTeamsRes, regMembersRes] = await Promise.all([
+      fetchAllSupabasePages<RegisteredTeam>((from, to) =>
+        client
+          .from("league_registered_teams")
+          .select("id,name,location_id")
+          .order("name", { ascending: true })
+          .order("id", { ascending: true })
+          .range(from, to)
+      ),
+      fetchAllSupabasePages<RegisteredTeamMember>((from, to) =>
+        client
+          .from("league_registered_team_members")
+          .select("id,team_id,player_id,is_captain,is_vice_captain")
+          .order("id", { ascending: true })
+          .range(from, to)
+      ),
+    ]);
 
     const userId = authRes.data.user?.id ?? null;
     setCurrentUserId(userId);
@@ -1849,7 +1916,13 @@ function LeaguePageContent() {
     let playerRows = playersRes.data ?? [];
     let playerErrorMessage = playersRes.error?.message ?? null;
     if (playersRes.error && playersRes.error.message.toLowerCase().includes("is_archived")) {
-      const fallbackPlayers = await client.from("players").select("id,display_name,full_name,location_id,claimed_by");
+      const fallbackPlayers = await fetchAllSupabasePages<Pick<Player, "id" | "display_name" | "full_name" | "location_id" | "claimed_by">>((from, to) =>
+        client
+          .from("players")
+          .select("id,display_name,full_name,location_id,claimed_by")
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
       if (!fallbackPlayers.error) {
         playerRows = (fallbackPlayers.data ?? []).map((p) => ({
           ...p,
@@ -1870,7 +1943,13 @@ function LeaguePageContent() {
         teamsRes.error.message.toLowerCase().includes("vice_captain_email") ||
         teamsRes.error.message.toLowerCase().includes("vice_captain_phone"))
     ) {
-      const fallbackTeams = await client.from("league_teams").select("id,season_id,location_id,name,is_active");
+      const fallbackTeams = await fetchAllSupabasePages<Pick<Team, "id" | "season_id" | "location_id" | "name" | "is_active">>((from, to) =>
+        client
+          .from("league_teams")
+          .select("id,season_id,location_id,name,is_active")
+          .order("id", { ascending: true })
+          .range(from, to)
+      );
       if (!fallbackTeams.error) {
         teamRows = (fallbackTeams.data ?? []).map((team) => ({
           ...team,

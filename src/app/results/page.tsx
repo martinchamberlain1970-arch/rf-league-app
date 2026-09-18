@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabase";
 import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
 import ConfirmModal from "@/components/ConfirmModal";
+import { fetchAllSupabasePages, fetchAllSupabasePagesByChunks } from "@/lib/supabase-pagination";
 
 type SubmissionBreakEntry = {
   player_id?: string | null;
@@ -179,16 +180,15 @@ function ResultsQueuePageContent() {
     }
     if (!admin.loading && !admin.isAdmin && !admin.userId) return;
 
-    let query = client
-      .from("league_result_submissions")
-      .select("id,fixture_id,submitted_by_user_id,created_at,status,rejection_reason,frame_results,submission_source,public_submitter_name,public_submitter_team_id,public_both_teams_confirmed,scorecard_photo_path,scorecard_evidence_deleted_at")
-      .order("created_at", { ascending: false });
-
-    if (!admin.isAdmin && admin.userId) {
-      query = query.eq("submitted_by_user_id", admin.userId);
-    }
-
-    const sRes = await query;
+    const sRes = await fetchAllSupabasePages<LeagueSubmission>((from, to) => {
+      let pageQuery = client
+        .from("league_result_submissions")
+        .select("id,fixture_id,submitted_by_user_id,created_at,status,rejection_reason,frame_results,submission_source,public_submitter_name,public_submitter_team_id,public_both_teams_confirmed,scorecard_photo_path,scorecard_evidence_deleted_at")
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false });
+      if (!admin.isAdmin && admin.userId) pageQuery = pageQuery.eq("submitted_by_user_id", admin.userId);
+      return pageQuery.range(from, to);
+    });
     if (sRes.error) {
       setMessage(sRes.error.message || "Failed to load results queue.");
       return;
@@ -197,12 +197,14 @@ function ResultsQueuePageContent() {
     const submissionRows = (sRes.data ?? []) as LeagueSubmission[];
     setSubmissions(submissionRows);
 
-    const [competitionSubmissionRes] = await Promise.all([
+    const competitionSubmissionRes = await fetchAllSupabasePages<CompetitionSubmission>((from, to) =>
       client
         .from("competition_result_submissions")
         .select("id,match_id,competition_id,submitted_by_user_id,created_at,status,rejection_reason,payload")
-        .order("created_at", { ascending: false }),
-    ]);
+        .order("created_at", { ascending: false })
+        .order("id", { ascending: false })
+        .range(from, to)
+    );
 
     const sessionRes = await client.auth.getSession();
     const token = sessionRes.data.session?.access_token;
@@ -219,25 +221,26 @@ function ResultsQueuePageContent() {
       loadedFixtureChangeRequests = payload.rows ?? [];
       setFixtureChangeRequests(loadedFixtureChangeRequests);
     }
-    if (!competitionSubmissionRes.error) {
-      setCompetitionSubmissions((competitionSubmissionRes.data ?? []) as CompetitionSubmission[]);
+    if (competitionSubmissionRes.error) {
+      setMessage(competitionSubmissionRes.error.message || "Failed to load competition results queue.");
+      return;
     }
+    const competitionSubmissionRows = competitionSubmissionRes.data ?? [];
+    setCompetitionSubmissions(competitionSubmissionRows);
 
     const fixtureIds = Array.from(
       new Set([...submissionRows.map((s) => s.fixture_id).filter(Boolean), ...loadedFixtureChangeRequests.map((r) => r.fixture_id).filter(Boolean)])
     );
-    if (!fixtureIds.length) {
-      setFixtures([]);
-      setTeams([]);
-      setSeasons([]);
-      setPlayers([]);
-      return;
-    }
-
-    const fRes = await client
-      .from("league_fixtures")
-      .select("id,season_id,home_team_id,away_team_id,status,home_points,away_points,fixture_date")
-      .in("id", fixtureIds);
+    const fRes = fixtureIds.length
+      ? await fetchAllSupabasePagesByChunks<FixtureRow, string>(fixtureIds, (fixtureIdChunk, from, to) =>
+          client
+            .from("league_fixtures")
+            .select("id,season_id,home_team_id,away_team_id,status,home_points,away_points,fixture_date")
+            .in("id", fixtureIdChunk)
+            .order("id", { ascending: true })
+            .range(from, to)
+        )
+      : { data: [] as FixtureRow[], error: null };
     if (fRes.error) {
       setMessage(fRes.error.message || "Failed to load fixtures.");
       return;
@@ -248,22 +251,43 @@ function ResultsQueuePageContent() {
     const teamIds = Array.from(new Set(fixtureRows.flatMap((f) => [f.home_team_id, f.away_team_id]).filter(Boolean)));
     const seasonIds = Array.from(new Set(fixtureRows.map((f) => f.season_id).filter(Boolean)));
 
-    const competitionMatchIds = Array.from(new Set(((competitionSubmissionRes.data ?? []) as CompetitionSubmission[]).map((s) => s.match_id).filter(Boolean)));
-    const competitionIds = Array.from(new Set(((competitionSubmissionRes.data ?? []) as CompetitionSubmission[]).map((s) => s.competition_id).filter(Boolean)));
+    const competitionMatchIds = Array.from(new Set(competitionSubmissionRows.map((s) => s.match_id).filter(Boolean)));
+    const competitionIds = Array.from(new Set(competitionSubmissionRows.map((s) => s.competition_id).filter(Boolean)));
 
     const [tRes, seasonRes, playersRes, competitionMatchesRes, competitionsRes] = await Promise.all([
-      teamIds.length ? client.from("league_teams").select("id,name").in("id", teamIds) : Promise.resolve({ data: [] as TeamRow[], error: null as any }),
-      seasonIds.length ? client.from("league_seasons").select("id,name").in("id", seasonIds) : Promise.resolve({ data: [] as SeasonRow[], error: null as any }),
-      client.from("players").select("id,display_name,full_name").eq("is_archived", false),
+      teamIds.length
+        ? fetchAllSupabasePagesByChunks<TeamRow, string>(teamIds, (teamIdChunk, from, to) =>
+            client.from("league_teams").select("id,name").in("id", teamIdChunk).order("id", { ascending: true }).range(from, to)
+          )
+        : Promise.resolve({ data: [] as TeamRow[], error: null }),
+      seasonIds.length
+        ? fetchAllSupabasePagesByChunks<SeasonRow, string>(seasonIds, (seasonIdChunk, from, to) =>
+            client.from("league_seasons").select("id,name").in("id", seasonIdChunk).order("id", { ascending: true }).range(from, to)
+          )
+        : Promise.resolve({ data: [] as SeasonRow[], error: null }),
+      fetchAllSupabasePages<PlayerRow>((from, to) =>
+        client
+          .from("players")
+          .select("id,display_name,full_name")
+          .eq("is_archived", false)
+          .order("id", { ascending: true })
+          .range(from, to)
+      ),
       competitionMatchIds.length
-        ? client
-            .from("matches")
-            .select("id,competition_id,player1_id,player2_id,team1_player1_id,team1_player2_id,team2_player1_id,team2_player2_id")
-            .in("id", competitionMatchIds)
-        : Promise.resolve({ data: [] as MatchRow[], error: null as any }),
+        ? fetchAllSupabasePagesByChunks<MatchRow, string>(competitionMatchIds, (matchIdChunk, from, to) =>
+            client
+              .from("matches")
+              .select("id,competition_id,player1_id,player2_id,team1_player1_id,team1_player2_id,team2_player1_id,team2_player2_id")
+              .in("id", matchIdChunk)
+              .order("id", { ascending: true })
+              .range(from, to)
+          )
+        : Promise.resolve({ data: [] as MatchRow[], error: null }),
       competitionIds.length
-        ? client.from("competitions").select("id,name").in("id", competitionIds)
-        : Promise.resolve({ data: [] as CompetitionRow[], error: null as any }),
+        ? fetchAllSupabasePagesByChunks<CompetitionRow, string>(competitionIds, (competitionIdChunk, from, to) =>
+            client.from("competitions").select("id,name").in("id", competitionIdChunk).order("id", { ascending: true }).range(from, to)
+          )
+        : Promise.resolve({ data: [] as CompetitionRow[], error: null }),
     ]);
 
     if (tRes.error) {
