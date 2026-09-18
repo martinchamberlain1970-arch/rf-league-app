@@ -112,6 +112,7 @@ const alwaysBarePrefixes = [
   "/handicap-consultation/",
   "/premier-handicaps/",
   "/egm-vote/",
+  "/product",
   "/offline",
 ];
 
