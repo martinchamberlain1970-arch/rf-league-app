@@ -50,7 +50,7 @@ const individualHonours: HonourRow[] = [
 ];
 
 const teamHonours: HonourRow[] = [
-  { season: "2025-26", values: ["A Cheema & G Viscogliosi", "Legion A", "No entrants"] },
+  { season: "2025-26", values: ["Rob Molinari & Ben Trowell", "Legion A", "No entrants"] },
   { season: "2024-25", values: ["A Cheema & G Viscogliosi", "Jordans", "Not held - one division"] },
   { season: "2023-24", values: ["A Cheema & J Mears", "Legion A", "Southfleet B"] },
   { season: "2022-23", values: ["S Wood & S Hartley", "Jordans", "Greenhithe B"] },
@@ -164,7 +164,7 @@ export default function HallOfFamePage() {
               ["Lee Ford Handicap Singles", "Steve Bull"],
               ["Jack Harvey Over 50s", "Amrik Cheema"],
               ["Fred Osbourne Over 60s", "Raj Puri"],
-              ["Cross Cup Doubles", "A Cheema and G Viscogliosi"],
+              ["Cross Cup Doubles", "Rob Molinari and Ben Trowell"],
               ["Hodge Cup Three Player Team", "Legion A"],
             ].map(([label, winner]) => (
               <article key={label} className="rounded-2xl border border-white/10 bg-white/5 p-4">
