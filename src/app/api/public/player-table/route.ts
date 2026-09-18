@@ -87,22 +87,16 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ season: null, seasons: seasonOptions, mode, players: [] });
   }
 
-  const [teamsRes, membersRes, fixturesRes, framesRes, playersRes] = await Promise.all([
+  const [teamsRes, membersRes, fixturesRes] = await Promise.all([
     adminClient.from("league_teams").select("id,season_id,name").eq("season_id", selectedSeason.id),
     adminClient.from("league_team_members").select("season_id,team_id,player_id").eq("season_id", selectedSeason.id),
     adminClient.from("league_fixtures").select("id,season_id,status").eq("season_id", selectedSeason.id),
-    adminClient
-      .from("league_fixture_frames")
-      .select("fixture_id,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_forfeit,away_forfeit,home_nominated,away_nominated,winner_side,home_points_scored,away_points_scored"),
-    adminClient.from("players").select("id,display_name,full_name").eq("is_archived", false),
   ]);
 
   const firstError =
     teamsRes.error?.message ||
     membersRes.error?.message ||
-    fixturesRes.error?.message ||
-    framesRes.error?.message ||
-    playersRes.error?.message;
+    fixturesRes.error?.message;
 
   if (firstError) {
     return NextResponse.json({ error: firstError }, { status: 500 });
@@ -111,6 +105,30 @@ export async function GET(req: NextRequest) {
   const teams = (teamsRes.data ?? []) as TeamRow[];
   const members = (membersRes.data ?? []) as MemberRow[];
   const fixtures = ((fixturesRes.data ?? []) as FixtureRow[]).filter((fixture) => fixture.season_id === selectedSeason.id);
+  const completeFixtureIds = fixtures.filter((fixture) => fixture.status === "complete").map((fixture) => fixture.id);
+  const framesRes = completeFixtureIds.length > 0
+    ? await adminClient
+        .from("league_fixture_frames")
+        .select("fixture_id,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_forfeit,away_forfeit,home_nominated,away_nominated,winner_side,home_points_scored,away_points_scored")
+        .in("fixture_id", completeFixtureIds)
+    : { data: [], error: null };
+  const frameRows = (framesRes.data ?? []) as FrameRow[];
+  const playerIds = Array.from(new Set([
+    ...members.map((member) => member.player_id),
+    ...frameRows.flatMap((frame) => [
+      frame.home_player1_id,
+      frame.home_player2_id,
+      frame.away_player1_id,
+      frame.away_player2_id,
+    ]).filter((id): id is string => Boolean(id)),
+  ]));
+  const playersRes = playerIds.length > 0
+    ? await adminClient.from("players").select("id,display_name,full_name").in("id", playerIds)
+    : { data: [], error: null };
+  const detailError = framesRes.error?.message || playersRes.error?.message;
+  if (detailError) {
+    return NextResponse.json({ error: detailError }, { status: 500 });
+  }
   const frames = (framesRes.data ?? []) as FrameRow[];
   const players = (playersRes.data ?? []) as PlayerRow[];
 

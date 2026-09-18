@@ -118,7 +118,7 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  const [teamsRes, membersRes, fixturesRes, framesRes, playersRes, breaksRes, locationQueryRes] = await Promise.all([
+  const [teamsRes, membersRes, fixturesRes, locationQueryRes] = await Promise.all([
     adminClient.from("league_teams").select("id,season_id,name,is_active").eq("season_id", selectedSeason.id),
     adminClient.from("league_team_members").select("season_id,team_id,player_id").eq("season_id", selectedSeason.id),
     adminClient
@@ -126,11 +126,6 @@ export async function GET(req: NextRequest) {
       .select("id,season_id,fixture_date,week_no,home_team_id,away_team_id,status,home_points,away_points")
       .eq("season_id", selectedSeason.id)
       .order("fixture_date", { ascending: true }),
-    adminClient
-      .from("league_fixture_frames")
-      .select("fixture_id,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_forfeit,away_forfeit,home_nominated,away_nominated,winner_side,home_points_scored,away_points_scored"),
-    adminClient.from("players").select("id,display_name,full_name,location_id").eq("is_archived", false),
-    adminClient.from("league_fixture_breaks").select("fixture_id,player_id,entered_player_name,break_value").gte("break_value", 30),
     adminClient.from("locations").select("id,name").ilike("name", `%${GREENHITHE_LEGION_LOCATION_NAME}%`).order("name", { ascending: true }),
   ]);
 
@@ -138,9 +133,6 @@ export async function GET(req: NextRequest) {
     teamsRes.error?.message ||
     membersRes.error?.message ||
     fixturesRes.error?.message ||
-    framesRes.error?.message ||
-    playersRes.error?.message ||
-    breaksRes.error?.message ||
     locationQueryRes.error?.message;
 
   if (firstError) {
@@ -156,9 +148,46 @@ export async function GET(req: NextRequest) {
       activeTeamIds.has(fixture.home_team_id) &&
       activeTeamIds.has(fixture.away_team_id)
   );
+  const fixtureIdList = fixtures.map((fixture) => fixture.id);
+  const [framesRes, breaksRes] = fixtureIdList.length > 0
+    ? await Promise.all([
+        adminClient
+          .from("league_fixture_frames")
+          .select("fixture_id,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_forfeit,away_forfeit,home_nominated,away_nominated,winner_side,home_points_scored,away_points_scored")
+          .in("fixture_id", fixtureIdList),
+        adminClient
+          .from("league_fixture_breaks")
+          .select("fixture_id,player_id,entered_player_name,break_value")
+          .in("fixture_id", fixtureIdList)
+          .gte("break_value", 30),
+      ])
+    : [
+        { data: [], error: null },
+        { data: [], error: null },
+      ];
   const frames = (framesRes.data ?? []) as FrameRow[];
-  const players = (playersRes.data ?? []) as PlayerRow[];
   const breaks = (breaksRes.data ?? []) as BreakRow[];
+  const playerIds = Array.from(new Set([
+    ...members.map((member) => member.player_id),
+    ...frames.flatMap((frame) => [
+      frame.home_player1_id,
+      frame.home_player2_id,
+      frame.away_player1_id,
+      frame.away_player2_id,
+    ]).filter((id): id is string => Boolean(id)),
+    ...breaks.map((entry) => entry.player_id).filter((id): id is string => Boolean(id)),
+  ]));
+  const playersRes = playerIds.length > 0
+    ? await adminClient
+        .from("players")
+        .select("id,display_name,full_name,location_id")
+        .in("id", playerIds)
+    : { data: [], error: null };
+  const detailError = framesRes.error?.message || breaksRes.error?.message || playersRes.error?.message;
+  if (detailError) {
+    return NextResponse.json({ error: detailError }, { status: 500 });
+  }
+  const players = (playersRes.data ?? []) as PlayerRow[];
   const locations = (locationQueryRes.data ?? []) as LocationRow[];
   const greenhitheLocationId = locations.find((row) => row.name === GREENHITHE_LEGION_LOCATION_NAME)?.id ?? locations[0]?.id ?? null;
 

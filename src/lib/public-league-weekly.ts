@@ -201,7 +201,7 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
     };
   }
 
-  const [teamsRes, membersRes, fixturesRes, framesRes, playersRes, receiptsRes, breaksRes] = await Promise.all([
+  const [teamsRes, membersRes, fixturesRes] = await Promise.all([
     adminClient.from("league_teams").select("id,season_id,name").eq("season_id", season.id),
     adminClient.from("league_team_members").select("season_id,team_id,player_id").eq("season_id", season.id),
     adminClient
@@ -209,40 +209,17 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
       .select("id,season_id,fixture_date,week_no,home_team_id,away_team_id,status,home_points,away_points")
       .eq("season_id", season.id)
       .order("fixture_date", { ascending: true }),
-    adminClient
-      .from("league_fixture_frames")
-      .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored,home_forfeit,away_forfeit"),
-    adminClient
-      .from("players")
-      .select("id,display_name,full_name,rating_snooker,snooker_handicap")
-      .eq("is_archived", false),
-    adminClient
-      .from("rating_result_receipts")
-      .select("source_result_id,source_app,status,metadata")
-      .eq("source_app", "league"),
-    adminClient
-      .from("league_fixture_breaks")
-      .select("fixture_id,player_id,entered_player_name,break_value")
-      .gte("break_value", 30),
   ]);
 
   const firstError =
     teamsRes.error?.message ||
     membersRes.error?.message ||
-    fixturesRes.error?.message ||
-    framesRes.error?.message ||
-    playersRes.error?.message ||
-    receiptsRes.error?.message ||
-    breaksRes.error?.message;
+    fixturesRes.error?.message;
   if (firstError) throw new Error(firstError);
 
   const teams = (teamsRes.data ?? []) as TeamRow[];
   const members = (membersRes.data ?? []) as MemberRow[];
   const fixtures = (fixturesRes.data ?? []) as FixtureRow[];
-  const frames = (framesRes.data ?? []) as FrameRow[];
-  const players = (playersRes.data ?? []) as PlayerRow[];
-  const receipts = (receiptsRes.data ?? []) as ReceiptRow[];
-  const breaks = (breaksRes.data ?? []) as BreakRow[];
 
   const completeWeeks = Array.from(
     new Set(
@@ -274,6 +251,62 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
     };
   }
 
+  const weekFixtures = scheduledWeekFixtures.filter((fixture) => fixture.status === "complete");
+  const weekFixtureIdList = weekFixtures.map((fixture) => fixture.id);
+  const [framesRes, receiptsRes, breaksRes] = weekFixtureIdList.length > 0
+    ? await Promise.all([
+        adminClient
+          .from("league_fixture_frames")
+          .select("fixture_id,slot_no,slot_type,winner_side,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated,away_nominated,home_nominated_name,away_nominated_name,home_points_scored,away_points_scored,home_forfeit,away_forfeit")
+          .in("fixture_id", weekFixtureIdList)
+          .order("fixture_id", { ascending: true })
+          .order("slot_no", { ascending: true }),
+        adminClient
+          .from("rating_result_receipts")
+          .select("source_result_id,source_app,status,metadata")
+          .eq("source_app", "league")
+          .in("source_result_id", weekFixtureIdList.map((id) => `league_fixture:${id}`)),
+        adminClient
+          .from("league_fixture_breaks")
+          .select("fixture_id,player_id,entered_player_name,break_value")
+          .in("fixture_id", weekFixtureIdList)
+          .gte("break_value", 30),
+      ])
+    : [
+        { data: [], error: null },
+        { data: [], error: null },
+        { data: [], error: null },
+      ];
+
+  const frameRows = (framesRes.data ?? []) as FrameRow[];
+  const playerIds = Array.from(new Set([
+    ...members.map((member) => member.player_id),
+    ...frameRows.flatMap((frame) => [
+      frame.home_player1_id,
+      frame.home_player2_id,
+      frame.away_player1_id,
+      frame.away_player2_id,
+    ]).filter((id): id is string => Boolean(id)),
+  ]));
+  const playersRes = playerIds.length > 0
+    ? await adminClient
+        .from("players")
+        .select("id,display_name,full_name,rating_snooker,snooker_handicap")
+        .in("id", playerIds)
+    : { data: [], error: null };
+
+  const detailError =
+    framesRes.error?.message ||
+    receiptsRes.error?.message ||
+    breaksRes.error?.message ||
+    playersRes.error?.message;
+  if (detailError) throw new Error(detailError);
+
+  const frames = frameRows;
+  const players = (playersRes.data ?? []) as PlayerRow[];
+  const receipts = (receiptsRes.data ?? []) as ReceiptRow[];
+  const breaks = (breaksRes.data ?? []) as BreakRow[];
+
   const teamById = new Map(teams.map((team) => [team.id, team.name]));
   const playerById = new Map(players.map((player) => [player.id, player]));
   const playerNameMap = new Map(players.map((player) => [player.id, named(player)]));
@@ -285,7 +318,6 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
     list.push(player);
     playersByTeam.set(member.team_id, list);
   }
-  const weekFixtures = scheduledWeekFixtures.filter((fixture) => fixture.status === "complete");
   const deferredFixtures = scheduledWeekFixtures
     .filter((fixture) => fixture.status !== "complete" && fixture.status !== "bye")
     .map((fixture) => ({
@@ -638,19 +670,12 @@ export async function buildPublicWeeklyHandicapReview(
     };
   }
 
-  const [fixturesRes, framesRes, playersRes, teamMembersRes] = await Promise.all([
+  const [fixturesRes, teamMembersRes] = await Promise.all([
     adminClient
       .from("league_fixtures")
       .select("id,season_id,fixture_date,week_no,status")
       .eq("season_id", season.id)
       .order("fixture_date", { ascending: true }),
-    adminClient
-      .from("league_fixture_frames")
-      .select("fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated_name,away_nominated_name"),
-    adminClient
-      .from("players")
-      .select("id,display_name,full_name,rating_snooker,snooker_handicap,snooker_handicap_base")
-      .eq("is_archived", false),
     adminClient
       .from("league_team_members")
       .select("player_id")
@@ -659,13 +684,10 @@ export async function buildPublicWeeklyHandicapReview(
 
   const firstError =
     fixturesRes.error?.message ||
-    framesRes.error?.message ||
-    playersRes.error?.message ||
     teamMembersRes.error?.message;
   if (firstError) throw new Error(firstError);
 
   const fixtures = (fixturesRes.data ?? []) as FixtureRow[];
-  const frames = (framesRes.data ?? []) as ReviewFrameRow[];
   const completeWeeks = Array.from(
     new Set(
       fixtures
@@ -678,7 +700,6 @@ export async function buildPublicWeeklyHandicapReview(
   const leaguePlayerIds = new Set(
     (teamMembersRes.data ?? []).map((row) => row.player_id).filter(Boolean)
   );
-  const players = (playersRes.data ?? []) as Array<PlayerRow & { snooker_handicap_base: number | null }>;
 
   if (!selectedWeek) {
     return {
@@ -693,6 +714,28 @@ export async function buildPublicWeeklyHandicapReview(
     (fixture) => fixture.week_no === selectedWeek && fixture.status === "complete"
   );
   const fixtureIds = new Set(weekFixtures.map((fixture) => fixture.id));
+  const fixtureIdList = Array.from(fixtureIds);
+  const [framesRes, playersRes] = await Promise.all([
+    fixtureIdList.length > 0
+      ? adminClient
+          .from("league_fixture_frames")
+          .select("fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated_name,away_nominated_name")
+          .in("fixture_id", fixtureIdList)
+          .order("fixture_id", { ascending: true })
+          .order("slot_no", { ascending: true })
+      : Promise.resolve({ data: [], error: null }),
+    leaguePlayerIds.size > 0
+      ? adminClient
+          .from("players")
+          .select("id,display_name,full_name,rating_snooker,snooker_handicap,snooker_handicap_base")
+          .in("id", Array.from(leaguePlayerIds))
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const detailError = framesRes.error?.message || playersRes.error?.message;
+  if (detailError) throw new Error(detailError);
+
+  const frames = (framesRes.data ?? []) as ReviewFrameRow[];
+  const players = (playersRes.data ?? []) as Array<PlayerRow & { snooker_handicap_base: number | null }>;
   const weekFrames = frames.filter((frame) => fixtureIds.has(frame.fixture_id));
   const weekFrameSourceIds = frames
     .filter((frame) => fixtureIds.has(frame.fixture_id) && Number.isInteger(frame.slot_no))
