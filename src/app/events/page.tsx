@@ -958,51 +958,12 @@ function EventsPageContent() {
     if (!reportFixture) return null;
     const home = teamById.get(reportFixture.home_team_id) ?? "Home";
     const away = teamById.get(reportFixture.away_team_id) ?? "Away";
-    const homePlayers = playersByTeam.get(reportFixture.home_team_id) ?? [];
-    const awayPlayers = playersByTeam.get(reportFixture.away_team_id) ?? [];
     const homeStats = teamStats.get(reportFixture.home_team_id) ?? { played: 0, won: 0, lost: 0, draw: 0, points: 0, framesFor: 0, framesAgainst: 0, recent: [] };
     const awayStats = teamStats.get(reportFixture.away_team_id) ?? { played: 0, won: 0, lost: 0, draw: 0, points: 0, framesFor: 0, framesAgainst: 0, recent: [] };
-    const homeRating = avg(homePlayers.map((p) => Number(p.rating_snooker ?? 1000)), 1000);
-    const awayRating = avg(awayPlayers.map((p) => Number(p.rating_snooker ?? 1000)), 1000);
-    const homeHcp = avg(homePlayers.map((p) => Number(p.snooker_handicap ?? 0)), 0);
-    const awayHcp = avg(awayPlayers.map((p) => Number(p.snooker_handicap ?? 0)), 0);
-    const homeForm = formScore(homeStats.recent);
-    const awayForm = formScore(awayStats.recent);
-    const maxTeams = Math.max(2, teamPosition.size);
-    const homePos = teamPosition.get(reportFixture.home_team_id) ?? maxTeams;
-    const awayPos = teamPosition.get(reportFixture.away_team_id) ?? maxTeams;
-    const weights = { rating: 0.07, handicap: 0.35, form: 6, table: 1.2, home: 0.6, scale: 15 };
-    const ratingComponent = (homeRating - awayRating) * weights.rating;
-    const handicapComponent = (awayHcp - homeHcp) * weights.handicap;
-    const formComponent = (homeForm - awayForm) * weights.form;
-    const positionComponent = (awayPos - homePos) * weights.table;
-    const diff = ratingComponent + handicapComponent + formComponent + positionComponent + weights.home;
-    const expectedHomeProb = 1 / (1 + Math.exp(-diff / weights.scale));
-    const actualHomeScore = Number(reportFixture.home_points ?? 0);
-    const actualAwayScore = Number(reportFixture.away_points ?? 0);
-    const actualWinner: "home" | "away" | "draw" = actualHomeScore > actualAwayScore ? "home" : actualAwayScore > actualHomeScore ? "away" : "draw";
-    const expectedWinner: "home" | "away" = expectedHomeProb >= 0.5 ? "home" : "away";
-    const expectedTeam = expectedWinner === "home" ? home : away;
-    const expectationLabel =
-      actualWinner === "draw"
-        ? expectedHomeProb >= 0.6 || expectedHomeProb <= 0.4
-          ? `${expectedTeam} held the pre-match edge, but a level finish says that advantage never turned into control on the night.`
-          : "The pre-match numbers only hinted at a slim edge either way, and the drawn result backed that up."
-        : actualWinner === expectedWinner
-          ? `${expectedTeam} were favoured before the first frame, and they justified that edge without it being a foregone conclusion.`
-          : `${actualWinner === "home" ? home : away} beat the pre-match numbers, so this landed as a genuine upset against the model.`;
-    const formLabel =
-      homeForm === awayForm
-        ? "Both teams came in with very similar recent form."
-        : homeForm > awayForm
-          ? `${home} had the stronger recent form coming in.`
-          : `${away} had the stronger recent form coming in.`;
     const receipt = ratingReceiptByFixtureId.get(reportFixture.id) ?? null;
     const meta = receipt?.metadata ?? null;
     const homeDelta = typeof meta?.delta_a === "number" ? meta.delta_a : null;
     const awayDelta = typeof meta?.delta_b === "number" ? meta.delta_b : null;
-    const kFactor = typeof meta?.k_factor === "number" ? meta.k_factor : null;
-    const expectedPct = typeof meta?.expected_a === "number" ? Math.round(meta.expected_a * 1000) / 10 : Math.round(expectedHomeProb * 1000) / 10;
     const playerDeltas = Array.isArray(meta?.player_deltas) ? meta.player_deltas : [];
     const ratedFrameCount = typeof meta?.rated_frame_count === "number" ? meta.rated_frame_count : 0;
     const biggestGain = playerDeltas
@@ -1013,13 +974,6 @@ function EventsPageContent() {
       .sort((a, b) => a.delta - b.delta)[0];
     const biggestGainName = biggestGain ? playerNameMap.get(biggestGain.player_id) ?? "Player" : null;
     const biggestLossName = biggestLoss ? playerNameMap.get(biggestLoss.player_id) ?? "Player" : null;
-    const actualTeam = actualWinner === "home" ? home : actualWinner === "away" ? away : "Neither side";
-    const expectationGap =
-      actualWinner === "draw"
-        ? "the fixture landed in the middle of the pre-match expectation"
-        : actualWinner === expectedWinner
-          ? `${expectedTeam} delivered the result the model mostly expected`
-          : `${actualTeam} beat the pre-match expectation`;
     const eloLabel =
       meta?.rating_mode === "per_frame"
         ? playerDeltas.length === 0
@@ -1029,7 +983,7 @@ function EventsPageContent() {
         ? reportFixture.status === "complete"
           ? "This fixture is locked, but no rating receipt is attached to it yet. Use Recheck result and rating in League Manager to backfill the Elo explanation for this match."
           : "This fixture is still live or awaiting its final rating step, so the Elo explanation will appear once it is fully completed."
-        : `${home} players ${homeDelta >= 0 ? "gained" : "lost"} ${Math.abs(homeDelta)} Elo each and ${away} players ${awayDelta >= 0 ? "gained" : "lost"} ${Math.abs(awayDelta)} each. That movement comes from three things: the pre-match expectation, the actual result, and the rating sensitivity. For this fixture, the model had ${home} at about ${expectedPct}% before the match, so ${expectationGap}. ${kFactor !== null ? `The rating sensitivity for this result was ${kFactor}, which sets how sharply the numbers move.` : ""} In plain English, a result that goes more against expectation creates a bigger swing, while a result that broadly follows expectation creates a smaller one.`;
+        : `${home} players ${homeDelta >= 0 ? "gained" : "lost"} ${Math.abs(homeDelta)} Elo each and ${away} players ${awayDelta >= 0 ? "gained" : "lost"} ${Math.abs(awayDelta)} each. This is a legacy match-level rating receipt, not the current frame-by-frame Elo model.`;
     const scoredMargins = seasonFrames
       .filter((fr) => fr.fixture_id === reportFixture.id)
       .map((fr) => {
@@ -1038,16 +992,12 @@ function EventsPageContent() {
       })
       .filter((value): value is number => value !== null);
     return {
-      expectedWinner: expectedTeam,
-      expectedPct,
-      expectationLabel,
-      formLabel,
       eloLabel,
       homeFormLine: `${home} recent form: ${homeStats.recent.slice(-5).join("") || "-"}`,
       awayFormLine: `${away} recent form: ${awayStats.recent.slice(-5).join("") || "-"}`,
       biggestMargin: scoredMargins.length ? Math.max(...scoredMargins) : null,
     };
-  }, [playersByTeam, ratingReceiptByFixtureId, reportFixture, seasonFrames, teamById, teamPosition, teamStats, playerNameMap]);
+  }, [ratingReceiptByFixtureId, reportFixture, seasonFrames, teamById, teamStats, playerNameMap]);
   const matchupReport = useMemo(() => {
     if (!reportFixture) return null;
     const frames = seasonFrames
@@ -1255,60 +1205,6 @@ function EventsPageContent() {
       return { id: f.id, text: `${home} ${hp}-${ap} ${away} · ${outcome}` };
     });
     const playerByIdMap = new Map(seasonPlayers.map((player) => [player.id, player]));
-    const averageRatingForFixtureSide = (fixture: LeagueFixture, side: "home" | "away") => {
-      const teamId = side === "home" ? fixture.home_team_id : fixture.away_team_id;
-      const players = playersByTeam.get(teamId) ?? [];
-      return avg(players.map((player) => Number(player.rating_snooker ?? 1000)), 1000);
-    };
-    const averageHandicapForFixtureSide = (fixture: LeagueFixture, side: "home" | "away") => {
-      const teamId = side === "home" ? fixture.home_team_id : fixture.away_team_id;
-      const players = playersByTeam.get(teamId) ?? [];
-      return avg(players.map((player) => Number(player.snooker_handicap ?? 0)), 0);
-    };
-    const fixtureUpset = weekFixtures
-      .map((fixture) => {
-        const home = teamById.get(fixture.home_team_id) ?? "Home";
-        const away = teamById.get(fixture.away_team_id) ?? "Away";
-        const homeStats = teamStats.get(fixture.home_team_id) ?? { recent: [], won: 0, lost: 0, draw: 0, played: 0, points: 0, framesFor: 0, framesAgainst: 0 };
-        const awayStats = teamStats.get(fixture.away_team_id) ?? { recent: [], won: 0, lost: 0, draw: 0, played: 0, points: 0, framesFor: 0, framesAgainst: 0 };
-        const homeRating = averageRatingForFixtureSide(fixture, "home");
-        const awayRating = averageRatingForFixtureSide(fixture, "away");
-        const homeHcp = averageHandicapForFixtureSide(fixture, "home");
-        const awayHcp = averageHandicapForFixtureSide(fixture, "away");
-        const homeForm = formScore(homeStats.recent);
-        const awayForm = formScore(awayStats.recent);
-        const maxTeams = Math.max(2, teamPosition.size);
-        const homePos = teamPosition.get(fixture.home_team_id) ?? maxTeams;
-        const awayPos = teamPosition.get(fixture.away_team_id) ?? maxTeams;
-        const weights = { rating: 0.18, handicap: 1.6, form: 12, table: 3.5, home: 2, scale: 12 };
-        const diff =
-          (homeRating - awayRating) * weights.rating +
-          (awayHcp - homeHcp) * weights.handicap +
-          (homeForm - awayForm) * weights.form +
-          (awayPos - homePos) * weights.table +
-          weights.home;
-        const expectedHomeProb = 1 / (1 + Math.exp(-diff / weights.scale));
-        const actualWinner =
-          Number(fixture.home_points ?? 0) > Number(fixture.away_points ?? 0)
-            ? "home"
-            : Number(fixture.away_points ?? 0) > Number(fixture.home_points ?? 0)
-              ? "away"
-              : "draw";
-        const surprise =
-          actualWinner === "home"
-            ? 1 - expectedHomeProb
-            : actualWinner === "away"
-              ? expectedHomeProb
-              : Math.abs(0.5 - expectedHomeProb);
-        return {
-          label: `${home} vs ${away}`,
-          winner: actualWinner === "home" ? home : actualWinner === "away" ? away : "Draw",
-          expectedPct: Math.round((actualWinner === "home" ? expectedHomeProb : actualWinner === "away" ? 1 - expectedHomeProb : 0.5) * 100),
-          surprise,
-          actualWinner,
-        };
-      })
-      .sort((a, b) => b.surprise - a.surprise)[0] ?? null;
     const fixtureIds = new Set(weekFixtures.map((f) => f.id));
     const wins = new Map<string, number>();
     const eloGapMoments: Array<{ text: string; gap: number }> = [];
@@ -1379,20 +1275,12 @@ function EventsPageContent() {
     return {
       lines,
       star: star ? `${playerNameMap.get(star[0]) ?? "Player"} was standout with ${star[1]} frame win${star[1] === 1 ? "" : "s"}.` : "No standout player recorded this week yet.",
-      upset:
-        fixtureUpset && fixtureUpset.actualWinner !== "draw"
-          ? `${fixtureUpset.winner} produced the biggest upset of the week in ${fixtureUpset.label}. Before the match, their chance on the model was only about ${fixtureUpset.expectedPct}%.`
-          : "No result this week stood out as a major upset against the model.",
       eloGapMoment: topEloGapMoment?.text ?? "No rating-gap matchup stood out strongly enough to define the week.",
       overperformance: topOverperformance?.text ?? "No individual frame winner produced a major frame-by-frame Elo upset this week.",
     };
-  }, [roundupWeek, seasonFixtures, teamById, seasonFrames, playerNameMap, seasonPlayers, playersByTeam, teamStats, teamPosition]);
+  }, [roundupWeek, seasonFixtures, teamById, seasonFrames, playerNameMap, seasonPlayers, playersByTeam]);
   const matchReportText = useMemo(() => {
     if (!matchupReport || !reportFixture || !reportInsights) return "";
-    const expectationLead =
-      reportInsights.expectedPct >= 55
-        ? `${reportInsights.expectedWinner} held the stronger pre-match position at roughly ${reportInsights.expectedPct}%.`
-        : `The pre-match numbers were tight, with only a marginal edge at around ${reportInsights.expectedPct}%.`;
     const keyPerformerLine =
       matchupReport.top.length > 0
         ? `The main names on the night were ${matchupReport.top.join(", ")}.`
@@ -1406,9 +1294,7 @@ function EventsPageContent() {
       `Result: ${matchupReport.score}`,
       "",
       "Result summary:",
-      `${matchupReport.headline} ${reportInsights.expectationLabel}`,
-      `${expectationLead} ${reportInsights.formLabel}`,
-      `${reportInsights.homeFormLine} ${reportInsights.awayFormLine}`,
+      matchupReport.headline,
       `${matchupReport.matchFlowLabel} ${keyPerformerLine}`.trim(),
       reportInsights.biggestMargin !== null ? `The biggest single-frame winning margin was ${reportInsights.biggestMargin} points.` : "",
       handicapWrap,
@@ -1432,7 +1318,6 @@ function EventsPageContent() {
       `- Elo model used this week: corrected frame-by-frame Elo, so players were rated from their own frames rather than the overall team result.`,
       ...weeklyRoundup.lines.map((l) => `- ${l.text}`),
       "",
-      `- Biggest upset: ${weeklyRoundup.upset}`,
       `- Widest Elo-gap frame: ${weeklyRoundup.eloGapMoment}`,
       `- Standout Elo over-performance: ${weeklyRoundup.overperformance}`,
       "",
@@ -1933,25 +1818,9 @@ function EventsPageContent() {
                   <p className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-900">
                     Elo note: this report now uses the corrected frame-by-frame Elo model, so only the players involved in each rated frame were affected.
                   </p>
-                  <div className="mt-3 grid gap-3 lg:grid-cols-2">
+                  <div className="mt-3">
                     <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Expectation</p>
-                      <p className="mt-2 text-sm text-slate-900">
-                        {reportInsights.expectedPct >= 55 ? (
-                          <>
-                            {reportInsights.expectedWinner} held the pre-match edge at about <span className="font-semibold">{reportInsights.expectedPct}%</span>.
-                          </>
-                        ) : (
-                          <>
-                            The model only gave this a very slim edge at about <span className="font-semibold">{reportInsights.expectedPct}%</span>.
-                          </>
-                        )}
-                      </p>
-                      <p className="mt-2 text-xs text-slate-700">{reportInsights.expectationLabel}</p>
-                    </div>
-                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Form And Elo</p>
-                      <p className="mt-2 text-xs text-slate-700">{reportInsights.formLabel}</p>
+                      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">Current form and Elo</p>
                       <p className="mt-2 text-xs text-slate-700">{reportInsights.homeFormLine}</p>
                       <p className="mt-1 text-xs text-slate-700">{reportInsights.awayFormLine}</p>
                       <p className="mt-2 text-xs text-slate-700">{reportInsights.eloLabel}</p>
@@ -2047,11 +1916,7 @@ function EventsPageContent() {
                     <p className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-900">
                       Weekly Elo note: this round-up now uses the corrected frame-by-frame Elo model, so players were rated from their own frames rather than the overall team match result.
                     </p>
-                    <div className="mt-3 grid gap-3 lg:grid-cols-3">
-                      <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-3">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-indigo-700">Biggest Upset</p>
-                        <p className="mt-2 text-xs text-indigo-950">{weeklyRoundup.upset}</p>
-                      </div>
+                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
                       <div className="rounded-xl border border-amber-200 bg-amber-50 p-3">
                         <p className="text-xs font-semibold uppercase tracking-wide text-amber-700">Widest Elo-Gap Frame</p>
                         <p className="mt-2 text-xs text-amber-950">{weeklyRoundup.eloGapMoment}</p>

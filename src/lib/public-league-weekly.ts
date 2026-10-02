@@ -18,12 +18,6 @@ type TeamRow = {
   name: string;
 };
 
-type MemberRow = {
-  season_id: string;
-  team_id: string;
-  player_id: string;
-};
-
 type FixtureRow = {
   id: string;
   season_id: string;
@@ -116,17 +110,6 @@ type HandicapHistoryRow = {
   created_at: string | null;
 };
 
-type TeamStats = {
-  recent: string[];
-  played: number;
-  won: number;
-  lost: number;
-  draw: number;
-  points: number;
-  framesFor: number;
-  framesAgainst: number;
-};
-
 function named(player?: PlayerRow | null) {
   return player?.full_name?.trim() || player?.display_name || "Unknown";
 }
@@ -134,10 +117,6 @@ function named(player?: PlayerRow | null) {
 function avg(values: number[], fallback: number) {
   if (!values.length) return fallback;
   return values.reduce((sum, value) => sum + value, 0) / values.length;
-}
-
-function formScore(recent: string[]) {
-  return recent.reduce((sum, item) => sum + (item === "W" ? 1 : item === "D" ? 0 : -1), 0);
 }
 
 function fmtDate(dateStr?: string | null) {
@@ -203,9 +182,8 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
     };
   }
 
-  const [teamsRes, membersRes, fixturesRes] = await Promise.all([
+  const [teamsRes, fixturesRes] = await Promise.all([
     adminClient.from("league_teams").select("id,season_id,name").eq("season_id", season.id),
-    adminClient.from("league_team_members").select("season_id,team_id,player_id").eq("season_id", season.id),
     adminClient
       .from("league_fixtures")
       .select("id,season_id,fixture_date,week_no,home_team_id,away_team_id,status,home_points,away_points")
@@ -215,12 +193,10 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
 
   const firstError =
     teamsRes.error?.message ||
-    membersRes.error?.message ||
     fixturesRes.error?.message;
   if (firstError) throw new Error(firstError);
 
   const teams = (teamsRes.data ?? []) as TeamRow[];
-  const members = (membersRes.data ?? []) as MemberRow[];
   const fixtures = (fixturesRes.data ?? []) as FixtureRow[];
 
   const completeWeeks = Array.from(
@@ -282,7 +258,6 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
 
   const frameRows = (framesRes.data ?? []) as FrameRow[];
   const playerIds = Array.from(new Set([
-    ...members.map((member) => member.player_id),
     ...frameRows.flatMap((frame) => [
       frame.home_player1_id,
       frame.home_player2_id,
@@ -312,14 +287,6 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
   const teamById = new Map(teams.map((team) => [team.id, team.name]));
   const playerById = new Map(players.map((player) => [player.id, player]));
   const playerNameMap = new Map(players.map((player) => [player.id, named(player)]));
-  const playersByTeam = new Map<string, PlayerRow[]>();
-  for (const member of members) {
-    const player = playerById.get(member.player_id);
-    if (!player) continue;
-    const list = playersByTeam.get(member.team_id) ?? [];
-    list.push(player);
-    playersByTeam.set(member.team_id, list);
-  }
   const deferredFixtures = scheduledWeekFixtures
     .filter((fixture) => fixture.status !== "complete" && fixture.status !== "bye")
     .map((fixture) => ({
@@ -330,73 +297,6 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
       away: teamById.get(fixture.away_team_id) ?? "Away",
       note: `Not included in this round-up; due to be played on ${fmtDate(fixture.fixture_date)}.`,
     }));
-
-  const teamStats = new Map<string, TeamStats>();
-  for (const team of teams) {
-    teamStats.set(team.id, {
-      recent: [],
-      played: 0,
-      won: 0,
-      lost: 0,
-      draw: 0,
-      points: 0,
-      framesFor: 0,
-      framesAgainst: 0,
-    });
-  }
-  for (const fixture of fixtures.filter((item) => item.status === "complete")) {
-    const homeStats = teamStats.get(fixture.home_team_id);
-    const awayStats = teamStats.get(fixture.away_team_id);
-    if (!homeStats || !awayStats) continue;
-    const homePoints = Number(fixture.home_points ?? 0);
-    const awayPoints = Number(fixture.away_points ?? 0);
-    homeStats.played += 1;
-    awayStats.played += 1;
-    homeStats.framesFor += homePoints;
-    homeStats.framesAgainst += awayPoints;
-    awayStats.framesFor += awayPoints;
-    awayStats.framesAgainst += homePoints;
-    homeStats.points += homePoints;
-    awayStats.points += awayPoints;
-    if (homePoints > awayPoints) {
-      homeStats.won += 1;
-      awayStats.lost += 1;
-      homeStats.recent.push("W");
-      awayStats.recent.push("L");
-    } else if (awayPoints > homePoints) {
-      awayStats.won += 1;
-      homeStats.lost += 1;
-      homeStats.recent.push("L");
-      awayStats.recent.push("W");
-    } else {
-      homeStats.draw += 1;
-      awayStats.draw += 1;
-      homeStats.recent.push("D");
-      awayStats.recent.push("D");
-    }
-    homeStats.recent = homeStats.recent.slice(-5);
-    awayStats.recent = awayStats.recent.slice(-5);
-  }
-
-  const tableRows = teams
-    .map((team) => {
-      const stats = teamStats.get(team.id)!;
-      return {
-        teamId: team.id,
-        points: stats.points,
-        frameDiff: stats.framesFor - stats.framesAgainst,
-        framesFor: stats.framesFor,
-        name: team.name,
-      };
-    })
-    .sort(
-      (a, b) =>
-        b.points - a.points ||
-        b.frameDiff - a.frameDiff ||
-        b.framesFor - a.framesFor ||
-        a.name.localeCompare(b.name)
-    );
-  const teamPosition = new Map(tableRows.map((row, index) => [row.teamId, index + 1]));
 
   const ratingReceiptByFixtureId = new Map<string, ReceiptRow>();
   for (const receipt of receipts) {
@@ -422,39 +322,8 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
   const fixtureRows = weekFixtures.map((fixture) => {
     const home = teamById.get(fixture.home_team_id) ?? "Home";
     const away = teamById.get(fixture.away_team_id) ?? "Away";
-    const homeStats = teamStats.get(fixture.home_team_id)!;
-    const awayStats = teamStats.get(fixture.away_team_id)!;
-    const homeRating = avg((playersByTeam.get(fixture.home_team_id) ?? []).map((player) => Number(player.rating_snooker ?? 1000)), 1000);
-    const awayRating = avg((playersByTeam.get(fixture.away_team_id) ?? []).map((player) => Number(player.rating_snooker ?? 1000)), 1000);
-    const homeHcp = avg((playersByTeam.get(fixture.home_team_id) ?? []).map((player) => Number(player.snooker_handicap ?? 0)), 0);
-    const awayHcp = avg((playersByTeam.get(fixture.away_team_id) ?? []).map((player) => Number(player.snooker_handicap ?? 0)), 0);
-    const homeForm = formScore(homeStats.recent);
-    const awayForm = formScore(awayStats.recent);
-    const maxTeams = Math.max(2, teamPosition.size);
-    const homePos = teamPosition.get(fixture.home_team_id) ?? maxTeams;
-    const awayPos = teamPosition.get(fixture.away_team_id) ?? maxTeams;
-    const weights = { rating: 0.18, handicap: 1.6, form: 12, table: 3.5, home: 2, scale: 12 };
-    const diff =
-      (homeRating - awayRating) * weights.rating +
-      (awayHcp - homeHcp) * weights.handicap +
-      (homeForm - awayForm) * weights.form +
-      (awayPos - homePos) * weights.table +
-      weights.home;
-    const expectedHomeProb = 1 / (1 + Math.exp(-diff / weights.scale));
-    const expectedWinner = expectedHomeProb >= 0.5 ? home : away;
-    const expectedWinnerPct = Math.round(
-      (expectedWinner === home ? expectedHomeProb : 1 - expectedHomeProb) * 100
-    );
-    const expectedAwayPct = Math.round((1 - expectedHomeProb) * 100);
     const actualHome = Number(fixture.home_points ?? 0);
     const actualAway = Number(fixture.away_points ?? 0);
-    const actualWinner = actualHome > actualAway ? home : actualAway > actualHome ? away : "Draw";
-    const expectationLabel =
-      actualWinner === "Draw"
-        ? "The match finished level, so neither side clearly beat the pre-match model."
-        : actualWinner === expectedWinner
-          ? `${expectedWinner} were the model favourite and the result broadly followed expectation.`
-          : `${actualWinner} outperformed the pre-match model and landed the result as an upset on the numbers.`;
     const receipt = ratingReceiptByFixtureId.get(fixture.id) ?? null;
     const meta = receipt?.metadata ?? null;
     const playerDeltas = Array.isArray(meta?.player_deltas) ? meta.player_deltas : [];
@@ -525,28 +394,10 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
           : actualAway > actualHome
             ? `${away} beat ${home} ${actualAway}-${actualHome}.`
             : `${home} and ${away} drew ${actualHome}-${actualAway}.`,
-      expectedWinner,
-      expectedPct: expectedWinnerPct,
-      expectedHomePct: Math.round(expectedHomeProb * 100),
-      expectedAwayPct,
-      expectationLabel,
       eloSummary,
       frameFacts,
     };
   });
-
-  const fixtureUpset = fixtureRows
-    .map((fixture) => {
-      const actualWinner = fixture.headline.startsWith(fixture.home) ? "home" : fixture.headline.startsWith(fixture.away) ? "away" : "draw";
-      const surprise =
-        actualWinner === "home"
-          ? 1 - fixture.expectedPct / 100
-          : actualWinner === "away"
-            ? fixture.expectedPct / 100
-            : Math.abs(0.5 - fixture.expectedPct / 100);
-      return { fixture, actualWinner, surprise };
-    })
-    .sort((a, b) => b.surprise - a.surprise)[0] ?? null;
 
   const wins = new Map<string, number>();
   const weekPlayerForm = new Map<string, { played: number; won: number; lost: number; breaks: number; highBreak: number }>();
@@ -644,10 +495,6 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
       title: `Week ${selectedWeek} Round-up`,
       eloNote:
         "Corrected frame-by-frame Elo is used here, so players were rated from their own frames rather than the overall team result.",
-      upset:
-        fixtureUpset && fixtureUpset.actualWinner !== "draw"
-          ? `${fixtureUpset.fixture.headline.split(".")[0]} Before the match, the winner's chance on the model was about ${fixtureUpset.fixture.expectedPct}%.`
-          : "No result this week stood out as a major upset against the model.",
       overperformance: topOverperformance?.text ?? "No individual frame winner produced a major frame-by-frame Elo upset this week.",
       star: star
         ? `${playerNameMap.get(star[0]) ?? "Player"} was standout with ${star[1]} frame win${star[1] === 1 ? "" : "s"}.`

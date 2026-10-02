@@ -12,11 +12,6 @@ type FixtureReport = {
   away: string;
   score: string;
   headline: string;
-  expectedWinner: string;
-  expectedPct: number;
-  expectedHomePct: number;
-  expectedAwayPct: number;
-  expectationLabel: string;
   eloSummary: string;
   frameFacts: Array<{
     label: string;
@@ -38,7 +33,6 @@ type Payload = {
   summary: {
     title: string;
     eloNote: string;
-    upset: string;
     overperformance: string;
     star: string;
     formIndicators: string[];
@@ -259,10 +253,6 @@ export default function PublicWeeklyReportPage() {
               </p>
               <h2 className="mt-2 text-2xl font-bold text-white">{data.summary.title}</h2>
               <div className="mt-4 space-y-3 text-sm text-slate-100">
-                <p>
-                  <span className="font-semibold text-white">Biggest upset:</span>{" "}
-                  {data.summary.upset}
-                </p>
                 <p>
                   <span className="font-semibold text-white">
                     Standout Elo over-performance:
@@ -501,7 +491,7 @@ export default function PublicWeeklyReportPage() {
               id={`fixture-${fixture.id}`}
               className="scroll-mt-28 rounded-3xl border border-white/10 bg-slate-900/80 p-5 shadow-2xl shadow-black/20"
             >
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.28em] text-violet-300">
                     Match Report
@@ -515,22 +505,9 @@ export default function PublicWeeklyReportPage() {
                     {fixture.dateLabel} · Result {fixture.score}
                   </p>
                 </div>
-                <div className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 px-4 py-3 text-right">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-emerald-300">
-                    Expected Favourite
-                  </p>
-                  <p className="mt-1 text-lg font-semibold text-white">
-                    {fixture.expectedWinner} ({fixture.expectedPct}%)
-                  </p>
-                  <p className="mt-1 text-xs text-emerald-200">
-                    {fixture.home} {fixture.expectedHomePct}% · {fixture.away}{" "}
-                    {fixture.expectedAwayPct}%
-                  </p>
-                </div>
               </div>
 
               <p className="mt-4 text-base font-semibold text-white">{fixture.headline}</p>
-              <p className="mt-2 text-sm text-slate-300">{fixture.expectationLabel}</p>
               <p className="mt-2 text-sm text-slate-300">{fixture.eloSummary}</p>
 
               <div className="mt-5 space-y-3">
