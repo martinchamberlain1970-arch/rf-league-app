@@ -32,7 +32,7 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
         const playerAppearances = appearances.get(playerId) ?? new Set<string>();
         playerAppearances.add(frame.fixtureId);
         appearances.set(playerId, playerAppearances);
-        if (frame.homeForfeit || frame.awayForfeit || frame.homeNominated || frame.awayNominated || !frame.winnerSide) continue;
+        if (frame.homeForfeit || frame.awayForfeit || !frame.winnerSide || (isHome ? frame.homeNominated : frame.awayNominated)) continue;
         const record = results.get(playerId) ?? { won: 0, lost: 0 };
         if ((isHome && frame.winnerSide === "home") || (!isHome && frame.winnerSide === "away")) record.won += 1;
         else record.lost += 1;

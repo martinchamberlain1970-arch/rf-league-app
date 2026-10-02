@@ -28,7 +28,8 @@ export async function GET(req: NextRequest, context: { params: Promise<{ id: str
       if (!side) return [];
       const opponentIds = side === "home" ? awayIds : homeIds;
       const teammateIds = (side === "home" ? homeIds : awayIds).filter((playerId) => playerId !== id);
-      const excluded = frame.homeForfeit || frame.awayForfeit || frame.homeNominated || frame.awayNominated || !frame.winnerSide;
+      const excluded = frame.homeForfeit || frame.awayForfeit || !frame.winnerSide ||
+        (side === "home" ? frame.homeNominated : frame.awayNominated);
       const won = !excluded && frame.winnerSide === side;
       return [{
         fixtureId: fixture.id,
