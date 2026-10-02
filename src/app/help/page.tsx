@@ -16,9 +16,9 @@ const faqs = [
       "Yes. The 2026/2027 Premier League has a maximum playing start of 40 points. Division 1 remains scratch match play while Elo is recorded in the background.",
   },
   {
-    question: "Do no-shows or nominated-player frames affect Elo or handicap?",
+    question: "Do no-shows or nominated players affect Elo or handicap?",
     answer:
-      "No. No-show, void, and nominated-player outcomes are excluded from Elo and handicap review.",
+      "No-shows and void outcomes are excluded. In a frame with one nominated player, only that player is excluded; the other player's result is rated against the nominated opponent's Elo.",
   },
   {
     question: "Where can I see current handicaps?",

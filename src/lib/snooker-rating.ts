@@ -17,6 +17,8 @@ type ApplyGroupRatingArgs = {
   scoreA: number;
   scoreB: number;
   ratingWeight?: number;
+  rateSideA?: boolean;
+  rateSideB?: boolean;
   notes?: string | null;
   metadata?: Record<string, unknown>;
 };
@@ -164,6 +166,8 @@ export async function applyGroupSnookerRating({
   scoreA,
   scoreB,
   ratingWeight = 1,
+  rateSideA = true,
+  rateSideB = true,
   notes,
   metadata,
 }: ApplyGroupRatingArgs) {
@@ -171,6 +175,9 @@ export async function applyGroupSnookerRating({
   const sideB = uniqueIds(groupBIds);
   if (sideA.length === 0 || sideB.length === 0) {
     return { ok: true, skipped: true as const, reason: "missing_players" };
+  }
+  if (!rateSideA && !rateSideB) {
+    return { ok: true, skipped: true as const, reason: "no_rated_players" };
   }
 
   const [existingReceipt, existingEvents] = await Promise.all([
@@ -256,7 +263,7 @@ export async function applyGroupSnookerRating({
 
     const eventRows: Array<Record<string, unknown>> = [];
 
-    for (const pid of sideA) {
+    for (const pid of rateSideA ? sideA : []) {
       const p = playerById.get(pid);
       if (!p) continue;
       const current = p.rating_snooker ?? 1000;
@@ -286,7 +293,7 @@ export async function applyGroupSnookerRating({
       });
     }
 
-    for (const pid of sideB) {
+    for (const pid of rateSideB ? sideB : []) {
       const p = playerById.get(pid);
       if (!p) continue;
       const current = p.rating_snooker ?? 1000;
@@ -336,6 +343,8 @@ export async function applyGroupSnookerRating({
           k_factor: effectiveK,
           base_k_factor: baseK,
           rating_weight: safeRatingWeight,
+          rated_side_a: rateSideA,
+          rated_side_b: rateSideB,
           expected_a: expectedA,
           ...metadata,
         },
@@ -555,9 +564,9 @@ export async function rebuildLeagueFixtureSnookerRatings({
   for (const frame of resolvedFrames) {
     if (!frame.winner_side) continue;
     if (frame.home_forfeit || frame.away_forfeit) continue;
-    // Nominated-player frames award the team frame point, but the league rules
-    // exclude the outcome from individual statistics, Elo and handicap review.
-    if (frame.home_nominated || frame.away_nominated) continue;
+    // Only the nominated player is excluded. Their recorded rating still
+    // supplies the opposition strength for the other player's rated result.
+    if (frame.home_nominated && frame.away_nominated) continue;
 
     const homeIds = uniqueIds([
       frame.home_player1_id ?? "",
@@ -582,6 +591,8 @@ export async function rebuildLeagueFixtureSnookerRatings({
       scoreA,
       scoreB,
       ratingWeight,
+      rateSideA: !frame.home_nominated,
+      rateSideB: !frame.away_nominated,
       notes: notes ?? `League fixture ${fixtureId} frame ${frame.slot_no}`,
       metadata: {
         fixture_id: fixtureId,
@@ -599,12 +610,12 @@ export async function rebuildLeagueFixtureSnookerRatings({
     });
     if (result.skipped) continue;
 
-    for (const id of homeIds) {
+    for (const id of frame.home_nominated ? [] : homeIds) {
       const prev = playerDeltaMap.get(id) ?? { delta: 0, side: "home" as const };
       prev.delta += result.deltaA;
       playerDeltaMap.set(id, prev);
     }
-    for (const id of awayIds) {
+    for (const id of frame.away_nominated ? [] : awayIds) {
       const prev = playerDeltaMap.get(id) ?? { delta: 0, side: "away" as const };
       prev.delta += result.deltaB;
       playerDeltaMap.set(id, prev);
@@ -613,8 +624,8 @@ export async function rebuildLeagueFixtureSnookerRatings({
       slot_no: frame.slot_no,
       slot_type: isDoubles ? "doubles" : "singles",
       winner_side: frame.winner_side,
-      delta_home: result.deltaA,
-      delta_away: result.deltaB,
+      delta_home: frame.home_nominated ? 0 : result.deltaA,
+      delta_away: frame.away_nominated ? 0 : result.deltaB,
       expected_home: result.expectedA,
       k_factor: result.k,
     });

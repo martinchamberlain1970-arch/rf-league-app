@@ -243,7 +243,7 @@ export default function RankingDisplayPage() {
             </div>
 
             <div className="mt-6 rounded-xl border border-slate-700 bg-slate-950/40 p-4 text-sm text-slate-300">
-              Snooker rating uses an Elo-style model: expected result from ratings, then updated after approved completed frames. Upsets move rating more than expected wins. No-show, nominated-player, and void outcomes are excluded.
+              Snooker rating uses an Elo-style model: expected result from ratings, then updated after approved completed frames. Upsets move rating more than expected wins. No-show and void outcomes are excluded. A nominated player is not rated for that frame, but their non-nominated opponent is.
             </div>
           </section>
         ) : null}

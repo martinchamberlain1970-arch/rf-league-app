@@ -6,12 +6,9 @@ export type IndividualStatisticsFrame = {
   away_nominated?: boolean | null;
 };
 
-export function countsForIndividualStatistics(frame: IndividualStatisticsFrame) {
-  return Boolean(
-    frame.winner_side &&
-      !frame.home_forfeit &&
-      !frame.away_forfeit &&
-      !frame.home_nominated &&
-      !frame.away_nominated,
-  );
+export function countsForIndividualStatistics(frame: IndividualStatisticsFrame, side?: "home" | "away") {
+  if (!frame.winner_side || frame.home_forfeit || frame.away_forfeit) return false;
+  if (side === "home") return !frame.home_nominated;
+  if (side === "away") return !frame.away_nominated;
+  return !frame.home_nominated || !frame.away_nominated;
 }

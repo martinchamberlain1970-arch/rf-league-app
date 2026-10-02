@@ -68,7 +68,7 @@ export default function TermsPage() {
             <ul className="mt-2 list-disc space-y-1 pl-5">
               <li>League standings, player tables, Elo ratings and handicap recommendations are calculated from approved data.</li>
               <li>The 2026/27 Premier League carries forward validated Elo ratings and handicaps, with weekly handicap reviews for the first four fixture weeks and four-weekly reviews afterwards. Playing starts are capped at 40 points. Division 1 is played off scratch, although Elo history may still be recorded.</li>
-              <li>No-show, void and nominated-player frames do not affect Elo or handicap where the current League rules exclude them.</li>
+              <li>No-show and void outcomes do not affect Elo. A nominated player is excluded from their frame’s Elo result, but a non-nominated opponent may still receive a rated result.</li>
               <li>Authorised league officers may correct underlying records or apply a manual handicap decision where League rules require it.</li>
               <li>If an app calculation conflicts with an official League rule or recorded league-officer decision, the official League decision takes precedence and the data should be corrected.</li>
             </ul>

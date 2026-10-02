@@ -88,7 +88,7 @@ function buildFormSummaries(fixtures: FixtureRow[], frames: FrameRow[], breaks: 
   }
 
   const orderedFrames = frames
-    .filter(countsForIndividualStatistics)
+    .filter((frame) => countsForIndividualStatistics(frame))
     .sort(
       (a, b) =>
         (fixtureDateById.get(a.fixture_id) ?? "").localeCompare(fixtureDateById.get(b.fixture_id) ?? "") ||
@@ -96,8 +96,12 @@ function buildFormSummaries(fixtures: FixtureRow[], frames: FrameRow[], breaks: 
     );
 
   for (const frame of orderedFrames) {
-    const homeIds = [frame.home_player1_id, frame.home_player2_id].filter(Boolean) as string[];
-    const awayIds = [frame.away_player1_id, frame.away_player2_id].filter(Boolean) as string[];
+    const homeIds = countsForIndividualStatistics(frame, "home")
+      ? [frame.home_player1_id, frame.home_player2_id].filter(Boolean) as string[]
+      : [];
+    const awayIds = countsForIndividualStatistics(frame, "away")
+      ? [frame.away_player1_id, frame.away_player2_id].filter(Boolean) as string[]
+      : [];
     for (const id of homeIds) {
       const list = resultsByPlayer.get(id) ?? [];
       list.push(frame.winner_side === "home" ? "W" : "L");

@@ -103,7 +103,7 @@ export default function PublicWeeklyHandicapReviewPage() {
           <p className="mt-2 text-sm text-slate-300">
             {data?.isInformationOnly
               ? "Players whose Elo changed in the completed week, with an indicative Elo-derived handicap. Division 1 remains scratch, so this is a performance review rather than an applied handicap review."
-              : "Players whose Elo and/or playing handicap changed at the Week review. Elo comes only from eligible singles and doubles frames; nominated-player, no-show and void frames are excluded."}
+              : "Players whose Elo and/or playing handicap changed at the Week review. Elo comes from eligible singles and doubles results; no-shows and voids are excluded. In a nominated-player frame, only the nominated player is excluded."}
           </p>
           {(data?.seasons?.length ?? 0) > 1 ? (
             <label className="mt-4 block max-w-xl text-sm font-semibold text-white">

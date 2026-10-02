@@ -105,6 +105,8 @@ type ReviewFrameRow = {
   away_player2_id: string | null;
   home_nominated_name: string | null;
   away_nominated_name: string | null;
+  home_nominated: boolean | null;
+  away_nominated: boolean | null;
 };
 
 type HandicapHistoryRow = {
@@ -559,8 +561,12 @@ export async function buildPublicWeeklyReport(adminClient: SupabaseClient, seaso
 
   for (const frame of weekFrames) {
     if (!countsForIndividualStatistics(frame)) continue;
-    const homeIds = [frame.home_player1_id, frame.home_player2_id].filter(Boolean) as string[];
-    const awayIds = [frame.away_player1_id, frame.away_player2_id].filter(Boolean) as string[];
+    const homeIds = countsForIndividualStatistics(frame, "home")
+      ? [frame.home_player1_id, frame.home_player2_id].filter(Boolean) as string[]
+      : [];
+    const awayIds = countsForIndividualStatistics(frame, "away")
+      ? [frame.away_player1_id, frame.away_player2_id].filter(Boolean) as string[]
+      : [];
     const ids = frame.winner_side === "home" ? homeIds : awayIds;
     for (const id of ids) {
       wins.set(id, (wins.get(id) ?? 0) + 1);
@@ -719,7 +725,7 @@ export async function buildPublicWeeklyHandicapReview(
     fixtureIdList.length > 0
       ? adminClient
           .from("league_fixture_frames")
-          .select("fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated_name,away_nominated_name")
+          .select("fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,home_nominated_name,away_nominated_name,home_nominated,away_nominated")
           .in("fixture_id", fixtureIdList)
           .order("fixture_id", { ascending: true })
           .order("slot_no", { ascending: true })
@@ -849,6 +855,7 @@ export async function buildPublicWeeklyHandicapReview(
           const deltaValue = Math.round(Number(event.rating_delta ?? 0));
           if (!frame) return null;
           const isHome = [frame.home_player1_id, frame.home_player2_id].includes(player.id);
+          const opponentWasNominated = isHome ? frame.away_nominated : frame.home_nominated;
           const ownIds = (
             isHome
               ? [frame.home_player1_id, frame.home_player2_id]
@@ -876,7 +883,9 @@ export async function buildPublicWeeklyHandicapReview(
             .join(" / ");
           const outcome = event.event_type === "result_win" ? "won" : event.event_type === "result_loss" ? "lost" : "drew";
           const frameLabel = `${frame.slot_type === "doubles" ? "Doubles" : "Singles"} Frame ${frame.slot_no}`;
-          const opponents = opponentNames || "the recorded opposition";
+          const opponents = opponentNames || (opponentWasNominated
+            ? (isHome ? frame.away_nominated_name : frame.home_nominated_name)?.trim()
+            : null) || "the recorded opposition";
           const exactMovement = `${ownStartRating} → ${Math.round(Number(event.rating_after ?? ownStartRating + deltaValue))} (${deltaValue > 0 ? "+" : ""}${deltaValue})`;
           let movementReason = "The players began at similar ratings, so the movement was moderate.";
           if (deltaValue > 0 && oppStartRating > ownStartRating) {
@@ -888,7 +897,9 @@ export async function buildPublicWeeklyHandicapReview(
           } else if (deltaValue < 0 && oppStartRating > ownStartRating) {
             movementReason = `The opposition started ${ratingGap} Elo higher, so the loss caused a smaller drop.`;
           }
-          const explanation = `${frameLabel}: ${outcome} against ${opponents} (opposition average ${oppStartRating} Elo); ${exactMovement}. ${movementReason}`;
+          const explanation = opponentWasNominated
+            ? `${frameLabel}: ${outcome} against ${opponents} (nominated opponent); ${exactMovement}. Only the non-nominated player's result affects Elo.`
+            : `${frameLabel}: ${outcome} against ${opponents} (opposition average ${oppStartRating} Elo); ${exactMovement}. ${movementReason}`;
           return {
             deltaValue,
             slotNo: frame.slot_no ?? 0,

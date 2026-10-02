@@ -227,7 +227,7 @@ export default function HandicapsPage() {
                 </p>
               </div>
               <p>
-                No-show, nominated-player, and void outcomes are excluded from Elo and handicap review. The League Secretary, Chairman or Treasurer can still make manual corrections where league rules require it.
+                No-show and void outcomes are excluded. If only one player is nominated, their opponent still receives an Elo result; the nominated player does not. The League Secretary, Chairman or Treasurer can still make manual corrections where league rules require it.
               </p>
             </div>
           </section>

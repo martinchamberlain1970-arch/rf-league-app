@@ -104,7 +104,7 @@ export default function PublicPlayerRecordPage() {
 
             <section className="rounded-3xl border border-white/10 bg-slate-900/80 p-5">
               <h2 className="text-xl font-black">Opponent-by-opponent results</h2>
-              <p className="mt-1 text-sm text-slate-400">No-shows and nominated-player frames are identified but excluded from individual statistics and Elo.</p>
+              <p className="mt-1 text-sm text-slate-400">No-shows are excluded from Elo. A nominated player is excluded for that frame, while the non-nominated opponent’s result remains rated.</p>
               <div className="mt-4 space-y-3">
                 {data.frames.map((frame, index) => (
                   <article key={`${frame.fixtureId}-${frame.frameLabel}-${index}`} className="rounded-2xl border border-white/10 bg-white/5 p-4">

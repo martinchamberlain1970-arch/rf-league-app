@@ -1938,7 +1938,7 @@ export default function PlayerProfilePage() {
                       Example 3: if two players are rated very closely, the result usually produces a balanced change in both directions because the frame was considered close to a 50/50 match.
                     </p>
                     <p className="mt-1">
-                      BYE, walkover, no-show, nominated-player, and void outcomes are excluded from ratings.
+                      BYE, walkover, no-show, and void outcomes are excluded from ratings. A nominated player is excluded for their frame, but their non-nominated opponent is rated.
                     </p>
                   </div>
                   <div className="mt-3 grid gap-3 xl:grid-cols-[0.9fr_1.1fr]">
@@ -2070,7 +2070,7 @@ export default function PlayerProfilePage() {
                         Your snooker Elo rating updates after every valid competitive frame. Handicap is then reviewed from Elo by the league, rather than changing automatically after every win or loss.
                       </p>
                       <p className="mt-1">
-                        Target handicap matches the original Elo seed formula: handicap = nearest multiple of 4 to (1000 - Elo) / 5. Each formal review brings the handicap directly into line with that target. For 2026/27, Premier reviews take place weekly for the first four fixture weeks, then every four weeks. No-show, nominated-player, and void frames are excluded.
+                        Target handicap matches the original Elo seed formula: handicap = nearest multiple of 4 to (1000 - Elo) / 5. Each formal review brings the handicap directly into line with that target. For 2026/27, Premier reviews take place weekly for the first four fixture weeks, then every four weeks. No-show and void frames are excluded; only the nominated player is excluded from a nominated frame.
                       </p>
                       <p className="mt-1">
                         For the 2026/2027 Premier League, reviewed handicaps are used with a maximum playing start of 40 points. Division 1 remains scratch match play while Elo continues in the background.

@@ -6189,8 +6189,12 @@ function LeaguePageContent() {
     const seasonSlots = slots.filter((s) => fixtureIds.has(s.fixture_id));
     for (const slot of seasonSlots) {
       if (!countsForIndividualStatistics(slot)) continue;
-      const homeIds = [slot.home_player1_id, slot.home_player2_id].filter(Boolean) as string[];
-      const awayIds = [slot.away_player1_id, slot.away_player2_id].filter(Boolean) as string[];
+      const homeIds = countsForIndividualStatistics(slot, "home")
+        ? [slot.home_player1_id, slot.home_player2_id].filter(Boolean) as string[]
+        : [];
+      const awayIds = countsForIndividualStatistics(slot, "away")
+        ? [slot.away_player1_id, slot.away_player2_id].filter(Boolean) as string[]
+        : [];
       const allIds = [...homeIds, ...awayIds];
       if (slot.slot_type === "singles") {
         for (const id of allIds) {
@@ -6209,7 +6213,7 @@ function LeaguePageContent() {
       const homePoints = typeof slot.home_points_scored === "number" ? slot.home_points_scored : 0;
       const awayPoints = typeof slot.away_points_scored === "number" ? slot.away_points_scored : 0;
       if (slot.slot_type === "singles") {
-        if (slot.home_player1_id && !slot.home_forfeit) {
+        if (slot.home_player1_id && countsForIndividualStatistics(slot, "home")) {
           const prev = singlesPlayed.get(slot.home_player1_id) ?? { won: 0, lost: 0, pointsFor: 0, pointsAgainst: 0 };
           if (slot.winner_side === "home") prev.won += 1;
           else prev.lost += 1;
@@ -6217,7 +6221,7 @@ function LeaguePageContent() {
           prev.pointsAgainst += awayPoints;
           singlesPlayed.set(slot.home_player1_id, prev);
         }
-        if (slot.away_player1_id && !slot.away_forfeit) {
+        if (slot.away_player1_id && countsForIndividualStatistics(slot, "away")) {
           const prev = singlesPlayed.get(slot.away_player1_id) ?? { won: 0, lost: 0, pointsFor: 0, pointsAgainst: 0 };
           if (slot.winner_side === "away") prev.won += 1;
           else prev.lost += 1;
@@ -8971,7 +8975,7 @@ function LeaguePageContent() {
                   <p className="font-semibold">How snooker handicaps now work</p>
                   <ul className="mt-2 space-y-1 text-xs leading-6 text-fuchsia-900">
                       <li>Elo rating updates after every valid competitive frame.</li>
-                      <li>No-show, nominated-player, and void frames do not affect Elo or handicap.</li>
+                      <li>No-show and void frames do not affect Elo. In a nominated-player frame, only the nominated player is excluded from Elo; their opponent is rated.</li>
                       <li>Approving results and rechecking ratings updates Elo only; it does not change the live handicap.</li>
                       <li>For the 2026/27 Premier League, actual playing handicaps update automatically when the final result in a scheduled review week is completed.</li>
                       <li>Target handicap now matches the original Elo seed formula: handicap = nearest multiple of 4 to (1000 - Elo) / 5.</li>

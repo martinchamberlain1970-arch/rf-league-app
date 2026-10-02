@@ -265,8 +265,8 @@ export async function GET(req: NextRequest) {
 
   for (const frame of frames.filter((row) => fixtureIds.has(row.fixture_id) && row.slot_type === "singles")) {
     if (!countsForIndividualStatistics(frame)) continue;
-    const homeId = frame.home_player1_id;
-    const awayId = frame.away_player1_id;
+    const homeId = countsForIndividualStatistics(frame, "home") ? frame.home_player1_id : null;
+    const awayId = countsForIndividualStatistics(frame, "away") ? frame.away_player1_id : null;
     if (homeId) {
       const set = singlesAppearanceByPlayer.get(homeId) ?? new Set<string>();
       set.add(frame.fixture_id);

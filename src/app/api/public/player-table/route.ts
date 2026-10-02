@@ -156,8 +156,12 @@ export async function GET(req: NextRequest) {
   const frameType = mode === "singles" ? "singles" : "doubles";
   for (const frame of frames.filter((row) => fixtureIds.has(row.fixture_id) && row.slot_type === frameType)) {
     if (!countsForIndividualStatistics(frame)) continue;
-    const homePlayerIds = [frame.home_player1_id, frameType === "doubles" ? frame.home_player2_id : null].filter(Boolean) as string[];
-    const awayPlayerIds = [frame.away_player1_id, frameType === "doubles" ? frame.away_player2_id : null].filter(Boolean) as string[];
+    const homePlayerIds = countsForIndividualStatistics(frame, "home")
+      ? [frame.home_player1_id, frameType === "doubles" ? frame.home_player2_id : null].filter(Boolean) as string[]
+      : [];
+    const awayPlayerIds = countsForIndividualStatistics(frame, "away")
+      ? [frame.away_player1_id, frameType === "doubles" ? frame.away_player2_id : null].filter(Boolean) as string[]
+      : [];
     const pairingKey = (playerIds: string[]) => {
       if (mode !== "pairings") return playerIds;
       if (playerIds.length !== 2) return [];
