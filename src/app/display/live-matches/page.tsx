@@ -28,7 +28,7 @@ type LiveMatchData = {
     fixtureDate: string | null;
     weekNo: number | null;
     status: string;
-    matchState: "awaiting_lineup" | "awaiting_scores" | "in_progress";
+    matchState: "awaiting_lineup" | "awaiting_scores" | "in_progress" | "match_ended";
     statusLabel: string;
     homeTeam: string;
     awayTeam: string;
@@ -285,9 +285,9 @@ export default function PublicLiveMatchesPage() {
         {!loading && !data.error && data.liveMatches.length === 0 ? (
           <section className="rounded-2xl border border-white/10 bg-white/6 p-5 text-center shadow-2xl backdrop-blur sm:p-8">
             <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-300">No Fixtures Tonight</p>
-            <h2 className="mt-2 text-2xl font-black sm:text-3xl">No unfinished fixtures due today</h2>
+            <h2 className="mt-2 text-2xl font-black sm:text-3xl">No fixtures due today</h2>
             <p className="mt-3 text-base text-slate-300">
-              Tonight&apos;s fixtures appear here automatically, including those awaiting line-ups or scores.
+              Today&apos;s fixtures appear here automatically, including approved matches that have ended.
             </p>
           </section>
         ) : null}
@@ -303,14 +303,14 @@ export default function PublicLiveMatchesPage() {
                   <h2 className="break-words text-lg font-black leading-tight sm:text-xl">
                     {selectedMatch.homeTeam} <span className="text-cyan-200">vs.</span> {selectedMatch.awayTeam}
                   </h2>
-                  <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${selectedMatch.matchState === "in_progress" ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100" : "border-amber-300/30 bg-amber-400/10 text-amber-100"}`}>
+                  <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${selectedMatch.matchState === "in_progress" ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100" : selectedMatch.matchState === "match_ended" ? "border-cyan-300/30 bg-cyan-400/10 text-cyan-100" : "border-amber-300/30 bg-amber-400/10 text-amber-100"}`}>
                     {selectedMatch.statusLabel}
                   </span>
                 </div>
               </div>
               <div className="shrink-0 rounded-xl border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-center">
-                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100">Reported frames</p>
-                <p className="mt-0.5 text-xl font-black text-white">{selectedMatch.matchState === "in_progress" ? selectedMatch.overallScore : "—"}</p>
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100">{selectedMatch.matchState === "match_ended" ? "Final score" : "Reported frames"}</p>
+                <p className="mt-0.5 text-xl font-black text-white">{selectedMatch.matchState === "in_progress" || selectedMatch.matchState === "match_ended" ? selectedMatch.overallScore : "—"}</p>
               </div>
             </div>
             {selectedMatch.matchState !== "awaiting_lineup" ? <div className="mt-3 grid gap-2">
@@ -372,14 +372,14 @@ export default function PublicLiveMatchesPage() {
                       <h2 className="text-xl font-black leading-tight xl:text-2xl 2xl:text-4xl">
                         {match.homeTeam} <span className="text-cyan-200">vs.</span> {match.awayTeam}
                       </h2>
-                      <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold 2xl:text-base ${match.matchState === "in_progress" ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100" : "border-amber-300/30 bg-amber-400/10 text-amber-100"}`}>
+                      <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold 2xl:text-base ${match.matchState === "in_progress" ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100" : match.matchState === "match_ended" ? "border-cyan-300/30 bg-cyan-400/10 text-cyan-100" : "border-amber-300/30 bg-amber-400/10 text-amber-100"}`}>
                         {match.statusLabel}
                       </span>
                     </div>
                   </div>
                   <div className="shrink-0 rounded-xl border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-center 2xl:rounded-2xl 2xl:px-6 2xl:py-3">
-                    <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100 2xl:text-sm">Reported frames</p>
-                    <p className="mt-0.5 text-xl font-black text-white 2xl:text-4xl">{match.matchState === "in_progress" ? match.overallScore : "—"}</p>
+                    <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100 2xl:text-sm">{match.matchState === "match_ended" ? "Final score" : "Reported frames"}</p>
+                    <p className="mt-0.5 text-xl font-black text-white 2xl:text-4xl">{match.matchState === "in_progress" || match.matchState === "match_ended" ? match.overallScore : "—"}</p>
                   </div>
                 </div>
 

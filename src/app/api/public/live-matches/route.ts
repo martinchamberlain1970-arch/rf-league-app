@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { calculateAdjustedScoresWithCap, MAX_SNOOKER_START } from "@/lib/snooker-handicap";
-import { fetchAllSupabasePages } from "@/lib/supabase-pagination";
+import { fetchAllSupabasePages, fetchAllSupabasePagesByChunks } from "@/lib/supabase-pagination";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -179,14 +179,30 @@ export async function GET(req: NextRequest) {
   const teams = (teamsRes.data ?? []) as TeamRow[];
   const allFixtures = ((fixturesRes.data ?? []) as FixtureRow[]).filter((fixture) => seasonById.has(fixture.season_id));
   const fixtures = allFixtures.filter((fixture) => fixture.fixture_date === matchNightDate);
+  const completedFixtureIds = fixtures.filter((fixture) => fixture.status === "complete").map((fixture) => fixture.id);
+  const approvedRes = completedFixtureIds.length > 0
+    ? await fetchAllSupabasePagesByChunks<{ id: string; fixture_id: string }, string>(completedFixtureIds, (chunk, from, to) =>
+        adminClient.from("league_result_submissions")
+          .select("id,fixture_id")
+          .in("fixture_id", chunk)
+          .eq("status", "approved")
+          .order("id", { ascending: true })
+          .range(from, to)
+      )
+    : { data: [], error: null };
+  if (approvedRes.error) {
+    return NextResponse.json({ error: approvedRes.error.message }, { status: 500 });
+  }
+  const approvedFixtureIds = new Set((approvedRes.data ?? []).map((row) => row.fixture_id));
 
-  // A match-night display should include fixtures due tonight even when teams
-  // have not yet entered a line-up or score. It must not imply play has begun.
+  // Keep approved results in tonight's rotation, but never label an unapproved
+  // complete fixture as ended. Fixtures awaiting entry must not imply play began.
   const liveFixtures = fixtures
-    .filter((fixture) => !fixture.pre_match_paper_record && fixture.status !== "complete" && fixture.status !== "bye")
+    .filter((fixture) => (!fixture.pre_match_paper_record || approvedFixtureIds.has(fixture.id)) && fixture.status !== "bye" &&
+      (fixture.status !== "complete" || approvedFixtureIds.has(fixture.id)))
     .sort((a, b) => {
       const statusRank = (status: FixtureRow["status"]) =>
-        status === "in_progress" ? 0 : 1;
+        status === "in_progress" ? 0 : status === "complete" ? 2 : 1;
       const aDate = a.fixture_date ?? "9999-12-31";
       const bDate = b.fixture_date ?? "9999-12-31";
       return (
@@ -272,12 +288,16 @@ export async function GET(req: NextRequest) {
       typeof frame.home_points_scored === "number" ||
       typeof frame.away_points_scored === "number"
     );
-    const matchState = hasSavedScore
+    const matchState = fixture.status === "complete"
+      ? "match_ended"
+      : hasSavedScore
       ? "in_progress"
       : fixture.home_lineup_submitted_at && fixture.away_lineup_submitted_at
         ? "awaiting_scores"
         : "awaiting_lineup";
-    const statusLabel = matchState === "in_progress"
+    const statusLabel = matchState === "match_ended"
+      ? "Match Ended"
+      : matchState === "in_progress"
       ? "In progress"
       : matchState === "awaiting_scores"
         ? "Awaiting scores"
@@ -382,7 +402,9 @@ export async function GET(req: NextRequest) {
       statusLabel,
       homeTeam: teamById.get(fixture.home_team_id)?.name ?? "Home team",
       awayTeam: teamById.get(fixture.away_team_id)?.name ?? "Away team",
-      overallScore: `${homeFramesWon} - ${awayFramesWon}`,
+      overallScore: fixture.status === "complete"
+        ? `${fixture.home_points ?? homeFramesWon} - ${fixture.away_points ?? awayFramesWon}`
+        : `${homeFramesWon} - ${awayFramesWon}`,
       frameRows,
     };
   });
