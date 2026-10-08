@@ -260,7 +260,9 @@ export default function PublicLiveMatchesPage() {
               </div>
               {totalPages > 1 ? (
                 <div className="hidden rounded-full border border-cyan-200/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-semibold text-cyan-100 sm:px-4 sm:py-2 sm:text-sm lg:block 2xl:px-5 2xl:py-2.5 2xl:text-base">
-                  {visibleTable ? "Table" : "Match"} {Math.min(pageIndex + 1, totalPages)} of {totalPages}
+                  {visibleTable
+                    ? `League table ${pageIndex - matchPages.length + 1} of ${data.leagueTables.length}`
+                    : `Match ${pageIndex + 1} of ${matchPages.length}`}
                 </div>
               ) : null}
               <div className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-100 sm:px-4 sm:py-2 sm:text-sm 2xl:px-5 2xl:py-2.5 2xl:text-base">
