@@ -12,6 +12,8 @@ type LiveMatchData = {
     fixtureDate: string | null;
     weekNo: number | null;
     status: string;
+    matchState: "awaiting_lineup" | "awaiting_scores" | "in_progress";
+    statusLabel: string;
     homeTeam: string;
     awayTeam: string;
     overallScore: string;
@@ -200,7 +202,7 @@ export default function PublicLiveMatchesPage() {
                 </label>
               ) : null}
                 <div className="rounded-full border border-rose-200/20 bg-rose-400/10 px-3 py-1.5 text-xs font-semibold text-rose-100 sm:px-4 sm:py-2 sm:text-sm 2xl:px-5 2xl:py-2.5 2xl:text-base">
-                {data.liveMatches.length} match{data.liveMatches.length === 1 ? "" : "es"} live
+                {data.liveMatches.length} fixture{data.liveMatches.length === 1 ? "" : "s"} tonight
               </div>
               {totalPages > 1 ? (
                 <div className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-semibold text-cyan-100 sm:px-4 sm:py-2 sm:text-sm 2xl:px-5 2xl:py-2.5 2xl:text-base">
@@ -228,10 +230,10 @@ export default function PublicLiveMatchesPage() {
 
         {!loading && !data.error && data.liveMatches.length === 0 ? (
           <section className="rounded-2xl border border-white/10 bg-white/6 p-5 text-center shadow-2xl backdrop-blur sm:p-8">
-            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-300">No Live Matches</p>
-            <h2 className="mt-2 text-2xl font-black sm:text-3xl">No live matches in progress</h2>
+            <p className="text-sm font-semibold uppercase tracking-[0.3em] text-slate-300">No Fixtures Tonight</p>
+            <h2 className="mt-2 text-2xl font-black sm:text-3xl">No unfinished fixtures due today</h2>
             <p className="mt-3 text-base text-slate-300">
-              This screen will populate automatically once both teams have submitted their lineups for an active fixture.
+              Tonight&apos;s fixtures appear here automatically, including those awaiting line-ups or scores.
             </p>
           </section>
         ) : null}
@@ -246,13 +248,21 @@ export default function PublicLiveMatchesPage() {
                 <h2 className="mt-1 break-words text-lg font-black leading-tight sm:text-xl">
                   {selectedMatch.homeTeam} <span className="text-cyan-200">vs.</span> {selectedMatch.awayTeam}
                 </h2>
+                <p className="mt-1 text-xs font-semibold text-amber-200">{selectedMatch.statusLabel}</p>
               </div>
               <div className="shrink-0 rounded-xl border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-center">
-                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100">Frames</p>
-                <p className="mt-0.5 text-xl font-black text-white">{selectedMatch.overallScore}</p>
+                <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100">Reported frames</p>
+                <p className="mt-0.5 text-xl font-black text-white">{selectedMatch.matchState === "in_progress" ? selectedMatch.overallScore : "—"}</p>
               </div>
             </div>
-            <div className="mt-3 grid gap-2">
+            {selectedMatch.matchState !== "in_progress" ? (
+              <p className="mt-3 rounded-xl border border-amber-200/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-100">
+                {selectedMatch.matchState === "awaiting_lineup"
+                  ? "Fixture due tonight. A line-up is still missing from the app; play status is not confirmed."
+                  : "Line-ups are in, but no scores have been saved in the app yet. Play may already be underway."}
+              </p>
+            ) : null}
+            {selectedMatch.matchState !== "awaiting_lineup" ? <div className="mt-3 grid gap-2">
               {selectedMatch.frameRows.map((frame) => (
                 <div key={frame.id} className="min-w-0 rounded-xl border border-white/10 bg-slate-950/35 px-3 py-2.5">
                   {(() => {
@@ -288,7 +298,7 @@ export default function PublicLiveMatchesPage() {
                   })()}
                 </div>
               ))}
-            </div>
+            </div> : null}
           </section>
         ) : null}
 
@@ -304,14 +314,22 @@ export default function PublicLiveMatchesPage() {
                     <h2 className="mt-1 text-xl font-black leading-tight xl:text-2xl 2xl:mt-2 2xl:text-4xl">
                       {match.homeTeam} <span className="text-cyan-200">vs.</span> {match.awayTeam}
                     </h2>
+                    <p className="mt-1 text-sm font-semibold text-amber-200 2xl:text-lg">{match.statusLabel}</p>
                   </div>
                   <div className="shrink-0 rounded-xl border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-center 2xl:rounded-2xl 2xl:px-6 2xl:py-3">
-                    <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100 2xl:text-sm">Frames</p>
-                    <p className="mt-0.5 text-xl font-black text-white 2xl:text-4xl">{match.overallScore}</p>
+                    <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100 2xl:text-sm">Reported frames</p>
+                    <p className="mt-0.5 text-xl font-black text-white 2xl:text-4xl">{match.matchState === "in_progress" ? match.overallScore : "—"}</p>
                   </div>
                 </div>
 
-                <div className="mt-2 grid content-start gap-1.5 xl:grid-cols-2 2xl:mt-4 2xl:gap-3">
+                {match.matchState !== "in_progress" ? (
+                  <p className="mt-3 rounded-xl border border-amber-200/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100 2xl:text-xl">
+                    {match.matchState === "awaiting_lineup"
+                      ? "Fixture due tonight. A line-up is still missing from the app; play status is not confirmed."
+                      : "Line-ups are in, but no scores have been saved in the app yet. Play may already be underway."}
+                  </p>
+                ) : null}
+                {match.matchState !== "awaiting_lineup" ? <div className="mt-2 grid content-start gap-1.5 xl:grid-cols-2 2xl:mt-4 2xl:gap-3">
                   {match.frameRows.map((frame) => (
                     <div key={frame.id} className="rounded-xl border border-white/10 bg-slate-950/35 px-2.5 py-2 2xl:rounded-2xl 2xl:px-4 2xl:py-3">
                       {(() => {
@@ -379,7 +397,7 @@ export default function PublicLiveMatchesPage() {
                       })()}
                     </div>
                   ))}
-                </div>
+                </div> : null}
               </section>
             ))}
           </div>

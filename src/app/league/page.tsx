@@ -99,6 +99,8 @@ type Fixture = {
   status: "pending" | "in_progress" | "complete" | "bye";
   home_points: number;
   away_points: number;
+  home_lineup_submitted_at?: string | null;
+  away_lineup_submitted_at?: string | null;
 };
 type FixtureChangeRequest = {
   id: string;
@@ -1800,7 +1802,7 @@ function LeaguePageContent() {
       fetchAllSupabasePages<Fixture>((from, to) =>
         client
           .from("league_fixtures")
-          .select("id,season_id,location_id,week_no,fixture_date,home_team_id,away_team_id,status,home_points,away_points")
+          .select("id,season_id,location_id,week_no,fixture_date,home_team_id,away_team_id,status,home_points,away_points,home_lineup_submitted_at,away_lineup_submitted_at")
           .order("fixture_date", { ascending: true })
           .order("id", { ascending: true })
           .range(from, to)
@@ -8375,7 +8377,9 @@ function LeaguePageContent() {
                                 ? { label: "Locked", className: "border-emerald-300 bg-emerald-100 text-emerald-900" }
                                 : !isFixtureDueNow(f.fixture_date)
                                   ? { label: "Scheduled", className: "border-slate-300 bg-slate-100 text-slate-700" }
-                                  : { label: "Action required", className: "border-rose-300 bg-rose-100 text-rose-900" };
+                                : f.home_lineup_submitted_at && f.away_lineup_submitted_at
+                                  ? { label: "Awaiting scores", className: "border-amber-300 bg-amber-100 text-amber-900" }
+                                  : { label: "Awaiting line-up", className: "border-amber-300 bg-amber-100 text-amber-900" };
                       const canOpenFixture = canManage || captainTeamIds.has(f.home_team_id) || captainTeamIds.has(f.away_team_id);
                       return (
                         <div key={f.id} className="grid items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 sm:grid-cols-[180px_1fr_auto]">
@@ -8442,7 +8446,9 @@ function LeaguePageContent() {
                                       ? { label: "Locked", className: "border-emerald-300 bg-emerald-100 text-emerald-900" }
                                       : !isFixtureDueNow(f.fixture_date)
                                         ? { label: "Scheduled", className: "border-slate-300 bg-slate-100 text-slate-700" }
-                                        : { label: "Action required", className: "border-rose-300 bg-rose-100 text-rose-900" };
+                                        : f.home_lineup_submitted_at && f.away_lineup_submitted_at
+                                          ? { label: "Awaiting scores", className: "border-amber-300 bg-amber-100 text-amber-900" }
+                                          : { label: "Awaiting line-up", className: "border-amber-300 bg-amber-100 text-amber-900" };
                             return (
                               <div key={f.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
                                 <div className="text-sm text-slate-800">

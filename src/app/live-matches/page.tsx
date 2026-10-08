@@ -12,6 +12,8 @@ type LiveMatchData = {
     fixtureDate: string | null;
     weekNo: number | null;
     status: string;
+    matchState: "awaiting_lineup" | "awaiting_scores" | "in_progress";
+    statusLabel: string;
     homeTeam: string;
     awayTeam: string;
     overallScore: string;
@@ -104,13 +106,13 @@ export default function LiveMatchesPage() {
     <main className="min-h-screen bg-slate-100 p-4 sm:p-6">
       <RequireAuth>
         <div className="mx-auto max-w-6xl space-y-4">
-          <ScreenHeader title="Live Matches" eyebrow="League" subtitle="Follow tonight's live league scorecards from inside the app." />
+          <ScreenHeader title="Live Matches" eyebrow="League" subtitle="Follow tonight's fixtures and the scores entered in the app." />
 
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div className="min-w-0">
                 <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">{data.season ? shortSeasonName(data.season.name) : "Published League"}</p>
-                <h2 className="mt-1 text-2xl font-black text-slate-950">{data.liveMatches.length} live match{data.liveMatches.length === 1 ? "" : "es"}</h2>
+                <h2 className="mt-1 text-2xl font-black text-slate-950">{data.liveMatches.length} fixture{data.liveMatches.length === 1 ? "" : "s"} tonight</h2>
               </div>
               <div className="flex shrink-0 items-center gap-2 self-start rounded-full border border-slate-200 bg-slate-50 px-3 py-2 text-sm font-semibold text-slate-700">
                 <span className="h-2 w-2 rounded-full bg-emerald-500" aria-hidden="true" />
@@ -119,7 +121,7 @@ export default function LiveMatchesPage() {
             </div>
 
             <div className="mt-4 rounded-xl border border-sky-100 bg-sky-50/70 px-3 py-2 text-sm text-slate-600">
-              This screen refreshes every 30 seconds. Completed matches are removed automatically.
+              This screen refreshes every 30 seconds. It shows fixtures due tonight, including those waiting for line-ups or scores; completed matches drop off automatically.
             </div>
 
             {(data.seasons.length > 1 || data.liveMatches.length > 1) ? (
@@ -164,9 +166,9 @@ export default function LiveMatchesPage() {
           {!loading && data.error ? <section className="rounded-2xl border border-rose-200 bg-rose-50 p-5 text-rose-800 shadow-sm">{data.error}</section> : null}
           {!loading && !data.error && data.liveMatches.length === 0 ? (
             <section className="rounded-2xl border border-slate-200 bg-white p-6 text-center shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">No Live Matches</p>
-              <h2 className="mt-2 text-2xl font-black text-slate-950">No fixture is live right now</h2>
-              <p className="mt-2 text-sm text-slate-600">This page will populate once both teams have confirmed their lineups for a fixture.</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-slate-500">No Fixtures Tonight</p>
+              <h2 className="mt-2 text-2xl font-black text-slate-950">No unfinished fixture is due today</h2>
+              <p className="mt-2 text-sm text-slate-600">Fixtures due tonight appear here even before line-ups or scores have been entered.</p>
             </section>
           ) : null}
 
@@ -176,14 +178,22 @@ export default function LiveMatchesPage() {
                 <div className="min-w-0">
                   <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-700">Week {selectedMatch.weekNo ?? "-"}</p>
                   <h2 className="mt-1 break-words text-2xl font-black text-slate-950">{selectedMatch.homeTeam} vs {selectedMatch.awayTeam}</h2>
+                  <p className="mt-1 text-sm font-semibold text-amber-800">{selectedMatch.statusLabel}</p>
                 </div>
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-emerald-900">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em]">Frames</p>
-                  <p className="mt-1 text-3xl font-black">{selectedMatch.overallScore}</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em]">Reported frames</p>
+                  <p className="mt-1 text-3xl font-black">{selectedMatch.matchState === "in_progress" ? selectedMatch.overallScore : "—"}</p>
                 </div>
               </div>
 
-              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              {selectedMatch.matchState !== "in_progress" ? (
+                <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+                  {selectedMatch.matchState === "awaiting_lineup"
+                    ? "Fixture due tonight. A line-up is still missing from the app; play status is not confirmed."
+                    : "Line-ups are in, but no scores have been saved in the app yet. Play may already be underway."}
+                </p>
+              ) : null}
+              {selectedMatch.matchState !== "awaiting_lineup" ? <div className="mt-4 grid gap-3 lg:grid-cols-2">
                 {selectedMatch.frameRows.map((frame) => (
                   <div key={frame.id} className={`rounded-2xl border p-3 ${frameTone(frame.frameStatus)}`}>
                     <div className="flex items-center justify-between gap-2">
@@ -207,7 +217,7 @@ export default function LiveMatchesPage() {
                     </div>
                   </div>
                 ))}
-              </div>
+              </div> : null}
             </section>
           ) : null}
         </div>

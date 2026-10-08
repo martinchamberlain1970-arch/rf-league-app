@@ -29,7 +29,7 @@ type FixtureRow = {
   week_no: number | null;
   home_team_id: string;
   away_team_id: string;
-  status: "pending" | "in_progress" | "complete";
+  status: "pending" | "in_progress" | "complete" | "bye";
   pre_match_paper_record?: boolean | null;
   home_lineup_submitted_at?: string | null;
   away_lineup_submitted_at?: string | null;
@@ -152,16 +152,21 @@ export async function GET(req: NextRequest) {
   }
   const selectedSeasonIds = selectedSeasons.map((season) => season.id);
   const seasonById = new Map(selectedSeasons.map((season) => [season.id, season]));
+  const matchNightDate = new Date().toLocaleDateString("sv-SE", { timeZone: "Europe/London" });
 
   const [teamsRes, fixturesRes] = await Promise.all([
-    adminClient.from("league_teams").select("id,season_id,name").in("season_id", selectedSeasonIds),
-    adminClient
-      .from("league_fixtures")
-      .select(
-        "id,season_id,fixture_date,week_no,home_team_id,away_team_id,status,pre_match_paper_record,home_lineup_submitted_at,away_lineup_submitted_at"
-      )
-      .in("season_id", selectedSeasonIds)
-      .order("fixture_date", { ascending: true }),
+    fetchAllSupabasePages<TeamRow>((from, to) =>
+      adminClient.from("league_teams").select("id,season_id,name").in("season_id", selectedSeasonIds).order("id", { ascending: true }).range(from, to)
+    ),
+    fetchAllSupabasePages<FixtureRow>((from, to) =>
+      adminClient
+        .from("league_fixtures")
+        .select("id,season_id,fixture_date,week_no,home_team_id,away_team_id,status,pre_match_paper_record,home_lineup_submitted_at,away_lineup_submitted_at")
+        .in("season_id", selectedSeasonIds)
+        .eq("fixture_date", matchNightDate)
+        .order("id", { ascending: true })
+        .range(from, to)
+    ),
   ]);
 
   const firstError = teamsRes.error?.message || fixturesRes.error?.message;
@@ -172,24 +177,10 @@ export async function GET(req: NextRequest) {
   const teams = (teamsRes.data ?? []) as TeamRow[];
   const fixtures = ((fixturesRes.data ?? []) as FixtureRow[]).filter((fixture) => seasonById.has(fixture.season_id));
 
-  const matchNightCandidates = fixtures.filter((fixture) => {
-    if (fixture.pre_match_paper_record) return false;
-    if (fixture.status === "complete") return false;
-    return Boolean(fixture.home_lineup_submitted_at) && Boolean(fixture.away_lineup_submitted_at);
-  });
-
-  const currentMatchNightDateBySeason = new Map<string, string>();
-  for (const fixture of matchNightCandidates) {
-    if (!fixture.fixture_date) continue;
-    const current = currentMatchNightDateBySeason.get(fixture.season_id);
-    if (!current || fixture.fixture_date > current) currentMatchNightDateBySeason.set(fixture.season_id, fixture.fixture_date);
-  }
-
-  const liveFixtures = matchNightCandidates
-    .filter((fixture) => {
-      const currentMatchNightDate = currentMatchNightDateBySeason.get(fixture.season_id);
-      return currentMatchNightDate ? fixture.fixture_date === currentMatchNightDate : true;
-    })
+  // A match-night display should include fixtures due tonight even when teams
+  // have not yet entered a line-up or score. It must not imply play has begun.
+  const liveFixtures = fixtures
+    .filter((fixture) => !fixture.pre_match_paper_record && fixture.status !== "complete" && fixture.status !== "bye")
     .sort((a, b) => {
       const statusRank = (status: FixtureRow["status"]) =>
         status === "in_progress" ? 0 : 1;
@@ -271,12 +262,23 @@ export async function GET(req: NextRequest) {
     const fixtureFrames = frames.filter((frame) => frame.fixture_id === fixture.id).sort((a, b) => a.slot_no - b.slot_no);
     const homeFramesWon = fixtureFrames.filter((frame) => frame.winner_side === "home").length;
     const awayFramesWon = fixtureFrames.filter((frame) => frame.winner_side === "away").length;
-    const effectiveStatus =
-      fixture.status === "pending" &&
-      fixture.home_lineup_submitted_at &&
-      fixture.away_lineup_submitted_at
-        ? "in_progress"
-        : fixture.status;
+    const hasSavedScore = fixtureFrames.some((frame) =>
+      frame.winner_side !== null ||
+      frame.home_forfeit ||
+      frame.away_forfeit ||
+      typeof frame.home_points_scored === "number" ||
+      typeof frame.away_points_scored === "number"
+    );
+    const matchState = hasSavedScore
+      ? "in_progress"
+      : fixture.home_lineup_submitted_at && fixture.away_lineup_submitted_at
+        ? "awaiting_scores"
+        : "awaiting_lineup";
+    const statusLabel = matchState === "in_progress"
+      ? "In progress"
+      : matchState === "awaiting_scores"
+        ? "Awaiting scores"
+        : "Awaiting line-up";
 
     const frameRows = fixtureFrames.map((frame) => {
       const homePrimary = frame.home_player1_id ? playerById.get(frame.home_player1_id) : null;
@@ -372,7 +374,9 @@ export async function GET(req: NextRequest) {
       seasonName: fixtureSeason.name,
       fixtureDate: fixture.fixture_date,
       weekNo: fixture.week_no,
-      status: effectiveStatus,
+      status: fixture.status,
+      matchState,
+      statusLabel,
       homeTeam: teamById.get(fixture.home_team_id)?.name ?? "Home team",
       awayTeam: teamById.get(fixture.away_team_id)?.name ?? "Away team",
       overallScore: `${homeFramesWon} - ${awayFramesWon}`,
