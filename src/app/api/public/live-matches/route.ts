@@ -20,6 +20,7 @@ type TeamRow = {
   id: string;
   season_id: string;
   name: string;
+  is_active?: boolean | null;
 };
 
 type FixtureRow = {
@@ -30,6 +31,8 @@ type FixtureRow = {
   home_team_id: string;
   away_team_id: string;
   status: "pending" | "in_progress" | "complete" | "bye";
+  home_points: number | null;
+  away_points: number | null;
   pre_match_paper_record?: boolean | null;
   home_lineup_submitted_at?: string | null;
   away_lineup_submitted_at?: string | null;
@@ -148,7 +151,7 @@ export async function GET(req: NextRequest) {
   const selectedSeasons = includeAllSeasons ? seasons : selectedSeason ? [selectedSeason] : [];
 
   if (selectedSeasons.length === 0) {
-    return NextResponse.json({ season: null, seasons: seasonOptions, liveMatches: [] });
+    return NextResponse.json({ season: null, seasons: seasonOptions, liveMatches: [], leagueTables: [] });
   }
   const selectedSeasonIds = selectedSeasons.map((season) => season.id);
   const seasonById = new Map(selectedSeasons.map((season) => [season.id, season]));
@@ -156,14 +159,13 @@ export async function GET(req: NextRequest) {
 
   const [teamsRes, fixturesRes] = await Promise.all([
     fetchAllSupabasePages<TeamRow>((from, to) =>
-      adminClient.from("league_teams").select("id,season_id,name").in("season_id", selectedSeasonIds).order("id", { ascending: true }).range(from, to)
+      adminClient.from("league_teams").select("id,season_id,name,is_active").in("season_id", selectedSeasonIds).order("id", { ascending: true }).range(from, to)
     ),
     fetchAllSupabasePages<FixtureRow>((from, to) =>
       adminClient
         .from("league_fixtures")
-        .select("id,season_id,fixture_date,week_no,home_team_id,away_team_id,status,pre_match_paper_record,home_lineup_submitted_at,away_lineup_submitted_at")
+        .select("id,season_id,fixture_date,week_no,home_team_id,away_team_id,status,home_points,away_points,pre_match_paper_record,home_lineup_submitted_at,away_lineup_submitted_at")
         .in("season_id", selectedSeasonIds)
-        .eq("fixture_date", matchNightDate)
         .order("id", { ascending: true })
         .range(from, to)
     ),
@@ -175,7 +177,8 @@ export async function GET(req: NextRequest) {
   }
 
   const teams = (teamsRes.data ?? []) as TeamRow[];
-  const fixtures = ((fixturesRes.data ?? []) as FixtureRow[]).filter((fixture) => seasonById.has(fixture.season_id));
+  const allFixtures = ((fixturesRes.data ?? []) as FixtureRow[]).filter((fixture) => seasonById.has(fixture.season_id));
+  const fixtures = allFixtures.filter((fixture) => fixture.fixture_date === matchNightDate);
 
   // A match-night display should include fixtures due tonight even when teams
   // have not yet entered a line-up or score. It must not imply play has begun.
@@ -384,11 +387,65 @@ export async function GET(req: NextRequest) {
     };
   });
 
+  // Use the same frame-points ordering as the published league board. Tonight's
+  // saved frames are provisional until the fixture is complete and approved.
+  const leagueTables = selectedSeasons.map((season) => {
+    const seasonTeams = teams.filter((team) => team.season_id === season.id && team.is_active !== false);
+    const teamIds = new Set(seasonTeams.map((team) => team.id));
+    const seasonFixtures = allFixtures.filter((fixture) =>
+      fixture.season_id === season.id && teamIds.has(fixture.home_team_id) && teamIds.has(fixture.away_team_id)
+    );
+    const rank = (includeTonight: boolean) => {
+      const rows = seasonTeams.map((team) => ({
+        teamId: team.id, teamName: team.name, played: 0, framesFor: 0, framesAgainst: 0, points: 0, frameDiff: 0,
+      }));
+      const byId = new Map(rows.map((row) => [row.teamId, row]));
+      for (const fixture of seasonFixtures) {
+        const isTonight = fixture.fixture_date === matchNightDate;
+        if (isTonight && !includeTonight) continue;
+        let home = 0;
+        let away = 0;
+        if (fixture.status === "complete") {
+          home = Number(fixture.home_points ?? 0);
+          away = Number(fixture.away_points ?? 0);
+          byId.get(fixture.home_team_id)!.played += 1;
+          byId.get(fixture.away_team_id)!.played += 1;
+        } else if (isTonight && includeTonight && fixture.status !== "bye") {
+          const fixtureFrames = frames.filter((frame) => frame.fixture_id === fixture.id);
+          home = fixtureFrames.filter((frame) => frame.winner_side === "home").length;
+          away = fixtureFrames.filter((frame) => frame.winner_side === "away").length;
+        } else {
+          continue;
+        }
+        const homeRow = byId.get(fixture.home_team_id)!;
+        const awayRow = byId.get(fixture.away_team_id)!;
+        homeRow.framesFor += home;
+        homeRow.framesAgainst += away;
+        awayRow.framesFor += away;
+        awayRow.framesAgainst += home;
+      }
+      return rows.map((row) => ({ ...row, points: row.framesFor, frameDiff: row.framesFor - row.framesAgainst }))
+        .sort((a, b) => b.points - a.points || b.frameDiff - a.frameDiff || b.framesFor - a.framesFor || a.teamName.localeCompare(b.teamName))
+        .map((row, index) => ({ ...row, rank: index + 1 }));
+    };
+    const beforeRanks = new Map(rank(false).map((row) => [row.teamId, row.rank]));
+    return {
+      seasonId: season.id,
+      seasonName: season.name,
+      provisional: seasonFixtures.some((fixture) =>
+        fixture.fixture_date === matchNightDate && fixture.status !== "complete" &&
+        frames.some((frame) => frame.fixture_id === fixture.id && frame.winner_side !== null)
+      ),
+      rows: rank(true).map((row) => ({ ...row, movement: (beforeRanks.get(row.teamId) ?? row.rank) - row.rank })),
+    };
+  });
+
   return NextResponse.json({
     season: includeAllSeasons
       ? { id: "all", name: "All live league matches" }
       : { id: selectedSeasons[0].id, name: selectedSeasons[0].name },
     seasons: seasonOptions,
     liveMatches,
+    leagueTables,
   });
 }

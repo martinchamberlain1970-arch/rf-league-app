@@ -5,6 +5,22 @@ import { countryCodeToFlagEmoji } from "@/lib/country-flags";
 
 type LiveMatchData = {
   season: { id: string; name: string } | null;
+  leagueTables: Array<{
+    seasonId: string;
+    seasonName: string;
+    provisional: boolean;
+    rows: Array<{
+      teamId: string;
+      teamName: string;
+      rank: number;
+      played: number;
+      framesFor: number;
+      framesAgainst: number;
+      frameDiff: number;
+      points: number;
+      movement: number;
+    }>;
+  }>;
   liveMatches: Array<{
     fixtureId: string;
     seasonId?: string;
@@ -41,6 +57,7 @@ type LiveMatchData = {
 const emptyData: LiveMatchData = {
   season: null,
   liveMatches: [],
+  leagueTables: [],
 };
 
 // A venue screen needs to show a complete scorecard at a readable size. Rotate
@@ -109,6 +126,42 @@ function sideHighlight(frameStatus: string, side: "home" | "away") {
   };
 }
 
+function LiveLeagueTable({ table }: { table: LiveMatchData["leagueTables"][number] }) {
+  return (
+    <section className="min-w-0 rounded-2xl border border-white/10 bg-white/6 p-3 shadow-2xl backdrop-blur sm:p-4 2xl:rounded-[2rem] 2xl:p-6">
+      <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-cyan-200 2xl:text-base">Live league table</p>
+          <h2 className="mt-1 text-xl font-black sm:text-2xl 2xl:text-4xl">{table.seasonName}</h2>
+        </div>
+        {table.provisional ? <span className="rounded-full border border-amber-300/30 bg-amber-400/10 px-3 py-1 text-xs font-semibold text-amber-100 2xl:text-base">Includes unapproved live frames</span> : null}
+      </div>
+      <div className="overflow-x-auto rounded-xl border border-white/10">
+        <table className="w-full min-w-[480px] table-fixed text-left text-sm 2xl:text-xl">
+          <thead className="bg-white/10 text-xs uppercase tracking-wider text-cyan-100 2xl:text-base">
+            <tr><th className="w-14 px-2 py-2 text-center">#</th><th className="w-10 px-1 py-2" aria-label="Movement" />
+              <th className="px-2 py-2">Team</th><th className="w-12 px-1 py-2 text-center">P</th><th className="w-12 px-1 py-2 text-center">F</th><th className="w-12 px-1 py-2 text-center">A</th><th className="w-14 px-1 py-2 text-center">+/-</th><th className="w-14 px-1 py-2 text-center">Pts</th></tr>
+          </thead>
+          <tbody>
+            {table.rows.map((row) => (
+              <tr key={row.teamId} className="border-t border-white/10 even:bg-white/[0.035]">
+                <td className="px-2 py-1.5 text-center font-black 2xl:py-2">{row.rank}</td>
+                <td className={`px-1 py-1.5 text-center text-lg font-black 2xl:text-2xl ${row.movement > 0 ? "text-emerald-300" : row.movement < 0 ? "text-rose-300" : "text-amber-300"}`} aria-label={row.movement > 0 ? `Up ${row.movement} place${row.movement === 1 ? "" : "s"}` : row.movement < 0 ? `Down ${-row.movement} place${row.movement === -1 ? "" : "s"}` : "No movement"}>
+                  {row.movement > 0 ? "↑" : row.movement < 0 ? "↓" : "↔"}
+                </td>
+                <td className="truncate px-2 py-1.5 font-semibold 2xl:py-2" title={row.teamName}>{row.teamName}</td>
+                <td className="px-1 py-1.5 text-center">{row.played}</td><td className="px-1 py-1.5 text-center">{row.framesFor}</td><td className="px-1 py-1.5 text-center">{row.framesAgainst}</td>
+                <td className="px-1 py-1.5 text-center">{row.frameDiff > 0 ? "+" : ""}{row.frameDiff}</td><td className="px-1 py-1.5 text-center font-black text-cyan-100">{row.points}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="mt-2 text-xs text-slate-300 2xl:text-sm">Arrows compare positions with the start of tonight. P = completed matches; live frame points remain provisional until approval.</p>
+    </section>
+  );
+}
+
 export default function PublicLiveMatchesPage() {
   const [data, setData] = useState<LiveMatchData>(emptyData);
   const [loading, setLoading] = useState(true);
@@ -141,8 +194,9 @@ export default function PublicLiveMatchesPage() {
   }, []);
 
   const matchPages = useMemo(() => chunkRows(data.liveMatches, MATCHES_PER_PAGE), [data.liveMatches]);
-  const totalPages = Math.max(matchPages.length, 1);
-  const visibleMatches = matchPages[Math.min(pageIndex, totalPages - 1)] ?? [];
+  const totalPages = Math.max(matchPages.length + data.leagueTables.length, 1);
+  const visibleMatches = matchPages[pageIndex] ?? [];
+  const visibleTable = data.leagueTables[pageIndex - matchPages.length] ?? null;
   const liveFixtureKey = useMemo(
     () => data.liveMatches.map((match) => match.fixtureId).join("|"),
     [data.liveMatches]
@@ -154,12 +208,12 @@ export default function PublicLiveMatchesPage() {
 
   useEffect(() => {
     const liveFixtureIds = liveFixtureKey ? liveFixtureKey.split("|") : [];
-    setPageIndex((current) => Math.min(current, Math.max(liveFixtureIds.length - 1, 0)));
+    setPageIndex((current) => Math.min(current, Math.max(totalPages - 1, 0)));
     setSelectedFixtureId((current) => {
       if (current && liveFixtureIds.includes(current)) return current;
       return liveFixtureIds[0] ?? "";
     });
-  }, [liveFixtureKey]);
+  }, [liveFixtureKey, totalPages]);
 
   useEffect(() => {
     if (totalPages <= 1) return;
@@ -205,8 +259,8 @@ export default function PublicLiveMatchesPage() {
                 {data.liveMatches.length} fixture{data.liveMatches.length === 1 ? "" : "s"} tonight
               </div>
               {totalPages > 1 ? (
-                <div className="rounded-full border border-cyan-200/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-semibold text-cyan-100 sm:px-4 sm:py-2 sm:text-sm 2xl:px-5 2xl:py-2.5 2xl:text-base">
-                  Match {Math.min(pageIndex + 1, totalPages)} of {totalPages}
+                <div className="hidden rounded-full border border-cyan-200/20 bg-cyan-400/10 px-3 py-1.5 text-xs font-semibold text-cyan-100 sm:px-4 sm:py-2 sm:text-sm lg:block 2xl:px-5 2xl:py-2.5 2xl:text-base">
+                  {visibleTable ? "Table" : "Match"} {Math.min(pageIndex + 1, totalPages)} of {totalPages}
                 </div>
               ) : null}
               <div className="rounded-full border border-white/15 bg-white/10 px-3 py-1.5 text-xs font-semibold text-slate-100 sm:px-4 sm:py-2 sm:text-sm 2xl:px-5 2xl:py-2.5 2xl:text-base">
@@ -299,7 +353,13 @@ export default function PublicLiveMatchesPage() {
           </section>
         ) : null}
 
-        {!loading && !data.error && data.liveMatches.length > 0 ? (
+        {!loading && !data.error ? (
+          <div className="grid gap-3 lg:hidden">
+            {data.leagueTables.map((table) => <LiveLeagueTable key={table.seasonId} table={table} />)}
+          </div>
+        ) : null}
+
+        {!loading && !data.error && visibleMatches.length > 0 ? (
           <div className="hidden gap-3 lg:grid">
             {visibleMatches.map((match) => (
               <section key={match.fixtureId} className="flex flex-col rounded-2xl border border-white/10 bg-white/6 p-3 shadow-2xl backdrop-blur 2xl:rounded-[2rem] 2xl:p-6">
@@ -396,6 +456,7 @@ export default function PublicLiveMatchesPage() {
             ))}
           </div>
         ) : null}
+        {!loading && !data.error && visibleTable ? <div className="hidden lg:block"><LiveLeagueTable table={visibleTable} /></div> : null}
       </div>
     </main>
   );
