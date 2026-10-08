@@ -245,23 +245,20 @@ export default function PublicLiveMatchesPage() {
                 <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-cyan-200">
                   {selectedMatch.seasonName ? `${selectedMatch.seasonName} · ` : ""}Week {selectedMatch.weekNo ?? "-"}
                 </p>
-                <h2 className="mt-1 break-words text-lg font-black leading-tight sm:text-xl">
-                  {selectedMatch.homeTeam} <span className="text-cyan-200">vs.</span> {selectedMatch.awayTeam}
-                </h2>
-                <p className="mt-1 text-xs font-semibold text-amber-200">{selectedMatch.statusLabel}</p>
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
+                  <h2 className="break-words text-lg font-black leading-tight sm:text-xl">
+                    {selectedMatch.homeTeam} <span className="text-cyan-200">vs.</span> {selectedMatch.awayTeam}
+                  </h2>
+                  <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold ${selectedMatch.matchState === "in_progress" ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100" : "border-amber-300/30 bg-amber-400/10 text-amber-100"}`}>
+                    {selectedMatch.statusLabel}
+                  </span>
+                </div>
               </div>
               <div className="shrink-0 rounded-xl border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-center">
                 <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100">Reported frames</p>
                 <p className="mt-0.5 text-xl font-black text-white">{selectedMatch.matchState === "in_progress" ? selectedMatch.overallScore : "—"}</p>
               </div>
             </div>
-            {selectedMatch.matchState !== "in_progress" ? (
-              <p className="mt-3 rounded-xl border border-amber-200/20 bg-amber-400/10 px-3 py-2 text-sm text-amber-100">
-                {selectedMatch.matchState === "awaiting_lineup"
-                  ? "Fixture due tonight. A line-up is still missing from the app; play status is not confirmed."
-                  : "Line-ups are in, but no scores have been saved in the app yet. Play may already be underway."}
-              </p>
-            ) : null}
             {selectedMatch.matchState !== "awaiting_lineup" ? <div className="mt-3 grid gap-2">
               {selectedMatch.frameRows.map((frame) => (
                 <div key={frame.id} className="min-w-0 rounded-xl border border-white/10 bg-slate-950/35 px-3 py-2.5">
@@ -311,10 +308,14 @@ export default function PublicLiveMatchesPage() {
                     <p className="text-[0.68rem] font-semibold uppercase tracking-[0.22em] text-cyan-200 2xl:text-sm 2xl:tracking-[0.26em]">
                       {match.seasonName ? `${match.seasonName} · ` : ""}Week {match.weekNo ?? "-"}
                     </p>
-                    <h2 className="mt-1 text-xl font-black leading-tight xl:text-2xl 2xl:mt-2 2xl:text-4xl">
-                      {match.homeTeam} <span className="text-cyan-200">vs.</span> {match.awayTeam}
-                    </h2>
-                    <p className="mt-1 text-sm font-semibold text-amber-200 2xl:text-lg">{match.statusLabel}</p>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 2xl:mt-2">
+                      <h2 className="text-xl font-black leading-tight xl:text-2xl 2xl:text-4xl">
+                        {match.homeTeam} <span className="text-cyan-200">vs.</span> {match.awayTeam}
+                      </h2>
+                      <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold 2xl:text-base ${match.matchState === "in_progress" ? "border-emerald-300/30 bg-emerald-400/10 text-emerald-100" : "border-amber-300/30 bg-amber-400/10 text-amber-100"}`}>
+                        {match.statusLabel}
+                      </span>
+                    </div>
                   </div>
                   <div className="shrink-0 rounded-xl border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-center 2xl:rounded-2xl 2xl:px-6 2xl:py-3">
                     <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100 2xl:text-sm">Reported frames</p>
@@ -322,13 +323,6 @@ export default function PublicLiveMatchesPage() {
                   </div>
                 </div>
 
-                {match.matchState !== "in_progress" ? (
-                  <p className="mt-3 rounded-xl border border-amber-200/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-100 2xl:text-xl">
-                    {match.matchState === "awaiting_lineup"
-                      ? "Fixture due tonight. A line-up is still missing from the app; play status is not confirmed."
-                      : "Line-ups are in, but no scores have been saved in the app yet. Play may already be underway."}
-                  </p>
-                ) : null}
                 {match.matchState !== "awaiting_lineup" ? <div className="mt-2 grid content-start gap-1.5 xl:grid-cols-2 2xl:mt-4 2xl:gap-3">
                   {match.frameRows.map((frame) => (
                     <div key={frame.id} className="rounded-xl border border-white/10 bg-slate-950/35 px-2.5 py-2 2xl:rounded-2xl 2xl:px-4 2xl:py-3">
