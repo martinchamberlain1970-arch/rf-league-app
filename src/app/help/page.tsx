@@ -26,6 +26,11 @@ const faqs = [
       "Use the Handicaps page for the current list, the Elo-to-handicap guide, and the rules applied to each division.",
   },
   {
+    question: "When are Premier League handicaps reviewed?",
+    answer:
+      "Reviews are scheduled after fixture Weeks 1, 2, 3 and 4, then after every fourth fixture week: Weeks 8, 12, 16 and so on. Elo can change after an approved match, but the playing handicap normally stays the same between scheduled reviews. The League Secretary or Chairman can authorise a correction when needed. Division 1 matches remain scratch.",
+  },
+  {
     question: "Who can change a handicap?",
     answer:
       "The League Secretary, Chairman or Treasurer can run Elo reviews and apply manual corrections where league rules require it.",

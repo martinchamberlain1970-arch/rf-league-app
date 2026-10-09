@@ -69,8 +69,13 @@ export default function PublicHandicapsPage() {
           {data?.isInformationOnly ? "Division 1 is played from scratch. Elo is displayed as performance information only and is not a playing handicap." : "Elo updates automatically when a match result is approved and complete. Handicap does not auto-change after every match; it is reviewed from Elo and any league decisions."}
         </section>
 
+        {!data?.isInformationOnly ? <section className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">
+          <h2 className="font-bold text-white">When are handicaps reviewed?</h2>
+          <p className="mt-1">Premier League reviews are scheduled after fixture Weeks 1, 2, 3 and 4, then every four fixture weeks: Weeks 8, 12, 16 and so on. Between reviews, your current playing handicap remains in force unless a league officer authorises a correction. The Elo target below is only an indication of what a review today would suggest.</p>
+        </section> : null}
+
         {data?.isInformationOnly ? <section className="rounded-2xl border border-violet-400/20 bg-violet-500/10 p-4 text-sm text-violet-100">A Division 1 Elo does not transfer into the Premier League. If a team is promoted, each player must be given a separately assessed and approved Premier League starting handicap and rating.</section> : <section className="rounded-2xl border border-violet-400/20 bg-violet-500/10 p-4 text-sm text-violet-100">
-          `Target from Elo` shows where a player currently projects from their rating. `Current` is the live handicap being used on match night, so any difference means the latest Elo review still needs to bring that handicap back into line.
+          `Target from Elo` shows where a player currently projects from their rating. `Current` is the live handicap being used on match night. A difference can be normal between scheduled reviews; it does not change the playing start tonight.
         </section>}
 
         {!data?.isInformationOnly ? <section className="rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4 text-sm text-cyan-100">
