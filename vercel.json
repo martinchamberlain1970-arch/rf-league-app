@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/premier-handicap-auto-attest",
       "schedule": "0 18 10 9 *"
+    },
+    {
+      "path": "/api/cron/unsubmitted-league-scorecards",
+      "schedule": "0 8 * * *"
     }
   ]
 }

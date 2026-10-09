@@ -2080,6 +2080,10 @@ export default function CaptainResultsPage() {
     if (isFinalFrame) {
       if (saveResult.allFramesComplete && !saveResult.hasUnsavedBreakDraft) {
         setScorecardReviewMode(true);
+        setInfo({
+          title: "All frames saved — match not submitted",
+          description: "The fifth frame is saved, but the match is still in progress. Review all five frames and any 30+ breaks, then press Submit match result. A league officer cannot approve it until you submit.",
+        });
       }
       return;
     }
@@ -2750,6 +2754,22 @@ export default function CaptainResultsPage() {
                         </div>
                       ) : null}
 
+                      {homeSideCanManageScorecard && !scorecardDirty && orderedScoreSlots.length > 0 && firstIncompleteScorecardIndex < 0 && !pendingByFixture.has(selectedFixture.id) ? (
+                        <div role="status" className="rounded-xl border-2 border-amber-400 bg-amber-50 p-4 text-amber-950">
+                          <p className="text-base font-bold">All frames saved — match NOT submitted</p>
+                          <p className="mt-1 text-sm">The live score is visible, but the result is not in the league officer’s approval queue. Check the scorecard and submit it below.</p>
+                          {!scorecardReviewMode ? (
+                            <button
+                              type="button"
+                              onClick={() => setScorecardReviewMode(true)}
+                              className="mt-3 min-h-11 rounded-xl bg-amber-900 px-4 py-2 text-sm font-semibold text-white"
+                            >
+                              Review and submit match
+                            </button>
+                          ) : null}
+                        </div>
+                      ) : null}
+
                       {lineupsLocked || preMatchPaperRecord ? (
                         <fieldset
                           disabled={!homeSideCanManageScorecard}
@@ -3312,9 +3332,12 @@ export default function CaptainResultsPage() {
                       ) : null}
 
                       {scorecardReviewMode ? (
-                        <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3">
-                          <p className="mb-2 text-xs text-emerald-900">
-                            Check the final scores and 30+ breaks, then use the single submission button below.
+                        <div className="rounded-xl border-2 border-emerald-400 bg-emerald-50 p-4">
+                          <p className="mb-2 text-sm font-bold text-emerald-950">
+                            Final step: submit the match for league-officer approval
+                          </p>
+                          <p className="mb-3 text-xs text-emerald-900">
+                            Saving frame five did not submit the result. Check the final scores and 30+ breaks, then press Submit match result.
                           </p>
                           <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
                           <input
@@ -3351,7 +3374,13 @@ export default function CaptainResultsPage() {
           {mobileMatchActionBar}
 
           <MessageModal message={message} onClose={() => setMessage(null)} />
-          <InfoModal open={Boolean(info)} title={info?.title ?? ""} description={info?.description ?? ""} onClose={() => setInfo(null)} />
+          <InfoModal
+            open={Boolean(info)}
+            title={info?.title ?? ""}
+            description={info?.description ?? ""}
+            closeLabel={info?.title === "All frames saved — match not submitted" ? "Review & submit" : undefined}
+            onClose={() => setInfo(null)}
+          />
           <ConfirmModal
             open={breakPromptSlotNo !== null}
             title={breakPromptSlotNo === null ? "Any 30+ breaks?" : `Any 30+ breaks in Frame ${breakPromptSlotNo}?`}
