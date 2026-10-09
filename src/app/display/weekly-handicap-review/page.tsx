@@ -17,7 +17,9 @@ type ChangeRow = {
   changedThisWeek: boolean;
   ratedFrames: number;
   target: number;
+  gapToTarget: number;
   illustrativeHandicap: number;
+  projectionNote: string | null;
   reason: string;
 };
 
@@ -97,13 +99,13 @@ export default function PublicWeeklyHandicapReviewPage() {
             {data?.season?.name ?? "Weekly Elo Review"}
           </h1>
           <p className="mt-2 text-sm text-slate-300">
-            {data?.week ? `Week ${data.week}` : "Latest completed week"} · Reviewed{" "}
+            {data?.week ? `Week ${data.week}` : "Latest completed week"} · Fixtures through{" "}
             {batchLabel} · Updated {updatedAt || "--:--"}
           </p>
           <p className="mt-2 text-sm text-slate-300">
             {data?.isInformationOnly
               ? "Players whose Elo changed in the completed week, with an indicative Elo-derived handicap. Division 1 remains scratch, so this is a performance review rather than an applied handicap review."
-              : "Players whose Elo and/or playing handicap changed at the Week review. Elo comes from eligible singles and doubles results; no-shows and voids are excluded. In a nominated-player frame, only the nominated player is excluded."}
+              : "Players whose Elo and/or playing handicap changed this week. Elo comes from eligible singles and doubles results; no-shows and voids are excluded. In a nominated-player frame, only the nominated player is excluded. After the first four weekly reviews, handicap reviews are every four fixture weeks (Weeks 8, 12 and so on). The Elo target is an illustration, not a live change between reviews."}
           </p>
           {(data?.seasons?.length ?? 0) > 1 ? (
             <label className="mt-4 block max-w-xl text-sm font-semibold text-white">
@@ -165,6 +167,7 @@ export default function PublicWeeklyHandicapReviewPage() {
                   </p>
                   <h2 className="mt-2 text-2xl font-bold text-white">{row.name}</h2>
                   <p className="mt-2 text-sm text-slate-300">{row.reason}</p>
+                  {!data?.isInformationOnly && row.projectionNote ? <p className="mt-3 rounded-xl border border-cyan-300/20 bg-cyan-300/5 p-3 text-sm leading-6 text-cyan-50">{row.projectionNote}</p> : null}
                 </div>
                 <div className="rounded-2xl border border-amber-400/30 bg-amber-500/10 px-4 py-3 text-right">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-amber-300">
@@ -176,7 +179,7 @@ export default function PublicWeeklyHandicapReviewPage() {
                 </div>
               </div>
 
-              <div className="mt-5 grid gap-3 sm:grid-cols-3">
+              <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
                     Elo (Previous Week)
@@ -204,10 +207,15 @@ export default function PublicWeeklyHandicapReviewPage() {
                     {data?.isInformationOnly
                       ? "Information only; not applied to Division 1 matches"
                       : row.handicapChangedThisWeek
-                        ? "Changed at the scheduled weekly review"
-                        : "No handicap band change"}
+                        ? "Changed at the scheduled review"
+                        : "Current published playing handicap"}
                   </p>
                 </div>
+                {!data?.isInformationOnly ? <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/5 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">If reviewed today</p>
+                  <p className="mt-2 text-2xl font-bold text-white">{formatHandicap(row.target)}</p>
+                  <p className="mt-1 text-xs text-slate-300">Gap to current: {formatHandicap(row.gapToTarget)} · illustrative only</p>
+                </div> : null}
               </div>
               <p className="mt-4 text-xs text-slate-400">
                 Rated frames counted this week: {row.ratedFrames}

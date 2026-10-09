@@ -666,6 +666,7 @@ export async function buildPublicWeeklyHandicapReview(
       const startingRating = currentRating - delta;
       const startingTarget = targetHandicapFromElo(startingRating);
       const target = targetHandicapFromElo(currentRating);
+      const gapToTarget = target - currentHandicap;
       const recordedHandicapChange = handicapChangeByPlayer.get(player.id) ?? null;
       const legacyBoundaryTarget = Math.round((1000 - currentRating) / 20) * 4;
       let handicapChange = recordedHandicapChange
@@ -760,6 +761,11 @@ export async function buildPublicWeeklyHandicapReview(
         perFrameNotes.length > 0
           ? perFrameNotes.map((note) => note.explanation).join(" ")
           : "";
+      const projectionNote = isInformationOnly
+        ? null
+        : gapToTarget === 0
+          ? `Current playing handicap ${formatSigned(currentHandicap)} already matches the Elo target. A review today would leave it unchanged.`
+          : `Current playing handicap ${formatSigned(currentHandicap)}. Based on ${currentRating} Elo, a review today would suggest ${formatSigned(target)} (gap to target ${formatSigned(gapToTarget)}). This is illustrative only: the playing handicap stays at ${formatSigned(currentHandicap)} until the next scheduled review or an authorised adjustment.`;
       return {
         playerId: player.id,
         name,
@@ -773,16 +779,18 @@ export async function buildPublicWeeklyHandicapReview(
         baseline: Number(player.snooker_handicap_base ?? currentHandicap),
         rating: currentRating,
         target,
+        gapToTarget,
+        projectionNote,
         startingTarget,
         illustrativeHandicap: target,
         changedThisWeek: delta !== 0,
         ratedFrames,
         reason:
           delta > 0
-            ? `${name} moved from ${startingRating} to ${currentRating}, gaining ${delta} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${frameSummary ? `${frameSummary} ` : ""}${isInformationOnly ? `The information-only Elo would indicate ${formatSigned(target)}, but every Division 1 match is played off scratch.` : `The current playing handicap is ${formatSigned(currentHandicap)}, based on the current Elo banding.`}`
+            ? `${name} moved from ${startingRating} to ${currentRating}, gaining ${delta} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${frameSummary ? `${frameSummary} ` : ""}${isInformationOnly ? `The information-only Elo would indicate ${formatSigned(target)}, but every Division 1 match is played off scratch.` : "The current handicap and today's Elo target are shown separately below."}`
             : delta < 0
-              ? `${name} moved from ${startingRating} to ${currentRating}, losing ${Math.abs(delta)} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${frameSummary ? `${frameSummary} ` : ""}${isInformationOnly ? `The information-only Elo would indicate ${formatSigned(target)}, but every Division 1 match is played off scratch.` : `The current playing handicap is ${formatSigned(currentHandicap)}, based on the current Elo banding.`}`
-              : `${name} stayed at ${currentRating} Elo this week with no Elo movement recorded. ${isInformationOnly ? `The information-only Elo would indicate ${formatSigned(target)}, but every Division 1 match is played off scratch.` : `The current playing handicap is ${formatSigned(currentHandicap)}, based on the current Elo banding.`}`,
+              ? `${name} moved from ${startingRating} to ${currentRating}, losing ${Math.abs(delta)} Elo from ${ratedFrames} rated frame${ratedFrames === 1 ? "" : "s"} this week. ${frameSummary ? `${frameSummary} ` : ""}${isInformationOnly ? `The information-only Elo would indicate ${formatSigned(target)}, but every Division 1 match is played off scratch.` : "The current handicap and today's Elo target are shown separately below."}`
+              : `${name} stayed at ${currentRating} Elo this week with no Elo movement recorded. ${isInformationOnly ? `The information-only Elo would indicate ${formatSigned(target)}, but every Division 1 match is played off scratch.` : "The current handicap and today's Elo target are shown separately below."}`,
       };
     });
   const changes = allChanges

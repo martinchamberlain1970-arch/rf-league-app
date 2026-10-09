@@ -69,6 +69,7 @@ const navigationGroups: NavigationGroup[] = [
       { href: "/league?view=knockouts", label: "Knockout competitions", officerOnly: true },
       { href: "/league?view=handicaps", label: "Manage handicaps", officerOnly: true },
       { href: "/results", label: "Results & approvals", officerOnly: true },
+      { href: "/outstanding-scorecards", label: "Outstanding scorecards", officerOnly: true },
       { href: "/entry-packs", label: "Team registrations", officerOnly: true },
       { href: "/players", label: "Players & team rosters", officerOnly: true },
       { href: "/rating-audit", label: "Elo review", officerOnly: true },

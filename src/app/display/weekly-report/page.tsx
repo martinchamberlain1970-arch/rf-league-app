@@ -57,10 +57,13 @@ type EloHandicapChange = {
   next: number;
   previousHandicap: number;
   nextHandicap: number;
+  current: number;
   handicapChangedThisWeek: boolean;
   ratedFrames: number;
   target: number;
+  gapToTarget: number;
   illustrativeHandicap: number;
+  projectionNote: string | null;
   reason: string;
 };
 
@@ -340,7 +343,7 @@ export default function PublicWeeklyReportPage() {
                 <p className="mt-2 text-sm text-slate-300">
                   {isDivisionOne
                     ? "Elo changes are calculated from eligible completed singles and doubles frames. The indicative handicap is supplied for information only; every Division 1 frame remains scratch."
-                    : "Elo changes are calculated from eligible completed singles and doubles frames. Nominated-player, no-show and void frames are excluded. Playing handicaps show the scheduled Proposal 2 review outcome."}
+                    : "Elo changes are calculated from eligible completed singles and doubles frames. Nominated-player, no-show and void frames are excluded. After the first four weekly reviews, playing handicaps are reviewed every four fixture weeks (Weeks 8, 12 and so on), or by an authorised adjustment. The Elo target shown for each player is not a change to tonight's playing start."}
                 </p>
               </div>
               <span className="rounded-full border border-amber-300/30 bg-amber-300/10 px-3 py-1 text-xs font-semibold text-amber-100">
@@ -417,9 +420,16 @@ export default function PublicWeeklyReportPage() {
                         </div>
                       </dl>
 
+                      {!isDivisionOne ? <div className="mt-3 grid gap-2 rounded-xl border border-cyan-300/15 bg-cyan-300/5 p-3 text-sm sm:grid-cols-3">
+                        <span>Current playing: <strong className="text-white">{signed(row.current)}</strong></span>
+                        <span>If reviewed today: <strong className="text-white">{signed(row.target)}</strong></span>
+                        <span>Gap to target: <strong className="text-white">{signed(row.gapToTarget)}</strong></span>
+                      </div> : null}
+
                       <p className="mt-4 break-words text-sm font-normal leading-6 text-slate-300 [overflow-wrap:anywhere]">
                         {row.reason}
                       </p>
+                      {!isDivisionOne && row.projectionNote ? <p className="mt-3 rounded-xl border border-cyan-300/20 bg-cyan-300/5 p-3 text-sm leading-6 text-cyan-50">{row.projectionNote}</p> : null}
                     </article>
                   ))}
                 </div>
@@ -448,6 +458,7 @@ export default function PublicWeeklyReportPage() {
                           <p className="mt-2 max-w-3xl break-words text-xs font-normal leading-5 text-slate-400 [overflow-wrap:anywhere]">
                             {row.reason}
                           </p>
+                          {!isDivisionOne && row.projectionNote ? <p className="mt-2 max-w-3xl break-words text-xs leading-5 text-cyan-100 [overflow-wrap:anywhere]">{row.projectionNote}</p> : null}
                         </td>
                         <td className="whitespace-nowrap px-4 py-3 text-cyan-100">{row.previous} → {row.next}</td>
                         <td className="px-4 py-3 text-slate-300">{row.ratedFrames}</td>
@@ -462,9 +473,7 @@ export default function PublicWeeklyReportPage() {
                           ) : (
                             <>
                               {signed(row.previousHandicap)} → {signed(row.nextHandicap)}
-                              <span className="ml-2 text-xs text-slate-400">
-                                {row.handicapChangedThisWeek ? "changed" : "unchanged"}
-                              </span>
+                              <span className="block text-xs text-slate-400">Current {signed(row.current)} · if reviewed today {signed(row.target)} · gap {signed(row.gapToTarget)}</span>
                             </>
                           )}
                         </td>

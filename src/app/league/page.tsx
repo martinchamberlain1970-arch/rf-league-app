@@ -1491,6 +1491,14 @@ function LeaguePageContent() {
       setActiveView(requestedView as LeagueView);
     }
   }, [admin.loading, canManage, searchParams]);
+  useEffect(() => {
+    if (!canManage || !seasonId) return;
+    const requestedFixtureId = searchParams.get("fixtureId");
+    if (!requestedFixtureId || searchParams.get("view") !== "fixtures") return;
+    if (!fixtures.some((fixture) => fixture.id === requestedFixtureId && fixture.season_id === seasonId)) return;
+    setFixtureId(requestedFixtureId);
+    setResultEntryOpen(true);
+  }, [canManage, fixtures, searchParams, seasonId]);
   const pendingFixtureSubmission = useMemo(
     () => submissions.find((s) => s.fixture_id === fixtureId && s.status === "pending") ?? null,
     [submissions, fixtureId]
