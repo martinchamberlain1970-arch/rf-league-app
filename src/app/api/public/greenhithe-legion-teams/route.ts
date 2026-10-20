@@ -10,6 +10,7 @@ type SeasonRow = {
   id: string;
   name: string;
   is_published?: boolean | null;
+  is_active?: boolean | null;
   created_at?: string | null;
 };
 
@@ -23,6 +24,7 @@ type TeamRow = {
   season_id: string;
   location_id: string | null;
   name: string;
+  is_active?: boolean | null;
 };
 
 type FixtureRow = {
@@ -84,7 +86,7 @@ export async function GET(req: NextRequest) {
 
   const seasonsRes = await adminClient
     .from("league_seasons")
-    .select("id,name,is_published,created_at")
+    .select("id,name,is_published,is_active,created_at")
     .eq("is_published", true)
     .order("created_at", { ascending: false });
 
@@ -92,9 +94,8 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ error: seasonsRes.error.message }, { status: 500 });
   }
 
-  const seasons = (seasonsRes.data ?? []) as SeasonRow[];
-  const selectedSeason = seasons[0] ?? null;
-  if (!selectedSeason) {
+  const publishedSeasons = (seasonsRes.data ?? []) as SeasonRow[];
+  if (publishedSeasons.length === 0) {
     return NextResponse.json({
       season: null,
       location: null,
@@ -125,10 +126,27 @@ export async function GET(req: NextRequest) {
 
   const location = locationRes.data as LocationRow;
 
+  const activeSeasons = publishedSeasons.filter((season) => season.is_active === true);
+  const candidateSeasons = activeSeasons.length > 0 ? activeSeasons : publishedSeasons;
+  const clubTeamsRes = await adminClient
+    .from("league_teams")
+    .select("id,season_id,location_id,name,is_active")
+    .in("season_id", candidateSeasons.map((season) => season.id));
+  if (clubTeamsRes.error) {
+    return NextResponse.json({ error: clubTeamsRes.error.message }, { status: 500 });
+  }
+  const clubSeasonIds = new Set(((clubTeamsRes.data ?? []) as TeamRow[])
+    .filter((team) => team.is_active !== false && (team.location_id === location.id || /^Greenhithe\s/i.test(team.name)))
+    .map((team) => team.season_id));
+  const selectedSeason = candidateSeasons.find((season) => clubSeasonIds.has(season.id)) ?? null;
+  if (!selectedSeason) {
+    return NextResponse.json({ season: null, location, teams: [], selectedTeam: null, rotationSeconds: 45 });
+  }
+
   const [teamsRes, fixturesRes] = await Promise.all([
     adminClient
       .from("league_teams")
-      .select("id,season_id,location_id,name")
+      .select("id,season_id,location_id,name,is_active")
       .eq("season_id", selectedSeason.id)
       .order("name", { ascending: true }),
     adminClient
@@ -144,7 +162,7 @@ export async function GET(req: NextRequest) {
   }
 
   const allTeams = (teamsRes.data ?? []) as TeamRow[];
-  const teams = allTeams.filter((team) => team.location_id === location.id);
+  const teams = allTeams.filter((team) => team.is_active !== false && (team.location_id === location.id || /^Greenhithe\s/i.test(team.name)));
   const fixtures = (fixturesRes.data ?? []) as FixtureRow[];
   const teamIds = new Set(teams.map((team) => team.id));
   const fixturePool = fixtures.filter((fixture) => teamIds.has(fixture.home_team_id) || teamIds.has(fixture.away_team_id));

@@ -89,6 +89,7 @@ export async function GET(req: NextRequest) {
   }
 
   const seasonIdParam = req.nextUrl.searchParams.get("seasonId")?.trim() ?? "";
+  const clubOnly = req.nextUrl.searchParams.get("clubOnly") === "1";
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
 
   const seasonsRes = await adminClient
@@ -104,9 +105,24 @@ export async function GET(req: NextRequest) {
   const publishedSeasons = (seasonsRes.data ?? []) as SeasonRow[];
   const activeSeasons = publishedSeasons.filter((season) => season.is_active === true);
   const seasons = activeSeasons.length > 0 ? activeSeasons : publishedSeasons;
+  let clubSeasonIds = new Set<string>();
+  if (clubOnly && seasons.length > 0) {
+    const clubTeamsRes = await adminClient
+      .from("league_teams")
+      .select("season_id,is_active")
+      .in("season_id", seasons.map((season) => season.id))
+      .ilike("name", "Greenhithe %");
+    if (clubTeamsRes.error) {
+      return NextResponse.json({ error: clubTeamsRes.error.message }, { status: 500 });
+    }
+    clubSeasonIds = new Set((clubTeamsRes.data ?? [])
+      .filter((team) => team.is_active !== false)
+      .map((team) => team.season_id));
+  }
+  const eligibleSeasons = clubOnly ? seasons.filter((season) => clubSeasonIds.has(season.id)) : seasons;
   const selectedSeason =
-    (seasonIdParam ? seasons.find((season) => season.id === seasonIdParam) : null) ??
-    seasons[0] ??
+    (seasonIdParam ? eligibleSeasons.find((season) => season.id === seasonIdParam) : null) ??
+    eligibleSeasons[0] ??
     null;
 
   if (!selectedSeason) {
@@ -209,6 +225,9 @@ export async function GET(req: NextRequest) {
     if (display && !playerIdByNormalisedName.has(display)) playerIdByNormalisedName.set(display, player.id);
   }
   const teamById = new Map(teams.map((team) => [team.id, team]));
+  const clubTeamPlayerIds = new Set(members
+    .filter((member) => /^Greenhithe\s/i.test(teamById.get(member.team_id)?.name ?? ""))
+    .map((member) => member.player_id));
 
   const leagueTable = teams
     .map((team) => ({
@@ -318,7 +337,9 @@ export async function GET(req: NextRequest) {
         win_pct: played > 0 ? Math.round((result.won / played) * 1000) / 10 : 0,
       };
     })
-    .filter((row) => (greenhitheLocationId ? row.location_id === greenhitheLocationId : true))
+    .filter((row) => clubOnly
+      ? clubTeamPlayerIds.has(row.player_id)
+      : greenhitheLocationId ? row.location_id === greenhitheLocationId : true)
     .filter((row) => row.played > 0)
     .sort((a, b) => b.won - a.won || b.win_pct - a.win_pct || b.played - a.played || a.player_name.localeCompare(b.player_name))
     .slice(0, 10)

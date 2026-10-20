@@ -28,7 +28,7 @@ export default function PublicTopPlayersPage() {
   useEffect(() => {
     let active = true;
     const load = async () => {
-      const resp = await fetch("/api/public/league-board", { cache: "no-store" });
+      const resp = await fetch("/api/public/league-board?clubOnly=1", { cache: "no-store" });
       const payload = (await resp.json()) as Payload;
       if (!active) return;
       setData(payload);
@@ -85,6 +85,9 @@ export default function PublicTopPlayersPage() {
                     <td className="px-3 py-3 text-center font-semibold text-emerald-300">{row.win_pct}%</td>
                   </tr>
                 ))}
+                {data && data.topPlayers.length === 0 ? (
+                  <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-300">No Greenhithe player results are recorded for the current league yet.</td></tr>
+                ) : null}
               </tbody>
             </table>
           </div>
