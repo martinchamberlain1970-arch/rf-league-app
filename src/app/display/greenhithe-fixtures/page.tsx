@@ -58,34 +58,34 @@ export default function GreenhitheFixturesDisplayPage() {
   const teams = useMemo(() => teamNames.map((name) => data?.teams.find((team) => team.name.toLowerCase() === name.toLowerCase()) ?? null), [data]);
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_60%)] px-5 py-7 text-white sm:px-8">
-      <div className="mx-auto max-w-7xl space-y-7">
-        <header className="rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl">
-          <p className="text-sm font-black uppercase tracking-[0.28em] text-cyan-300">Greenhithe Legion · Snooker</p>
-          <h1 className="mt-2 text-3xl font-black sm:text-5xl">Next league fixtures</h1>
-          <p className="mt-3 text-base text-slate-300">{data?.season?.name ?? "Current published league"} · Updated {updatedAt || "--:--"}</p>
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_60%)] px-5 py-6 text-white sm:px-8 lg:h-screen lg:overflow-hidden lg:px-[2vw] lg:py-[2vh]">
+      <div className="mx-auto flex h-full max-w-[1900px] flex-col gap-5">
+        <header className="shrink-0 rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl lg:px-[2vw] lg:py-[2.2vh]">
+          <p className="text-sm font-black uppercase tracking-[0.28em] text-cyan-300 lg:text-[clamp(1rem,1.25vw,1.6rem)]">Greenhithe Legion · Snooker</p>
+          <h1 className="mt-2 text-3xl font-black sm:text-5xl lg:text-[clamp(3rem,3.8vw,5rem)] lg:leading-none">Next league fixtures</h1>
+          <p className="mt-3 text-base text-slate-300 lg:text-[clamp(1rem,1.25vw,1.7rem)]">{data?.season?.name ?? "Current published league"} · Updated {updatedAt || "--:--"}</p>
         </header>
 
         {data?.error ? <p className="rounded-2xl border border-rose-400/40 bg-rose-500/10 p-5 text-rose-100">{data.error}</p> : null}
 
-        <section className="grid gap-6 lg:grid-cols-2" aria-label="Greenhithe A and B fixtures">
+        <section className="grid flex-1 gap-5 lg:min-h-0 lg:grid-cols-2" aria-label="Greenhithe A and B fixtures">
           {teams.map((team, index) => {
             const next = team?.upcomingFixtures[0] ?? null;
             return (
-              <article key={teamNames[index]} className="flex min-h-80 flex-col rounded-3xl border border-cyan-300/20 bg-slate-900/85 p-7 shadow-2xl">
-                <p className="text-sm font-black uppercase tracking-[0.24em] text-cyan-300">Premier League</p>
-                <h2 className="mt-2 text-4xl font-black sm:text-5xl">{teamNames[index]}</h2>
+              <article key={teamNames[index]} className="flex min-h-80 flex-col rounded-3xl border border-cyan-300/20 bg-slate-900/85 p-7 shadow-2xl lg:min-h-0 lg:p-[2.3vw]">
+                <p className="text-sm font-black uppercase tracking-[0.24em] text-cyan-300 lg:text-[clamp(1rem,1.25vw,1.7rem)]">Premier League</p>
+                <h2 className="mt-2 text-4xl font-black sm:text-5xl lg:text-[clamp(3.5rem,5vw,6.5rem)] lg:leading-none">{teamNames[index]}</h2>
                 {next ? (
-                  <div className="mt-8 flex flex-1 flex-col justify-between gap-8">
+                  <div className="mt-8 flex flex-1 flex-col justify-between gap-8 lg:mt-[5vh]">
                     <div>
-                      <p className="text-lg font-semibold text-amber-200">{fixtureDate(next.fixtureDate)}{next.weekNo ? ` · Week ${next.weekNo}` : ""}</p>
-                      <p className="mt-4 text-sm font-black uppercase tracking-[0.2em] text-slate-400">{next.venue === "home" ? "Home against" : "Away at"}</p>
-                      <p className="mt-2 text-4xl font-black leading-tight sm:text-5xl">{next.opponent}</p>
+                      <p className="text-lg font-semibold text-amber-200 lg:text-[clamp(1.4rem,2vw,2.5rem)]">{fixtureDate(next.fixtureDate)}{next.weekNo ? ` · Week ${next.weekNo}` : ""}</p>
+                      <p className="mt-4 text-sm font-black uppercase tracking-[0.2em] text-slate-300 lg:mt-[5vh] lg:text-[clamp(1rem,1.3vw,1.7rem)]">{next.venue === "home" ? "Home against" : "Away at"}</p>
+                      <p className="mt-2 text-4xl font-black leading-tight sm:text-5xl lg:text-[clamp(3rem,4.4vw,5.5rem)]">{next.opponent}</p>
                     </div>
-                    <p className="text-base font-bold text-emerald-300">{next.status === "in_progress" ? "Match in progress" : "Upcoming match"}</p>
+                    <p className="text-base font-bold text-emerald-300 lg:text-[clamp(1.25rem,1.6vw,2rem)]">{next.status === "in_progress" ? "Match in progress" : "Upcoming match"}</p>
                   </div>
                 ) : (
-                  <p className="mt-8 text-xl text-slate-300">{team ? "No upcoming fixture is currently listed." : "Team fixtures are not available yet."}</p>
+                  <p className="mt-8 text-xl text-slate-300 lg:text-[clamp(1.5rem,2vw,2.5rem)]">{team ? "No upcoming fixture is currently listed." : "Team fixtures are not available yet."}</p>
                 )}
               </article>
             );
