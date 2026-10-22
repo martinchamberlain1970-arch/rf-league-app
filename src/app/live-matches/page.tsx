@@ -12,7 +12,7 @@ type LiveMatchData = {
     fixtureDate: string | null;
     weekNo: number | null;
     status: string;
-    matchState: "awaiting_lineup" | "awaiting_scores" | "in_progress";
+    matchState: "awaiting_lineup" | "awaiting_scores" | "in_progress" | "match_ended";
     statusLabel: string;
     homeTeam: string;
     awayTeam: string;
@@ -121,7 +121,7 @@ export default function LiveMatchesPage() {
             </div>
 
             <div className="mt-4 rounded-xl border border-sky-100 bg-sky-50/70 px-3 py-2 text-sm text-slate-600">
-              This screen refreshes every 30 seconds. It shows fixtures due tonight, including those waiting for line-ups or scores; completed matches drop off automatically.
+              This screen refreshes every 30 seconds. It shows fixtures due tonight, including those waiting for line-ups or scores; approved results remain visible as Match Ended.
             </div>
 
             {(data.seasons.length > 1 || data.liveMatches.length > 1) ? (
@@ -181,12 +181,12 @@ export default function LiveMatchesPage() {
                   <p className="mt-1 text-sm font-semibold text-amber-800">{selectedMatch.statusLabel}</p>
                 </div>
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-emerald-900">
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em]">Reported frames</p>
-                  <p className="mt-1 text-3xl font-black">{selectedMatch.matchState === "in_progress" ? selectedMatch.overallScore : "—"}</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em]">{selectedMatch.matchState === "match_ended" ? "Final score" : "Reported frames"}</p>
+                  <p className="mt-1 text-3xl font-black">{selectedMatch.matchState === "in_progress" || selectedMatch.matchState === "match_ended" ? selectedMatch.overallScore : "—"}</p>
                 </div>
               </div>
 
-              {selectedMatch.matchState !== "in_progress" ? (
+              {(selectedMatch.matchState === "awaiting_lineup" || selectedMatch.matchState === "awaiting_scores") ? (
                 <p className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
                   {selectedMatch.matchState === "awaiting_lineup"
                     ? "Fixture due tonight. A line-up is still missing from the app; play status is not confirmed."
