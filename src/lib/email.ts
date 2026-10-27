@@ -8,6 +8,7 @@ type SendEmailOptions = {
   subject: string;
   text: string;
   html?: string;
+  idempotencyKey?: string;
 };
 
 export function notificationEmailIsConfigured() {
@@ -27,6 +28,7 @@ export async function sendNotificationEmail(options: SendEmailOptions): Promise<
     headers: {
       Authorization: `Bearer ${resendApiKey}`,
       "Content-Type": "application/json",
+      ...(options.idempotencyKey ? { "Idempotency-Key": options.idempotencyKey } : {}),
     },
     body: JSON.stringify({
       from: defaultSender,

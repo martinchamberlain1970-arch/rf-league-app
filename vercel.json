@@ -2,6 +2,10 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "crons": [
     {
+      "path": "/api/cron/handicap-review-emails",
+      "schedule": "*/10 * * * *"
+    },
+    {
       "path": "/api/cron/premier-handicap-auto-attest",
       "schedule": "0 18 10 9 *"
     },
