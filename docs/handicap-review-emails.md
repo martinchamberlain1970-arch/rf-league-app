@@ -1,13 +1,13 @@
 # Automatic handicap review emails
 
-Implemented for completed scheduled Premier League reviews. **Delivery is disabled by default. No email has been sent or deployment performed as part of implementation.**
+Implemented for completed scheduled Premier League reviews. **Delivery is disabled by default and requires explicit production activation. Martin approved the examples and production activation on 27 October 2026.**
 
 The migration snapshots the review, roster, changes and rating evidence in the same transaction as the existing review routine. The worker creates one player message per changed player and one summary per captain of an affected team. Unchanged players get no individual email. No email addresses appear in team summaries. Current ownership, confirmed account email, account bans, archived players, captain membership, team membership and current handicaps are checked before delivery. Changed or invalid recipients and stale handicaps are skipped.
 
 ## Approval and rollout
 
 1. Review `deliverables/Handicap-Player-Email-Example.html` and `deliverables/Handicap-Captain-Email-Example.html`. Examples use fictional names, dates and results.
-2. Apply `supabase/migrations/20261027_handicap_review_emails.sql` to staging and exercise the existing scheduled-review RPC with a complete due week. Confirm a single snapshot and matching history are created. This integration check requires PostgreSQL and has not been run locally.
+2. Apply `supabase/migrations/20261027_handicap_review_emails.sql` to staging and exercise the existing scheduled-review RPC with a complete due week. Confirm a single snapshot and matching history are created. The isolated PostgreSQL check passed on 27 October 2026 using the actual migration and scheduled-review function with synthetic fixtures. It covered snapshot contents, repeat reviews, queue leases, retry expiry and authenticated access denial.
 3. Deploy the application and migration with sending disabled. Confirm `RESEND_API_KEY`, verified `EMAIL_FROM`, `CRON_SECRET` and public HTTPS `NEXT_PUBLIC_SITE_URL` are configured. The ten-minute Vercel schedule requires a plan supporting that frequency.
 4. Only after the user approves the examples, set `HANDICAP_REVIEW_EMAILS_FROM` to an explicit UTC activation timestamp and `HANDICAP_REVIEW_EMAILS_ENABLED=true`. Reviews completed before that timestamp are excluded. Do not use a historical date without reviewing the affected batches.
 
@@ -20,5 +20,7 @@ League managers can GET `/api/league/handicap-email-preview` with their bearer t
 Turning the enable flag off stops all processing. It does not delete queued messages. Check pending rows before re-enabling. The migration does not backfill past reviews. Future snapshot comparisons distinguish new and rebuilt result records. For the first captured review, the email explicitly says that the earlier Elo snapshot is unavailable and the recorded activity may include rebuilt historical results. A recorded timestamp is labelled as such where no fixture date is available. No date is invented when the next review's fixtures are not scheduled.
 
 Current scope is the automatic scheduled review. Separate officer handicap edits and corrective realignments outside that review are not individually notified. Pending messages are suppressed if the published handicap has since changed. Adding independent correction notifications should use a separate change identifier and reason, rather than replaying a completed review.
+
+The isolated release also passed a full Next.js production build and a hosted Vercel preview build. The hosted preview endpoint correctly rejected unauthenticated access. Production cut-off: `2026-10-27T00:00:00Z`; existing Weeks 1–4 reviews predate this cut-off, and no old reviews were backfilled.
 
 Validation: `node --test tests/handicap-review-emails.cjs`, targeted ESLint, and `npx tsc --noEmit --incremental false`. Generate the two preview files with `node tests/handicap-review-emails.cjs --preview` (no network or email calls).
