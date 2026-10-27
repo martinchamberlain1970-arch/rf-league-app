@@ -77,7 +77,7 @@ export async function POST(req: NextRequest) {
   try {
     optimised = await optimiseAvatar(bytes);
   } catch {
-    return NextResponse.json({ error: "Unable to process this photo. Please choose a still JPEG, PNG or WebP image, up to 40 megapixels." }, { status: 400 });
+    return NextResponse.json({ error: "Unable to process this photo. Please choose a valid JPEG, PNG, WebP or GIF image, up to 40 megapixels and 100 animation frames." }, { status: 400 });
   }
   const ext = (rawFile.name.split(".").pop() || "image").replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || "image";
   const originalPath = `avatars/${playerId}-${randomUUID()}.${ext}`;

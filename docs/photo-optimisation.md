@@ -1,6 +1,6 @@
 # Player photo optimisation
 
-Player photos are converted server-side to WebP quality 85, bounded to 768 × 768 without enlargement or cropping. EXIF orientation is applied and metadata removed from the serving copy. Originals remain untouched. Inputs are capped at 10 MB / 40 megapixels; animated and invalid images are rejected.
+Player photos are converted server-side to WebP quality 85, bounded to 768 × 768 without enlargement or cropping. EXIF orientation is applied and metadata removed from the serving copy. Originals remain untouched. Inputs are capped at 10 MB / 40 megapixels; animations retain their frames (maximum 100); invalid images are rejected.
 
 Each new upload gets a unique original name and a matching `.optimised-v1.webp` copy. Only the optimised URL is submitted through the existing owner/approval workflow. Files use a one-year browser cache; changing the photo changes its URL. There is no Supabase paid image transformation dependency.
 

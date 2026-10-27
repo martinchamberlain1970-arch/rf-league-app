@@ -20,10 +20,10 @@ test('orientation is applied and smaller images are not enlarged',async()=>{
  const input=await sharp({create:{width:100,height:200,channels:3,background:'red'}}).jpeg().withMetadata({orientation:6}).toBuffer();
  const meta=await sharp(await helper.optimiseAvatar(input)).metadata(); assert.equal(meta.width,200); assert.equal(meta.height,100);
 });
-test('invalid, oversized, vector and animated uploads fail safely',async()=>{
+test('invalid, oversized and vector uploads fail safely; animation is preserved',async()=>{
  for(const bytes of [Buffer.from('bad'),Buffer.alloc(0),Buffer.alloc(helper.MAX_AVATAR_BYTES+1),Buffer.from('<svg width="10" height="10"></svg>')]) await assert.rejects(helper.optimiseAvatar(bytes));
  const gif=await sharp(Buffer.from([255,0,0,255,0,0,255,0,0,255,0,0,0,0,255,0,0,255,0,0,255,0,0,255]),{raw:{width:2,height:4,channels:3,pageHeight:2}}).gif({loop:0,delay:[100,100]}).toBuffer();
- await assert.rejects(helper.optimiseAvatar(gif),/still photo/);
+ const animated=await sharp(await helper.optimiseAvatar(gif),{animated:true}).metadata(); assert.equal(animated.pages,2); assert.equal(animated.pageHeight,2);
 });
 process.env.NEXT_PUBLIC_SUPABASE_URL='https://example.supabase.co';process.env.SUPABASE_SERVICE_ROLE_KEY='test';delete process.env.SUPER_ADMIN_EMAIL;
 function route(role='owner',missing=false) {
