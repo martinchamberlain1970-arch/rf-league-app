@@ -90,7 +90,7 @@ function PlayerBadge({
         <span className="text-[0.65rem] text-slate-300 2xl:text-xs">{flag ? `${flag} ` : ""}{player.nationality ?? ""}</span>
       ) : null}
       <div className={`flex h-7 w-7 items-center justify-center overflow-hidden rounded-full border text-[0.65rem] font-black 2xl:h-10 2xl:w-10 2xl:text-xs ${avatarClass}`}>
-        {player.avatarUrl ? <img src={player.avatarUrl} alt={player.name} className="h-full w-full object-cover" /> : <span>{player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>}
+        {player.avatarUrl ? <img loading="lazy" decoding="async" src={player.avatarUrl} alt={player.name} className="h-full w-full object-cover" /> : <span>{player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>}
       </div>
       {align === "left" && (flag || player.nationality) ? (
         <span className="text-[0.65rem] text-slate-300 2xl:text-xs">{flag ? `${flag} ` : ""}{player.nationality ?? ""}</span>

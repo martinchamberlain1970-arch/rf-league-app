@@ -130,7 +130,7 @@ function PlayerAvatars({
         >
           {player.avatarUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={player.avatarUrl} alt={player.name} className="h-full w-full object-cover" />
+            <img loading="lazy" decoding="async" src={player.avatarUrl} alt={player.name} className="h-full w-full object-cover" />
           ) : (
             <span>{initials(player.name)}</span>
           )}

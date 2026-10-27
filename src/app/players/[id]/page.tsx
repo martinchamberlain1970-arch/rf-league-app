@@ -1727,7 +1727,7 @@ export default function PlayerProfilePage() {
                   <div className="flex flex-wrap items-start gap-5">
                     <div className="h-24 w-24 overflow-hidden rounded-full border-2 border-cyan-200 bg-slate-100 shadow-sm">
                       {player.avatar_url ? (
-                        <img src={player.avatar_url} alt={playerName} className="h-full w-full object-cover" />
+                        <img loading="lazy" decoding="async" src={player.avatar_url} alt={playerName} className="h-full w-full object-cover" />
                       ) : null}
                     </div>
                     <div className="min-w-[220px] flex-1">

@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { randomUUID } from "node:crypto";
+import { optimiseAvatar, AVATAR_SUFFIX, AVATAR_CACHE_SECONDS } from "@/lib/optimise-avatar";
+
+export const runtime = "nodejs";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -68,16 +72,25 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Player profile not found." }, { status: 404 });
   }
 
-  const ext = rawFile.name.split(".").pop() || "jpg";
-  const path = `avatars/${playerId}-${Date.now()}.${ext}`;
   const bytes = new Uint8Array(await rawFile.arrayBuffer());
-  const uploadRes = await adminClient.storage.from("avatars").upload(path, bytes, {
-    contentType: rawFile.type || undefined,
-  });
-  if (uploadRes.error) {
-    return NextResponse.json({ error: uploadRes.error.message }, { status: 400 });
+  let optimised: Buffer;
+  try {
+    optimised = await optimiseAvatar(bytes);
+  } catch {
+    return NextResponse.json({ error: "Unable to process this photo. Please choose a still JPEG, PNG or WebP image, up to 40 megapixels." }, { status: 400 });
   }
-
+  const ext = (rawFile.name.split(".").pop() || "image").replace(/[^a-zA-Z0-9]/g, "").slice(0, 10) || "image";
+  const originalPath = `avatars/${playerId}-${randomUUID()}.${ext}`;
+  const path = originalPath + AVATAR_SUFFIX;
+  // Preserve the exact original under a separate versioned name for rollback.
+  const original = await adminClient.storage.from("avatars").upload(originalPath, bytes, {
+    contentType: rawFile.type, cacheControl: AVATAR_CACHE_SECONDS, upsert: false,
+  });
+  if (original.error) return NextResponse.json({ error: original.error.message }, { status: 400 });
+  const uploadRes = await adminClient.storage.from("avatars").upload(path, optimised, {
+    contentType: "image/webp", cacheControl: AVATAR_CACHE_SECONDS, upsert: false,
+  });
+  if (uploadRes.error) return NextResponse.json({ error: uploadRes.error.message }, { status: 400 });
   const publicUrl = adminClient.storage.from("avatars").getPublicUrl(path).data.publicUrl;
 
   if (!canApproveDirectly) {

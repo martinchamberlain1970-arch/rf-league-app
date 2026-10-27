@@ -83,7 +83,7 @@ function BoardPlayerBadge({ player, align = "left" }: { player: { name: string; 
   return (
     <div className={`flex items-center gap-2 ${align === "right" ? "justify-end" : ""}`}>
       <div className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full border border-white/15 bg-slate-900/60 text-[10px] font-black text-white">
-        {player.avatarUrl ? <img src={player.avatarUrl} alt={player.name} className="h-full w-full object-cover" /> : <span>{player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>}
+        {player.avatarUrl ? <img loading="lazy" decoding="async" src={player.avatarUrl} alt={player.name} className="h-full w-full object-cover" /> : <span>{player.name.split(/\s+/).map((part) => part[0]).join("").slice(0, 2).toUpperCase()}</span>}
       </div>
       {(flag || player.nationality) ? <span className="text-[11px] text-slate-300">{flag ? `${flag} ` : ""}{player.nationality ?? ""}</span> : null}
     </div>
