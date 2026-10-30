@@ -31,6 +31,7 @@ import LeagueCreationPanel, { type LeagueTemplateOption } from "@/components/lea
 import SeasonRosterEditor from "@/components/league/SeasonRosterEditor";
 import { useAppDialog } from "@/components/AppDialogProvider";
 import { supabase } from "@/lib/supabase";
+import { validateOfficerScorecard } from "@/lib/officer-scorecard";
 import { calculateAdjustedScoresWithCap, MAX_SNOOKER_START } from "@/lib/snooker-handicap";
 import { fetchAllSupabasePages } from "@/lib/supabase-pagination";
 
@@ -781,6 +782,10 @@ function LeaguePageContent() {
   const [fixtureAway, setFixtureAway] = useState("");
   const [fixtureId, setFixtureId] = useState("");
   const [resultEntryOpen, setResultEntryOpen] = useState(false);
+  const [officerDraft, setOfficerDraft] = useState<Record<string, Partial<FrameSlot>>>({});
+  const [officerErrors, setOfficerErrors] = useState<string[]>([]);
+  const [officerSaving, setOfficerSaving] = useState(false);
+  const [expectedBreaks, setExpectedBreaks] = useState<LeagueBreak[] | null>(null);
   const [scorecardPhotoUrl, setScorecardPhotoUrl] = useState("");
   const [reviewReason, setReviewReason] = useState("");
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
@@ -819,6 +824,7 @@ function LeaguePageContent() {
   const [leagueHandicapListRefreshedAt, setLeagueHandicapListRefreshedAt] = useState<string | null>(null);
 
   const canManage = admin.canManageLeague;
+  const officerBatchEntry = canManage && process.env.NEXT_PUBLIC_OFFICER_SCORECARD_ENABLED === "true";
   const canViewLeague = !admin.loading;
 
   const currentSeason = useMemo(() => seasons.find((s) => s.id === seasonId) ?? null, [seasons, seasonId]);
@@ -1356,7 +1362,7 @@ function LeaguePageContent() {
       .filter((t) => t.location_id === transferVenueId)
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [registeredTeams, transferVenueId]);
-  const fixtureSlots = useMemo(() => slots.filter((s) => s.fixture_id === fixtureId).sort((a, b) => a.slot_no - b.slot_no), [slots, fixtureId]);
+  const fixtureSlots = useMemo(() => slots.filter((s) => s.fixture_id === fixtureId).map((s) => officerBatchEntry ? { ...s, ...officerDraft[s.id] } : s).sort((a, b) => a.slot_no - b.slot_no), [slots, fixtureId, officerBatchEntry, officerDraft]);
   const fixtureSlotsByFixtureId = useMemo(() => {
     const map = new Map<string, FrameSlot[]>();
     for (const s of slots) {
@@ -2165,6 +2171,7 @@ function LeaguePageContent() {
     const client = supabase;
     if (!client || !fixtureId) return;
     let active = true;
+    setExpectedBreaks(null);
     const run = async () => {
       const res = await client
         .from("league_fixture_breaks")
@@ -2188,6 +2195,8 @@ function LeaguePageContent() {
         entered_player_name: (r.entered_player_name as string | null) ?? "",
         break_value: String(r.break_value ?? ""),
       }));
+      setOfficerErrors([]);
+      setExpectedBreaks(rows);
       const padded: LeagueBreak[] = [...rows];
       while (padded.length < 4) padded.push({ player_id: null, entered_player_name: "", break_value: "" });
       setFixtureBreaks(padded);
@@ -4406,6 +4415,12 @@ function LeaguePageContent() {
   };
 
   const updateFramePoints = async (slot: FrameSlot, side: "home" | "away", rawValue: string) => {
+    if (officerBatchEntry) {
+      const field = side === "home" ? "home_points_scored" : "away_points_scored";
+      const value = rawValue === "" ? null : Number(rawValue);
+      await updateFrameWithDerivedWinner(slot, { [field]: slot.home_forfeit || slot.away_forfeit ? 0 : value });
+      return;
+    }
     const parsedRaw = rawValue === "" ? null : Number.parseInt(rawValue, 10);
     const parsed = parsedRaw === null || Number.isNaN(parsedRaw) ? null : Math.min(200, Math.max(0, parsedRaw));
     const field = side === "home" ? "home_points_scored" : "away_points_scored";
@@ -4756,6 +4771,10 @@ function LeaguePageContent() {
       setMessage("This fixture is locked because it is complete.");
       return;
     }
+    if (officerBatchEntry && resultEntryOpen) {
+      setOfficerDraft(prev => ({ ...prev, [slotId]: { ...prev[slotId], ...patch } }));
+      return;
+    }
     if (opts?.localOnly) {
       setSlots((prev) => prev.map((s) => (s.id === slotId ? ({ ...s, ...patch }) : s)));
       return;
@@ -5055,6 +5074,50 @@ function LeaguePageContent() {
     setInfoModal({ title: "Handicap Updated", description: "Player handicap was updated and logged in history." });
     setHandicapReason("");
     await loadAll();
+  };
+
+  useEffect(() => {
+    if (!officerBatchEntry || expectedBreaks === null || (!Object.keys(officerDraft).length && JSON.stringify(fixtureBreaks.filter(row => row.id || row.player_id || row.entered_player_name || row.break_value)) === JSON.stringify(expectedBreaks))) return;
+    const warn = (event: BeforeUnloadEvent) => { event.preventDefault(); event.returnValue = ""; };
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [officerBatchEntry, officerDraft, fixtureBreaks, expectedBreaks]);
+
+  const saveOfficerResult = async () => {
+    if (!officerBatchEntry || !supabase || !currentFixture || officerSaving || expectedBreaks === null) return;
+    const validation = validateOfficerScorecard(fixtureSlots, fixtureBreaks, currentSeasonSinglesCount, currentSeasonDoublesCount);
+    setOfficerErrors(validation.errors);
+    if (validation.errors.length) { document.getElementById("result-entry")?.scrollTo({ top: 0, behavior: "smooth" }); return; }
+    setOfficerSaving(true);
+    try {
+      const session = await supabase.auth.getSession();
+      const token = session.data.session?.access_token;
+      if (!token) throw new Error("Session expired. Sign in again before saving.");
+      const response = await fetch("/api/league/officer-save-result", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ fixtureId: currentFixture.id, frames: fixtureSlots,
+          expectedFrames: slots.filter(row => row.fixture_id === currentFixture.id),
+          breaks: fixtureBreaks,
+          expectedBreaks: expectedBreaks.map(row => ({ id: row.id, player_id: row.player_id, entered_player_name: row.entered_player_name, break_value: row.break_value })),
+        }),
+      });
+      const result = await response.json();
+      if (result.scorecardSaved) {
+        setSlots(prev => prev.map(row => fixtureSlots.find(frame => frame.id === row.id) ?? row));
+        setOfficerDraft(prev => Object.fromEntries(Object.entries(prev).filter(([id]) => !fixtureSlots.some(frame => frame.id === id))));
+        const refreshed = await supabase.from("league_fixture_breaks").select("id,player_id,entered_player_name,break_value").eq("fixture_id", currentFixture.id);
+        if (refreshed.error) throw new Error("Result was saved. Reload before making further changes; break entries could not be refreshed.");
+        setExpectedBreaks((refreshed.data ?? []).map(row => ({ ...row, entered_player_name: row.entered_player_name ?? "", break_value: String(row.break_value) })));
+      }
+      if (!response.ok) throw new Error(result.error ?? "Could not save the scorecard.");
+      await loadAll();
+      setResultEntryOpen(false);
+      setInfoModal({ title: "Result saved", description: "The complete scorecard and breaks have been saved and the result processed." });
+    } catch (error) {
+      document.getElementById("result-entry")?.scrollTo({ top: 0, behavior: "smooth" });
+      setOfficerErrors([error instanceof Error ? error.message : "Saving failed. Your draft remains on this page. If the connection was lost, reload to check whether the save completed before trying again."]);
+    } finally { setOfficerSaving(false); }
   };
 
   const submitFixtureResult = async () => {
@@ -8523,7 +8586,7 @@ function LeaguePageContent() {
                     <div className="sticky top-0 z-20 flex items-center justify-between gap-3 border-b border-slate-700 bg-gradient-to-r from-[#081426] to-[#064e4a] px-4 py-3 text-white shadow-sm">
                       <div>
                         <p className="text-[10px] font-black uppercase tracking-[0.18em] text-cyan-300">Match-night scoring</p>
-                        <h2 className="text-lg font-bold">Weekly Result Entry</h2>
+                        <h2 className="text-lg font-bold">{officerBatchEntry ? "Officer scorecard entry" : "Weekly Result Entry"}</h2>
                         {currentFixture ? (
                           <p className="mt-0.5 text-xs text-slate-200">
                             {teamById.get(currentFixture.home_team_id)?.name ?? "Home"} vs {teamById.get(currentFixture.away_team_id)?.name ?? "Away"}
@@ -8532,7 +8595,7 @@ function LeaguePageContent() {
                       </div>
                       <button
                         type="button"
-                        onClick={() => setResultEntryOpen(false)}
+                        onClick={() => { if (!officerSaving) setResultEntryOpen(false); }}
                         className="rounded-xl border border-white/30 bg-white/10 px-3 py-1.5 text-sm font-semibold text-white hover:bg-white/20"
                       >
                         Close
@@ -8547,6 +8610,8 @@ function LeaguePageContent() {
                       ))}
                     </div>
                     <div className="p-4">
+                    {officerBatchEntry ? <div className="mb-3 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900">Enter the whole card, then select Validate and save result. Scores and lineups stay in this page until saved. Closing keeps your draft here; leaving or refreshing this page loses unsaved entries.</div> : null}
+                    {officerBatchEntry && officerErrors.length ? <div role="alert" className="mb-3 rounded-xl border border-red-300 bg-red-50 p-3 text-sm text-red-900"><p className="font-bold">Please check the scorecard</p><ul className="list-disc pl-5">{officerErrors.map((error, i) => <li key={i}>{error}</li>)}</ul></div> : null}
                     <p className="text-xs text-slate-600">
                       {`Format: ${currentSeasonSinglesCount} singles${currentSeasonDoublesCount > 0 ? ` + ${currentSeasonDoublesCount} doubles` : ""}. Winner is derived automatically from frame points.`}
                     </p>
@@ -8579,7 +8644,7 @@ function LeaguePageContent() {
                       </div>
                     ) : null}
                     <div className="mt-3 space-y-3">
-                      <fieldset disabled={isCurrentFixtureLocked && !canManage} className={isCurrentFixtureLocked && !canManage ? "cursor-not-allowed opacity-85" : ""}>
+                      <fieldset disabled={officerSaving || (isCurrentFixtureLocked && !canManage)} className={isCurrentFixtureLocked && !canManage ? "cursor-not-allowed opacity-85" : ""}>
                       {fixtureSlots.map((slot) => {
                         const fixture = seasonFixtures.find((f) => f.id === slot.fixture_id);
                         if (!fixture) return null;
@@ -8675,7 +8740,7 @@ function LeaguePageContent() {
                                   >
                                     <option value="">Home player</option>
                                     {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show</option> : null}
-                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">{canManage ? "Nominated player — choose manually" : "System-nominated player"}</option> : null}
+                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">{canManage ? "Nominated player — record/correct below" : "System-nominated player"}</option> : null}
                                     {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                     {homeRosterIds.map((id) => (
                                       <option key={id} value={id} disabled={(homeSinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.home_player1_id !== id}>
@@ -8687,15 +8752,20 @@ function LeaguePageContent() {
                                 )}
                               </div>
                               <input
-                                key={`home-points-${slot.id}-${slot.home_points_scored ?? ""}`}
+                                key={officerBatchEntry ? `home-${slot.id}` : `home-points-${slot.id}-${slot.home_points_scored ?? ""}`}
                                 type="number"
                                 inputMode="numeric"
                                 pattern="[0-9]*"
                                 min={0}
                                 max={200}
                                 className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
-                                defaultValue={slot.home_points_scored ?? ""}
-                                onBlur={(e) => void updateFramePoints(slot, "home", e.target.value)}
+                                {...(officerBatchEntry ? {
+                                  value: slot.home_points_scored ?? "",
+                                  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void updateFramePoints(slot, "home", e.target.value),
+                                } : {
+                                  defaultValue: slot.home_points_scored ?? "",
+                                  onBlur: (e: React.FocusEvent<HTMLInputElement>) => void updateFramePoints(slot, "home", e.target.value),
+                                })}
                                 placeholder="0-200"
                               />
 
@@ -8736,7 +8806,7 @@ function LeaguePageContent() {
                                   >
                                     <option value="">Away player</option>
                                     {isWinterFormat && slot.slot_no === 3 ? <option value="__NO_SHOW__">No Show</option> : null}
-                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">{canManage ? "Nominated player — choose manually" : "System-nominated player"}</option> : null}
+                                    {isWinterFormat && slot.slot_no === 4 ? <option value="__NOMINATED__">{canManage ? "Nominated player — record/correct below" : "System-nominated player"}</option> : null}
                                     {!isWinterFormat && slot.slot_type === "singles" && slot.slot_no >= 5 ? <option value="__NO_SHOW__">No Show</option> : null}
                                     {awayRosterIds.map((id) => (
                                       <option key={id} value={id} disabled={(awaySinglesCount.get(id) ?? 0) >= singlesMaxPerPlayer && slot.away_player1_id !== id}>
@@ -8748,15 +8818,20 @@ function LeaguePageContent() {
                                 )}
                               </div>
                               <input
-                                key={`away-points-${slot.id}-${slot.away_points_scored ?? ""}`}
+                                key={officerBatchEntry ? `away-${slot.id}` : `away-points-${slot.id}-${slot.away_points_scored ?? ""}`}
                                 type="number"
                                 inputMode="numeric"
                                 pattern="[0-9]*"
                                 min={0}
                                 max={200}
                                 className="rounded-lg border border-slate-300 bg-white px-2 py-1 text-sm"
-                                defaultValue={slot.away_points_scored ?? ""}
-                                onBlur={(e) => void updateFramePoints(slot, "away", e.target.value)}
+                                {...(officerBatchEntry ? {
+                                  value: slot.away_points_scored ?? "",
+                                  onChange: (e: React.ChangeEvent<HTMLInputElement>) => void updateFramePoints(slot, "away", e.target.value),
+                                } : {
+                                  defaultValue: slot.away_points_scored ?? "",
+                                  onBlur: (e: React.FocusEvent<HTMLInputElement>) => void updateFramePoints(slot, "away", e.target.value),
+                                })}
                                 placeholder="0-200"
                               />
                             </div>
@@ -8815,7 +8890,7 @@ function LeaguePageContent() {
                     </div>
 
                     <section className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                      <fieldset disabled={isCurrentFixtureLocked && !canManage} className={isCurrentFixtureLocked && !canManage ? "cursor-not-allowed opacity-85" : ""}>
+                      <fieldset disabled={officerSaving || (isCurrentFixtureLocked && !canManage)} className={isCurrentFixtureLocked && !canManage ? "cursor-not-allowed opacity-85" : ""}>
                       <h3 className="text-base font-semibold text-slate-900">Breaks 30+</h3>
                       <p className="mt-1 text-xs text-slate-600">
                         Record up to 4 by default. Use More for additional breaks.
@@ -8878,10 +8953,11 @@ function LeaguePageContent() {
                         </button>
                         <button
                           type="button"
-                          onClick={saveFixtureBreaks}
+                          onClick={officerBatchEntry ? undefined : saveFixtureBreaks}
+                          disabled={officerBatchEntry}
                           className="rounded-xl bg-slate-900 px-4 py-1.5 text-sm font-medium text-white"
                         >
-                          Save breaks
+                          {officerBatchEntry ? "Breaks included with result" : "Save breaks"}
                         </button>
                       </div>
                       </fieldset>
@@ -8890,12 +8966,10 @@ function LeaguePageContent() {
                       <section className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
                         <div className="flex flex-wrap items-center justify-between gap-3">
                           <p className="text-xs text-slate-600">
-                            {isCurrentFixtureLocked
-                              ? "This fixture is complete. You can recheck this result or rebuild the selected league date. A scheduled Premier League handicap review is refreshed after corrected Elo is applied."
-                              : "League-officer changes save as you edit. Use this to keep partial progress, recompute the fixture status, and close the entry screen."}
+                            {officerBatchEntry ? "Scores, lineups and breaks are checked together before saving. Elo and any due handicap review run after the result is saved." : "League-officer changes save as you edit. Save the result to complete processing."}
                           </p>
                           <div className="flex flex-wrap gap-2">
-                            {isCurrentFixtureLocked && currentFixture.fixture_date ? (
+                            {isCurrentFixtureLocked && currentFixture.fixture_date && Object.keys(officerDraft).length === 0 ? (
                               <button
                                 type="button"
                                 onClick={() => void rebuildFixtureDateRatings(currentFixture.fixture_date)}
@@ -8907,16 +8981,14 @@ function LeaguePageContent() {
                             <button
                               type="button"
                               onClick={async () => {
+                                if (officerBatchEntry) { await saveOfficerResult(); return; }
                                 const saved = await recomputeFixtureScore(currentFixture.id, { applyRatings: true });
                                 if (saved) setResultEntryOpen(false);
                               }}
+                              disabled={officerBatchEntry && (officerSaving || expectedBreaks === null)}
                               className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white"
                             >
-                              {isCurrentFixtureLocked
-                                ? "Recheck result, Elo and due handicap review"
-                                : computeFixtureProgress(currentFixture).status === "complete"
-                                  ? "Save and complete fixture"
-                                  : "Save progress and close"}
+                              {officerBatchEntry ? (officerSaving ? "Saving scorecard…" : "Validate and save result") : (isCurrentFixtureLocked ? "Recheck result, Elo and due handicap review" : "Save result and close")}
                             </button>
                           </div>
                         </div>
@@ -8946,9 +9018,7 @@ function LeaguePageContent() {
                       </section>
                     ) : (
                       <p className="mt-3 text-xs text-slate-600">
-                        {isCurrentFixtureLocked
-                          ? "This result is finalized and read-only."
-                          : "Changes save automatically for league officers."}
+                        {officerBatchEntry ? "Unsaved changes remain on this page until you validate and save the result." : canManage ? "Changes save automatically for league officers." : "This result is finalized and read-only."}
                       </p>
                     )}
                     </div>
