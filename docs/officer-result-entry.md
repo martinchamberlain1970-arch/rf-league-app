@@ -20,3 +20,7 @@ The rollout switch defaults to disabled. Code may be deployed safely before the 
 - `node --test tests/officer-scorecard.cjs`: validation, no writes for invalid cards, officer-only endpoint, one save and one rating-processing call.
 - `PGLITE_MODULE=/path/to/pglite/dist/index.js node tests/officer-scorecard-postgres.mjs`: atomic save, stale-card rejection, stale-break rejection, rollback on failure and role permissions in isolated PostgreSQL.
 - TypeScript and production build; targeted ESLint (existing warnings in the large league page).
+
+## Deployment verification — 30 October 2026
+
+The production database function was installed through the authenticated Supabase SQL editor. Permission checks returned `service_allowed=true`, `member_allowed=false`. The rollout variable was set to `true` for Preview only; Production remains disabled pending staging checks.
