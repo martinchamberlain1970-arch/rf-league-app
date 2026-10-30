@@ -1,3 +1,4 @@
+import { buildHandicapReviewSummary, type CompletedHandicapReview } from "./handicap-review-summary";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { targetHandicapFromElo } from "@/lib/snooker-rating";
 import { countsForIndividualStatistics } from "@/lib/league-player-statistics";
@@ -806,10 +807,22 @@ export async function buildPublicWeeklyHandicapReview(
         ? `Week 1 transition: ${transitionMismatchCount} players began with a restored playing handicap that did not match the handicap band implied by their restored Elo. Proposal 2 restored the last validated pre-reset Elo and the previous playing handicap as separate historical values. The records confirm those values were not aligned for every player; this can occur when Elo results and formal handicap reviews were last applied at different times. This first review therefore removes that inherited gap as well as reflecting Week 1 results. It is not all movement caused by one night of play.`
         : null;
 
+  let reviewSummary = null;
+  if (/premier league/i.test(season.name) && /2026\/2027|2026-27/.test(season.name)) {
+    const reviews = await adminClient.from("league_handicap_reviews")
+      .select("week_no,completed_at,changed_player_count")
+      .eq("season_id", season.id).eq("status", "complete");
+    reviewSummary = {
+      ...buildHandicapReviewSummary(selectedWeek, fixtures, (reviews.data ?? []) as CompletedHandicapReview[]),
+      ...(reviews.error ? { unavailable: true } : {}),
+    };
+  }
+
   return {
     season,
     isInformationOnly,
     batchTime: latestBatchTime,
+    reviewSummary,
     week: selectedWeek,
     reviewNote,
     changes,

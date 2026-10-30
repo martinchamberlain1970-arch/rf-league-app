@@ -1,5 +1,8 @@
 "use client";
 
+import HandicapReviewSummary from "@/components/HandicapReviewSummary";
+import type { HandicapReviewSummary as ReviewSummary } from "@/lib/handicap-review-summary";
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -68,6 +71,7 @@ type EloHandicapChange = {
 };
 
 type EloHandicapPayload = {
+  reviewSummary?: ReviewSummary | null;
   season: { id: string; name: string } | null;
   week: number | null;
   isInformationOnly?: boolean;
@@ -209,6 +213,8 @@ export default function PublicWeeklyReportPage() {
             </label>
           ) : null}
         </header>
+
+        <HandicapReviewSummary summary={eloHandicapData?.reviewSummary} />
 
         {isDivisionOne ? (
           <section className="rounded-2xl border border-violet-400/30 bg-violet-500/10 p-4 text-sm text-violet-100">

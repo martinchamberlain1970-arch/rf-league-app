@@ -1,5 +1,8 @@
 "use client";
 
+import HandicapReviewSummary from "@/components/HandicapReviewSummary";
+import type { HandicapReviewSummary as ReviewSummary } from "@/lib/handicap-review-summary";
+
 import { useEffect, useState } from "react";
 
 type ChangeRow = {
@@ -24,6 +27,7 @@ type ChangeRow = {
 };
 
 type Payload = {
+  reviewSummary?: ReviewSummary | null;
   season: { id: string; name: string } | null;
   seasons: Array<{ id: string; name: string }>;
   isInformationOnly?: boolean;
@@ -124,6 +128,8 @@ export default function PublicWeeklyHandicapReviewPage() {
             </label>
           ) : null}
         </header>
+
+        <HandicapReviewSummary summary={data?.reviewSummary} />
 
         {data?.isInformationOnly ? (
           <section className="rounded-2xl border border-violet-400/30 bg-violet-500/10 p-4 text-sm text-violet-100">

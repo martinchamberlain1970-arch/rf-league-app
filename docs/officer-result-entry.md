@@ -24,3 +24,5 @@ The rollout switch defaults to disabled. Code may be deployed safely before the 
 ## Deployment verification — 30 October 2026
 
 The production database function was installed through the authenticated Supabase SQL editor. Permission checks returned `service_allowed=true`, `member_allowed=false`. The rollout variable was set to `true` for Preview only; Production remains disabled pending staging checks.
+
+Production was subsequently enabled and redeployed after the signed-in staging check passed. The live officer form and authenticated endpoint were verified; no real result was submitted during testing.
