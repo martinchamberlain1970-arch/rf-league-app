@@ -19,7 +19,7 @@ async function context(req: NextRequest) {
   const user = auth.data.user;
   const [app, seasons, teams, role] = await Promise.all([
     admin.from("app_users").select("linked_player_id").eq("id",user.id).maybeSingle(),
-    admin.from("league_seasons").select("id,name,handicap_max_start").eq("is_active",true).eq("is_published",true),
+    admin.from("league_seasons").select("id,name,handicap_max_start"),
     admin.from("league_teams").select("id,name,season_id").eq("is_active",true),
     resolveServerRole(admin,user),
   ]);
@@ -27,8 +27,9 @@ async function context(req: NextRequest) {
   if (!app.data) throw new RequestError("An app account is required.",403);
   const memberships = app.data.linked_player_id ? await admin.from("league_team_members").select("team_id,is_captain,is_vice_captain").eq("player_id",app.data.linked_player_id) : { data: [], error: null };
   if (memberships.error) throw new Error("Unable to check captain permissions");
-  const active = new Set((seasons.data ?? []).map(s=>s.id));
-  const available = (teams.data ?? []).filter(t=>active.has(t.season_id));
+  // Team availability and captain permissions persist between league seasons.
+  // Season metadata is used only for division handicap rules, not eligibility.
+  const available = teams.data ?? [];
   const manager = canManageLeagueRole(role);
   const managed = new Set((memberships.data ?? []).filter(m=>m.is_captain || m.is_vice_captain).map(m=>m.team_id));
   return {admin,user,teams:available,seasons:seasons.data ?? [],managedIds:available.filter(t=>manager || managed.has(t.id)).map(t=>t.id)};
@@ -98,7 +99,7 @@ export async function POST(req: NextRequest) {
         const players=await roster(ctx);
         const leagueFor=(teamId:string|null)=>ctx.seasons.find(s=>s.id===ctx.teams.find(t=>t.id===teamId)?.season_id);
         const homeLeague=leagueFor(row.host_team_id),awayLeague=leagueFor(row.guest_team_id);
-        if (!homeLeague||!awayLeague) throw new RequestError("Both teams must be in active leagues to record frames.");
+        if (!homeLeague||!awayLeague) throw new RequestError("League details for these teams could not be found. Please contact a league officer.");
         let frames; try { frames=validateFrames(body.frames,row,players,homeLeague,awayLeague); } catch(e) {throw new RequestError((e as Error).message);}
         patch = {frames,status:'played'};
       } else throw new RequestError("Unknown action.");
