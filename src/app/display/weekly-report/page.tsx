@@ -1,6 +1,6 @@
 "use client";
 
-import { startVisiblePolling } from "@/lib/visible-polling";
+import { startVisiblePolling, staticDisplayRefreshMs } from "@/lib/visible-polling";
 
 import HandicapReviewSummary from "@/components/HandicapReviewSummary";
 import type { HandicapReviewSummary as ReviewSummary } from "@/lib/handicap-review-summary";
@@ -150,7 +150,7 @@ export default function PublicWeeklyReportPage() {
         new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       );
     };
-    const stopRefresh = startVisiblePolling(load, 300000);
+    const stopRefresh = startVisiblePolling(load, staticDisplayRefreshMs);
     return () => {
       active = false;
       stopRefresh();

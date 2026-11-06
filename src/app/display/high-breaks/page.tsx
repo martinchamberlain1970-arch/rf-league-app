@@ -1,6 +1,6 @@
 "use client";
 
-import { startVisiblePolling } from "@/lib/visible-polling";
+import { startVisiblePolling, staticDisplayRefreshMs } from "@/lib/visible-polling";
 
 import { useEffect, useMemo, useState } from "react";
 import InfoModal from "@/components/InfoModal";
@@ -71,7 +71,7 @@ export default function PublicHighBreaksPage() {
       setData(payload);
       setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     };
-    const stopRefresh = startVisiblePolling(load, 300000);
+    const stopRefresh = startVisiblePolling(load, staticDisplayRefreshMs);
     return () => {
       active = false;
       stopRefresh();

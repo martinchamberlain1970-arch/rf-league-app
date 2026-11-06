@@ -1,6 +1,6 @@
 "use client";
 
-import { startVisiblePolling } from "@/lib/visible-polling";
+import { startVisiblePolling, staticDisplayRefreshMs } from "@/lib/visible-polling";
 
 import { useEffect, useMemo, useState } from "react";
 
@@ -52,7 +52,7 @@ export default function GreenhitheFixturesDisplayPage() {
         if (active) setData({ season: null, teams: [], error: "Fixtures could not be loaded." });
       }
     };
-    const stopRefresh = startVisiblePolling(load, 300000);
+    const stopRefresh = startVisiblePolling(load, staticDisplayRefreshMs);
     return () => { active = false; stopRefresh(); };
   }, []);
 

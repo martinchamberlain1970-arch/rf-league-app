@@ -1,6 +1,6 @@
 "use client";
 
-import { startVisiblePolling } from "@/lib/visible-polling";
+import { startVisiblePolling, staticDisplayRefreshMs } from "@/lib/visible-polling";
 
 import { useEffect, useMemo, useState } from "react";
 import { countryCodeToFlagEmoji } from "@/lib/country-flags";
@@ -105,7 +105,7 @@ export default function PublicLeagueBoardPage() {
     const load = async () => {
       try {
         const [boardRes, liveRes] = await Promise.all([
-          (boardSnapshot && Date.now() - boardFetchedAt < 300000
+          (boardSnapshot && Date.now() - boardFetchedAt < staticDisplayRefreshMs()
             ? Promise.resolve(null)
             : fetch("/api/public/league-board", { cache: "default" })),
           fetch("/api/public/live-matches", { cache: "default" }),

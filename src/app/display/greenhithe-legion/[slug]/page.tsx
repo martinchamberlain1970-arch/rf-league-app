@@ -1,6 +1,6 @@
 "use client";
 
-import { startVisiblePolling } from "@/lib/visible-polling";
+import { startVisiblePolling, staticDisplayRefreshMs } from "@/lib/visible-polling";
 
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
@@ -67,7 +67,7 @@ export default function GreenhitheLegionTeamPage() {
       setData(payload);
       setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     };
-    const stopRefresh = startVisiblePolling(load, 300000);
+    const stopRefresh = startVisiblePolling(load, staticDisplayRefreshMs);
     return () => {
       active = false;
       stopRefresh();
