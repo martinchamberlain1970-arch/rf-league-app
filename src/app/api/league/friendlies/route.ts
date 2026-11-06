@@ -3,9 +3,10 @@ import { createClient } from "@supabase/supabase-js";
 import { resolveServerRole } from "@/lib/server-role";
 import { canManageLeagueRole } from "@/lib/app-roles";
 import { canManageFriendly, ukToday, validateFrames, validateOffer, type Friendly } from "@/lib/friendlies";
+import { targetHandicapFromElo } from "@/lib/snooker-rating";
 export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "private, no-store" };
-const columns = "id,host_team_id,guest_team_id,match_date,start_time,venue,notes,status,frames,version";
+const columns = "id,host_team_id,guest_team_id,match_date,start_time,venue,notes,status,format,use_handicaps,frames,version";
 class RequestError extends Error { constructor(message: string, public status = 400) { super(message); } }
 async function context(req: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY, anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -18,7 +19,7 @@ async function context(req: NextRequest) {
   const user = auth.data.user;
   const [app, seasons, teams, role] = await Promise.all([
     admin.from("app_users").select("linked_player_id").eq("id",user.id).maybeSingle(),
-    admin.from("league_seasons").select("id,name").eq("is_active",true).eq("is_published",true),
+    admin.from("league_seasons").select("id,name,handicap_max_start").eq("is_active",true).eq("is_published",true),
     admin.from("league_teams").select("id,name,season_id").eq("is_active",true),
     resolveServerRole(admin,user),
   ]);
@@ -32,6 +33,17 @@ async function context(req: NextRequest) {
   const managed = new Set((memberships.data ?? []).filter(m=>m.is_captain || m.is_vice_captain).map(m=>m.team_id));
   return {admin,user,teams:available,seasons:seasons.data ?? [],managedIds:available.filter(t=>manager || managed.has(t.id)).map(t=>t.id)};
 }
+async function roster(ctx: Awaited<ReturnType<typeof context>>) {
+  const ids=ctx.teams.map(t=>t.id);
+  if (!ids.length) return [];
+  const members=await ctx.admin.from("league_team_members").select("team_id,player_id").in("team_id",ids);
+  if (members.error) throw members.error;
+  const playerIds=[...new Set((members.data??[]).map(m=>m.player_id))];
+  if (!playerIds.length) return [];
+  const result=await ctx.admin.from("players").select("id,full_name,display_name,snooker_handicap,rating_snooker").in("id",playerIds).eq("is_archived",false);
+  if (result.error) throw result.error;
+  return (members.data??[]).flatMap(m=>{const p=result.data?.find(p=>p.id===m.player_id);return p?[{id:p.id,team_id:m.team_id,name:p.full_name||p.display_name,current:Number(p.snooker_handicap??0),suggested:targetHandicapFromElo(Number(p.rating_snooker??1000))}]:[];});
+}
 function failure(error: unknown) {
   if (error instanceof RequestError) return NextResponse.json({error:error.message},{status:error.status,headers});
   console.error("Friendly match request failed",error);
@@ -42,7 +54,7 @@ export async function GET(req: NextRequest) {
     const ctx = await context(req);
     const result = await ctx.admin.from("league_friendlies").select(columns).order("match_date",{ascending:false}).limit(500);
     if (result.error) throw result.error;
-    return NextResponse.json({teams:ctx.teams,seasons:ctx.seasons,managedIds:ctx.managedIds,friendlies:result.data ?? []},{headers});
+    return NextResponse.json({teams:ctx.teams,seasons:ctx.seasons,managedIds:ctx.managedIds,friendlies:result.data ?? [],players:await roster(ctx)},{headers});
   } catch(error) { return failure(error); }
 }
 export async function POST(req: NextRequest) {
@@ -83,7 +95,11 @@ export async function POST(req: NextRequest) {
       } else if (body.action === 'score') {
         if (!['booked','played'].includes(row.status)) throw new RequestError("Arrange the friendly before recording its frames.",409);
         if (row.match_date > ukToday()) throw new RequestError("Results can be recorded from the match date onwards.");
-        let frames; try { frames=validateFrames(body.frames); } catch(e) {throw new RequestError((e as Error).message);}
+        const players=await roster(ctx);
+        const leagueFor=(teamId:string|null)=>ctx.seasons.find(s=>s.id===ctx.teams.find(t=>t.id===teamId)?.season_id);
+        const homeLeague=leagueFor(row.host_team_id),awayLeague=leagueFor(row.guest_team_id);
+        if (!homeLeague||!awayLeague) throw new RequestError("Both teams must be in active leagues to record frames.");
+        let frames; try { frames=validateFrames(body.frames,row,players,homeLeague,awayLeague); } catch(e) {throw new RequestError((e as Error).message);}
         patch = {frames,status:'played'};
       } else throw new RequestError("Unknown action.");
     }
