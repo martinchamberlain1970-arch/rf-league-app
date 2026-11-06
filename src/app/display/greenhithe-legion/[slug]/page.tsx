@@ -1,5 +1,7 @@
 "use client";
 
+import { startVisiblePolling } from "@/lib/visible-polling";
+
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 
@@ -59,19 +61,16 @@ export default function GreenhitheLegionTeamPage() {
     if (!slug) return;
     let active = true;
     const load = async () => {
-      const resp = await fetch(`/api/public/greenhithe-legion-teams?team=${encodeURIComponent(slug)}`, { cache: "no-store" });
+      const resp = await fetch(`/api/public/greenhithe-legion-teams?team=${encodeURIComponent(slug)}`, { cache: "default" });
       const payload = (await resp.json().catch(() => ({ teams: [], rotationSeconds: 45, selectedTeam: null }))) as Payload;
       if (!active) return;
       setData(payload);
       setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     };
-    void load();
-    const interval = window.setInterval(() => {
-      void load();
-    }, 30000);
+    const stopRefresh = startVisiblePolling(load, 300000);
     return () => {
       active = false;
-      window.clearInterval(interval);
+      stopRefresh();
     };
   }, [slug]);
 

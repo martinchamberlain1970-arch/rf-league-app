@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { publicJson } from "@/lib/public-response";
+import { NextRequest } from "next/server";
 import {
   buildPublicWeeklyReport,
   getPublicLeagueAdminClient,
@@ -15,12 +16,12 @@ export async function GET(req: NextRequest) {
       buildPublicWeeklyReport(adminClient, seasonId, weekNo),
       getPublicPublishedSeasons(adminClient),
     ]);
-    return NextResponse.json({
+    return publicJson({
       ...payload,
       seasons: seasons.map(({ id, name }) => ({ id, name })),
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load weekly report.";
-    return NextResponse.json({ error: message }, { status: 500 });
+    return publicJson({ error: message }, { status: 500 });
   }
 }

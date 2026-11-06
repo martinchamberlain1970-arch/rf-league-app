@@ -1,5 +1,7 @@
 "use client";
 
+import { startVisiblePolling } from "@/lib/visible-polling";
+
 import { useEffect, useState } from "react";
 
 type PlayerRow = {
@@ -28,19 +30,16 @@ export default function PublicTopPlayersPage() {
   useEffect(() => {
     let active = true;
     const load = async () => {
-      const resp = await fetch("/api/public/league-board?clubOnly=1", { cache: "no-store" });
+      const resp = await fetch("/api/public/league-board?clubOnly=1", { cache: "default" });
       const payload = (await resp.json()) as Payload;
       if (!active) return;
       setData(payload);
       setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     };
-    void load();
-    const interval = window.setInterval(() => {
-      void load();
-    }, 30000);
+    const stopRefresh = startVisiblePolling(load, 300000);
     return () => {
       active = false;
-      window.clearInterval(interval);
+      stopRefresh();
     };
   }, []);
 

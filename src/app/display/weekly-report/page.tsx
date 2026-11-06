@@ -1,5 +1,7 @@
 "use client";
 
+import { startVisiblePolling } from "@/lib/visible-polling";
+
 import HandicapReviewSummary from "@/components/HandicapReviewSummary";
 import type { HandicapReviewSummary as ReviewSummary } from "@/lib/handicap-review-summary";
 
@@ -136,8 +138,8 @@ export default function PublicWeeklyReportPage() {
       if (requestedWeek) params.set("week", requestedWeek);
       const query = params.size ? `?${params.toString()}` : "";
       const [reportResp, eloResp] = await Promise.all([
-        fetch(`/api/public/weekly-report${query}`, { cache: "no-store" }),
-        fetch(`/api/public/weekly-handicap-review${query}`, { cache: "no-store" }),
+        fetch(`/api/public/weekly-report${query}`, { cache: "default" }),
+        fetch(`/api/public/weekly-handicap-review${query}`, { cache: "default" }),
       ]);
       const payload = (await reportResp.json()) as Payload;
       const eloPayload = (await eloResp.json()) as EloHandicapPayload;
@@ -148,13 +150,10 @@ export default function PublicWeeklyReportPage() {
         new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       );
     };
-    void load();
-    const interval = window.setInterval(() => {
-      void load();
-    }, 30000);
+    const stopRefresh = startVisiblePolling(load, 300000);
     return () => {
       active = false;
-      window.clearInterval(interval);
+      stopRefresh();
     };
   }, [selectedSeasonId]);
 

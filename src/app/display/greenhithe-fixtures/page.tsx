@@ -1,5 +1,7 @@
 "use client";
 
+import { startVisiblePolling } from "@/lib/visible-polling";
+
 import { useEffect, useMemo, useState } from "react";
 
 type Fixture = {
@@ -41,7 +43,7 @@ export default function GreenhitheFixturesDisplayPage() {
     let active = true;
     const load = async () => {
       try {
-        const response = await fetch("/api/public/greenhithe-legion-teams", { cache: "no-store" });
+        const response = await fetch("/api/public/greenhithe-legion-teams", { cache: "default" });
         const payload = (await response.json()) as Payload;
         if (!active) return;
         setData(response.ok ? payload : { season: null, teams: [], error: payload.error ?? "Fixtures could not be loaded." });
@@ -50,9 +52,8 @@ export default function GreenhitheFixturesDisplayPage() {
         if (active) setData({ season: null, teams: [], error: "Fixtures could not be loaded." });
       }
     };
-    void load();
-    const timer = window.setInterval(() => { void load(); }, 30000);
-    return () => { active = false; window.clearInterval(timer); };
+    const stopRefresh = startVisiblePolling(load, 300000);
+    return () => { active = false; stopRefresh(); };
   }, []);
 
   const teams = useMemo(() => teamNames.map((name) => data?.teams.find((team) => team.name.toLowerCase() === name.toLowerCase()) ?? null), [data]);

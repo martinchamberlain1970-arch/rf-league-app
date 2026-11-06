@@ -773,11 +773,6 @@ export default function HomePage() {
       const client = supabase;
       if (!client) return;
       const countPendingResults = async (submittedByUserId?: string) => {
-        let q1 = client.from("result_submissions").select("id", { count: "exact", head: true }).eq("status", "pending");
-        if (submittedByUserId) q1 = q1.eq("submitted_by_user_id", submittedByUserId);
-        const legacy = await q1;
-        if (!legacy.error) return legacy.count ?? 0;
-        if (!legacy.error.message.toLowerCase().includes("result_submissions")) return 0;
         let q2 = client.from("league_result_submissions").select("id", { count: "exact", head: true }).eq("status", "pending");
         if (submittedByUserId) q2 = q2.eq("submitted_by_user_id", submittedByUserId);
         const league = await q2;

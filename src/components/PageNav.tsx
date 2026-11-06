@@ -73,17 +73,8 @@ export default function PageNav({ warnOnNavigate = false, warnMessage = "You hav
       if (!admin.userId) return;
       const lastRead = typeof window !== "undefined" ? window.localStorage.getItem(storageKey) : null;
       const applyCreatedFilter = (query: any) => (lastRead ? query.gt("created_at", lastRead) : query);
-      const applyResultFilter = (query: any) => (lastRead ? query.gt("submitted_at", lastRead) : query);
       const applyLeagueResultFilter = (query: any) => (lastRead ? query.gt("created_at", lastRead) : query);
       const loadResultRows = async (statuses: string[], onlyUserId?: string) => {
-        let q = client.from("result_submissions").select("id,submitted_by_user_id,status,submitted_at");
-        if (statuses.length === 1) q = q.eq("status", statuses[0]);
-        else q = q.in("status", statuses);
-        if (onlyUserId) q = q.eq("submitted_by_user_id", onlyUserId);
-        const legacy = await applyResultFilter(q);
-        if (!legacy.error) return (legacy.data ?? []) as Array<{ id: string }>;
-        if (!legacy.error.message.toLowerCase().includes("result_submissions")) return [] as Array<{ id: string }>;
-
         let lq = client.from("league_result_submissions").select("id,submitted_by_user_id,status,created_at");
         if (statuses.length === 1) lq = lq.eq("status", statuses[0]);
         else lq = lq.in("status", statuses);

@@ -1,5 +1,7 @@
 "use client";
 
+import { startVisiblePolling } from "@/lib/visible-polling";
+
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -52,20 +54,17 @@ export default function PublicPlayerTablePage() {
     const load = async () => {
       const params = new URLSearchParams({ mode });
       if (selectedSeasonId) params.set("seasonId", selectedSeasonId);
-      const resp = await fetch(`/api/public/player-table?${params.toString()}`, { cache: "no-store" });
+      const resp = await fetch(`/api/public/player-table?${params.toString()}`, { cache: "default" });
       const payload = (await resp.json()) as Payload;
       if (!active) return;
       setData(payload);
       setSelectedSeasonId((current) => current || payload.season?.id || "");
       setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
     };
-    void load();
-    const interval = window.setInterval(() => {
-      void load();
-    }, 30000);
+    const stopRefresh = startVisiblePolling(load, 300000);
     return () => {
       active = false;
-      window.clearInterval(interval);
+      stopRefresh();
     };
   }, [mode, selectedSeasonId]);
 

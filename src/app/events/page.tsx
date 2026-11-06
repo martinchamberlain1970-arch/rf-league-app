@@ -31,7 +31,7 @@ type MatchRow = {
   id: string;
   competition_id: string;
   status: "pending" | "in_progress" | "complete" | "bye";
-  updated_at: string;
+  updated_at: string | null;
   is_archived?: boolean | null;
 };
 
@@ -1420,7 +1420,7 @@ function EventsPageContent() {
       prev.total += 1;
       if (m.status === "complete" || m.status === "bye") prev.done += 1;
       if (m.status === "in_progress") prev.inProgress += 1;
-      if (!prev.lastUpdated || new Date(m.updated_at).getTime() > new Date(prev.lastUpdated).getTime()) {
+      if (m.updated_at && (!prev.lastUpdated || new Date(m.updated_at).getTime() > new Date(prev.lastUpdated).getTime())) {
         prev.lastUpdated = m.updated_at;
       }
       map.set(m.competition_id, prev);

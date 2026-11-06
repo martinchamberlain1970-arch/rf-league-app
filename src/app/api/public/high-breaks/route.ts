@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { publicJson } from "@/lib/public-response";
+import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { fetchAllSupabasePages, fetchAllSupabasePagesByChunks } from "@/lib/supabase-pagination";
 
@@ -126,7 +127,7 @@ function addBreak(
 
 export async function GET(req: NextRequest) {
   if (!supabaseUrl || !serviceRoleKey) {
-    return NextResponse.json({ error: "Server configuration missing." }, { status: 500 });
+    return publicJson({ error: "Server configuration missing." }, { status: 500 });
   }
 
   const seasonIdParam = req.nextUrl.searchParams.get("seasonId")?.trim() ?? "all";
@@ -138,13 +139,13 @@ export async function GET(req: NextRequest) {
     .eq("is_published", true)
     .order("created_at", { ascending: false });
   if (seasonsRes.error) {
-    return NextResponse.json({ error: seasonsRes.error.message }, { status: 500 });
+    return publicJson({ error: seasonsRes.error.message }, { status: 500 });
   }
 
   const seasons = (seasonsRes.data ?? []) as SeasonRow[];
   const selectedSeason = seasonIdParam === "all" ? null : seasons.find((season) => season.id === seasonIdParam) ?? null;
   if (seasonIdParam !== "all" && !selectedSeason) {
-    return NextResponse.json({ error: "Choose a published league season." }, { status: 400 });
+    return publicJson({ error: "Choose a published league season." }, { status: 400 });
   }
   const selectedSeasonIds = selectedSeason ? [selectedSeason.id] : seasons.map((season) => season.id);
   const [fixturesRes, competitionsRes, playersRes] = await Promise.all([
@@ -177,7 +178,7 @@ export async function GET(req: NextRequest) {
   ]);
   const initialError = fixturesRes.error?.message || competitionsRes.error?.message || playersRes.error?.message;
   if (initialError) {
-    return NextResponse.json({ error: initialError }, { status: 500 });
+    return publicJson({ error: initialError }, { status: 500 });
   }
 
   const fixtures = (fixturesRes.data ?? []) as FixtureRow[];
@@ -232,7 +233,7 @@ export async function GET(req: NextRequest) {
     competitionMatchesRes.error?.message ||
     competitionBreaksRes.error?.message;
   if (detailError) {
-    return NextResponse.json({ error: detailError }, { status: 500 });
+    return publicJson({ error: detailError }, { status: 500 });
   }
 
   const teams = (teamsRes.data ?? []) as TeamRow[];
@@ -344,7 +345,7 @@ export async function GET(req: NextRequest) {
   const competitionRows = rankRows(competitionRowsByPlayer);
   const overallRows = rankRows(overallRowsByPlayer);
 
-  return NextResponse.json({
+  return publicJson({
     seasons: seasons.map((season) => ({ id: season.id, name: season.name })),
     selected_season_id: seasonIdParam,
     rows: overallRows,

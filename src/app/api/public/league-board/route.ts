@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { publicJson } from "@/lib/public-response";
+import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { GREENHITHE_LEGION_LOCATION_NAME } from "@/lib/public-team-display";
 import { countsForIndividualStatistics } from "@/lib/league-player-statistics";
@@ -85,7 +86,7 @@ function named(player?: PlayerRow | null) {
 
 export async function GET(req: NextRequest) {
   if (!supabaseUrl || !serviceRoleKey) {
-    return NextResponse.json({ error: "Server configuration missing." }, { status: 500 });
+    return publicJson({ error: "Server configuration missing." }, { status: 500 });
   }
 
   const seasonIdParam = req.nextUrl.searchParams.get("seasonId")?.trim() ?? "";
@@ -99,7 +100,7 @@ export async function GET(req: NextRequest) {
     .order("created_at", { ascending: false });
 
   if (seasonsRes.error) {
-    return NextResponse.json({ error: seasonsRes.error.message }, { status: 500 });
+    return publicJson({ error: seasonsRes.error.message }, { status: 500 });
   }
 
   const publishedSeasons = (seasonsRes.data ?? []) as SeasonRow[];
@@ -113,7 +114,7 @@ export async function GET(req: NextRequest) {
       .in("season_id", seasons.map((season) => season.id))
       .ilike("name", "Greenhithe %");
     if (clubTeamsRes.error) {
-      return NextResponse.json({ error: clubTeamsRes.error.message }, { status: 500 });
+      return publicJson({ error: clubTeamsRes.error.message }, { status: 500 });
     }
     clubSeasonIds = new Set((clubTeamsRes.data ?? [])
       .filter((team) => team.is_active !== false)
@@ -126,7 +127,7 @@ export async function GET(req: NextRequest) {
     null;
 
   if (!selectedSeason) {
-    return NextResponse.json({
+    return publicJson({
       season: null,
       seasons: [],
       leagueTable: [],
@@ -153,7 +154,7 @@ export async function GET(req: NextRequest) {
     locationQueryRes.error?.message;
 
   if (firstError) {
-    return NextResponse.json({ error: firstError }, { status: 500 });
+    return publicJson({ error: firstError }, { status: 500 });
   }
 
   const teams = ((teamsRes.data ?? []) as TeamRow[]).filter((team) => team.is_active !== false);
@@ -210,7 +211,7 @@ export async function GET(req: NextRequest) {
     : { data: [], error: null };
   const detailError = framesRes.error?.message || breaksRes.error?.message || playersRes.error?.message;
   if (detailError) {
-    return NextResponse.json({ error: detailError }, { status: 500 });
+    return publicJson({ error: detailError }, { status: 500 });
   }
   const players = (playersRes.data ?? []) as PlayerRow[];
   const locations = (locationQueryRes.data ?? []) as LocationRow[];
@@ -382,7 +383,7 @@ export async function GET(req: NextRequest) {
     .slice(0, 10)
     .map((row, index) => ({ ...row, rank: index + 1 }));
 
-  return NextResponse.json({
+  return publicJson({
     season: {
       id: selectedSeason.id,
       name: selectedSeason.name,

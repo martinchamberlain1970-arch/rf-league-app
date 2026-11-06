@@ -1,5 +1,7 @@
 "use client";
 
+import { startVisiblePolling } from "@/lib/visible-polling";
+
 import HandicapReviewSummary from "@/components/HandicapReviewSummary";
 import type { HandicapReviewSummary as ReviewSummary } from "@/lib/handicap-review-summary";
 
@@ -70,13 +72,10 @@ export default function PublicWeeklyHandicapReviewPage() {
         new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
       );
     };
-    void load();
-    const interval = window.setInterval(() => {
-      void load();
-    }, 30000);
+    const stopRefresh = startVisiblePolling(load, 300000);
     return () => {
       active = false;
-      window.clearInterval(interval);
+      stopRefresh();
     };
   }, [selectedSeasonId]);
 

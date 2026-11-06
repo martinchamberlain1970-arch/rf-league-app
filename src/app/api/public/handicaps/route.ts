@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { publicJson } from "@/lib/public-response";
+import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { targetHandicapFromElo } from "@/lib/snooker-rating";
 
@@ -33,7 +34,7 @@ const named = (player: PlayerRow) => (player.full_name?.trim() ? player.full_nam
 
 export async function GET(req: NextRequest) {
   if (!supabaseUrl || !serviceRoleKey) {
-    return NextResponse.json({ error: "Server configuration missing." }, { status: 500 });
+    return publicJson({ error: "Server configuration missing." }, { status: 500 });
   }
 
   const seasonIdParam = req.nextUrl.searchParams.get("seasonId")?.trim() ?? "";
@@ -46,7 +47,7 @@ export async function GET(req: NextRequest) {
     .order("created_at", { ascending: false });
 
   if (seasonsRes.error) {
-    return NextResponse.json({ error: seasonsRes.error.message }, { status: 500 });
+    return publicJson({ error: seasonsRes.error.message }, { status: 500 });
   }
 
   const publishedSeasons = (seasonsRes.data ?? []) as SeasonRow[];
@@ -59,7 +60,7 @@ export async function GET(req: NextRequest) {
     null;
 
   if (!selectedSeason) {
-    return NextResponse.json({ season: null, seasons: [], isInformationOnly: false, handicaps: [] });
+    return publicJson({ season: null, seasons: [], isInformationOnly: false, handicaps: [] });
   }
 
   const membersRes = await adminClient
@@ -67,7 +68,7 @@ export async function GET(req: NextRequest) {
     .select("season_id,player_id")
     .eq("season_id", selectedSeason.id);
   if (membersRes.error) {
-    return NextResponse.json({ error: membersRes.error.message }, { status: 500 });
+    return publicJson({ error: membersRes.error.message }, { status: 500 });
   }
 
   const members = (membersRes.data ?? []) as LeagueTeamMemberRow[];
@@ -80,7 +81,7 @@ export async function GET(req: NextRequest) {
         .eq("is_archived", false)
     : { data: [], error: null };
   if (playersRes.error) {
-    return NextResponse.json({ error: playersRes.error.message }, { status: 500 });
+    return publicJson({ error: playersRes.error.message }, { status: 500 });
   }
   const players = (playersRes.data ?? []) as PlayerRow[];
 
@@ -104,7 +105,7 @@ export async function GET(req: NextRequest) {
       rated_matches: Number(player.rated_matches_snooker ?? 0),
     }));
 
-  return NextResponse.json({
+  return publicJson({
     season: {
       id: selectedSeason.id,
       name: selectedSeason.name,

@@ -1,5 +1,7 @@
 "use client";
 
+import { startVisiblePolling } from "@/lib/visible-polling";
+
 import { useEffect, useMemo, useState } from "react";
 
 type LiveMatchData = {
@@ -149,7 +151,7 @@ export default function MatchNightDisplayPage() {
     let active = true;
     const load = async () => {
       try {
-        const res = await fetch("/api/public/live-matches", { cache: "no-store" });
+        const res = await fetch("/api/public/live-matches", { cache: "default" });
         const payload = (await res.json().catch(() => emptyData)) as LiveMatchData;
         if (!active) return;
         setData(
@@ -164,13 +166,10 @@ export default function MatchNightDisplayPage() {
         if (active) setLoading(false);
       }
     };
-    void load();
-    const timer = window.setInterval(() => {
-      void load();
-    }, PAGE_ROTATION_MS);
+    const stopRefresh = startVisiblePolling(load, 30000);
     return () => {
       active = false;
-      window.clearInterval(timer);
+      stopRefresh();
     };
   }, []);
 

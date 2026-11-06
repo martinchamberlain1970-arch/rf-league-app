@@ -1,5 +1,7 @@
 "use client";
 
+import { startVisiblePolling } from "@/lib/visible-polling";
+
 import { useEffect, useMemo, useState } from "react";
 import { countryCodeToFlagEmoji } from "@/lib/country-flags";
 
@@ -172,7 +174,7 @@ export default function PublicLiveMatchesPage() {
     let active = true;
     const load = async () => {
       try {
-        const res = await fetch("/api/public/live-matches?allSeasons=true", { cache: "no-store" });
+        const res = await fetch("/api/public/live-matches?allSeasons=true", { cache: "default" });
         const payload = (await res.json().catch(() => emptyData)) as LiveMatchData;
         if (!active) return;
         setData(res.ok ? payload : { ...emptyData, error: payload.error ?? "Failed to load live matches." });
@@ -183,13 +185,10 @@ export default function PublicLiveMatchesPage() {
         if (active) setLoading(false);
       }
     };
-    void load();
-    const timer = window.setInterval(() => {
-      void load();
-    }, 30000);
+    const stopRefresh = startVisiblePolling(load, 30000);
     return () => {
       active = false;
-      window.clearInterval(timer);
+      stopRefresh();
     };
   }, []);
 

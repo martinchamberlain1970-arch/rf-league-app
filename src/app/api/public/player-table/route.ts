@@ -1,4 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
+import { publicJson } from "@/lib/public-response";
+import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { countsForIndividualStatistics } from "@/lib/league-player-statistics";
 import { fetchAllSupabasePagesByChunks } from "@/lib/supabase-pagination";
@@ -60,7 +61,7 @@ function named(player?: PlayerRow | null) {
 
 export async function GET(req: NextRequest) {
   if (!supabaseUrl || !serviceRoleKey) {
-    return NextResponse.json({ error: "Server configuration missing." }, { status: 500 });
+    return publicJson({ error: "Server configuration missing." }, { status: 500 });
   }
 
   const seasonIdParam = req.nextUrl.searchParams.get("seasonId")?.trim() ?? "";
@@ -76,7 +77,7 @@ export async function GET(req: NextRequest) {
     .order("created_at", { ascending: false });
 
   if (seasonsRes.error) {
-    return NextResponse.json({ error: seasonsRes.error.message }, { status: 500 });
+    return publicJson({ error: seasonsRes.error.message }, { status: 500 });
   }
 
   const seasons = (seasonsRes.data ?? []) as SeasonRow[];
@@ -85,7 +86,7 @@ export async function GET(req: NextRequest) {
     (seasonIdParam ? seasons.find((season) => season.id === seasonIdParam) : null) ?? seasons[0] ?? null;
 
   if (!selectedSeason) {
-    return NextResponse.json({ season: null, seasons: seasonOptions, mode, players: [] });
+    return publicJson({ season: null, seasons: seasonOptions, mode, players: [] });
   }
 
   const [teamsRes, membersRes, fixturesRes] = await Promise.all([
@@ -100,7 +101,7 @@ export async function GET(req: NextRequest) {
     fixturesRes.error?.message;
 
   if (firstError) {
-    return NextResponse.json({ error: firstError }, { status: 500 });
+    return publicJson({ error: firstError }, { status: 500 });
   }
 
   const teams = (teamsRes.data ?? []) as TeamRow[];
@@ -132,7 +133,7 @@ export async function GET(req: NextRequest) {
     : { data: [], error: null };
   const detailError = framesRes.error?.message || playersRes.error?.message;
   if (detailError) {
-    return NextResponse.json({ error: detailError }, { status: 500 });
+    return publicJson({ error: detailError }, { status: 500 });
   }
   const frames = (framesRes.data ?? []) as FrameRow[];
   const players = (playersRes.data ?? []) as PlayerRow[];
@@ -225,7 +226,7 @@ export async function GET(req: NextRequest) {
     .sort((a, b) => b.won - a.won || b.win_pct - a.win_pct || b.played - a.played || a.player_name.localeCompare(b.player_name))
     .map((row, index) => ({ ...row, rank: index + 1 }));
 
-  return NextResponse.json({
+  return publicJson({
     season: {
       id: selectedSeason.id,
       name: selectedSeason.name,

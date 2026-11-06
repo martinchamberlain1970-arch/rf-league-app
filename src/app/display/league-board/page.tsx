@@ -1,5 +1,7 @@
 "use client";
 
+import { startVisiblePolling } from "@/lib/visible-polling";
+
 import { useEffect, useMemo, useState } from "react";
 import { countryCodeToFlagEmoji } from "@/lib/country-flags";
 
@@ -98,17 +100,22 @@ export default function PublicLeagueBoardPage() {
 
   useEffect(() => {
     let active = true;
+    let boardFetchedAt = 0;
+    let boardSnapshot: BoardData | null = null;
     const load = async () => {
       try {
         const [boardRes, liveRes] = await Promise.all([
-          fetch("/api/public/league-board", { cache: "no-store" }),
-          fetch("/api/public/live-matches", { cache: "no-store" }),
+          (boardSnapshot && Date.now() - boardFetchedAt < 300000
+            ? Promise.resolve(null)
+            : fetch("/api/public/league-board", { cache: "default" })),
+          fetch("/api/public/live-matches", { cache: "default" }),
         ]);
-        const boardPayload = (await boardRes.json().catch(() => emptyData)) as BoardData;
+        const boardPayload = boardRes ? (await boardRes.json().catch(() => emptyData)) as BoardData : boardSnapshot!;
+        if (boardRes?.ok && !boardPayload.error) { boardSnapshot = boardPayload; boardFetchedAt = Date.now(); }
         const livePayload = (await liveRes.json().catch(() => emptyLiveData)) as LiveMatchData;
         if (!active) return;
         setData(
-          boardRes.ok ? boardPayload : { ...emptyData, error: boardPayload.error ?? "Failed to load public league board." }
+          (!boardRes || boardRes.ok) ? boardPayload : { ...emptyData, error: boardPayload.error ?? "Failed to load public league board." }
         );
         setLiveData(
           liveRes.ok ? livePayload : { ...emptyLiveData, error: livePayload.error ?? "Failed to load live matches." }
@@ -121,13 +128,10 @@ export default function PublicLeagueBoardPage() {
         if (active) setLoading(false);
       }
     };
-    void load();
-    const timer = window.setInterval(() => {
-      void load();
-    }, 10000);
+    const stopRefresh = startVisiblePolling(load, 10000);
     return () => {
       active = false;
-      window.clearInterval(timer);
+      stopRefresh();
     };
   }, []);
 
