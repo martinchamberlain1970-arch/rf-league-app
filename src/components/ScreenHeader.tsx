@@ -43,6 +43,7 @@ export default function ScreenHeader({
       : [
           { href: "/league", label: "League manager" },
           { href: "/captain-results", label: "Line-ups & results" },
+          { href: "/friendlies", label: "Team friendlies" },
           { href: "/results", label: admin.isAdmin ? "Approvals" : "My submissions" },
           { href: "/players", label: admin.canManageLeague ? "Players & teams" : "My player profile" },
         ];
