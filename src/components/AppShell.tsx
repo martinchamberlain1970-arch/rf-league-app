@@ -32,6 +32,7 @@ const navigationGroups: NavigationGroup[] = [
     label: "Match night",
     items: [
       { href: "/captain-results", label: "Line-ups & results", captainOnly: true, scorerAllowed: true },
+      { href: "/friendlies", label: "Team friendlies" },
       { href: "/player-additions", label: "Player additions", captainOnly: true },
       { href: "/reschedule-fixture", label: "Request a fixture date", captainOnly: true },
       { href: "/live-matches", label: "Live matches" },
