@@ -65,8 +65,14 @@ export default function PublicHandicapsPage() {
         </header>
 
         <section className="rounded-2xl border border-sky-400/20 bg-sky-500/10 p-4 text-sm text-sky-100">
-          {data?.isInformationOnly ? "Division 1 is played from scratch. Elo is displayed as performance information only and is not a playing handicap." : "Elo updates automatically when a match result is approved and complete. Handicap does not auto-change after every match; it is reviewed from Elo and any league decisions."}
+          {data?.isInformationOnly ? "Division 1 league matches remain off scratch. Suggested Handicap shows what each player's current Elo would translate to if the league used Elo-based handicaps. These figures are illustrative, not approved playing handicaps." : "Elo updates automatically when a match result is approved and complete. Handicap does not auto-change after every match; it is reviewed from Elo and any league decisions."}
         </section>
+
+        {data?.isInformationOnly ? <section className="rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4 text-sm text-cyan-100">
+          <h2 className="font-bold text-white">How to read the suggested handicaps</h2>
+          <p className="mt-1">These suggestions follow each player’s latest recorded Elo, so they can change as rated results are processed. They do not include the proposed +20 adjustment for Division 1 competition entrants.</p>
+          <p className="mt-2">Against a scratch player, a negative figure gives that many points and a positive figure receives that many points. Between two players, the lower figure gives the difference to the higher figure, subject to any competition start limit. For example, −12 against +4 means the player on −12 gives a 16-point start.</p>
+        </section> : null}
 
         {!data?.isInformationOnly ? <section className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">
           <h2 className="font-bold text-white">When are handicaps reviewed?</h2>
@@ -91,7 +97,8 @@ export default function PublicHandicapsPage() {
                   <th className="px-3 py-3">#</th>
                   <th className="px-3 py-3">Player</th>
                   <th className="px-3 py-3 text-center">Elo</th>
-                  {!data?.isInformationOnly ? <><th className="px-3 py-3 text-center">Target From Elo</th><th className="px-3 py-3 text-center">Current</th><th className="px-3 py-3 text-center">Gap To Target</th><th className="px-3 py-3 text-center">Baseline</th></> : null}
+                  <th className="px-3 py-3 text-center">{data?.isInformationOnly ? "Suggested Handicap" : "Target From Elo"}</th>
+                  {!data?.isInformationOnly ? <><th className="px-3 py-3 text-center">Current</th><th className="px-3 py-3 text-center">Gap To Target</th><th className="px-3 py-3 text-center">Baseline</th></> : null}
                   <th className="px-3 py-3 text-center">Rated Matches</th>
                 </tr>
               </thead>
@@ -101,7 +108,8 @@ export default function PublicHandicapsPage() {
                     <td className="px-3 py-3 font-semibold text-cyan-300">{row.rank}</td>
                     <td className="px-3 py-3 font-medium">{row.player_name}</td>
                     <td className="px-3 py-3 text-center">{row.elo}</td>
-                    {!data?.isInformationOnly ? <><td className="px-3 py-3 text-center font-semibold text-sky-300">{formatHandicap(row.target_handicap)}</td><td className="px-3 py-3 text-center font-semibold text-emerald-300">{formatHandicap(row.current_handicap)}</td><td className="px-3 py-3 text-center font-semibold text-cyan-300">{formatHandicap(row.gap_to_target)}</td><td className="px-3 py-3 text-center">{formatHandicap(row.baseline_handicap)}</td></> : null}
+                    <td className="px-3 py-3 text-center font-semibold text-sky-300">{formatHandicap(row.target_handicap)}</td>
+                    {!data?.isInformationOnly ? <><td className="px-3 py-3 text-center font-semibold text-emerald-300">{formatHandicap(row.current_handicap)}</td><td className="px-3 py-3 text-center font-semibold text-cyan-300">{formatHandicap(row.gap_to_target)}</td><td className="px-3 py-3 text-center">{formatHandicap(row.baseline_handicap)}</td></> : null}
                     <td className="px-3 py-3 text-center">{row.rated_matches}</td>
                   </tr>
                 ))}
