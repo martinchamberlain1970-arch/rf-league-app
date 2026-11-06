@@ -3,7 +3,7 @@ export const FRIENDLY_FORMATS = { six_singles: "6 singles", four_singles_one_dou
 export type FriendlyFormat = keyof typeof FRIENDLY_FORMATS;
 export type FriendlyPlayer = { id: string; name: string; team_id: string; current: number; suggested: number };
 export type FriendlySeason = { id: string; name: string; handicap_max_start?: number | null };
-export type FriendlyTeam = { id: string; name: string; season_id: string; venue?: string | null };
+export type FriendlyTeam = { id: string; name: string; season_id: string; venue?: string | null; location_id?: string | null; table_count?: number | null };
 export type FriendlyFrame = { home: string; away: string; homeScore: number; awayScore: number; homeIds: string[]; awayIds: string[]; homeStart: number; awayStart: number; homeHandicap: number; awayHandicap: number };
 export function frameTypes(format: FriendlyFormat) { return format === "six_singles" ? [1,1,1,1,1,1] : [1,1,1,1,2]; }
 export function friendlyHandicap(player: FriendlyPlayer, ownLeague: string, opponentLeague: string, enabled: boolean) {
@@ -20,7 +20,7 @@ export function frameHandicaps(home: FriendlyPlayer[], away: FriendlyPlayer[], h
 export type Friendly = {
   id: string; host_team_id: string; guest_team_id: string | null; match_date: string;
   start_time: string; venue: string; notes: string; status: "open" | "booked" | "played" | "cancelled";
-  format: FriendlyFormat; use_handicaps: boolean; frames: FriendlyFrame[]; version: number;
+  can_host: boolean; hosting_team_id: string | null; format: FriendlyFormat; use_handicaps: boolean; frames: FriendlyFrame[]; version: number;
 };
 export function ukToday(now = new Date()) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Europe/London", year: "numeric", month: "2-digit", day: "2-digit" }).format(now);
@@ -30,13 +30,14 @@ export function validateOffer(body: Record<string, unknown>, today = ukToday()) 
   if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(Date.parse(date)) || new Date(date).toISOString().slice(0,10) !== date || date < today) throw new Error("Choose a valid date today or later.");
   const time = String(body.start_time ?? "");
   if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(time)) throw new Error("Choose a start time.");
-  const venue = String(body.venue ?? "").trim();
+  if (typeof body.can_host !== "boolean") throw new Error("Choose whether your team can host.");
+  const venue = body.can_host ? String(body.venue ?? "").trim() : "Awaiting a host club";
   const notes = String(body.notes ?? "").trim();
   if (!venue || venue.length > 200) throw new Error("Enter a venue (up to 200 characters).");
   if (notes.length > 1000) throw new Error("Keep notes within 1,000 characters.");
   if (body.format !== "six_singles" && body.format !== "four_singles_one_doubles") throw new Error("Choose one of the two supported formats.");
   if (typeof body.use_handicaps !== "boolean") throw new Error("Choose whether to use current handicaps.");
-  return { match_date: date, start_time: time, venue, notes, format: body.format, use_handicaps: body.use_handicaps };
+  return { can_host: body.can_host, match_date: date, start_time: time, venue, notes, format: body.format, use_handicaps: body.use_handicaps };
 }
 export function validateFrames(value: unknown, row: Friendly, players: FriendlyPlayer[], homeLeague: FriendlySeason, awayLeague: FriendlySeason): FriendlyFrame[] {
   const slots=frameTypes(row.format);
@@ -60,4 +61,10 @@ export function validateFrames(value: unknown, row: Friendly, players: FriendlyP
 }
 export function canManageFriendly(row: Friendly, teamIds: string[]) {
   return teamIds.includes(row.host_team_id) || Boolean(row.guest_team_id && teamIds.includes(row.guest_team_id));
+}
+
+export function availableFriendlyTables(team: FriendlyTeam | undefined, date: string, teams: FriendlyTeam[], friendlies: Friendly[], leagueReservations: {date:string;location_id?:string|null}[]) {
+  if (!team?.location_id || !team.table_count || team.table_count<1) return 0;
+  const friendlyCount=friendlies.filter(f=>f.match_date===date&&f.status!=='cancelled'&&f.hosting_team_id&&teams.find(t=>t.id===f.hosting_team_id)?.location_id===team.location_id).length;
+  return Math.max(0,team.table_count-friendlyCount-leagueReservations.filter(f=>f.date===date&&f.location_id===team.location_id).length);
 }

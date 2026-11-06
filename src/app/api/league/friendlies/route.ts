@@ -6,7 +6,7 @@ import { canManageFriendly, ukToday, validateFrames, validateOffer, type Friendl
 import { targetHandicapFromElo } from "@/lib/snooker-rating";
 export const dynamic = "force-dynamic";
 const headers = { "Cache-Control": "private, no-store" };
-const columns = "id,host_team_id,guest_team_id,match_date,start_time,venue,notes,status,format,use_handicaps,frames,version";
+const columns = "id,host_team_id,guest_team_id,match_date,start_time,venue,notes,status,can_host,hosting_team_id,format,use_handicaps,frames,version";
 class RequestError extends Error { constructor(message: string, public status = 400) { super(message); } }
 async function context(req: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL, key = process.env.SUPABASE_SERVICE_ROLE_KEY, anon = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
@@ -21,7 +21,7 @@ async function context(req: NextRequest) {
     admin.from("app_users").select("linked_player_id").eq("id",user.id).maybeSingle(),
     admin.from("league_seasons").select("id,name,handicap_max_start"),
     admin.from("league_teams").select("id,name,season_id,location_id").eq("is_active",true),
-    admin.from("locations").select("id,name,address"),
+    admin.from("locations").select("id,name,address,snooker_table_count"),
     resolveServerRole(admin,user),
   ]);
   if (app.error || seasons.error || teams.error || locations.error) throw new Error("Unable to load team permissions");
@@ -33,7 +33,7 @@ async function context(req: NextRequest) {
   const available = (teams.data ?? []).map(team=>{
     const club=locations.data?.find(location=>location.id===team.location_id);
     const address=club?.address?.trim();
-    return {...team,venue:address ? [club?.name?.trim(),address].filter(Boolean).join(" — ") : null};
+    return {...team,table_count:club?.snooker_table_count??null,venue:address ? [club?.name?.trim(),address].filter(Boolean).join(" — ") : null};
   });
   const manager = canManageLeagueRole(role);
   const managed = new Set((memberships.data ?? []).filter(m=>m.is_captain || m.is_vice_captain).map(m=>m.team_id));
@@ -52,6 +52,7 @@ async function roster(ctx: Awaited<ReturnType<typeof context>>) {
 }
 function failure(error: unknown) {
   if (error instanceof RequestError) return NextResponse.json({error:error.message},{status:error.status,headers});
+  if (error && typeof error === "object" && "code" in error && error.code === "P0001" && "message" in error) return NextResponse.json({error:String(error.message)},{status:409,headers});
   console.error("Friendly match request failed",error);
   return NextResponse.json({error:"Unable to load or save friendlies. Please try again."},{status:500,headers});
 }
@@ -60,7 +61,9 @@ export async function GET(req: NextRequest) {
     const ctx = await context(req);
     const result = await ctx.admin.from("league_friendlies").select(columns).order("match_date",{ascending:false}).limit(500);
     if (result.error) throw result.error;
-    return NextResponse.json({teams:ctx.teams,seasons:ctx.seasons,managedIds:ctx.managedIds,friendlies:result.data ?? [],players:await roster(ctx)},{headers});
+    const fixtures=await ctx.admin.from("league_fixtures").select("fixture_date,home_team_id,away_team_id,status,league_seasons!inner(is_published)").eq("league_seasons.is_published",true).gte("fixture_date",ukToday()).neq("status","bye");
+    if(fixtures.error) throw fixtures.error;
+    return NextResponse.json({leagueReservations:(fixtures.data??[]).filter(f=>f.away_team_id).map(f=>({date:f.fixture_date,location_id:ctx.teams.find(t=>t.id===f.home_team_id)?.location_id})),teams:ctx.teams,seasons:ctx.seasons,managedIds:ctx.managedIds,friendlies:result.data ?? [],players:await roster(ctx)},{headers});
   } catch(error) { return failure(error); }
 }
 export async function POST(req: NextRequest) {
@@ -74,7 +77,7 @@ export async function POST(req: NextRequest) {
     if (body.action === "offer") {
       if (!ctx.managedIds.includes(String(body.team_id))) throw new RequestError("Only your team's captain or vice-captain can offer a friendly.",403);
       const venue=ctx.teams.find(t=>t.id===body.team_id)?.venue;
-      if (!venue) throw new RequestError("Your club has no registered venue address. Please ask a league officer to update the club record before posting.");
+      if (body.can_host === true && !venue) throw new RequestError("Your club has no registered venue address. Please ask a league officer to update the club record before posting.");
       let offer; try { offer = validateOffer({...body,venue}); } catch(e) { throw new RequestError((e as Error).message); }
       const result = await ctx.admin.from("league_friendlies").insert({...offer,host_team_id:body.team_id,created_by:ctx.user.id,...actor}).select(columns).single();
       if (result.error?.code === "23505") throw new RequestError("Your team already has an open offer on that date.",409);
@@ -94,6 +97,7 @@ export async function POST(req: NextRequest) {
       if (team === row.host_team_id) throw new RequestError("Choose another team's offer.");
       if (row.status !== 'open' || row.match_date < ukToday()) throw new RequestError("This offer is no longer available.",409);
       if (!ctx.teams.some(t=>t.id===row.host_team_id)) throw new RequestError("The offering team is no longer active.",409);
+      if (!row.can_host && !ctx.teams.find(t=>t.id===team)?.venue) throw new RequestError("Your club needs a registered address before accepting as host.");
       patch = {guest_team_id:team,status:'booked'};
     } else {
       if (!canManageFriendly(row,ctx.managedIds)) throw new RequestError("Only the participating teams' captains can change this friendly.",403);
