@@ -21,7 +21,7 @@ async function request(body?:unknown) {
 }
 function FriendlyBoard() {
   const [board,setBoard]=useState<Board | null>(null), [error,setError]=useState(''), [notice,setNotice]=useState(''), [busy,setBusy]=useState(false);
-  const [team,setTeam]=useState(''),[date,setDate]=useState(''),[time,setTime]=useState('19:00'),[venue,setVenue]=useState(''),[notes,setNotes]=useState('');
+  const [team,setTeam]=useState(''),[date,setDate]=useState(''),[time,setTime]=useState('19:00'),[notes,setNotes]=useState('');
   const [format,setFormat]=useState<FriendlyFormat>('six_singles'),[useHandicaps,setUseHandicaps]=useState(false);
   const [view,setView]=useState('available'),[editor,setEditor]=useState<Friendly|null>(null),[frames,setFrames]=useState<DraftFrame[]>([emptyFrame()]);
   const scorecardRef=useRef<HTMLElement>(null);
@@ -36,6 +36,7 @@ function FriendlyBoard() {
   const name=(id:string|null)=>board?.teams.find(t=>t.id===id)?.name ?? (id?'Team no longer active':'Awaiting opponent');
   const dateLabel=(d:string)=>new Intl.DateTimeFormat('en-GB',{weekday:'long',day:'numeric',month:'long',year:'numeric',timeZone:'Europe/London'}).format(new Date(`${d}T12:00:00Z`));
   const today=ukToday();
+  const registeredVenue=board?.teams.find(t=>t.id===team)?.venue;
   const rows=(board?.friendlies??[]).filter(r=>view==='available'?r.status==='open'&&r.match_date>=today:view==='mine'?canManageFriendly(r,board?.managedIds??[]):true).sort((a,b)=>a.match_date.localeCompare(b.match_date));
   return <main className="mx-auto max-w-6xl space-y-5 p-4 sm:p-6">
     <ScreenHeader title="Team friendlies" eyebrow="Play for the enjoyment" subtitle="Offer a date, find an opponent and play on any day of the week." />
@@ -43,18 +44,18 @@ function FriendlyBoard() {
     {error&&<div role="alert" className="rounded-xl bg-red-50 p-4 text-red-800">{error}</div>}
     {notice&&<div role="status" className="rounded-xl bg-green-50 p-4 text-green-900">{notice}</div>}
     {!board&&!error&&<p>Loading friendlies…</p>}
-    {board&&board.managedIds.length>0&&<form className="space-y-4 rounded-2xl border bg-white p-5" onSubmit={async e=>{e.preventDefault();const saved=await act({action:'offer',team_id:team,match_date:date,start_time:time,venue,notes,format,use_handicaps:useHandicaps},'Your team is available for a friendly. Other captains can now accept.');if(saved){setNotes('');setDate('');}}}>
+    {board&&board.managedIds.length>0&&<form className="space-y-4 rounded-2xl border bg-white p-5" onSubmit={async e=>{e.preventDefault();const saved=await act({action:'offer',team_id:team,match_date:date,start_time:time,notes,format,use_handicaps:useHandicaps},'Your team is available for a friendly. Other captains can now accept.');if(saved){setNotes('');setDate('');}}}>
       <h2 className="text-xl font-semibold">Make your team available</h2>
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <label>Your team<select required className={field} value={team} onChange={e=>setTeam(e.target.value)}>{board.teams.filter(t=>board.managedIds.includes(t.id)).sort((a,b)=>a.name.localeCompare(b.name)).map(t=><option key={t.id} value={t.id}>{t.name}{board.teams.filter(other=>other.name===t.name&&board.managedIds.includes(other.id)).length>1?` (${board.seasons.find(s=>s.id===t.season_id)?.name??'Previous registration'})`:''}</option>)}</select></label>
         <label>Date (any day)<input required className={field} type="date" min={today} value={date} onChange={e=>setDate(e.target.value)} /></label>
         <label>Start time<input required className={field} type="time" value={time} onChange={e=>setTime(e.target.value)} /></label>
-        <label>Venue<input required maxLength={200} className={field} value={venue} onChange={e=>setVenue(e.target.value)} placeholder="Club / venue name" /></label>
+        <div><p className="font-medium">Venue — registered club address</p><p className="mt-1 whitespace-pre-line rounded-lg bg-slate-50 p-3">{registeredVenue || "No registered address. Ask a league officer to update the club record before posting."}</p></div>
       </div>
       <div className="grid gap-4 sm:grid-cols-2"><label>Match format<select className={field} value={format} onChange={e=>setFormat(e.target.value as FriendlyFormat)}>{Object.entries(FRIENDLY_FORMATS).map(([key,label])=><option key={key} value={key}>{label}</option>)}</select></label><label>Use current handicaps?<select className={field} value={useHandicaps?'yes':'no'} onChange={e=>setUseHandicaps(e.target.value==='yes')}><option value="no">No — play off scratch</option><option value="yes">Yes — use handicaps</option></select></label></div>
       {useHandicaps&&<p className="rounded-lg bg-teal-50 p-3 text-sm">Premier v Division One: Premier players use their current published handicap; Division One players use their suggested Elo handicap +20. Otherwise current published handicaps apply. Doubles use the average of each pair. The Premier league start cap applies to cross-division games; otherwise the offering league’s cap applies.</p>}
       <label className="block">Other arrangements (optional)<textarea className={field} maxLength={1000} value={notes} onChange={e=>setNotes(e.target.value)} placeholder="For example: table booked, visitors welcome." /></label>
-      <button disabled={busy} className={button}>Post availability</button>
+      <button disabled={busy||!registeredVenue} className={button}>Post availability</button>
     </form>}
     {board&&board.managedIds.length===0&&<p className="rounded-xl border p-4">You can view the board. Your team’s captain or vice-captain can post or accept a friendly.</p>}
     <section className="space-y-4">

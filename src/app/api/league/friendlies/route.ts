@@ -17,19 +17,24 @@ async function context(req: NextRequest) {
   if (auth.error || !auth.data.user) throw new RequestError("Please sign in again.", 401);
   const admin = createClient(url, key);
   const user = auth.data.user;
-  const [app, seasons, teams, role] = await Promise.all([
+  const [app, seasons, teams, locations, role] = await Promise.all([
     admin.from("app_users").select("linked_player_id").eq("id",user.id).maybeSingle(),
     admin.from("league_seasons").select("id,name,handicap_max_start"),
-    admin.from("league_teams").select("id,name,season_id").eq("is_active",true),
+    admin.from("league_teams").select("id,name,season_id,location_id").eq("is_active",true),
+    admin.from("locations").select("id,name,address"),
     resolveServerRole(admin,user),
   ]);
-  if (app.error || seasons.error || teams.error) throw new Error("Unable to load team permissions");
+  if (app.error || seasons.error || teams.error || locations.error) throw new Error("Unable to load team permissions");
   if (!app.data) throw new RequestError("An app account is required.",403);
   const memberships = app.data.linked_player_id ? await admin.from("league_team_members").select("team_id,is_captain,is_vice_captain").eq("player_id",app.data.linked_player_id) : { data: [], error: null };
   if (memberships.error) throw new Error("Unable to check captain permissions");
   // Team availability and captain permissions persist between league seasons.
   // Season metadata is used only for division handicap rules, not eligibility.
-  const available = teams.data ?? [];
+  const available = (teams.data ?? []).map(team=>{
+    const club=locations.data?.find(location=>location.id===team.location_id);
+    const address=club?.address?.trim();
+    return {...team,venue:address ? [club?.name?.trim(),address].filter(Boolean).join(" — ") : null};
+  });
   const manager = canManageLeagueRole(role);
   const managed = new Set((memberships.data ?? []).filter(m=>m.is_captain || m.is_vice_captain).map(m=>m.team_id));
   return {admin,user,teams:available,seasons:seasons.data ?? [],managedIds:available.filter(t=>manager || managed.has(t.id)).map(t=>t.id)};
@@ -68,7 +73,9 @@ export async function POST(req: NextRequest) {
     const actor = { updated_by:ctx.user.id,updated_at:new Date().toISOString() };
     if (body.action === "offer") {
       if (!ctx.managedIds.includes(String(body.team_id))) throw new RequestError("Only your team's captain or vice-captain can offer a friendly.",403);
-      let offer; try { offer = validateOffer(body); } catch(e) { throw new RequestError((e as Error).message); }
+      const venue=ctx.teams.find(t=>t.id===body.team_id)?.venue;
+      if (!venue) throw new RequestError("Your club has no registered venue address. Please ask a league officer to update the club record before posting.");
+      let offer; try { offer = validateOffer({...body,venue}); } catch(e) { throw new RequestError((e as Error).message); }
       const result = await ctx.admin.from("league_friendlies").insert({...offer,host_team_id:body.team_id,created_by:ctx.user.id,...actor}).select(columns).single();
       if (result.error?.code === "23505") throw new RequestError("Your team already has an open offer on that date.",409);
       if (result.error) throw result.error;

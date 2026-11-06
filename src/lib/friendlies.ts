@@ -3,7 +3,7 @@ export const FRIENDLY_FORMATS = { six_singles: "6 singles", four_singles_one_dou
 export type FriendlyFormat = keyof typeof FRIENDLY_FORMATS;
 export type FriendlyPlayer = { id: string; name: string; team_id: string; current: number; suggested: number };
 export type FriendlySeason = { id: string; name: string; handicap_max_start?: number | null };
-export type FriendlyTeam = { id: string; name: string; season_id: string };
+export type FriendlyTeam = { id: string; name: string; season_id: string; venue?: string | null };
 export type FriendlyFrame = { home: string; away: string; homeScore: number; awayScore: number; homeIds: string[]; awayIds: string[]; homeStart: number; awayStart: number; homeHandicap: number; awayHandicap: number };
 export function frameTypes(format: FriendlyFormat) { return format === "six_singles" ? [1,1,1,1,1,1] : [1,1,1,1,2]; }
 export function friendlyHandicap(player: FriendlyPlayer, ownLeague: string, opponentLeague: string, enabled: boolean) {
