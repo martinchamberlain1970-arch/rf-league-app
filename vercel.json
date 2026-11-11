@@ -12,6 +12,10 @@
     {
       "path": "/api/cron/unsubmitted-league-scorecards",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/cron/competition-vote-deadlines",
+      "schedule": "0 17 * * *"
     }
   ]
 }

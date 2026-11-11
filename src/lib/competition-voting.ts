@@ -6,7 +6,7 @@ export const VOTE_LABELS: Record<string,string> = {
  p4:'Proposal 4 — Updated when each match is played', abstain:'Abstain',
 };
 export const stageTitle = (stage:string) => stage==='calculation'?'Choose the handicap calculation':stage==='adjustment'?'Choose the Division 1 adjustment':'Choose when handicaps change';
-export type BallotRound = {id:string;round_no:number;stage:string;options:string[];closed_at:string|null;winner:string|null;totals:Record<string,number>|null};
+export type BallotRound = {id:string;round_no:number;stage:string;options:string[];closes_at:string|null;submittedTeamIds:string[];ownVotes:{team_id:string;choice:string}[];currentTotals?:Record<string,number>;closed_at:string|null;winner:string|null;totals:Record<string,number>|null};
 export type VotingBoard = {
  ballot:{id:string;phase:string;method:string|null;adjustment:number|null;timing:string|null};
  rounds:BallotRound[]; teams:{team_id:string;team_name:string}[]; managedIds:string[];

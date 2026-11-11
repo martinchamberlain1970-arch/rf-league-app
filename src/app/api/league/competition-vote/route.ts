@@ -16,6 +16,8 @@ async function context(req:NextRequest){
  if(!account.data) throw new RequestError('An app account is required.',403);
  const membership=account.data.linked_player_id?await admin.from('league_team_members').select('team_id,is_captain,is_vice_captain').eq('player_id',account.data.linked_player_id):{data:[],error:null};
  if(membership.error) throw membership.error;
+ const deadlines=await admin.rpc('process_competition_vote_deadlines');
+ if(deadlines.error) throw deadlines.error;
  const ballot=await admin.from('competition_handicap_ballots').select('id,phase,method,adjustment,timing').eq('slug','competition-handicaps-2026-27').single();
  if(ballot.error) throw ballot.error;
  const teams=await admin.from('competition_handicap_voters').select('team_id,team_name').eq('ballot_id',ballot.data.id).order('team_name');
@@ -34,18 +36,21 @@ function failure(e:unknown){
 }
 export async function GET(req:NextRequest){try{
  const c=await context(req);
- const rounds=await c.admin.from('competition_handicap_rounds').select('id,round_no,stage,options,closed_at,winner,totals').eq('ballot_id',c.ballot.id).order('round_no');
+ const rounds=await c.admin.from('competition_handicap_rounds').select('id,round_no,stage,options,closed_at,closes_at,winner,totals').eq('ballot_id',c.ballot.id).order('round_no');
  if(rounds.error) throw rounds.error;
- const current=rounds.data?.find(r=>!r.closed_at);
- const votes=current?await c.admin.from('competition_handicap_votes').select('team_id,choice').eq('round_id',current.id):{data:[],error:null};
+ const openIds=(rounds.data??[]).filter(round=>!round.closed_at).map(round=>round.id);
+ const votes=openIds.length?await c.admin.from('competition_handicap_votes').select('round_id,team_id,choice').in('round_id',openIds):{data:[],error:null};
  if(votes.error) throw votes.error;
- const currentTotals:Record<string,number>={};
- if(c.manager && current) {
-  for(const option of [...current.options,"abstain"]) currentTotals[option]=0;
-  for(const vote of votes.data??[]) currentTotals[vote.choice]=(currentTotals[vote.choice]??0)+1;
- }
- return NextResponse.json({...(c.manager?{currentTotals}:{}),ballot:c.ballot,rounds:rounds.data,teams:c.teams,managedIds:c.managedIds,manager:c.manager,
- submittedTeamIds:(votes.data??[]).map(v=>v.team_id),ownVotes:(votes.data??[]).filter(v=>c.managedIds.includes(v.team_id))},{headers});
+ const summaries=(rounds.data??[]).map(round=>{
+  const responses=(votes.data??[]).filter(vote=>vote.round_id===round.id);
+  const currentTotals:Record<string,number>={};
+  for(const option of [...round.options,'abstain']) currentTotals[option]=0;
+  for(const vote of responses) currentTotals[vote.choice]=(currentTotals[vote.choice]??0)+1;
+  return {...round,submittedTeamIds:responses.map(vote=>vote.team_id),
+   ownVotes:responses.filter(vote=>c.managedIds.includes(vote.team_id)),
+   ...(c.manager?{currentTotals}:{})};
+ });
+ return NextResponse.json({ballot:c.ballot,rounds:summaries,teams:c.teams,managedIds:c.managedIds,manager:c.manager},{headers});
 }catch(e){return failure(e);}}
 export async function POST(req:NextRequest){try{
  const c=await context(req); const raw=await req.text();
