@@ -50,7 +50,10 @@ export async function GET(req:NextRequest){try{
    ownVotes:responses.filter(vote=>c.managedIds.includes(vote.team_id)),
    ...(c.manager?{currentTotals}:{})};
  });
- return NextResponse.json({ballot:c.ballot,rounds:summaries,teams:c.teams,managedIds:c.managedIds,manager:c.manager},{headers});
+ const firstOpen=summaries.find(round=>!round.closed_at);
+ return NextResponse.json({ballot:c.ballot,rounds:summaries,teams:c.teams,managedIds:c.managedIds,manager:c.manager,
+  submittedTeamIds:firstOpen?.submittedTeamIds??[],ownVotes:firstOpen?.ownVotes??[],
+  ...(c.manager?{currentTotals:firstOpen?.currentTotals??{}}:{})},{headers});
 }catch(e){return failure(e);}}
 export async function POST(req:NextRequest){try{
  const c=await context(req); const raw=await req.text();
