@@ -140,7 +140,7 @@ export async function GET(req: NextRequest) {
     .map((team) => team.season_id));
   const selectedSeason = candidateSeasons.find((season) => clubSeasonIds.has(season.id)) ?? null;
   if (!selectedSeason) {
-    return NextResponse.json({ season: null, location, teams: [], selectedTeam: null, rotationSeconds: 45 });
+    return NextResponse.json({ season: null, location, teams: [], selectedTeam: null, rotationSeconds: 15 });
   }
 
   const [teamsRes, fixturesRes] = await Promise.all([
@@ -235,6 +235,6 @@ export async function GET(req: NextRequest) {
     location,
     teams: summaries,
     selectedTeam,
-    rotationSeconds: 45,
+    rotationSeconds: 15,
   });
 }

@@ -62,7 +62,7 @@ export default function GreenhitheLegionTeamPage() {
     let active = true;
     const load = async () => {
       const resp = await fetch(`/api/public/greenhithe-legion-teams?team=${encodeURIComponent(slug)}`, { cache: "default" });
-      const payload = (await resp.json().catch(() => ({ teams: [], rotationSeconds: 45, selectedTeam: null }))) as Payload;
+      const payload = (await resp.json().catch(() => ({ teams: [], rotationSeconds: 15, selectedTeam: null }))) as Payload;
       if (!active) return;
       setData(payload);
       setUpdatedAt(new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }));
