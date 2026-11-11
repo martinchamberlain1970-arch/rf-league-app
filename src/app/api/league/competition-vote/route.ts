@@ -39,7 +39,12 @@ export async function GET(req:NextRequest){try{
  const current=rounds.data?.find(r=>!r.closed_at);
  const votes=current?await c.admin.from('competition_handicap_votes').select('team_id,choice').eq('round_id',current.id):{data:[],error:null};
  if(votes.error) throw votes.error;
- return NextResponse.json({ballot:c.ballot,rounds:rounds.data,teams:c.teams,managedIds:c.managedIds,manager:c.manager,
+ const currentTotals:Record<string,number>={};
+ if(c.manager && current) {
+  for(const option of [...current.options,"abstain"]) currentTotals[option]=0;
+  for(const vote of votes.data??[]) currentTotals[vote.choice]=(currentTotals[vote.choice]??0)+1;
+ }
+ return NextResponse.json({...(c.manager?{currentTotals}:{}),ballot:c.ballot,rounds:rounds.data,teams:c.teams,managedIds:c.managedIds,manager:c.manager,
  submittedTeamIds:(votes.data??[]).map(v=>v.team_id),ownVotes:(votes.data??[]).filter(v=>c.managedIds.includes(v.team_id))},{headers});
 }catch(e){return failure(e);}}
 export async function POST(req:NextRequest){try{

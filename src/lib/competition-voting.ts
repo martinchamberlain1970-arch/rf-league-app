@@ -10,5 +10,6 @@ export type BallotRound = {id:string;round_no:number;stage:string;options:string
 export type VotingBoard = {
  ballot:{id:string;phase:string;method:string|null;adjustment:number|null;timing:string|null};
  rounds:BallotRound[]; teams:{team_id:string;team_name:string}[]; managedIds:string[];
+ currentTotals?:Record<string,number>;
  manager:boolean; submittedTeamIds:string[]; ownVotes:{team_id:string;choice:string}[];
 };

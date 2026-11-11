@@ -28,6 +28,14 @@ function Ballot(){
     <section className="rounded-2xl border bg-white p-5" aria-labelledby="team-voting-progress">
      <h2 id="team-voting-progress" className="text-xl font-bold">Team voting progress</h2>
      <p className="mt-2 text-sm text-slate-600">Round {current.round_no} · {stageTitle(current.stage)}. Use Refresh ballot to check for new responses.</p>
+     <h3 className="mt-4 font-bold">Votes by option</h3>
+     <ul className="mt-2 divide-y rounded-xl border">
+      {[...current.options, 'abstain'].map(option => (
+       <li key={option} className="flex justify-between gap-4 p-3">
+        <span>{VOTE_LABELS[option]}</span><strong>{board.currentTotals?.[option] ?? 0}</strong>
+       </li>
+      ))}
+     </ul>
      <div className="mt-4 grid gap-4 sm:grid-cols-2">
       <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
        <h3 className="font-bold text-emerald-900">Responded ({board.submittedTeamIds.length})</h3>
@@ -62,7 +70,7 @@ function Ballot(){
    {board.ballot.phase==='complete'&&<p className="rounded-xl bg-green-50 p-5 font-semibold">Voting is complete. The agreed policy will be communicated before it is brought into use.</p>}
    {board.rounds.filter(r=>r.closed_at).map(r=><section key={r.id} className="rounded-2xl border bg-white p-5"><h2 className="font-bold">Round {r.round_no} results · {stageTitle(r.stage)}</h2><ul className="mt-3 space-y-2">{[...r.options,'abstain'].map(o=><li key={o} className="flex justify-between gap-4"><span>{VOTE_LABELS[o]}</span><strong>{r.totals?.[o]??0}</strong></li>)}</ul><p className="mt-3 font-semibold">{r.winner?`Selected: ${VOTE_LABELS[r.winner]}`:'No majority — a further ballot is required.'}</p></section>)}
   </>}
-  <footer className="rounded-2xl bg-slate-100 p-5 text-sm leading-6"><h2 className="font-bold">Voting rules</h2><p>A choice must receive more than half of the votes cast, excluding abstentions. If none does, the top two choices go to a runoff. Any tie at the qualifying position is retained, so a three-way tie or tie for second can require another three-choice ballot. A tied two-choice ballot is repeated. A round with no substantive votes cannot be concluded.</p><p className="mt-2">Choice totals appear after each round closes. Each team may vote in every round, including teams that preferred Proposal 1. Team, voter account, choice and submission time are retained as the decision record. There is no automatic closing deadline or email notification; the League Secretary will announce each round.</p></footer>
+  <footer className="rounded-2xl bg-slate-100 p-5 text-sm leading-6"><h2 className="font-bold">Voting rules</h2><p>A choice must receive more than half of the votes cast, excluding abstentions. If none does, the top two choices go to a runoff. Any tie at the qualifying position is retained, so a three-way tie or tie for second can require another three-choice ballot. A tied two-choice ballot is repeated. A round with no substantive votes cannot be concluded.</p><p className="mt-2">League officers can see current totals by option. Results are shown to everyone after each round closes. Each team may vote in every round, including teams that preferred Proposal 1. Team, voter account, choice and submission time are retained as the decision record. There is no automatic closing deadline or email notification; the League Secretary will announce each round.</p></footer>
  </main>;
 }
 export default function CompetitionVotePage(){return <RequireAuth><Ballot/></RequireAuth>;}
