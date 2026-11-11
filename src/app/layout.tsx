@@ -4,6 +4,7 @@ import PwaRegistration from "@/components/PwaRegistration";
 import AppDialogProvider from "@/components/AppDialogProvider";
 import AppShell from "@/components/AppShell";
 import GlobalProgress from "@/components/GlobalProgress";
+import WebAppExperience from "@/components/WebAppExperience";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -48,6 +49,7 @@ export default function RootLayout({
         <meta name="apple-mobile-web-app-capable" content="yes" />
       </head>
       <body className="antialiased">
+        <WebAppExperience appName="Rack & Frame League" />
         <AppDialogProvider>
           <Suspense fallback={null}>
             <GlobalProgress />
