@@ -81,7 +81,7 @@ export default function GreenhitheLegionTeamPage() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_55%)] px-4 py-6 text-white sm:px-6">
       <div className="mx-auto max-w-6xl space-y-4">
-        <header className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/20 backdrop-blur">
+        <header className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/20">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-300">Team Results</p>

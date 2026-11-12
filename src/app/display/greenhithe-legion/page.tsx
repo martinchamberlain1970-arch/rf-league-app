@@ -91,7 +91,7 @@ export default function GreenhitheLegionPublicPage() {
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top,_#16324f,_#0f172a_55%)] px-4 py-6 text-white sm:px-6">
       <div className="mx-auto max-w-6xl space-y-4">
-        <header className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/20 backdrop-blur">
+        <header className="rounded-3xl border border-white/10 bg-white/5 p-5 shadow-2xl shadow-black/20">
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div>
               <p className="text-xs font-semibold uppercase tracking-[0.32em] text-cyan-300">Team Results</p>
@@ -116,7 +116,7 @@ export default function GreenhitheLegionPublicPage() {
         {data?.error ? <section className="rounded-2xl border border-rose-400/40 bg-rose-500/10 p-4 text-rose-100">{data.error}</section> : null}
 
         {!activeTeam && !data?.error ? (
-          <section className="rounded-3xl border border-white/10 bg-white/5 p-8 text-slate-200 shadow-2xl shadow-black/20 backdrop-blur">
+          <section className="rounded-3xl border border-white/10 bg-white/5 p-8 text-slate-200 shadow-2xl shadow-black/20">
             No Greenhithe Legion teams found in the current published league.
           </section>
         ) : null}
