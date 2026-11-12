@@ -1,5 +1,6 @@
 "use client";
 
+import { useDisplayPageSeconds } from "@/lib/display-page-timing";
 import { startVisiblePolling, staticDisplayRefreshMs } from "@/lib/visible-polling";
 
 import { useEffect, useMemo, useState } from "react";
@@ -93,6 +94,7 @@ function BoardPlayerBadge({ player, align = "left" }: { player: { name: string; 
 }
 
 export default function PublicLeagueBoardPage() {
+  const pageSeconds = useDisplayPageSeconds(45);
   const [data, setData] = useState<BoardData>(emptyData);
   const [liveData, setLiveData] = useState<LiveMatchData>(emptyLiveData);
   const [loading, setLoading] = useState(true);
@@ -154,11 +156,11 @@ export default function PublicLeagueBoardPage() {
         const currentIndex = panels.indexOf(current);
         return panels[(currentIndex + 1) % panels.length] ?? panels[0];
       });
-    }, 45000);
+    }, pageSeconds * 1000);
     return () => {
       window.clearInterval(timer);
     };
-  }, [loading, data.error, liveData.error, panelOrder.join("|")]);
+  }, [loading, data.error, liveData.error, panelOrder.join("|"), pageSeconds]);
 
   useEffect(() => {
     if (!panelOrder.includes(activePanel)) {

@@ -1,5 +1,6 @@
 "use client";
 
+import { useDisplayPageSeconds } from "@/lib/display-page-timing";
 import { startVisiblePolling, staticDisplayRefreshMs } from "@/lib/visible-polling";
 
 import { useEffect, useState } from "react";
@@ -71,7 +72,7 @@ export default function GreenhitheLegionPublicPage() {
   }, []);
 
   const teams = data?.teams ?? [];
-  const rotationSeconds = data?.rotationSeconds ?? 15;
+  const rotationSeconds = useDisplayPageSeconds(data?.rotationSeconds ?? 15);
   const activeTeam = teams[activeIndex] ?? null;
   const lastFixture = activeTeam?.recentResults[0] ?? null;
   const upcomingFixture = activeTeam?.upcomingFixtures[0] ?? null;
