@@ -36,7 +36,7 @@ function failure(e:unknown){
 }
 export async function GET(req:NextRequest){try{
  const c=await context(req);
- const rounds=await c.admin.from('competition_handicap_rounds').select('id,round_no,stage,options,closed_at,closes_at,winner,totals').eq('ballot_id',c.ballot.id).order('round_no');
+ const rounds=await c.admin.from('competition_handicap_rounds').select('id,round_no,stage,options,closed_at,closes_at,winner,totals').eq('ballot_id',c.ballot.id).is('cancelled_at',null).order('round_no');
  if(rounds.error) throw rounds.error;
  const openIds=(rounds.data??[]).filter(round=>!round.closed_at).map(round=>round.id);
  const votes=openIds.length?await c.admin.from('competition_handicap_votes').select('round_id,team_id,choice').in('round_id',openIds):{data:[],error:null};
