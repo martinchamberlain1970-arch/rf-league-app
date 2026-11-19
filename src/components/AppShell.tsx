@@ -3,8 +3,9 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppShellContextProvider } from "@/components/AppShellContext";
+import NavigationIcon, { iconForNavigation } from "@/components/NavigationIcon";
 import ConfirmModal from "@/components/ConfirmModal";
 import useAdminStatus from "@/components/useAdminStatus";
 import { appRoleLabel } from "@/lib/app-roles";
@@ -27,7 +28,7 @@ type NavigationGroup = {
   items: NavigationItem[];
 };
 
-const navigationGroups: NavigationGroup[] = [
+export const navigationGroups: NavigationGroup[] = [
   {
     label: "Match night",
     items: [
@@ -106,6 +107,7 @@ const navigationGroups: NavigationGroup[] = [
 ];
 
 const alwaysBarePrefixes = [
+  "/navigation-preview",
   "/auth",
   "/display",
   "/league-entry",
@@ -159,7 +161,7 @@ function pageDetails(pathname: string, currentSearch: string, groups: Navigation
   return { group: "Rack & Frame", label: "League workspace" };
 }
 
-function NavigationContent({
+export function NavigationContent({
   groups,
   pathname,
   currentSearch,
@@ -185,13 +187,13 @@ function NavigationContent({
   }, [activeGroupLabel]);
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-[#0b1730] text-white">
-      <div className="border-b border-white/10 px-5 py-5">
+    <div className="flex h-full min-h-0 flex-col bg-gradient-to-b from-[#102a3b] via-[#0b1730] to-[#081323] text-white">
+      <div className="border-b border-white/10 px-5 py-6 pr-16 lg:pr-5">
         <Link href="/" onClick={(event) => onNavigate("/", event)} className="flex items-center gap-3">
           <Image src="/icons/rack-frame-icon-192-v2.png" alt="Rack & Frame" width={44} height={44} priority className="h-11 w-11 rounded-xl shadow-lg shadow-cyan-950/30 ring-1 ring-white/15" />
           <span>
             <span className="block text-sm font-black tracking-wide">Rack &amp; Frame</span>
-            <span className="block text-xs text-slate-400">League Manager</span>
+            <span className="block text-xs text-slate-400">YOUR LEAGUE, CONNECTED</span>
           </span>
         </Link>
       </div>
@@ -201,13 +203,13 @@ function NavigationContent({
           href="/"
           onClick={(event) => onNavigate("/", event)}
           aria-current={pathname === "/" ? "page" : undefined}
-          className={`mb-4 flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-bold ${pathname === "/" ? "bg-cyan-300 text-[#0b1730]" : "text-slate-200 hover:bg-white/10"}`}
+          className={`mb-5 flex min-h-12 items-center gap-3 rounded-2xl px-3 py-2.5 text-sm font-bold ${pathname === "/" ? "bg-gradient-to-r from-teal-200 to-cyan-200 text-[#0b1730] shadow-lg shadow-teal-950/30" : "text-slate-200 hover:bg-white/10"}`}
         >
-          <span aria-hidden="true">⌂</span>
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-xl bg-black/10"><NavigationIcon name="home" /></span>
           Dashboard
         </Link>
 
-        <div className="space-y-1">
+        <div className="space-y-2">
           {groups.map((group) => {
             const expanded = expandedGroups.includes(group.label);
             const containsActive = group.label === activeGroupLabel;
@@ -220,13 +222,14 @@ function NavigationContent({
                       ? current.filter((label) => label !== group.label)
                       : [...current, group.label])}
                     aria-expanded={expanded}
-                    className={`flex w-full items-center justify-between rounded-lg px-3 py-2.5 text-left text-[11px] font-bold uppercase tracking-[0.13em] transition ${containsActive ? "text-cyan-200" : "text-slate-400 hover:bg-white/8 hover:text-slate-200"}`}
+                    className={`flex w-full items-center justify-between min-h-14 gap-3 rounded-xl px-3 py-3 text-left text-sm font-bold transition ${containsActive ? "text-cyan-200" : "text-slate-400 hover:bg-white/8 hover:text-slate-200"}`}
                   >
-                    <span>{group.label}</span>
-                    <span aria-hidden="true" className="text-base leading-none">{expanded ? "−" : "+"}</span>
+                    <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-xl ring-1 ${containsActive ? 'bg-teal-300/15 text-teal-200 ring-teal-200/20' : 'bg-white/5 text-slate-300 ring-white/10'}`}><NavigationIcon name={({ 'Match night': 'play', League: 'chart', Competitions: 'trophy', 'League administration': 'settings', 'People & guidance': 'users', 'System owner': 'shield' } as Record<string,string>)[group.label]} /></span>
+                    <span className="flex-1">{group.label}</span>
+                    <NavigationIcon name="chevron" className={`h-4 w-4 shrink-0 transition-transform motion-reduce:transition-none ${expanded?'rotate-90':''}`} />
                   </button>
                 </h2>
-                {expanded ? <div className="mb-2 space-y-0.5 border-l border-white/10 pl-2">
+                {expanded ? <div className="mb-3 ml-3 space-y-1 border-l border-white/10 pl-3">
                   {group.items.map((item) => {
                     const active = itemMatchesPath(pathname, currentSearch, item.href);
                     return (
@@ -235,9 +238,9 @@ function NavigationContent({
                         href={item.href}
                         onClick={(event) => onNavigate(item.href, event)}
                         aria-current={active ? "page" : undefined}
-                        className={`block rounded-lg px-3 py-2 text-sm transition ${active ? "bg-white/14 font-bold text-cyan-200 ring-1 ring-white/10" : "font-medium text-slate-300 hover:bg-white/8 hover:text-white"}`}
+                        className={`flex min-h-11 items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition ${active ? "bg-teal-300/15 font-bold text-teal-100 ring-1 ring-teal-200/20" : "font-medium text-slate-300 hover:bg-white/8 hover:text-white"}`}
                       >
-                        {item.label}
+                        <NavigationIcon name={iconForNavigation(item.href)} className="h-[18px] w-[18px] shrink-0 opacity-80" /><span>{item.label}</span>
                       </Link>
                     );
                   })}
@@ -251,8 +254,8 @@ function NavigationContent({
       <div className="border-t border-white/10 p-4">
         <p className="truncate text-sm font-bold text-white">{roleLabel}</p>
         {teamNames.length > 0 ? <p className="mt-0.5 truncate text-xs text-slate-400">{teamNames.join(", ")}</p> : <p className="mt-0.5 text-xs text-slate-400">Rack &amp; Frame account</p>}
-        <button type="button" onClick={onSignOut} className="mt-3 w-full rounded-lg border border-white/15 px-3 py-2 text-left text-xs font-bold text-slate-200 hover:border-rose-300/50 hover:bg-rose-400/10 hover:text-rose-100">
-          Sign out
+        <button type="button" onClick={onSignOut} className="mt-3 flex min-h-11 w-full items-center gap-3 rounded-xl border border-white/15 px-3 py-2 text-left text-xs font-bold text-slate-200 hover:border-rose-300/50 hover:bg-rose-400/10 hover:text-rose-100">
+          <NavigationIcon name="logout" className="h-4 w-4" /> Sign out
         </button>
       </div>
     </div>
@@ -265,6 +268,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   const searchParams = useSearchParams();
   const currentSearch = searchParams.toString();
   const admin = useAdminStatus();
+  const menuButton = useRef<HTMLButtonElement>(null);
+  const menuDialog = useRef<HTMLDivElement>(null);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [isCaptain, setIsCaptain] = useState(false);
   const [isMatchScorer, setIsMatchScorer] = useState(false);
@@ -348,12 +353,21 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
     if (!mobileOpen) return;
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
+    const dialog = menuDialog.current;
+    const trigger = menuButton.current;
+    dialog?.querySelector<HTMLButtonElement>('button')?.focus();
     const closeOnEscape = (event: KeyboardEvent) => {
       if (event.key === "Escape") setMobileOpen(false);
+      if (event.key !== 'Tab' || !dialog) return;
+      const items = Array.from(dialog.querySelectorAll<HTMLElement>('a[href],button:not([disabled]),select')).filter(el=>el.getClientRects().length>0);
+      const first = items[0], last = items[items.length-1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
     };
     document.addEventListener("keydown", closeOnEscape);
     return () => {
       document.body.style.overflow = previousOverflow;
+      trigger?.focus();
       document.removeEventListener("keydown", closeOnEscape);
     };
   }, [mobileOpen]);
@@ -433,13 +447,13 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
         <div className="min-h-screen lg:pl-72">
           <header className="rf-app-header sticky top-0 z-30 flex h-16 items-center gap-3 border-b border-slate-200 bg-white px-3 shadow-sm sm:px-5">
-            <button type="button" onClick={() => setMobileOpen(true)} className="grid h-10 w-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-800 lg:hidden" aria-label="Open navigation">☰</button>
+            <button ref={menuButton} type="button" onClick={() => setMobileOpen(true)} className="flex h-11 shrink-0 items-center gap-2 rounded-xl bg-teal-700 px-3 text-white shadow-sm hover:bg-teal-800 lg:hidden" aria-label="Open navigation" aria-expanded={mobileOpen} aria-controls="mobile-navigation"><NavigationIcon name="menu" /><span className="text-xs font-bold">Menu</span></button>
             <button type="button" onClick={requestBack} className="grid h-10 w-10 place-items-center rounded-lg border border-slate-200 bg-white text-slate-700 hover:border-teal-300 hover:bg-teal-50" aria-label="Go back">←</button>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[10px] font-bold uppercase tracking-[0.16em] text-teal-700">Home / {details.group}</p>
               <p className="truncate text-sm font-black text-slate-950 sm:text-base">{details.label}</p>
             </div>
-            <Link href="/notifications" className="grid h-10 w-10 place-items-center rounded-lg border border-slate-200 bg-white text-sm hover:border-teal-300 hover:bg-teal-50" aria-label="Notifications">🔔</Link>
+            <Link href="/notifications" className="grid h-10 w-10 place-items-center rounded-lg border border-slate-200 bg-white text-sm hover:border-teal-300 hover:bg-teal-50" aria-label="Notifications"><NavigationIcon name="bell" /></Link>
             <div className="hidden text-right md:block">
               <p className="text-xs font-bold text-slate-900">{roleLabel}</p>
               {teamNames.length > 0 ? <p className="max-w-52 truncate text-[11px] text-slate-500">{teamNames.join(", ")}</p> : null}
@@ -449,8 +463,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         </div>
 
         {mobileOpen ? (
-          <div className="rf-mobile-navigation fixed inset-0 z-[80] bg-[#0b1730] lg:hidden" role="dialog" aria-modal="true" aria-label="Rack & Frame navigation">
-            <button type="button" onClick={() => setMobileOpen(false)} className="rf-navigation-close absolute right-4 top-4 z-10 grid h-10 w-10 place-items-center rounded-lg border border-white/20 bg-white/10 text-xl text-white" aria-label="Close navigation">×</button>
+          <div ref={menuDialog} id="mobile-navigation" className="rf-mobile-navigation fixed inset-0 z-[80] bg-[#0b1730] lg:hidden" role="dialog" aria-modal="true" aria-label="Rack & Frame navigation">
+            <button type="button" onClick={() => setMobileOpen(false)} className="rf-navigation-close absolute right-4 top-4 z-10 grid h-10 w-10 place-items-center rounded-lg border border-white/20 bg-white/10 text-xl text-white" aria-label="Close navigation"><NavigationIcon name="close" /></button>
             <NavigationContent groups={visibleGroups} pathname={pathname} currentSearch={currentSearch} roleLabel={roleLabel} teamNames={teamNames} onNavigate={requestNavigation} onSignOut={() => void onSignOut()} />
           </div>
         ) : null}
