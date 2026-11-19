@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
+import { expectedLeagueScorecardFrames, validateCompleteLeagueScorecard } from "@/lib/league-scorecard-validation";
+import { matchSubmissionConfirmation } from "@/lib/match-submission-confirmation";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
@@ -284,6 +286,10 @@ export default function CaptainResultsPage() {
   const [selectedFixtureId, setSelectedFixtureId] = useState("");
   const [scorecardPhotoUrl, setScorecardPhotoUrl] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const submitInFlightRef = useRef(false);
+  const saveFrameInFlightRef = useRef(false);
+  const [savingFrame, setSavingFrame] = useState(false);
+  const requestedReviewFixtureRef = useRef<string | null>(null);
   const [linkedPlayerId, setLinkedPlayerId] = useState<string | null>(null);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [pendingByFixture, setPendingByFixture] = useState<Set<string>>(new Set());
@@ -594,6 +600,18 @@ export default function CaptainResultsPage() {
     [myFixtures]
   );
 
+  const unfinishedSubmissions = myCurrentWeekFixtures.filter((fixture) => {
+    if (!canSubmit || pendingByFixture.has(fixture.id) || fixture.status === "bye") return false;
+    if (!scoreEntryTeamIds.has(fixture.home_team_id) && !fixture.proxy_entry_enabled) return false;
+    const season = seasons.find((row) => row.id === fixture.season_id);
+    const expected = expectedLeagueScorecardFrames(season?.singles_count ?? 4, season?.doubles_count ?? 1);
+    const saved = allSlots.filter((row) => row.fixture_id === fixture.id);
+    return expected.length > 0 && expected.every((slot) => saved.some((row) =>
+      row.slot_no === slot.slot_no && row.slot_type === slot.slot_type &&
+      (row.winner_side || row.home_forfeit || row.away_forfeit)
+    ));
+  });
+
   const selectedFixture = useMemo(
     () => myCurrentWeekFixtures.find((f) => f.id === selectedFixtureId) ?? null,
     [myCurrentWeekFixtures, selectedFixtureId]
@@ -889,7 +907,8 @@ export default function CaptainResultsPage() {
     if (!selectedFixture || activeEntryTab !== "scorecard") return;
     const fallbackIndex = firstIncompleteScorecardIndex >= 0 ? firstIncompleteScorecardIndex : 0;
     setScorecardCurrentIndex(fallbackIndex);
-    setScorecardReviewMode(false);
+    setScorecardReviewMode(requestedReviewFixtureRef.current === selectedFixture.id);
+    requestedReviewFixtureRef.current = null;
     setShowPreviewGuide(false);
     setShowJourneyGuide(false);
     setBreakPromptSlotNo(null);
@@ -1922,114 +1941,138 @@ export default function CaptainResultsPage() {
   };
 
   const submit = async () => {
-    const client = supabase;
-    if (!client || !selectedFixture || !currentUserId) return;
-    if (selectedFixture.status === "complete" || selectedFixture.status === "bye") {
-      setMessage(selectedFixture.status === "bye" ? "This is a BYE week and no result is required." : "This fixture is locked because it is complete.");
-      return;
-    }
-    if (!canSubmit) {
-      setMessage("League officers manage results from League Manager rather than the captain submission screen.");
-      return;
-    }
-    if (!scoreEntryTeamIds.has(selectedFixture.home_team_id) && !scoreEntryTeamIds.has(selectedFixture.away_team_id)) {
-      setMessage("You can only submit results for your own team fixtures.");
-      return;
-    }
-    if (!isFixtureOpenForSubmission(selectedFixture.fixture_date)) return setMessage("Fixture is not open. Captains can submit from match night until midnight on the following day.");
-    if (pendingByFixture.has(selectedFixture.id)) return setMessage("A submission is already pending for this fixture.");
-    if (await guardAgainstRemoteOverwrite()) return;
-
-    const frameResults: SubmissionFrameResult[] = slots.map((s) => ({
-      slot_no: s.slot_no,
-      slot_type: s.slot_type,
-      winner_side: deriveWinnerFromFrame(s),
-      home_player1_id: s.home_player1_id ?? null,
-      home_player2_id: s.home_player2_id ?? null,
-      away_player1_id: s.away_player1_id ?? null,
-      away_player2_id: s.away_player2_id ?? null,
-      home_nominated: Boolean(s.home_nominated),
-      away_nominated: Boolean(s.away_nominated),
-      home_forfeit: Boolean(s.home_forfeit),
-      away_forfeit: Boolean(s.away_forfeit),
-      home_nominated_name: s.home_nominated_name ?? null,
-      away_nominated_name: s.away_nominated_name ?? null,
-      home_points_scored: typeof s.home_points_scored === "number" ? s.home_points_scored : null,
-      away_points_scored: typeof s.away_points_scored === "number" ? s.away_points_scored : null,
-    }));
-
-    const incomplete = frameResults.some((r) => !r.winner_side && !r.home_forfeit && !r.away_forfeit);
-    if (incomplete) {
-      setMessage("Complete all frames before submitting for approval.");
-      return;
-    }
-
-    const breakRows = getValidatedBreakRows();
-    if (breakRows.error) {
-      setMessage(breakRows.error);
-      return;
-    }
-    if (breakRowsContainUnsavedDraft(fixtureBreaks)) {
-      setMessage(unfinishedBreakMessage);
-      return;
-    }
-    const breakRowsBySlot = new Map<number, SubmissionBreakEntry[]>();
-    for (const row of breakRows.rows) {
-      if (!row.slot_no) continue;
-      const existing = breakRowsBySlot.get(row.slot_no) ?? [];
-      existing.push(row);
-      breakRowsBySlot.set(row.slot_no, existing);
-    }
-    for (const frameResult of frameResults) {
-      frameResult.break_entries = breakRowsBySlot.get(frameResult.slot_no) ?? [];
-    }
-
-    setSubmitting(true);
-    const sessionRes = await client.auth.getSession();
-    const token = sessionRes.data.session?.access_token ?? null;
-    if (!token) {
-      setSubmitting(false);
-      setMessage("Session expired. Please sign in again.");
-      return;
-    }
-
-    let res: Response;
+    if (submitInFlightRef.current) return;
+    submitInFlightRef.current = true;
     try {
-      res = await fetch("/api/league/captain-submit", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          fixtureId: selectedFixture.id,
-          frameResults,
-          scorecardPhotoUrl: scorecardPhotoUrl.trim() || null,
-        }),
-      });
-    } catch {
+      const client = supabase;
+      if (!client || !selectedFixture || !currentUserId) return;
+      if (selectedFixture.status === "complete" || selectedFixture.status === "bye") {
+        setMessage(selectedFixture.status === "bye" ? "This is a BYE week and no result is required." : "This fixture is locked because it is complete.");
+        return;
+      }
+      if (!canSubmit) {
+        setMessage("League officers manage results from League Manager rather than the captain submission screen.");
+        return;
+      }
+      if (!scoreEntryTeamIds.has(selectedFixture.home_team_id) && !scoreEntryTeamIds.has(selectedFixture.away_team_id)) {
+        setMessage("You can only submit results for your own team fixtures.");
+        return;
+      }
+      if (!isFixtureOpenForSubmission(selectedFixture.fixture_date)) return setMessage("Fixture is not open. Captains can submit from match night until midnight on the following day.");
+      if (pendingByFixture.has(selectedFixture.id)) return setMessage("A submission is already pending for this fixture.");
+      if (await guardAgainstRemoteOverwrite()) return;
+
+      const frameResults: SubmissionFrameResult[] = slots.map((s) => ({
+        slot_no: s.slot_no,
+        slot_type: s.slot_type,
+        winner_side: deriveWinnerFromFrame(s),
+        home_player1_id: s.home_player1_id ?? null,
+        home_player2_id: s.home_player2_id ?? null,
+        away_player1_id: s.away_player1_id ?? null,
+        away_player2_id: s.away_player2_id ?? null,
+        home_nominated: Boolean(s.home_nominated),
+        away_nominated: Boolean(s.away_nominated),
+        home_forfeit: Boolean(s.home_forfeit),
+        away_forfeit: Boolean(s.away_forfeit),
+        home_nominated_name: s.home_nominated_name ?? null,
+        away_nominated_name: s.away_nominated_name ?? null,
+        home_points_scored: typeof s.home_points_scored === "number" ? s.home_points_scored : null,
+        away_points_scored: typeof s.away_points_scored === "number" ? s.away_points_scored : null,
+      }));
+
+      const validation = validateCompleteLeagueScorecard(frameResults, selectedSeason?.singles_count ?? 4, selectedSeason?.doubles_count ?? 1);
+      if (!validation.valid) return setMessage(validation.error);
+      const incomplete = frameResults.some((r) => !r.winner_side && !r.home_forfeit && !r.away_forfeit);
+      if (incomplete) {
+        setMessage("Complete all frames before submitting for approval.");
+        return;
+      }
+
+      const breakRows = getValidatedBreakRows();
+      if (breakRows.error) {
+        setMessage(breakRows.error);
+        return;
+      }
+      if (breakRowsContainUnsavedDraft(fixtureBreaks)) {
+        setMessage(unfinishedBreakMessage);
+        return;
+      }
+      const breakRowsBySlot = new Map<number, SubmissionBreakEntry[]>();
+      for (const row of breakRows.rows) {
+        if (!row.slot_no) continue;
+        const existing = breakRowsBySlot.get(row.slot_no) ?? [];
+        existing.push(row);
+        breakRowsBySlot.set(row.slot_no, existing);
+      }
+      for (const frameResult of frameResults) {
+        frameResult.break_entries = breakRowsBySlot.get(frameResult.slot_no) ?? [];
+      }
+
+      const confirmation = matchSubmissionConfirmation(
+        teamById.get(selectedFixture.home_team_id)?.name ?? "Home",
+        teamById.get(selectedFixture.away_team_id)?.name ?? "Away",
+        frameResults,
+        breakRows.rows.map((row) => ({
+          slot: row.slot_no,
+          name: row.entered_player_name || playerById.get(row.player_id ?? "")?.display_name || "Player",
+          value: row.break_value,
+        }))
+      );
+      if (!await showConfirm(confirmation)) {
+        setScorecardReviewMode(true);
+        return;
+      }
+      // Recheck after confirmation in case another scorer submitted or edited the card.
+      if (await guardAgainstRemoteOverwrite()) return;
+      setSubmitting(true);
+      const sessionRes = await client.auth.getSession();
+      const token = sessionRes.data.session?.access_token ?? null;
+      if (!token) {
+        setSubmitting(false);
+        setMessage("Session expired. Please sign in again.");
+        return;
+      }
+
+      let res: Response;
+      try {
+        res = await fetch("/api/league/captain-submit", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({
+            fixtureId: selectedFixture.id,
+            frameResults,
+            scorecardPhotoUrl: scorecardPhotoUrl.trim() || null,
+          }),
+        });
+      } catch {
+        setSubmitting(false);
+        setMessage("The result could not be sent. Your saved scores are safe. Check your connection and try again.");
+        return;
+      }
+
       setSubmitting(false);
-      setMessage("Network error while submitting. Check server is running and try again.");
-      return;
-    }
+      const payload = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setMessage(normaliseCaptainApiError(new Error(payload.error ?? "Failed to submit result."), "Failed to submit result."));
+        return;
+      }
 
-    setSubmitting(false);
-    const payload = (await res.json().catch(() => ({}))) as { error?: string };
-    if (!res.ok) {
-      setMessage(normaliseCaptainApiError(new Error(payload.error ?? "Failed to submit result."), "Failed to submit result."));
-      return;
+      setPendingByFixture((current) => new Set(current).add(selectedFixture.id));
+      setInfo({ title: "✅ Result submitted — nothing else to do", description: "Your match result has been sent for league-officer approval. You can now close this screen." });
+      if (typeof window !== "undefined") {
+        window.localStorage.removeItem(`rf_league_captain_draft_${selectedFixture.id}`);
+      }
+      setScorecardPhotoUrl("");
+      await loadAll();
+    } catch (error) {
+      setMessage(normaliseCaptainApiError(error, "Unable to submit the result. Your saved scores are safe; please try again."));
+    } finally {
+      submitInFlightRef.current = false;
+      setSubmitting(false);
     }
-
-    if (proxyEntryEnabled) {
-      setInfo({ title: "Proxy Result Submitted", description: "Your agreed proxy entry has been submitted for league-officer approval with both teams entered from the app." });
-    } else {
-      setInfo({ title: "Result Submitted", description: "Your result has been submitted for league-officer approval." });
-    }
-    if (typeof window !== "undefined") {
-      window.localStorage.removeItem(`rf_league_captain_draft_${selectedFixture.id}`);
-    }
-    setScorecardPhotoUrl("");
-    await loadAll();
   };
 
   const saveAndContinueCurrentFrame = async (skipBreakPrompt = false) => {
@@ -2044,7 +2087,11 @@ export default function CaptainResultsPage() {
       setMessage(currentFrameBreaks.error);
       return;
     }
-    if (!skipBreakPrompt && !breakPromptAnsweredSlots.has(currentScorecardFrame.slot_no) && currentFrameBreaks.rows.length === 0) {
+    const doublesIsMissing = configuredAsWinter && !orderedScoreSlots.some((slot) => slot.slot_type === "doubles");
+    const mustContinueToDoubles =
+      doublesIsMissing && currentScorecardFrame.slot_type === "singles" && currentScorecardFrame.slot_no === 4;
+    const isFinalFrame = !mustContinueToDoubles && scorecardCurrentIndex >= orderedScoreSlots.length - 1;
+    if (!isFinalFrame && !skipBreakPrompt && !breakPromptAnsweredSlots.has(currentScorecardFrame.slot_no) && currentFrameBreaks.rows.length === 0) {
       setBreakPromptSlotNo(currentScorecardFrame.slot_no);
       return;
     }
@@ -2056,38 +2103,39 @@ export default function CaptainResultsPage() {
       setMessage(`Enter the 30+ break for Frame ${currentScorecardFrame.slot_no} before saving the frame.`);
       return;
     }
-    const doublesIsMissing = configuredAsWinter && !orderedScoreSlots.some((slot) => slot.slot_type === "doubles");
-    const mustContinueToDoubles =
-      doublesIsMissing && currentScorecardFrame.slot_type === "singles" && currentScorecardFrame.slot_no === 4;
-    const isFinalFrame = !mustContinueToDoubles && scorecardCurrentIndex >= orderedScoreSlots.length - 1;
-    const saveResult = await saveProgress("manual", { quiet: true });
-    if (!saveResult.saved) return;
-    if (mustContinueToDoubles) {
-      const repairedFrames = await repairWinterScorecard();
-      const doublesIndex = repairedFrames?.findIndex((slot) => slot.slot_type === "doubles") ?? -1;
-      if (doublesIndex < 0) {
-        setMessage("Frame 4 has been saved, but the doubles frame could not be opened. Refresh the page before continuing; the match has not been submitted.");
+    if (saveFrameInFlightRef.current || submitInFlightRef.current) return;
+    saveFrameInFlightRef.current = true;
+    setSavingFrame(true);
+    try {
+      const saveResult = await saveProgress("manual", { quiet: true });
+      if (!saveResult.saved) return;
+      if (mustContinueToDoubles) {
+        const repairedFrames = await repairWinterScorecard();
+        const doublesIndex = repairedFrames?.findIndex((slot) => slot.slot_type === "doubles") ?? -1;
+        if (doublesIndex < 0) {
+          setMessage("Frame 4 has been saved, but the doubles frame could not be opened. Refresh the page before continuing; the match has not been submitted.");
+          return;
+        }
+        setScorecardReviewMode(false);
+        setScorecardCurrentIndex(doublesIndex);
+        setInfo({
+          title: "Singles complete — doubles next",
+          description: "Frame 4 has been saved. Now enter both doubles pairs and the Frame 5 score before reviewing and submitting the match.",
+        });
         return;
       }
-      setScorecardReviewMode(false);
-      setScorecardCurrentIndex(doublesIndex);
-      setInfo({
-        title: "Singles complete — doubles next",
-        description: "Frame 4 has been saved. Now enter both doubles pairs and the Frame 5 score before reviewing and submitting the match.",
-      });
-      return;
-    }
-    if (isFinalFrame) {
-      if (saveResult.allFramesComplete && !saveResult.hasUnsavedBreakDraft) {
-        setScorecardReviewMode(true);
-        setInfo({
-          title: "All frames saved — match not submitted",
-          description: "The fifth frame is saved, but the match is still in progress. Review all five frames and any 30+ breaks, then press Submit match result. A league officer cannot approve it until you submit.",
-        });
+      if (isFinalFrame) {
+        if (saveResult.allFramesComplete && !saveResult.hasUnsavedBreakDraft) {
+          setScorecardReviewMode(true);
+          await submit();
+        }
+        return;
       }
-      return;
+      setScorecardCurrentIndex((prev) => Math.min(prev + 1, Math.max(orderedScoreSlots.length - 1, 0)));
+    } finally {
+      saveFrameInFlightRef.current = false;
+      setSavingFrame(false);
     }
-    setScorecardCurrentIndex((prev) => Math.min(prev + 1, Math.max(orderedScoreSlots.length - 1, 0)));
   };
 
   const acknowledgeNoBreakForCurrentFrame = () => {
@@ -2204,6 +2252,20 @@ export default function CaptainResultsPage() {
         <RequireAuth>
           <ScreenHeader title="Captain Lineups & Results" eyebrow="League" subtitle="Enter pre-match lineups first, then submit your team result for league-officer approval." />
           {loading ? <section className={`${sectionCardClass} text-slate-600`}>Loading...</section> : null}
+          {unfinishedSubmissions.map((fixture) => (
+            <section key={fixture.id} role="status" className="rounded-2xl border-2 border-amber-400 bg-amber-50 p-4 text-amber-950 shadow-sm">
+              <h2 className="text-lg font-bold">Your match still needs submitting</h2>
+              <p className="mt-1 font-semibold">{teamById.get(fixture.home_team_id)?.name} vs {teamById.get(fixture.away_team_id)?.name}</p>
+              <p className="mt-1 text-sm">All frames are saved, but the result has not been sent for approval. Open the scorecard, check it and finish submitting.</p>
+              <button type="button" className="mt-3 min-h-11 rounded-xl bg-amber-900 px-4 py-2 font-semibold text-white" onClick={() => {
+                requestedReviewFixtureRef.current = fixture.id;
+                setSelectedFixtureId(fixture.id);
+                setActiveEntryTab("scorecard");
+                setScorecardReviewMode(true);
+              }}>Open scorecard to submit</button>
+            </section>
+          ))}
+
 
           {!linkedPlayerId && !admin.canManageLeague && !loading ? (
             <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900 shadow-sm">
@@ -3316,14 +3378,14 @@ export default function CaptainResultsPage() {
                               <button
                                 type="button"
                                 onClick={() => void saveAndContinueCurrentFrame()}
+                                disabled={savingFrame || submitting}
                                 className="min-h-11 rounded-xl bg-sky-700 px-4 py-2 text-sm font-semibold text-white shadow-sm"
                               >
-                                {currentScorecardFrame.slot_type === "doubles"
-                                  ? "Save doubles & review"
-                                  : configuredAsWinter && currentScorecardFrame.slot_no === 4
+                                {savingFrame || submitting ? "Please wait…"
+                                  : configuredAsWinter && currentScorecardFrame.slot_type === "singles" && currentScorecardFrame.slot_no === 4
                                     ? "Save Frame 4 & go to doubles"
                                     : scorecardCurrentIndex >= orderedScoreSlots.length - 1
-                                      ? "Save final frame & review"
+                                      ? "Finish match & submit"
                                       : "Save frame & next"}
                               </button>
                             </div>
@@ -3337,7 +3399,7 @@ export default function CaptainResultsPage() {
                             Final step: submit the match for league-officer approval
                           </p>
                           <p className="mb-3 text-xs text-emerald-900">
-                            Saving frame five did not submit the result. Check the final scores and 30+ breaks, then press Submit match result.
+                            Check the final scores and 30+ breaks, then press Finish match & submit. You will be asked to confirm before it is sent.
                           </p>
                           <div className="grid gap-2 sm:grid-cols-[1fr_auto] sm:items-center">
                           <input
@@ -3359,7 +3421,7 @@ export default function CaptainResultsPage() {
                                 : "Home team submits scorecard"
                               : submitting
                                 ? "Submitting..."
-                                : "Submit match result"}
+                                : "Finish match & submit"}
                           </button>
                           </div>
                         </div>
@@ -3378,7 +3440,6 @@ export default function CaptainResultsPage() {
             open={Boolean(info)}
             title={info?.title ?? ""}
             description={info?.description ?? ""}
-            closeLabel={info?.title === "All frames saved — match not submitted" ? "Review & submit" : undefined}
             onClose={() => setInfo(null)}
           />
           <ConfirmModal
