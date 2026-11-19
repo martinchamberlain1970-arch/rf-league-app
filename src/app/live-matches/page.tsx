@@ -12,7 +12,7 @@ type LiveMatchData = {
     fixtureDate: string | null;
     weekNo: number | null;
     status: string;
-    matchState: "awaiting_lineup" | "awaiting_scores" | "in_progress" | "match_ended";
+    matchState: "awaiting_lineup" | "awaiting_scores" | "in_progress" | "awaiting_submission" | "awaiting_approval" | "match_ended";
     statusLabel: string;
     homeTeam: string;
     awayTeam: string;
@@ -182,7 +182,7 @@ export default function LiveMatchesPage() {
                 </div>
                 <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-center text-emerald-900">
                   <p className="text-xs font-semibold uppercase tracking-[0.18em]">{selectedMatch.matchState === "match_ended" ? "Final score" : "Reported frames"}</p>
-                  <p className="mt-1 text-3xl font-black">{selectedMatch.matchState === "in_progress" || selectedMatch.matchState === "match_ended" ? selectedMatch.overallScore : "—"}</p>
+                  <p className="mt-1 text-3xl font-black">{selectedMatch.matchState !== "awaiting_lineup" && selectedMatch.matchState !== "awaiting_scores" ? selectedMatch.overallScore : "—"}</p>
                 </div>
               </div>
 

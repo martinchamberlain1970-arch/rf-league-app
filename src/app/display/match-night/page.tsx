@@ -11,6 +11,7 @@ type LiveMatchData = {
     fixtureDate: string | null;
     weekNo: number | null;
     status: string;
+    statusLabel: string;
     homeTeam: string;
     awayTeam: string;
     overallScore: string;
@@ -272,7 +273,7 @@ export default function MatchNightDisplayPage() {
                           match.status
                         )}`}
                       >
-                        {match.status === "complete" ? "Completed" : match.status === "in_progress" ? "Live" : "Lineups ready"}
+                        {match.statusLabel}
                       </span>
                       <div className="rounded-2xl border border-emerald-200/20 bg-emerald-400/10 px-5 py-4 text-center">
                         <p className="text-sm font-semibold uppercase tracking-[0.24em] text-emerald-100">Frames</p>

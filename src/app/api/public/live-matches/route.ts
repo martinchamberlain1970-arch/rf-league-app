@@ -1,3 +1,4 @@
+import { liveMatchStatus } from "@/lib/live-match-status";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { calculateAdjustedScoresWithCap, MAX_SNOOKER_START } from "@/lib/snooker-handicap";
@@ -12,6 +13,8 @@ type SeasonRow = {
   is_published?: boolean | null;
   is_active?: boolean | null;
   created_at?: string | null;
+  singles_count?: number | null;
+  doubles_count?: number | null;
   handicap_enabled?: boolean | null;
   handicap_max_start?: number | null;
 };
@@ -135,7 +138,7 @@ export async function GET(req: NextRequest) {
 
   const seasonsRes = await adminClient
     .from("league_seasons")
-    .select("id,name,is_published,is_active,created_at,handicap_enabled,handicap_max_start")
+    .select("id,name,is_published,is_active,created_at,handicap_enabled,handicap_max_start,singles_count,doubles_count")
     .eq("is_published", true)
     .eq("is_active", true)
     .order("created_at", { ascending: false });
@@ -179,21 +182,23 @@ export async function GET(req: NextRequest) {
   const teams = (teamsRes.data ?? []) as TeamRow[];
   const allFixtures = ((fixturesRes.data ?? []) as FixtureRow[]).filter((fixture) => seasonById.has(fixture.season_id));
   const fixtures = allFixtures.filter((fixture) => fixture.fixture_date === matchNightDate);
-  const completedFixtureIds = fixtures.filter((fixture) => fixture.status === "complete").map((fixture) => fixture.id);
-  const approvedRes = completedFixtureIds.length > 0
-    ? await fetchAllSupabasePagesByChunks<{ id: string; fixture_id: string }, string>(completedFixtureIds, (chunk, from, to) =>
+  const fixtureIds = fixtures.map((fixture) => fixture.id);
+  const submissionsRes = fixtureIds.length > 0
+    ? await fetchAllSupabasePagesByChunks<{ id: string; fixture_id: string; status: string }, string>(fixtureIds, (chunk, from, to) =>
         adminClient.from("league_result_submissions")
-          .select("id,fixture_id")
+          .select("id,fixture_id,status")
           .in("fixture_id", chunk)
-          .eq("status", "approved")
+          .in("status", ["pending", "approved"])
           .order("id", { ascending: true })
           .range(from, to)
       )
     : { data: [], error: null };
-  if (approvedRes.error) {
-    return NextResponse.json({ error: approvedRes.error.message }, { status: 500 });
+  if (submissionsRes.error) {
+    return NextResponse.json({ error: submissionsRes.error.message }, { status: 500 });
   }
-  const approvedFixtureIds = new Set((approvedRes.data ?? []).map((row) => row.fixture_id));
+  const approvedFixtureIds = new Set((submissionsRes.data ?? []).filter((row) => row.status === "approved").map((row) => row.fixture_id));
+
+  const pendingFixtureIds = new Set((submissionsRes.data ?? []).filter((row) => row.status === "pending").map((row) => row.fixture_id));
 
   // Keep approved results in tonight's rotation, but never label an unapproved
   // complete fixture as ended. Fixtures awaiting entry must not imply play began.
@@ -288,20 +293,15 @@ export async function GET(req: NextRequest) {
       typeof frame.home_points_scored === "number" ||
       typeof frame.away_points_scored === "number"
     );
-    const matchState = fixture.status === "complete"
-      ? "match_ended"
-      : hasSavedScore
-      ? "in_progress"
-      : fixture.home_lineup_submitted_at && fixture.away_lineup_submitted_at
-        ? "awaiting_scores"
-        : "awaiting_lineup";
-    const statusLabel = matchState === "match_ended"
-      ? "Match Ended"
-      : matchState === "in_progress"
-      ? "In progress"
-      : matchState === "awaiting_scores"
-        ? "Awaiting scores"
-        : "Awaiting line-up";
+    const { matchState, statusLabel } = liveMatchStatus({
+      approved: fixture.status === "complete" && approvedFixtureIds.has(fixture.id),
+      submitted: pendingFixtureIds.has(fixture.id),
+      frames: fixtureFrames,
+      singles: fixtureSeason.singles_count ?? 4,
+      doubles: fixtureSeason.doubles_count ?? 1,
+      hasSavedScore,
+      lineupsSubmitted: Boolean(fixture.home_lineup_submitted_at && fixture.away_lineup_submitted_at),
+    });
 
     const frameRows = fixtureFrames.map((frame) => {
       const homePrimary = frame.home_player1_id ? playerById.get(frame.home_player1_id) : null;

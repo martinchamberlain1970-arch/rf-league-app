@@ -30,7 +30,7 @@ type LiveMatchData = {
     fixtureDate: string | null;
     weekNo: number | null;
     status: string;
-    matchState: "awaiting_lineup" | "awaiting_scores" | "in_progress" | "match_ended";
+    matchState: "awaiting_lineup" | "awaiting_scores" | "in_progress" | "awaiting_submission" | "awaiting_approval" | "match_ended";
     statusLabel: string;
     homeTeam: string;
     awayTeam: string;
@@ -309,7 +309,7 @@ export default function PublicLiveMatchesPage() {
               </div>
               <div className="shrink-0 rounded-xl border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-center">
                 <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100">{selectedMatch.matchState === "match_ended" ? "Final score" : "Reported frames"}</p>
-                <p className="mt-0.5 text-xl font-black text-white">{selectedMatch.matchState === "in_progress" || selectedMatch.matchState === "match_ended" ? selectedMatch.overallScore : "—"}</p>
+                <p className="mt-0.5 text-xl font-black text-white">{selectedMatch.matchState !== "awaiting_lineup" && selectedMatch.matchState !== "awaiting_scores" ? selectedMatch.overallScore : "—"}</p>
               </div>
             </div>
             {selectedMatch.matchState !== "awaiting_lineup" ? <div className="mt-3 grid gap-2">
@@ -378,7 +378,7 @@ export default function PublicLiveMatchesPage() {
                   </div>
                   <div className="shrink-0 rounded-xl border border-emerald-200/20 bg-emerald-400/10 px-3 py-2 text-center 2xl:rounded-2xl 2xl:px-6 2xl:py-3">
                     <p className="text-[0.65rem] font-semibold uppercase tracking-[0.16em] text-emerald-100 2xl:text-sm">{match.matchState === "match_ended" ? "Final score" : "Reported frames"}</p>
-                    <p className="mt-0.5 text-xl font-black text-white 2xl:text-4xl">{match.matchState === "in_progress" || match.matchState === "match_ended" ? match.overallScore : "—"}</p>
+                    <p className="mt-0.5 text-xl font-black text-white 2xl:text-4xl">{match.matchState !== "awaiting_lineup" && match.matchState !== "awaiting_scores" ? match.overallScore : "—"}</p>
                   </div>
                 </div>
 
