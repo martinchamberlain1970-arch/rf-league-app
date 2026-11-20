@@ -15,6 +15,8 @@ import { useAppDialog } from "@/components/AppDialogProvider";
 import { countryCodeToFlagEmoji } from "@/lib/country-flags";
 import { targetHandicapFromElo } from "@/lib/snooker-rating";
 
+import { fetchAllSupabasePages } from "@/lib/supabase-pagination";
+
 type Player = {
   id: string;
   display_name: string;
@@ -188,6 +190,7 @@ export default function PlayerProfilePage() {
   const [leagueTeams, setLeagueTeams] = useState<LeagueTeamLite[]>([]);
   const [leagueMembers, setLeagueMembers] = useState<LeagueTeamMemberLite[]>([]);
   const [leagueSeasons, setLeagueSeasons] = useState<LeagueSeasonLite[]>([]);
+  const [playerLeagueFrames, setPlayerLeagueFrames] = useState<LeagueFrameLite[]>([]);
   const [leagueFrames, setLeagueFrames] = useState<LeagueFrameLite[]>([]);
   const [handicapHistory, setHandicapHistory] = useState<HandicapHistoryEntry[]>([]);
   const [ratingHistory, setRatingHistory] = useState<RatingHistoryEntry[]>([]);
@@ -255,7 +258,7 @@ export default function PlayerProfilePage() {
     }
     let active = true;
     const run = async () => {
-      const [authRes, pRes, allPlayersRes, mRes, cRes, fRes, locRes, usersRes, pendingDeleteRes, lfRes, ltRes, ltmRes, lsRes, lfrRes] = await Promise.all([
+      const [authRes, pRes, allPlayersRes, mRes, cRes, fRes, locRes, usersRes, pendingDeleteRes, lfRes, ltRes, ltmRes, lsRes, lfrRes, playerFramesRes] = await Promise.all([
         client.auth.getUser(),
         client
           .from("players")
@@ -282,13 +285,22 @@ export default function PlayerProfilePage() {
           .eq("status", "pending")
           .order("created_at", { ascending: false })
           .limit(1),
-        client.from("league_fixtures").select("id,season_id,fixture_date,week_no,home_team_id,away_team_id,home_points,away_points,status"),
+        fetchAllSupabasePages<LeagueFixtureLite>((from, to) => client.from("league_fixtures")
+          .select("id,season_id,fixture_date,week_no,home_team_id,away_team_id,home_points,away_points,status")
+          .order("id").range(from, to)),
         client.from("league_teams").select("id,name"),
-        client.from("league_team_members").select("season_id,team_id,player_id"),
+        fetchAllSupabasePages<LeagueTeamMemberLite>((from, to) => client.from("league_team_members")
+          .select("season_id,team_id,player_id").order("season_id").order("team_id").order("player_id").range(from, to)),
         client.from("league_seasons").select("id,name,is_active,is_published,created_at").order("created_at", { ascending: false }),
         client
           .from("league_fixture_frames")
           .select("fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,winner_side,home_forfeit,away_forfeit,home_points_scored,away_points_scored"),
+        /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(id)
+          ? fetchAllSupabasePages<LeagueFrameLite>((from, to) => client.from("league_fixture_frames")
+            .select("fixture_id,slot_no,slot_type,home_player1_id,home_player2_id,away_player1_id,away_player2_id,winner_side,home_forfeit,away_forfeit,home_points_scored,away_points_scored")
+            .or(`home_player1_id.eq.${id},home_player2_id.eq.${id},away_player1_id.eq.${id},away_player2_id.eq.${id}`)
+            .order("id").range(from, to))
+          : Promise.resolve({ data: [], error: null }),
       ]);
       if (!active) return;
       if (pRes.error || allPlayersRes.error) {
@@ -379,6 +391,7 @@ export default function PlayerProfilePage() {
       setLeagueTeams((ltRes.error ? [] : (ltRes.data ?? [])) as LeagueTeamLite[]);
       setLeagueMembers((ltmRes.error ? [] : (ltmRes.data ?? [])) as LeagueTeamMemberLite[]);
       setLeagueSeasons((lsRes.error ? [] : (lsRes.data ?? [])) as LeagueSeasonLite[]);
+      setPlayerLeagueFrames(playerFramesRes.data ?? []);
       setLeagueFrames((lfrRes.error ? [] : (lfrRes.data ?? [])) as LeagueFrameLite[]);
       const handicapRes = await client
         .from("league_handicap_history")
@@ -1188,10 +1201,20 @@ export default function PlayerProfilePage() {
   };
   const leagueFixtureById = useMemo(() => new Map(leagueFixtures.map((f) => [f.id, f])), [leagueFixtures]);
   const leagueTeamById = useMemo(() => new Map(leagueTeams.map((t) => [t.id, t.name])), [leagueTeams]);
-  const currentLeagueSeason = useMemo(
-    () => leagueSeasons.find((season) => season.is_active) ?? leagueSeasons[0] ?? null,
-    [leagueSeasons]
-  );
+  const currentLeagueSeasons = useMemo(() => {
+    const activeSeasons = leagueSeasons.filter((season) => season.is_active && season.is_published);
+    const rosterSeasonIds = new Set(leagueMembers.filter((member) => member.player_id === id).map((member) => member.season_id));
+    const rosterSeasons = activeSeasons.filter((season) => rosterSeasonIds.has(season.id));
+    if (rosterSeasons.length) return rosterSeasons;
+
+    const playedSeasonIds = new Set(playerLeagueFrames.flatMap((frame) => {
+      const fixture = leagueFixtureById.get(frame.fixture_id);
+      return fixture?.status === "complete" && fixture.season_id ? [fixture.season_id] : [];
+    }));
+    return activeSeasons.filter((season) => playedSeasonIds.has(season.id));
+  }, [id, leagueFixtureById, leagueMembers, leagueSeasons, playerLeagueFrames]);
+  const currentLeagueSeasonIds = useMemo(() => new Set(currentLeagueSeasons.map((season) => season.id)), [currentLeagueSeasons]);
+  const currentLeagueLabel = currentLeagueSeasons.map((season) => season.name).join(" / ");
   const playerNameById = useMemo(
     () => new Map(players.map((entry) => [entry.id, displayPlayerName(entry)])),
     [players]
@@ -1229,23 +1252,21 @@ export default function PlayerProfilePage() {
   }, [leagueSeasons, ratingTimeline]);
   const displayedRatingTimeline = useMemo(() => {
     if (ratingSeasonFilter === "career") return ratingTimeline;
-    const selectedSeasonId = ratingSeasonFilter === "current" ? currentLeagueSeason?.id : ratingSeasonFilter;
+    const selectedSeasonId = ratingSeasonFilter;
     if (!selectedSeasonId) return ratingTimeline;
-    return ratingTimeline.filter((entry) => entry.seasonId === selectedSeasonId);
-  }, [currentLeagueSeason?.id, ratingSeasonFilter, ratingTimeline]);
+    return ratingTimeline.filter((entry) => selectedSeasonId === "current" ? currentLeagueSeasonIds.has(entry.seasonId ?? "") : entry.seasonId === selectedSeasonId);
+  }, [currentLeagueSeasonIds, ratingSeasonFilter, ratingTimeline]);
   const displayedHandicapHistory = useMemo(() => {
     if (ratingSeasonFilter === "career") return handicapHistory;
-    const selectedSeasonId = ratingSeasonFilter === "current" ? currentLeagueSeason?.id : ratingSeasonFilter;
+    const selectedSeasonId = ratingSeasonFilter;
     if (!selectedSeasonId) return handicapHistory;
-    return handicapHistory.filter((entry) => entry.season_id === selectedSeasonId);
-  }, [currentLeagueSeason?.id, handicapHistory, ratingSeasonFilter]);
+    return handicapHistory.filter((entry) => selectedSeasonId === "current" ? currentLeagueSeasonIds.has(entry.season_id ?? "") : entry.season_id === selectedSeasonId);
+  }, [currentLeagueSeasonIds, handicapHistory, ratingSeasonFilter]);
   const selectedRatingPeriodLabel = useMemo(() => {
     if (ratingSeasonFilter === "career") return "Complete career archive";
-    const selectedSeason = ratingSeasonFilter === "current"
-      ? currentLeagueSeason
-      : leagueSeasons.find((season) => season.id === ratingSeasonFilter) ?? null;
-    return selectedSeason?.name ?? "Current season";
-  }, [currentLeagueSeason, leagueSeasons, ratingSeasonFilter]);
+    if (ratingSeasonFilter === "current") return currentLeagueLabel || "Current season";
+    return leagueSeasons.find((season) => season.id === ratingSeasonFilter)?.name ?? "Current season";
+  }, [currentLeagueLabel, leagueSeasons, ratingSeasonFilter]);
   const ratingTrendPoints = useMemo(() => {
     const points = [...displayedRatingTimeline]
       .slice()
@@ -1286,14 +1307,14 @@ export default function PlayerProfilePage() {
   }, [ratingTrendPoints]);
   const leagueRelevant = useMemo(
     () =>
-      leagueFrames.filter((s) => {
+      playerLeagueFrames.filter((s) => {
         const inHome = s.home_player1_id === id || s.home_player2_id === id;
         const inAway = s.away_player1_id === id || s.away_player2_id === id;
         if (!inHome && !inAway) return false;
         if (s.home_forfeit || s.away_forfeit) return false;
         return s.winner_side !== null;
       }),
-    [leagueFrames, id]
+    [playerLeagueFrames, id]
   );
   const relevant = useMemo(
     () =>
@@ -1369,10 +1390,11 @@ export default function PlayerProfilePage() {
   const effectiveSummary = summary.played > 0 ? summary : leagueSummary;
   const currentSeasonLeagueRelevant = useMemo(
     () =>
-      currentLeagueSeason
-        ? leagueRelevant.filter((frame) => leagueFixtureById.get(frame.fixture_id)?.season_id === currentLeagueSeason.id)
-        : leagueRelevant,
-    [currentLeagueSeason, leagueFixtureById, leagueRelevant]
+      leagueRelevant.filter((frame) => {
+        const fixture = leagueFixtureById.get(frame.fixture_id);
+        return fixture?.status === "complete" && currentLeagueSeasonIds.has(fixture.season_id ?? "");
+      }),
+    [currentLeagueSeasonIds, leagueFixtureById, leagueRelevant]
   );
   const currentSeasonSummary = useMemo(() => {
     let won = 0;
@@ -1391,7 +1413,7 @@ export default function PlayerProfilePage() {
       snookerWon: won,
     };
   }, [currentSeasonLeagueRelevant, id]);
-  const overviewSummary = currentLeagueSeason ? currentSeasonSummary : effectiveSummary;
+  const overviewSummary = currentLeagueSeasonIds.size ? currentSeasonSummary : effectiveSummary;
 
   const formGuide = useMemo(() => {
     const chars: string[] = [];
@@ -1447,17 +1469,17 @@ export default function PlayerProfilePage() {
       });
     return chars.length ? chars.join("") : "-";
   }, [currentSeasonLeagueRelevant, id, leagueFixtureById]);
-  const overviewFormGuide = currentLeagueSeason ? currentSeasonFormGuide : effectiveFormGuide;
+  const overviewFormGuide = currentLeagueSeasonIds.size ? currentSeasonFormGuide : effectiveFormGuide;
   const currentLeagueTeams = useMemo(() => {
     const names = new Set<string>();
     for (const member of leagueMembers) {
       if (member.player_id !== id) continue;
-      if (currentLeagueSeason && member.season_id !== currentLeagueSeason.id) continue;
+      if (!currentLeagueSeasonIds.has(member.season_id)) continue;
       const teamName = leagueTeamById.get(member.team_id);
       if (teamName) names.add(teamName);
     }
     return Array.from(names).sort((a, b) => a.localeCompare(b));
-  }, [currentLeagueSeason, leagueMembers, leagueTeamById, id]);
+  }, [currentLeagueSeasonIds, leagueMembers, leagueTeamById, id]);
   const profileSummaryLine = useMemo(() => {
     const teamText = currentLeagueTeams.length ? currentLeagueTeams.join(", ") : "No active team linked yet";
     return `${locationName} · ${teamText}`;
@@ -1587,10 +1609,10 @@ export default function PlayerProfilePage() {
   );
   const displayedRecentHistory = useMemo(() => {
     if (historySeasonFilter === "career") return recentHistory;
-    const selectedSeasonId = historySeasonFilter === "current" ? currentLeagueSeason?.id : historySeasonFilter;
+    const selectedSeasonId = historySeasonFilter;
     if (!selectedSeasonId) return recentHistory;
-    return recentHistory.filter((entry) => entry.seasonId === selectedSeasonId);
-  }, [currentLeagueSeason?.id, historySeasonFilter, recentHistory]);
+    return recentHistory.filter((entry) => selectedSeasonId === "current" ? currentLeagueSeasonIds.has(entry.seasonId ?? "") : entry.seasonId === selectedSeasonId);
+  }, [currentLeagueSeasonIds, historySeasonFilter, recentHistory]);
   const opponentFrameDetails = useMemo(() => {
     if (!opponentDetail) return [];
     return leagueRelevant
@@ -1637,7 +1659,7 @@ export default function PlayerProfilePage() {
         });
     }
     const selectedFixture = leagueFixtureById.get(historyDetail.itemId) ?? null;
-    return leagueFrames
+    return playerLeagueFrames
       .filter((s) => {
         if (s.fixture_id !== historyDetail.itemId) return false;
         return s.home_player1_id === id || s.home_player2_id === id || s.away_player1_id === id || s.away_player2_id === id;
@@ -1661,7 +1683,7 @@ export default function PlayerProfilePage() {
           myResult,
         };
       });
-  }, [historyDetail, leagueFixtureById, leagueFrames, nameMap, id, relevant, framesByMatch]);
+  }, [historyDetail, leagueFixtureById, playerLeagueFrames, nameMap, id, relevant, framesByMatch]);
   const historyMatchSummary = useMemo(() => {
     if (!historyDetail) return null;
     if (historyDetail.kind === "competition_match") {
@@ -1902,7 +1924,7 @@ export default function PlayerProfilePage() {
                       >
                         <option value="current">Current season</option>
                         {ratingSeasonOptions
-                          .filter((season) => season.id !== currentLeagueSeason?.id)
+                          .filter((season) => !currentLeagueSeasonIds.has(season.id))
                           .map((season) => (
                             <option key={season.id} value={season.id}>{season.name} (archive)</option>
                           ))}
@@ -2047,7 +2069,7 @@ export default function PlayerProfilePage() {
                         <p className="text-xl font-semibold text-slate-900">{overviewSummary.snookerWon}/{overviewSummary.snookerPlayed}</p>
                       </div>
                     </div>
-                    <p className="mt-2 text-sm text-slate-700">{currentLeagueSeason?.name ?? "Current season"} · Recent form (last 10): {overviewFormGuide}</p>
+                    <p className="mt-2 text-sm text-slate-700">{currentLeagueLabel || "Career summary"} · Recent form (last 10): {overviewFormGuide}</p>
                   </>
                 ) : null}
               </section>
@@ -2543,7 +2565,7 @@ export default function PlayerProfilePage() {
                     >
                       <option value="current">Current season</option>
                       {leagueSeasons
-                        .filter((season) => season.id !== currentLeagueSeason?.id)
+                        .filter((season) => !currentLeagueSeasonIds.has(season.id))
                         .map((season) => (
                           <option key={season.id} value={season.id}>{season.name} (archive)</option>
                         ))}
