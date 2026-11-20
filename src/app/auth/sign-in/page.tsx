@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { logAudit } from "@/lib/audit";
@@ -32,8 +32,6 @@ export default function SignInPage() {
   const nextPath = useMemo(() => readNextPath(), []);
   const signupState = useMemo(() => readSignupState(), []);
   const resetState = useMemo(() => readResetState(), []);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -47,9 +45,12 @@ export default function SignInPage() {
     }
   }, [resetState, signupState]);
 
-  const onSignIn = async (e: FormEvent) => {
+  const onSignIn = async (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setMessage(null);
+    const credentials = new FormData(e.currentTarget);
+    const email = String(credentials.get("email") ?? "");
+    const password = String(credentials.get("password") ?? "");
     const client = supabase;
     if (!client) {
       setMessage("Supabase is not configured.");
@@ -327,30 +328,34 @@ export default function SignInPage() {
             Captains, vice-captains, and players all sign in here. Team permissions are managed centrally.
           </p>
 
-          <form onSubmit={onSignIn} className="mt-6 space-y-4">
+          <form method="post" onSubmit={onSignIn} className="mt-6 space-y-4">
             <div>
-              <label className="mb-2 block text-sm font-medium text-slate-700">Email address</label>
+              <label htmlFor="sign-in-email" className="mb-2 block text-sm font-medium text-slate-700">Email address</label>
               <input
+                id="sign-in-email"
+                name="email"
                 type="email"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
                 required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
                 className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base text-slate-900 shadow-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
                 placeholder="you@example.com"
               />
             </div>
             <div>
               <div className="mb-2 flex items-center justify-between gap-3">
-                <label className="block text-sm font-medium text-slate-700">Password</label>
+                <label htmlFor="sign-in-password" className="block text-sm font-medium text-slate-700">Password</label>
                 <Link href="/auth/forgot-password" className="text-sm font-semibold text-teal-700 underline underline-offset-4">
                   Forgot password?
                 </Link>
               </div>
               <input
+                id="sign-in-password"
+                name="password"
                 type="password"
+                autoComplete="current-password"
                 required
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
                 className="h-12 w-full rounded-xl border border-slate-300 bg-white px-4 text-base text-slate-900 shadow-sm outline-none transition focus:border-teal-500 focus:ring-2 focus:ring-teal-100"
                 placeholder="Enter your password"
               />
