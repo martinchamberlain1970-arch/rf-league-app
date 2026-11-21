@@ -76,14 +76,15 @@ export default function ProductEnquiryForm() {
           <input required value={form.area} onChange={(event) => update("area", event.target.value)} className={inputClass} placeholder="Town, city or county" maxLength={120} />
         </label>
         <label className="text-sm font-bold text-slate-200 sm:col-span-2">
-          Approximate number of teams
+          Approximate size
           <select required value={form.teamCount} onChange={(event) => update("teamCount", event.target.value)} className={inputClass}>
-            <option value="">Select a range</option>
-            <option value="Up to 10">Up to 10</option>
-            <option value="11–20">11–20</option>
-            <option value="21–40">21–40</option>
-            <option value="More than 40">More than 40</option>
-            <option value="Club use only">Club use only</option>
+            <option value="">Select the closest fit</option>
+            <option value="Club — up to 20 players">Club — up to 20 players</option>
+            <option value="Club — 21 to 50 players">Club — 21 to 50 players</option>
+            <option value="Club — more than 50 players">Club — more than 50 players</option>
+            <option value="League — up to 10 teams">League — up to 10 teams</option>
+            <option value="League — 11 to 20 teams">League — 11 to 20 teams</option>
+            <option value="League — more than 20 teams">League — more than 20 teams</option>
           </select>
         </label>
         <label className="text-sm font-bold text-slate-200 sm:col-span-2">
@@ -101,7 +102,7 @@ export default function ProductEnquiryForm() {
       </label>
       <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
         <button type="submit" disabled={status === "sending"} className="rounded-2xl bg-cyan-300 px-6 py-3.5 text-base font-black text-slate-950 shadow-lg shadow-cyan-950/30 transition hover:bg-cyan-200 disabled:cursor-wait disabled:opacity-60">
-          {status === "sending" ? "Sending enquiry…" : "Register your interest"}
+          {status === "sending" ? "Sending enquiry…" : "Request a walkthrough"}
         </button>
         <p aria-live="polite" className={`text-sm ${status === "error" ? "text-rose-300" : status === "sent" ? "text-emerald-300" : "text-slate-400"}`}>{message || "No pricing or commitment—just an initial conversation."}</p>
       </div>

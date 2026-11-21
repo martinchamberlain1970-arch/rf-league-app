@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
     "",
     "The sender confirmed that Rack & Frame may use these details to respond to this enquiry.",
   ].join("\n");
-  const html = `<h1>New Rack &amp; Frame product enquiry</h1><table cellpadding="6" cellspacing="0"><tr><th align="left">Name</th><td>${escapeHtml(name)}</td></tr><tr><th align="left">Email</th><td><a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a></td></tr><tr><th align="left">League or club</th><td>${escapeHtml(leagueName)}</td></tr><tr><th align="left">Area</th><td>${escapeHtml(area)}</td></tr><tr><th align="left">Approximate teams</th><td>${escapeHtml(teamCount)}</td></tr></table><h2>Enquiry</h2><p style="white-space:pre-wrap">${escapeHtml(enquiry)}</p><p><small>The sender confirmed that Rack &amp; Frame may use these details to respond to this enquiry.</small></p>`;
+  const html = `<h1>New Rack &amp; Frame product enquiry</h1><table cellpadding="6" cellspacing="0"><tr><th align="left">Name</th><td>${escapeHtml(name)}</td></tr><tr><th align="left">Email</th><td><a href="mailto:${escapeHtml(email)}">${escapeHtml(email)}</a></td></tr><tr><th align="left">League or club</th><td>${escapeHtml(leagueName)}</td></tr><tr><th align="left">Area</th><td>${escapeHtml(area)}</td></tr><tr><th align="left">Approximate size</th><td>${escapeHtml(teamCount)}</td></tr></table><h2>Enquiry</h2><p style="white-space:pre-wrap">${escapeHtml(enquiry)}</p><p><small>The sender confirmed that Rack &amp; Frame may use these details to respond to this enquiry.</small></p>`;
 
   const result = await sendNotificationEmail({
     subject: `Rack & Frame enquiry — ${subjectLeague}`,
