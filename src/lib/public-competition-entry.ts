@@ -1,4 +1,10 @@
 export type PublicCompetition = { id: string; name: string; match_mode: string; signup_deadline?: string | null };
+export type PublicCompetitionPlayer = {
+  id: string;
+  name: string;
+  ageEligibility: Record<string, "eligible" | "ineligible">;
+};
+
 export type PublicCompetitionEntry = { entryId: string; playerIds: string[]; entrantDateOfBirth: string };
 export type PublicCompetitionSelection = { competitionId: string; decision: "pending" | "enter" | "no_entry"; entries: PublicCompetitionEntry[] };
 
@@ -19,16 +25,27 @@ export const minimumAge = (name: string) => competitionAgeRule(name).minimum;
 export const maximumAge = (name: string) => competitionAgeRule(name).maximum;
 
 export const ageFromDob = (value: string) => {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
   const dob = new Date(`${value}T12:00:00Z`);
-  if (Number.isNaN(dob.getTime())) return null;
+  if (Number.isNaN(dob.getTime()) || dob.toISOString().slice(0, 10) !== value) return null;
   const now = new Date();
   let age = now.getUTCFullYear() - dob.getUTCFullYear();
   if (now.getUTCMonth() < dob.getUTCMonth() || (now.getUTCMonth() === dob.getUTCMonth() && now.getUTCDate() < dob.getUTCDate())) age -= 1;
-  return age;
+  return age >= 0 ? age : null;
 };
 
-export function validatePublicSelections(selections: PublicCompetitionSelection[], competitions: PublicCompetition[], playerIds: Set<string>, final: boolean) {
+export const meetsCompetitionAgeRule = (age: number, { minimum, maximum }: CompetitionAgeRule) =>
+  (minimum === null || age >= minimum) && (maximum === null || age <= maximum);
+
+export function validatePublicSelections(
+  selections: PublicCompetitionSelection[],
+  competitions: PublicCompetition[],
+  playerIds: Set<string>,
+  final: boolean,
+  registeredDobs: ReadonlyMap<string, string>,
+) {
   const byId = new Map(selections.map((selection) => [selection.competitionId, selection]));
+  if (byId.size !== selections.length) return "Each competition must appear only once on the form.";
   for (const competition of competitions) {
     const selection = byId.get(competition.id);
     if (!selection || selection.decision === "pending") {
@@ -47,7 +64,7 @@ export function validatePublicSelections(selections: PublicCompetitionSelection[
       selected.forEach((id) => used.add(id));
       const { minimum: min, maximum: max } = competitionAgeRule(competition.name);
       if (min !== null || max !== null) {
-        const age = ageFromDob(entry.entrantDateOfBirth);
+        const age = ageFromDob(registeredDobs.get(selected[0]) ?? entry.entrantDateOfBirth);
         if (age === null) return `Enter a valid date of birth for ${competition.name}.`;
         if (min !== null && age < min) return `An entrant in ${competition.name} is under the minimum age of ${min}.`;
         if (max !== null && age > max) return `An entrant in ${competition.name} must be under 25.`;
