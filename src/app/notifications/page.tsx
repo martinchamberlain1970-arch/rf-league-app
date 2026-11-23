@@ -216,6 +216,30 @@ export default function NotificationsPage() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [visibleLimit, setVisibleLimit] = useState(20);
 
+  const [fixtureNotices, setFixtureNotices] = useState<{ userId: string; rows: NotificationItem[] } | null>(null);
+  useEffect(() => {
+    const userId = admin.userId;
+    if (!userId) return;
+    const controller = new AbortController();
+    const loadFixtureNotices = async () => {
+      try {
+        const session = await supabase?.auth.getSession();
+        const token = session?.data.session?.access_token;
+        if (!token || controller.signal.aborted) return;
+        const response = await fetch("/api/league/fixture-change-requests?scope=captain_inbox", {
+          headers: { Authorization: `Bearer ${token}` }, signal: controller.signal, cache: "no-store",
+        });
+        if (!response.ok) throw new Error("Fixture date notifications could not be loaded.");
+        const payload = await response.json() as { rows: NotificationItem[] };
+        if (!controller.signal.aborted) setFixtureNotices({ userId, rows: payload.rows });
+      } catch {
+        if (!controller.signal.aborted) setMessage("Fixture date notifications could not be loaded. Refresh to try again.");
+      }
+    };
+    void loadFixtureNotices();
+    return () => controller.abort();
+  }, [admin.userId]);
+
   const dismissedKey = useMemo(
     () => (admin.userId ? `notifications_dismissed_${admin.userId}` : "notifications_dismissed"),
     [admin.userId]
@@ -1160,8 +1184,10 @@ export default function NotificationsPage() {
   }, [admin.loading, admin.isAdmin, admin.isSuper, admin.canManageLeague, admin.userId]);
 
   const visible = useMemo(
-    () => items.filter((n) => !dismissed.has(n.key) && !serverRead.has(n.key)),
-    [items, dismissed, serverRead]
+    () => [...items, ...(fixtureNotices?.userId === admin.userId ? fixtureNotices?.rows ?? [] : [])]
+      .filter((n) => !dismissed.has(n.key) && !serverRead.has(n.key))
+      .sort((a, b) => Date.parse(b.created_at) - Date.parse(a.created_at)),
+    [items, fixtureNotices, admin.userId, dismissed, serverRead]
   );
   const notificationStatuses = useMemo(
     () => Array.from(new Set(visible.map((n) => n.status))).sort(),

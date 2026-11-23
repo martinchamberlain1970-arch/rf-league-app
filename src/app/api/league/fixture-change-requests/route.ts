@@ -103,6 +103,61 @@ async function getApprovalRows(client: SupabaseClient, fixtureId: string) {
   }) });
 }
 
+async function getCaptainInbox(client: SupabaseClient, userId: string) {
+  const account = await client.from("app_users").select("linked_player_id").eq("id", userId).maybeSingle();
+  if (account.error) return NextResponse.json({ error: "Could not load the team notification inbox." }, { status: 500 });
+  if (!account.data?.linked_player_id) return NextResponse.json({ rows: [] });
+
+  const roster = await client.from("league_team_members").select("team_id")
+    .eq("player_id", account.data.linked_player_id).or("is_captain.eq.true,is_vice_captain.eq.true");
+  if (roster.error) return NextResponse.json({ error: "Could not load the team notification inbox." }, { status: 500 });
+  const teamIds = [...new Set(roster.data.map((row) => row.team_id))];
+  if (!teamIds.length) return NextResponse.json({ rows: [] });
+
+  type InboxFixture = { id: string; home_team_id: string; away_team_id: string; fixture_date: string };
+  const cutoff = new Date(Date.now() - 30 * 86400000).toISOString().slice(0, 10);
+  const fixtures = await fetchAllSupabasePagesByChunks<InboxFixture, string>(teamIds, (ids, from, to) =>
+    client.from("league_fixtures").select("id,home_team_id,away_team_id,fixture_date,league_seasons!inner(is_published)")
+      .eq("league_seasons.is_published", true)
+      .or(`home_team_id.in.(${ids.join(",")}),away_team_id.in.(${ids.join(",")})`)
+      .gte("fixture_date", cutoff).neq("status", "bye").order("id").range(from, to)
+  );
+  if (fixtures.error) return NextResponse.json({ error: "Could not load the team notification inbox." }, { status: 500 });
+  const fixtureById = new Map((fixtures.data ?? []).map((fixture) => [fixture.id, fixture]));
+  const requests = await fetchAllSupabasePagesByChunks<{
+    id: string; fixture_id: string; agreed_fixture_date: string; reviewed_at: string | null; created_at: string;
+  }, string>([...fixtureById.keys()], (ids, from, to) =>
+    client.from("league_fixture_change_requests").select("id,fixture_id,agreed_fixture_date,reviewed_at,created_at")
+      .in("fixture_id", ids).eq("status", "rescheduled").order("id").range(from, to)
+  );
+  if (requests.error) return NextResponse.json({ error: "Could not load the team notification inbox." }, { status: 500 });
+  const latest = new Map<string, NonNullable<typeof requests.data>[number]>();
+  for (const request of requests.data ?? []) {
+    if (fixtureById.get(request.fixture_id)?.fixture_date !== request.agreed_fixture_date) continue;
+    const previous = latest.get(request.fixture_id);
+    if (!previous || (previous.reviewed_at ?? previous.created_at) < (request.reviewed_at ?? request.created_at)) latest.set(request.fixture_id, request);
+  }
+  const matched = [...latest.values()].flatMap((request) => {
+    const fixture = fixtureById.get(request.fixture_id);
+    return fixture ? [{ request, fixture }] : [];
+  });
+  const matchTeamIds = [...new Set(matched.flatMap(({ fixture }) => [fixture.home_team_id, fixture.away_team_id]))];
+  const teams = await fetchAllSupabasePagesByChunks<{ id: string; name: string }, string>(matchTeamIds, (ids, from, to) =>
+    client.from("league_teams").select("id,name").in("id", ids).order("id").range(from, to)
+  );
+  if (teams.error) return NextResponse.json({ error: "Could not load the team notification inbox." }, { status: 500 });
+  const names = new Map((teams.data ?? []).map((team) => [team.id, team.name]));
+  const dateFormat = new Intl.DateTimeFormat("en-GB", { weekday: "long", day: "numeric", month: "long", year: "numeric", timeZone: "Europe/London" });
+  return NextResponse.json({ rows: matched.map(({ request, fixture }) => ({
+    key: `fixture_date_confirmed:${request.id}:${request.agreed_fixture_date}`,
+    title: "Fixture date confirmed",
+    detail: `${names.get(fixture.home_team_id) ?? "Home team"} vs ${names.get(fixture.away_team_id) ?? "Away team"} will be played on ${dateFormat.format(new Date(`${request.agreed_fixture_date}T12:00:00Z`))}.`,
+    created_at: request.reviewed_at ?? request.created_at,
+    href: "/captain-results",
+    status: "approved",
+  })) }, { headers: { "Cache-Control": "private, no-store" } });
+}
+
 export async function GET(req: NextRequest) {
   const auth = await authenticate(req);
   if (auth.error) return auth.error;
@@ -113,6 +168,7 @@ export async function GET(req: NextRequest) {
   const isSuper = !!superAdminEmail && userEmail === superAdminEmail;
   const scope = req.nextUrl.searchParams.get("scope") ?? "mine";
   const fixtureId = req.nextUrl.searchParams.get("fixtureId") ?? "";
+  if (scope === "captain_inbox") return getCaptainInbox(adminClient, userId);
 
   let query = adminClient
     .from("league_fixture_change_requests")
