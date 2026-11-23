@@ -1,3 +1,4 @@
+import { competitionEntriesOpen } from "@/lib/fixed-competition-handicaps";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { competitionAgeRule } from "@/lib/public-competition-entry";
@@ -93,7 +94,7 @@ export async function POST(req: NextRequest) {
   if (competition.is_archived || competition.is_completed || !competition.signup_open) {
     return NextResponse.json({ error: "Sign-ups are closed for this competition." }, { status: 400 });
   }
-  if (competition.signup_deadline && competition.signup_deadline < new Date().toISOString().slice(0, 10)) {
+  if (!competitionEntriesOpen(competition.signup_deadline)) {
     return NextResponse.json({ error: "Sign-up deadline has passed for this competition." }, { status: 400 });
   }
   if (competition.max_entries) {

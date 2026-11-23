@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import Link from "next/link";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
+import { competitionDeadlineLabel, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
 import MessageModal from "@/components/MessageModal";
@@ -804,8 +805,11 @@ export default function CompetitionPage() {
                     {competition.final_scheduled_at && competition.final_venue_location_id ? "Final set" : "Final pending"}
                   </span>
                 </div>
+                {usesFixedCompetitionHandicaps(competition.name) ? (
+                  <p className="mt-2 text-sm font-medium text-teal-900">Handicaps are fixed when entries close. Division One players use their Elo-suggested handicap plus 8 points. Premier players use their published handicap.</p>
+                ) : null}
                 {competition.signup_deadline ? (
-                  <p className="mt-1 text-sm text-slate-600">Deadline: {new Date(competition.signup_deadline).toLocaleString()}</p>
+                  <p className="mt-1 text-sm text-slate-600">Deadline: {competitionDeadlineLabel(competition.signup_deadline)} (UK time)</p>
                 ) : null}
                 {competition.final_scheduled_at ? (
                   <p className="mt-1 text-sm text-slate-600">

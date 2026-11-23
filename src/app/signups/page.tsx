@@ -7,6 +7,7 @@ import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
+import { competitionDeadlineLabel, competitionEntriesOpen, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
 import { competitionAgeRule } from "@/lib/public-competition-entry";
 import { fetchAllSupabasePages } from "@/lib/supabase-pagination";
 
@@ -196,7 +197,7 @@ export default function CompetitionSignupsPage() {
       setMessage("Sign-ups are closed for this competition.");
       return;
     }
-    if (target.signup_deadline && target.signup_deadline < new Date().toISOString().slice(0, 10)) {
+    if (!competitionEntriesOpen(target.signup_deadline)) {
       setMessage("Sign-up deadline has passed for this competition.");
       return;
     }
@@ -318,7 +319,7 @@ export default function CompetitionSignupsPage() {
               const allEntries = entries.filter((e) => e.competition_id === c.id && e.status !== "withdrawn");
               const approvedCount = allEntries.filter((e) => e.status === "approved").length;
               const pendingCount = allEntries.filter((e) => e.status === "pending").length;
-              const deadlinePassed = c.signup_deadline ? c.signup_deadline < new Date().toISOString().slice(0, 10) : false;
+              const deadlinePassed = !competitionEntriesOpen(c.signup_deadline);
               const full = c.max_entries ? approvedCount >= c.max_entries : false;
               const canEnter = !deadlinePassed && !full && (!userEntry || userEntry.status === "rejected" || userEntry.status === "withdrawn");
               const isAlreadyEntered = userEntry?.status === "approved";
@@ -340,7 +341,8 @@ export default function CompetitionSignupsPage() {
                       <p className="text-xs text-slate-500">
                         Approved: {approvedCount}
                         {c.max_entries ? ` / ${c.max_entries}` : ""} · Pending: {pendingCount}
-                        {c.signup_deadline ? ` · Deadline: ${new Date(c.signup_deadline).toLocaleString()}` : ""}
+                        {c.signup_deadline ? ` · Deadline: ${competitionDeadlineLabel(c.signup_deadline)} (UK time)` : ""}
+                        {usesFixedCompetitionHandicaps(c.name) ? " · Fixed at entry close · Division One Elo +8" : ""}
                       </p>
                     </div>
                     <Link href={`/competitions/${c.id}`} className="rounded-full border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-slate-50">

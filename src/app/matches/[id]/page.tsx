@@ -7,6 +7,7 @@ import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
 import InfoModal from "@/components/InfoModal";
+import { competitionDeadlineLabel, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
 
@@ -32,6 +33,10 @@ type CompetitionRow = {
   sport_type: string;
 };
 
+type MatchHandicap =
+  | { ready: false; reason: string }
+  | { ready: true; lockedAt: string; homeStart: number; awayStart: number; players: Array<{ id: string; handicap: number }> };
+
 type PlayerRow = { id: string; display_name: string; full_name: string | null };
 
 type SubmissionRow = {
@@ -53,6 +58,7 @@ export default function MatchPage() {
 
   const [match, setMatch] = useState<MatchRow | null>(null);
   const [competition, setCompetition] = useState<CompetitionRow | null>(null);
+  const [fixedHandicap, setFixedHandicap] = useState<{ matchId: string; data: MatchHandicap } | null>(null);
   const [players, setPlayers] = useState<PlayerRow[]>([]);
   const [linkedPlayerId, setLinkedPlayerId] = useState<string | null>(null);
   const [latestSubmission, setLatestSubmission] = useState<SubmissionRow | null>(null);
@@ -138,6 +144,32 @@ export default function MatchPage() {
     };
   }, [matchId, admin.userId]);
 
+  const usesFixedHandicap = usesFixedCompetitionHandicaps(competition?.name);
+  const handicap = fixedHandicap?.matchId === matchId ? fixedHandicap.data : null;
+  useEffect(() => {
+    if (!usesFixedHandicap || !admin.userId) return;
+    const controller = new AbortController();
+    const loadHandicap = async () => {
+      try {
+        const session = await supabase?.auth.getSession();
+        const token = session?.data.session?.access_token;
+        if (!token) throw new Error("Sign in again to see the competition handicap.");
+        const response = await fetch(`/api/competition/match-handicaps?matchId=${encodeURIComponent(matchId)}`, {
+          headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: controller.signal,
+        });
+        const result = await response.json() as { handicap?: MatchHandicap; error?: string };
+        if (!response.ok || !result.handicap) throw new Error(result.error ?? "The fixed handicaps could not be loaded.");
+        if (!controller.signal.aborted) setFixedHandicap({ matchId, data: result.handicap });
+      } catch (error) {
+        if (!controller.signal.aborted) setFixedHandicap({ matchId, data: {
+          ready: false, reason: error instanceof Error ? error.message : "The fixed handicaps could not be loaded.",
+        } });
+      }
+    };
+    void loadHandicap();
+    return () => controller.abort();
+  }, [matchId, usesFixedHandicap, admin.userId]);
+
   const playerById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
   const isAlbery = Boolean(competition && isAlberyCompetitionName(competition.name));
   const isHamilton = Boolean(
@@ -222,6 +254,7 @@ export default function MatchPage() {
   const submitStandard = async (e: FormEvent) => {
     e.preventDefault();
     if (!match) return;
+    if (usesFixedHandicap && !handicap?.ready) return setMessage(handicap?.reason ?? "Wait for the fixed handicaps to load.");
     if (!canSubmit) {
       setMessage("Only match participants or league officers can submit this result.");
       return;
@@ -355,6 +388,17 @@ export default function MatchPage() {
               Round {match?.round_no ?? 1} · Match {match?.match_no ?? 1}
             </p>
             <p className="mt-2 text-sm text-slate-700">{homeLabel} vs {awayLabel}</p>
+            {usesFixedHandicap ? <div className="mt-3 rounded-xl border border-teal-200 bg-teal-50 p-3 text-sm text-teal-950">
+              <p className="font-semibold">Fixed competition handicaps</p>
+              {handicap?.ready ? <>
+                <p className="mt-1 font-semibold">
+                  {handicap.homeStart > 0 ? `${homeLabel} receive ${handicap.homeStart} points per frame`
+                    : handicap.awayStart > 0 ? `${awayLabel} receive ${handicap.awayStart} points per frame` : "Level start"}
+                </p>
+                <p className="mt-1">{handicap.players.map(({ id, handicap: points }) => `${named(playerById.get(id))} (${points > 0 ? "+" : ""}${points})`).join(" · ")}</p>
+                <p className="mt-1">Fixed at ${competitionDeadlineLabel(handicap.lockedAt)} UK time. Enter final scoreboard totals including the start.</p>
+              </> : <p className="mt-1">{handicap?.reason ?? "Loading the fixed handicaps…"}</p>}
+            </div> : null}
             {isLocked ? <p className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">This match is complete and locked.</p> : null}
             {latestSubmission?.status === "pending" ? (
               <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -379,6 +423,8 @@ export default function MatchPage() {
                 <p className="rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                   You are not a participant in this match, so you cannot submit this result.
                 </p>
+              ) : usesFixedHandicap && !handicap?.ready ? (
+                <p className="text-sm text-slate-700">The result can be entered once the competition handicap is available.</p>
               ) : isAlbery ? (
                 <form className="space-y-3" onSubmit={submitAlbery}>
                   <p className="text-sm font-semibold text-slate-900">Albery Cup result (3-man team, race to 300)</p>

@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
+import { competitionEntriesOpen } from "@/lib/fixed-competition-handicaps";
 import { validatePublicSelections, type PublicCompetition, type PublicCompetitionSelection } from "@/lib/public-competition-entry";
 
 export const dynamic = "force-dynamic";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const headers = { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex, nofollow" };
-const today = () => new Date().toISOString().slice(0, 10);
 
 async function formData(client: SupabaseClient, teamId?: string) {
   const [seasonsRes, competitionsRes] = await Promise.all([
-    client.from("league_seasons").select("id,name").eq("is_active", true),
+    client.from("league_seasons").select("id,name").eq("is_active", true).eq("is_published", true),
     client.from("competitions").select("id,name,match_mode,signup_deadline").eq("competition_format", "knockout").eq("signup_open", true).eq("is_archived", false).eq("is_completed", false).order("name"),
   ]);
   if (seasonsRes.error || competitionsRes.error) throw new Error(seasonsRes.error?.message ?? competitionsRes.error?.message);
@@ -41,7 +41,7 @@ async function formData(client: SupabaseClient, teamId?: string) {
   return {
     seasons,
     teams,
-    competitions: competitions.filter((competition) => !competition.signup_deadline || competition.signup_deadline >= today()),
+    competitions: competitions.filter((competition) => competitionEntriesOpen(competition.signup_deadline)),
     players,
     captainName,
   };
@@ -78,6 +78,7 @@ export async function POST(req: NextRequest) {
     if (!/^[a-f0-9]{48}$/.test(draftToken)) throw new Error("The private draft key is invalid. Reload the form and try again.");
     const client = createClient(url, key);
     const data = await formData(client, teamId);
+    if (data.competitions.length === 0) throw new Error("Competition entries are currently closed.");
     const team = data.teams.find((item) => item.id === teamId);
     if (!team) throw new Error("Select a valid team.");
     const selections = (Array.isArray(body?.selections) ? body.selections : []) as PublicCompetitionSelection[];

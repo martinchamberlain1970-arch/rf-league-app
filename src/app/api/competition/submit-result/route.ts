@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
+import { fixedHandicapsForMatch } from "@/lib/fixed-competition-handicaps-server";
+import { usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
 import { sendPushToLeagueManagers } from "@/lib/push-server";
 import { canManageLeagueRole } from "@/lib/app-roles";
 
@@ -104,6 +106,19 @@ export async function POST(req: NextRequest) {
   );
   if (!isSuper && (!linkedPlayerId || !participants.has(linkedPlayerId))) {
     return NextResponse.json({ error: "Only match participants can submit this result." }, { status: 403 });
+  }
+
+  if (usesFixedCompetitionHandicaps(competition.name)) {
+    try {
+      const fixed = await fixedHandicapsForMatch(adminClient, { ...match, competition_id: match.competition_id }, competition.name);
+      if (!fixed?.ready) return NextResponse.json({ error: fixed?.reason ?? "Fixed competition handicaps are not available." }, { status: 409 });
+      if (mode !== "standard" || !Array.isArray(body.frameResults) || body.frameResults.length === 0) {
+        return NextResponse.json({ error: "Enter the final scoreboard totals for each frame, including the handicap start." }, { status: 400 });
+      }
+    } catch (error) {
+      console.error("Fixed competition handicap verification failed", error);
+      return NextResponse.json({ error: "Fixed competition handicaps could not be checked. Try again." }, { status: 500 });
+    }
   }
 
   if (mode === "standard") {
