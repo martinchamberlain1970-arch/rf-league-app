@@ -37,20 +37,9 @@ type Entry = {
   note: string | null;
 };
 
-type Player = { id: string; display_name: string; full_name: string | null; date_of_birth?: string | null };
-type AppUser = { id: string; linked_player_id: string | null };
+type Player = { id: string; display_name: string; full_name: string | null };
 type Location = { id: string; name: string };
 type TeamEntryNote = { teamMemberNames?: string[] };
-
-function calculateAgeYears(dobIso: string) {
-  const dob = new Date(dobIso);
-  if (Number.isNaN(dob.getTime())) return null;
-  const now = new Date();
-  let age = now.getUTCFullYear() - dob.getUTCFullYear();
-  const monthDiff = now.getUTCMonth() - dob.getUTCMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && now.getUTCDate() < dob.getUTCDate())) age -= 1;
-  return age;
-}
 
 function isHodgeCompetitionName(name: string) {
   return name === "Hodge Cup (Triples)" || name.startsWith("Hodge Cup (Triples) - ");
@@ -84,19 +73,10 @@ export default function CompetitionSignupsPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
-  const [linkedPlayerId, setLinkedPlayerId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
-  const [dobByCompetitionId, setDobByCompetitionId] = useState<Record<string, string>>({});
-  const [entryNamesByCompetitionId, setEntryNamesByCompetitionId] = useState<Record<string, { second: string; third: string }>>({});
 
   const playerNameMap = useMemo(() => new Map(players.map((p) => [p.id, p.full_name?.trim() ? p.full_name : p.display_name])), [players]);
   const locationNameMap = useMemo(() => new Map(locations.map((l) => [l.id, l.name])), [locations]);
-  const linkedPlayer = useMemo(
-    () => (linkedPlayerId ? players.find((p) => p.id === linkedPlayerId) ?? null : null),
-    [players, linkedPlayerId]
-  );
-  const linkedPlayerDob = linkedPlayer?.date_of_birth ?? null;
-
   const reload = async () => {
     const client = supabase;
     if (!client) {
@@ -108,7 +88,7 @@ export default function CompetitionSignupsPage() {
     setUserId(uid);
     if (!uid) return;
 
-    const [compRes, entryResWithDob, playerResWithDob, appUserRes, locationRes] = await Promise.all([
+    const [compRes, entryResWithDob, playerRes, locationRes] = await Promise.all([
       client
         .from("competitions")
         .select("id,name,sport_type,competition_format,match_mode,location_id,signup_open,signup_deadline,max_entries,is_archived,is_completed")
@@ -125,9 +105,8 @@ export default function CompetitionSignupsPage() {
           .range(from, to)
       ),
       fetchAllSupabasePages<Player>((from, to) =>
-        client.from("players").select("id,display_name,full_name,date_of_birth").order("id", { ascending: true }).range(from, to)
+        client.from("players").select("id,display_name,full_name").order("id", { ascending: true }).range(from, to)
       ),
-      client.from("app_users").select("id,linked_player_id").eq("id", uid).maybeSingle(),
       client.from("locations").select("id,name"),
     ]);
     let entryRows: Entry[] = [];
@@ -141,136 +120,30 @@ export default function CompetitionSignupsPage() {
           .range(from, to)
       );
       if (entryResFallback.error) {
-        setMessage(compRes.error?.message || entryResFallback.error?.message || playerResWithDob.error?.message || locationRes.error?.message || "Failed to load sign-ups.");
+        setMessage(compRes.error?.message || entryResFallback.error?.message || playerRes.error?.message || locationRes.error?.message || "Failed to load sign-ups.");
         return;
       }
       entryRows = (entryResFallback.data ?? []) as Entry[];
     } else if (entryResWithDob.error) {
-      setMessage(compRes.error?.message || entryResWithDob.error?.message || playerResWithDob.error?.message || locationRes.error?.message || "Failed to load sign-ups.");
+      setMessage(compRes.error?.message || entryResWithDob.error?.message || playerRes.error?.message || locationRes.error?.message || "Failed to load sign-ups.");
       return;
     } else {
       entryRows = (entryResWithDob.data ?? []) as Entry[];
     }
 
-    let playerRows: Player[] = [];
-    if (playerResWithDob.error && playerResWithDob.error.message.toLowerCase().includes("date_of_birth")) {
-      const playerResFallback = await fetchAllSupabasePages<Player>((from, to) =>
-        client.from("players").select("id,display_name,full_name").order("id", { ascending: true }).range(from, to)
-      );
-      if (playerResFallback.error) {
-        setMessage(compRes.error?.message || playerResFallback.error?.message || locationRes.error?.message || "Failed to load sign-ups.");
-        return;
-      }
-      playerRows = (playerResFallback.data ?? []) as Player[];
-    } else {
-      playerRows = (playerResWithDob.data ?? []) as Player[];
-    }
-
-    if (compRes.error || locationRes.error) {
-      setMessage(compRes.error?.message || locationRes.error?.message || "Failed to load sign-ups.");
+    if (compRes.error || playerRes.error || locationRes.error) {
+      setMessage(compRes.error?.message || playerRes.error?.message || locationRes.error?.message || "Failed to load sign-ups.");
       return;
     }
     setCompetitions((compRes.data ?? []) as Competition[]);
     setEntries(entryRows);
-    setPlayers(playerRows);
+    setPlayers(playerRes.data ?? []);
     setLocations((locationRes.data ?? []) as Location[]);
-    setLinkedPlayerId((appUserRes.data as AppUser | null)?.linked_player_id ?? null);
   };
 
   useEffect(() => {
     void reload();
   }, []);
-
-  const submitEntry = async (competitionId: string) => {
-    const client = supabase;
-    if (!client || !userId) return;
-    if (!linkedPlayerId) {
-      setMessage("Complete your player profile link before entering a competition.");
-      return;
-    }
-    const target = competitions.find((c) => c.id === competitionId);
-    if (!target) {
-      setMessage("Competition not found.");
-      return;
-    }
-    if (!target.signup_open) {
-      setMessage("Sign-ups are closed for this competition.");
-      return;
-    }
-    if (!competitionEntriesOpen(target.signup_deadline)) {
-      setMessage("Sign-up deadline has passed for this competition.");
-      return;
-    }
-    if (target.max_entries) {
-      const approved = entries.filter((e) => e.competition_id === competitionId && e.status === "approved").length;
-      if (approved >= target.max_entries) {
-        setMessage("This competition is full.");
-        return;
-      }
-    }
-    const entrantsRequired = requiredEntrants(target);
-    const extraNames = entryNamesByCompetitionId[competitionId] ?? { second: "", third: "" };
-    const second = extraNames.second.trim();
-    const third = extraNames.third.trim();
-    if (entrantsRequired >= 2 && !second) {
-      setMessage(target.match_mode === "doubles" ? "Enter your teammate name to submit this doubles entry." : "Enter player 2 name.");
-      return;
-    }
-    if (entrantsRequired >= 3 && !third) {
-      setMessage("Enter player 3 name to submit this triples entry.");
-      return;
-    }
-    const { minimum: minAge, maximum: maxAge } = competitionAgeRule(target.name);
-    const dob = (dobByCompetitionId[competitionId] ?? linkedPlayerDob ?? "").trim();
-    if (minAge !== null || maxAge !== null) {
-      if (!dob) {
-        setMessage(`Date of birth is required to enter ${target.name}. Update your profile date of birth or enter it here.`);
-        return;
-      }
-      const age = calculateAgeYears(dob);
-      if (age === null) {
-        setMessage("Enter a valid date of birth.");
-        return;
-      }
-      if (minAge !== null && age < minAge) {
-        setMessage(`You are not eligible for ${target.name}. Minimum age is ${minAge}.`);
-        return;
-      }
-      if (maxAge !== null && age > maxAge) {
-        setMessage(`You are not eligible for ${target.name}. Entrants must be under 25.`);
-        return;
-      }
-    }
-    setBusyId(competitionId);
-    const { data: sessionRes } = await client.auth.getSession();
-    const token = sessionRes.session?.access_token;
-    if (!token) {
-      setBusyId(null);
-      setMessage("Session expired. Please sign in again.");
-      return;
-    }
-    const teamMemberNames = entrantsRequired === 1 ? [] : entrantsRequired === 2 ? [second] : [second, third];
-    const resp = await fetch("/api/competition/entry-submit", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        competitionId,
-        entrantDateOfBirth: dob || null,
-        teamMemberNames,
-      }),
-    });
-    const data = (await resp.json().catch(() => ({}))) as { error?: string };
-    if (!resp.ok) {
-      setBusyId(null);
-      setMessage(data.error ?? "Failed to submit competition entry.");
-      return;
-    }
-    setBusyId(null);
-    await reload();
-  };
 
   const reviewEntry = async (entryId: string, status: "approved" | "rejected") => {
     const client = supabase;
@@ -304,13 +177,16 @@ export default function CompetitionSignupsPage() {
     <main className="min-h-screen bg-slate-100 p-6">
       <div className="mx-auto max-w-5xl space-y-4">
         <RequireAuth>
-          <ScreenHeader title="Competition Sign-ups" eyebrow="Sign-ups" subtitle="Enter open competitions and track approval status." />
+          <ScreenHeader title="Competition Entries" eyebrow="Competitions" subtitle="View competitions and track entry approval." />
           <MessageModal message={message} onClose={() => setMessage(null)} />
 
           <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
             <p className="text-sm text-slate-600">
-              Entries are submitted as pending. The League Secretary, Chairman or Treasurer reviews and approves or rejects each request.
+              Ask your captain to include you in the team’s entry. League officers review submitted entries here.
             </p>
+            <Link href="/competition-entry" className="mt-3 inline-block font-semibold text-teal-800 underline">
+              Open the captains’ entry form
+            </Link>
           </section>
 
           <section className="space-y-3">
@@ -321,14 +197,9 @@ export default function CompetitionSignupsPage() {
               const pendingCount = allEntries.filter((e) => e.status === "pending").length;
               const deadlinePassed = !competitionEntriesOpen(c.signup_deadline);
               const full = c.max_entries ? approvedCount >= c.max_entries : false;
-              const canEnter = !deadlinePassed && !full && (!userEntry || userEntry.status === "rejected" || userEntry.status === "withdrawn");
               const isAlreadyEntered = userEntry?.status === "approved";
               const ageRule = competitionAgeRule(c.name);
-              const ageRestricted = ageRule.minimum !== null || ageRule.maximum !== null;
-              const dobValue = dobByCompetitionId[c.id] ?? userEntry?.entrant_date_of_birth ?? linkedPlayerDob ?? "";
-              const requiresDobBeforeEntry = ageRestricted && !dobValue.trim();
               const entrantsRequired = requiredEntrants(c);
-              const extraNames = entryNamesByCompetitionId[c.id] ?? { second: "", third: "" };
               return (
                 <div key={c.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -351,60 +222,6 @@ export default function CompetitionSignupsPage() {
                   </div>
 
                   <div className="mt-3 flex flex-wrap items-center gap-2">
-                    {entrantsRequired > 1 ? (
-                      <div className="grid gap-2 sm:grid-cols-2">
-                        <input
-                          type="text"
-                          value={extraNames.second}
-                          onChange={(e) =>
-                            setEntryNamesByCompetitionId((prev) => ({
-                              ...prev,
-                              [c.id]: { ...(prev[c.id] ?? { second: "", third: "" }), second: e.target.value },
-                            }))
-                          }
-                          placeholder={entrantsRequired === 2 ? "Teammate name (required)" : "Player 2 name (required)"}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-                        />
-                        {entrantsRequired === 3 ? (
-                          <input
-                            type="text"
-                            value={extraNames.third}
-                            onChange={(e) =>
-                              setEntryNamesByCompetitionId((prev) => ({
-                                ...prev,
-                                [c.id]: { ...(prev[c.id] ?? { second: "", third: "" }), third: e.target.value },
-                              }))
-                            }
-                            placeholder="Player 3 name (required)"
-                            className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-                          />
-                        ) : null}
-                      </div>
-                    ) : null}
-                    {ageRestricted ? (
-                      <div className="space-y-1">
-                        <input
-                          type="date"
-                          value={dobValue}
-                          onChange={(e) => setDobByCompetitionId((prev) => ({ ...prev, [c.id]: e.target.value }))}
-                          className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900"
-                          aria-label={`Date of birth for ${c.name}`}
-                        />
-                        <p className="text-[11px] text-slate-500">
-                          Used to validate age eligibility for this competition.
-                          {!linkedPlayerDob ? " If your profile does not already hold a date of birth, this must be entered before you can continue." : ""}
-                        </p>
-                        {!linkedPlayerDob && linkedPlayerId ? (
-                          <p className="text-[11px] text-amber-700">
-                            Your player profile does not currently have a date of birth saved. Enter it here to continue, or update it on{" "}
-                            <Link href={`/players/${linkedPlayerId}`} className="font-semibold underline underline-offset-2">
-                              your player profile
-                            </Link>
-                            .
-                          </p>
-                        ) : null}
-                      </div>
-                    ) : null}
                     {userEntry ? (
                       <span className="rounded-full border border-slate-300 bg-slate-50 px-3 py-1 text-xs text-slate-700">
                         Your status: {userEntry.status}
@@ -414,22 +231,7 @@ export default function CompetitionSignupsPage() {
                       <span className="rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-800">
                         Entered
                       </span>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={admin.isSuper || !canEnter || busyId === c.id || requiresDobBeforeEntry}
-                        onClick={() => void submitEntry(c.id)}
-                        className="rounded-lg bg-teal-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-                      >
-                        {busyId === c.id
-                          ? "Submitting..."
-                          : admin.isSuper
-                            ? "System Owner cannot enter"
-                            : requiresDobBeforeEntry
-                              ? "Enter DOB to continue"
-                              : "Enter Competition"}
-                      </button>
-                    )}
+                    ) : null}
                     {!admin.isSuper && userEntry && (userEntry.status === "pending" || userEntry.status === "approved") ? (
                       <button
                         type="button"

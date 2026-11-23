@@ -788,9 +788,9 @@ export default function CompetitionPage() {
               </section>
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-lg font-semibold text-slate-900">Competition Sign-ups</p>
+                  <p className="text-lg font-semibold text-slate-900">Competition Entries</p>
                   <Link href="/signups" className="rounded-full border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-slate-50">
-                    Open Sign-up Page
+                    View competition entries
                   </Link>
                 </div>
                 <p className="mt-1 text-sm text-slate-600">

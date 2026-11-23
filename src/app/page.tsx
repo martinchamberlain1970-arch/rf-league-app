@@ -24,7 +24,7 @@ const links = [
   { href: "/captain-results", title: "Lineups & Results", desc: "Enter your pre-match lineup first, then submit your fixture result for approval." },
   { href: "/reschedule-fixture", title: "Reschedule Fixture", desc: "Request permission to play early or, exceptionally, later." },
   { href: "/events?view=league", title: "Match Centre", desc: "View your live league fixtures, results, and match reports." },
-  { href: "/signups", title: "Competition Sign-ups", desc: "Enter open competitions and track entry status." },
+  { href: "/signups", title: "Competition Entries", desc: "Find the captains’ entry form and track entry status." },
   { href: "/documents", title: "Documents", desc: "Upload and read AGM minutes, rules, and captain meeting notes." },
   { href: "/backup", title: "Data Management", desc: "Backup, restore, and controlled data reset." },
   { href: "/audit", title: "Audit Log", desc: "System Owner action trail across the platform." },

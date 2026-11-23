@@ -292,16 +292,7 @@ const getMaximumAgeForCompetition = (name: string) => {
   if (lower.includes("under 25") || lower.includes("henry fidge")) return 24;
   return null;
 };
-const calculateAgeYears = (dobIso: string | null | undefined) => {
-  if (!dobIso) return null;
-  const dob = new Date(`${dobIso}T12:00:00`);
-  if (Number.isNaN(dob.getTime())) return null;
-  const now = new Date();
-  let age = now.getUTCFullYear() - dob.getUTCFullYear();
-  const monthDiff = now.getUTCMonth() - dob.getUTCMonth();
-  if (monthDiff < 0 || (monthDiff === 0 && now.getUTCDate() < dob.getUTCDate())) age -= 1;
-  return age;
-};
+
 const addDays = (dateValue: string, days: number) => {
   const dt = new Date(`${dateValue}T12:00:00`);
   dt.setDate(dt.getDate() + days);
@@ -731,8 +722,6 @@ function LeaguePageContent() {
   const [knockoutRoundBestOfDraftByCompetitionId, setKnockoutRoundBestOfDraftByCompetitionId] = useState<
     Record<string, { round1: string; semi_final: string; final: string }>
   >({});
-  const [competitionClubEntryDrafts, setCompetitionClubEntryDrafts] = useState<Record<string, string[]>>({});
-  const [competitionClubEntryBusyKey, setCompetitionClubEntryBusyKey] = useState<string | null>(null);
   const [activeView, setActiveView] = useState<LeagueView>("guide");
   const [playerTableView, setPlayerTableView] = useState<PlayerTableView>("all");
 
@@ -1433,37 +1422,6 @@ function LeaguePageContent() {
       .map((m) => m.team_id);
     return new Set(ids);
   }, [members, currentUserPlayerId]);
-  const captainRegisteredTeamIds = useMemo(() => {
-    if (!currentUserPlayerId) return new Set<string>();
-    const ids = registeredMembers
-      .filter((m) => m.player_id === currentUserPlayerId && (m.is_captain || Boolean(m.is_vice_captain)))
-      .map((m) => m.team_id);
-    return new Set(ids);
-  }, [currentUserPlayerId, registeredMembers]);
-  const captainManagedLocations = useMemo(
-    () =>
-      registeredTeams
-        .filter((team) => captainRegisteredTeamIds.has(team.id) && team.location_id)
-        .map((team) => ({
-          id: team.location_id as string,
-          name: locationLabel(locations.find((loc) => loc.id === team.location_id)?.name ?? team.name),
-        }))
-        .filter((value, index, arr) => arr.findIndex((entry) => entry.id === value.id) === index)
-        .sort((a, b) => a.name.localeCompare(b.name)),
-    [captainRegisteredTeamIds, locations, registeredTeams]
-  );
-  const competitionEntriesByCompetitionPlayerId = useMemo(() => {
-    const map = new Map<string, LeagueCompetitionEntry>();
-    for (const entry of leagueCompetitionEntries) {
-      if (!entry.player_id) continue;
-      if (entry.status === "withdrawn" || entry.status === "rejected") continue;
-      const key = `${entry.competition_id}::${entry.player_id}`;
-      if (!map.has(key)) {
-        map.set(key, entry);
-      }
-    }
-    return map;
-  }, [leagueCompetitionEntries]);
   useEffect(() => {
     if (!handicapTeamId) return;
     const exists = handicapTeamsForVenue.some((t) => t.id === handicapTeamId);
@@ -5550,133 +5508,6 @@ function LeaguePageContent() {
     }
     await loadAll();
   };
-  const toggleCompetitionClubPlayer = (competitionId: string, locationId: string, playerId: string, nextChecked: boolean) => {
-    const key = `${competitionId}::${locationId}`;
-    setCompetitionClubEntryDrafts((prev) => {
-      const current = new Set(prev[key] ?? []);
-      if (nextChecked) current.add(playerId);
-      else current.delete(playerId);
-      return { ...prev, [key]: Array.from(current) };
-    });
-  };
-  const submitCompetitionClubEntries = async (competition: LeagueCompetition, locationId: string) => {
-    const client = supabase;
-    if (!client || !currentUserId) return;
-    if (!competition.signup_open) {
-      setMessage("Sign-ups are closed for this competition.");
-      return;
-    }
-    if (competition.signup_deadline && Date.parse(competition.signup_deadline) < Date.now()) {
-      setMessage("The sign-up deadline has passed for this competition.");
-      return;
-    }
-    if (!canManage && !captainManagedLocations.some((location) => location.id === locationId)) {
-      setMessage("You can only submit competition entries for your own club.");
-      return;
-    }
-
-    const key = `${competition.id}::${locationId}`;
-    const selectedIds = new Set(competitionClubEntryDrafts[key] ?? []);
-    const clubPlayers = players
-      .filter((player) => player.location_id === locationId)
-      .sort((a, b) => sortLabelByFirstName(named(a), named(b)));
-    const minAge = getMinimumAgeForCompetition(competition.name);
-    const maxAge = getMaximumAgeForCompetition(competition.name);
-
-    if (competition.max_entries) {
-      const approvedCount = leagueCompetitionEntries.filter((entry) => entry.competition_id === competition.id && entry.status === "approved").length;
-      const alreadySelectedActiveCount = clubPlayers.filter((player) =>
-        competitionEntriesByCompetitionPlayerId.has(`${competition.id}::${player.id}`)
-      ).length;
-      const newSelectedCount = clubPlayers.filter((player) => selectedIds.has(player.id) && !competitionEntriesByCompetitionPlayerId.has(`${competition.id}::${player.id}`)).length;
-      if (approvedCount + newSelectedCount > competition.max_entries && !canManage) {
-        setMessage("This competition does not have enough remaining places for all of the selected players.");
-        return;
-      }
-      if (approvedCount > competition.max_entries && alreadySelectedActiveCount === 0) {
-        setMessage("This competition is already full.");
-        return;
-      }
-    }
-
-    const missingDobNames: string[] = [];
-    const ineligibleNames: string[] = [];
-    for (const player of clubPlayers) {
-      if (!selectedIds.has(player.id) || (minAge === null && maxAge === null)) continue;
-      const age = calculateAgeYears(player.date_of_birth ?? null);
-      if (!player.date_of_birth || age === null) {
-        missingDobNames.push(named(player));
-        continue;
-      }
-      if ((minAge !== null && age < minAge) || (maxAge !== null && age > maxAge)) {
-        ineligibleNames.push(named(player));
-      }
-    }
-    if (missingDobNames.length > 0) {
-      setMessage(`These players need a date of birth before they can enter ${competition.name}: ${missingDobNames.join(", ")}.`);
-      return;
-    }
-    if (ineligibleNames.length > 0) {
-      setMessage(`These players are not age-eligible for ${competition.name}: ${ineligibleNames.join(", ")}.`);
-      return;
-    }
-
-    const activeEntries = clubPlayers
-      .map((player) => ({
-        player,
-        entry: competitionEntriesByCompetitionPlayerId.get(`${competition.id}::${player.id}`) ?? null,
-      }))
-      .filter((row) => row.entry);
-
-    const toInsert = clubPlayers.filter((player) => selectedIds.has(player.id) && !competitionEntriesByCompetitionPlayerId.has(`${competition.id}::${player.id}`));
-    const toWithdraw = activeEntries.filter(
-      (row) => !selectedIds.has(row.player.id) && row.entry?.status === "pending" && row.entry.requester_user_id === currentUserId
-    );
-
-    if (toInsert.length === 0 && toWithdraw.length === 0) {
-      setMessage("No competition entry changes were detected for this club.");
-      return;
-    }
-
-    setCompetitionClubEntryBusyKey(key);
-    if (toInsert.length > 0) {
-      const insertRes = await client.from("competition_entries").insert(
-        toInsert.map((player) => ({
-          competition_id: competition.id,
-          requester_user_id: currentUserId,
-          player_id: player.id,
-          status: canManage ? "approved" : "pending",
-          reviewed_by_user_id: canManage ? currentUserId : null,
-          reviewed_at: canManage ? new Date().toISOString() : null,
-        }))
-      );
-      if (insertRes.error) {
-        setCompetitionClubEntryBusyKey(null);
-        setMessage(insertRes.error.message);
-        return;
-      }
-    }
-
-    if (toWithdraw.length > 0) {
-      const withdrawRes = await client.from("competition_entries").update({ status: "withdrawn" }).in(
-        "id",
-        toWithdraw.map((row) => row.entry!.id)
-      );
-      if (withdrawRes.error) {
-        setCompetitionClubEntryBusyKey(null);
-        setMessage(withdrawRes.error.message);
-        return;
-      }
-    }
-
-    setCompetitionClubEntryBusyKey(null);
-    await loadAll();
-    setMessage(
-      canManage
-        ? "Competition entries updated."
-        : "Club competition entries submitted. New selections will now wait for league-officer approval."
-    );
-  };
   const createLeagueKnockoutCompetition = async () => {
     const client = supabase;
     if (!client) return;
@@ -6990,7 +6821,6 @@ function LeaguePageContent() {
                       const entries = (competitionEntriesByCompetitionId.get(c.id) ?? []).filter((e) => e.status !== "withdrawn");
                       const pending = entries.filter((e) => e.status === "pending");
                       const approved = entries.filter((e) => e.status === "approved");
-                      const captainEntryLocations = captainManagedLocations;
                       const existingRoundCfg = c.knockout_round_best_of ?? {};
                       const roundDraft = knockoutRoundBestOfDraftByCompetitionId[c.id] ?? {
                         round1: String(existingRoundCfg.round1 ?? c.best_of),
@@ -7065,7 +6895,7 @@ function LeaguePageContent() {
                               Open competition
                             </Link>
                             <Link href="/signups" className="rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-sm text-slate-700 hover:bg-slate-50">
-                              Open sign-up page
+                              View competition entries
                             </Link>
                             {canManage ? (
                               <>
@@ -7310,111 +7140,6 @@ function LeaguePageContent() {
                                     </div>
                                   </div>
                                 ))}
-                              </div>
-                            </div>
-                          ) : null}
-                          {!canManage && captainEntryLocations.length > 0 ? (
-                            <div className="mt-3 rounded-xl border border-cyan-200 bg-cyan-50 p-3">
-                              <p className="text-sm font-semibold text-cyan-900">Captain club entry sheet</p>
-                              <p className="mt-1 text-xs text-cyan-900/80">
-                                Tick the players from your club who want to enter this competition, then submit the list for league-officer review.
-                                {c.match_mode === "doubles" || isHodgeComp || isAlberyComp
-                                  ? " For doubles and triples, this collects interested names first; pairings or team groupings can then be finalised afterwards."
-                                  : ""}
-                              </p>
-                              <div className="mt-3 space-y-3">
-                                {captainEntryLocations.map((location) => {
-                                  const draftKey = `${c.id}::${location.id}`;
-                                  const clubPlayers = players
-                                    .filter((player) => player.location_id === location.id)
-                                    .sort((a, b) => sortLabelByFirstName(named(a), named(b)));
-                                  const fallbackSelectedIds = clubPlayers
-                                    .filter((player) => competitionEntriesByCompetitionPlayerId.has(`${c.id}::${player.id}`))
-                                    .map((player) => player.id);
-                                  const selectedIds = new Set(competitionClubEntryDrafts[draftKey] ?? fallbackSelectedIds);
-                                  return (
-                                    <div key={draftKey} className="rounded-xl border border-cyan-100 bg-white p-3">
-                                      <div className="flex flex-wrap items-center justify-between gap-2">
-                                        <div>
-                                          <p className="text-sm font-semibold text-slate-900">{location.name}</p>
-                                          <p className="text-xs text-slate-500">{clubPlayers.length} registered player(s) available for selection.</p>
-                                        </div>
-                                        <button
-                                          type="button"
-                                          onClick={() => void submitCompetitionClubEntries(c, location.id)}
-                                          disabled={competitionClubEntryBusyKey === draftKey}
-                                          className="rounded-lg bg-cyan-700 px-3 py-2 text-sm font-medium text-white disabled:opacity-60"
-                                        >
-                                          {competitionClubEntryBusyKey === draftKey ? "Saving..." : "Submit club entries"}
-                                        </button>
-                                      </div>
-                                      <div className="mt-3 space-y-2">
-                                        {clubPlayers.map((player) => {
-                                          const existingEntry = competitionEntriesByCompetitionPlayerId.get(`${c.id}::${player.id}`) ?? null;
-                                          const canUntickOwnedPending = Boolean(
-                                            existingEntry &&
-                                              existingEntry.status === "pending" &&
-                                              existingEntry.requester_user_id === currentUserId
-                                          );
-                                          const checkboxLocked = Boolean(existingEntry && !canUntickOwnedPending);
-                                          const age = calculateAgeYears(player.date_of_birth ?? null);
-                                          const ageRestricted = minAge !== null || maxAge !== null;
-                                          const needsDob = ageRestricted && (!player.date_of_birth || age === null);
-                                          const ageIneligible = age !== null && ((minAge !== null && age < minAge) || (maxAge !== null && age > maxAge));
-                                          return (
-                                            <label
-                                              key={`${draftKey}:${player.id}`}
-                                              className={`flex items-center justify-between gap-3 rounded-lg border px-3 py-2 text-sm ${
-                                                checkboxLocked ? "border-slate-200 bg-slate-50" : "border-slate-200 bg-white"
-                                              }`}
-                                            >
-                                              <div className="flex items-start gap-3">
-                                                <input
-                                                  type="checkbox"
-                                                  checked={selectedIds.has(player.id)}
-                                                  disabled={checkboxLocked}
-                                                  onChange={(e) =>
-                                                    toggleCompetitionClubPlayer(c.id, location.id, player.id, e.target.checked)
-                                                  }
-                                                />
-                                                <div>
-                                                  <p className="font-medium text-slate-900">{named(player)}</p>
-                                                  <p className="text-xs text-slate-500">
-                                                    {ageRestricted
-                                                      ? needsDob
-                                                        ? "DOB missing"
-                                                        : ageIneligible
-                                                          ? `Not eligible (${age})`
-                                                          : `Eligible (${age})`
-                                                      : "Available"}
-                                                  </p>
-                                                </div>
-                                              </div>
-                                              {existingEntry ? (
-                                                <span
-                                                  className={`rounded-full border px-2 py-0.5 text-[11px] font-medium ${
-                                                    existingEntry.status === "approved"
-                                                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                                                      : "border-amber-200 bg-amber-50 text-amber-800"
-                                                  }`}
-                                                >
-                                                  {existingEntry.status === "approved"
-                                                    ? "already approved"
-                                                    : existingEntry.requester_user_id === currentUserId
-                                                      ? "your pending entry"
-                                                      : "already pending"}
-                                                </span>
-                                              ) : null}
-                                            </label>
-                                          );
-                                        })}
-                                        {clubPlayers.length === 0 ? (
-                                          <p className="text-xs text-slate-500">No registered players are linked to this club yet.</p>
-                                        ) : null}
-                                      </div>
-                                    </div>
-                                  );
-                                })}
                               </div>
                             </div>
                           ) : null}

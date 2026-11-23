@@ -41,9 +41,9 @@ const steps = [
   {
     title: "5. Entering competitions",
     bullets: [
-      "Open Competition Sign-ups and choose the correct event before entering.",
-      "For doubles or triples, check your teammates carefully before submitting.",
-      "Age-restricted competitions require a valid date of birth on your profile.",
+      "Tell your captain which competitions you want to enter.",
+      "For doubles or triples, confirm your teammates with your captain.",
+      "For age-restricted competitions, give your date of birth privately to your captain if the form asks for it.",
       "If an entry is already shown as pending or approved, do not enter again. Ask a league officer if it needs correcting.",
     ],
   },
@@ -62,7 +62,7 @@ const appAreas = [
   { title: "League Manager", detail: "Fixtures, results, league tables and player tables.", href: "/league" },
   { title: "My Events", detail: "Your upcoming league and competition activity.", href: "/events" },
   { title: "Notifications", detail: "Reminders, requests and league messages.", href: "/notifications" },
-  { title: "Competition Sign-ups", detail: "Enter open individual and team competitions.", href: "/signups" },
+  { title: "Competition Entries", detail: "See competition details and entry status.", href: "/signups" },
   { title: "Handicaps", detail: "Current published handicaps and an explanation of the system.", href: "/display/handicaps" },
   { title: "Captain Guide", detail: "Use this if you are assigned as captain or vice-captain.", href: "/captain-guide" },
 ];

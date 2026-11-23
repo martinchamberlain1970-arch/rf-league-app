@@ -95,9 +95,9 @@ const appAreas = [
     href: "/captain-results",
   },
   {
-    title: "Competition Sign-ups",
-    detail: "Use this page when summer, winter, singles, doubles, triples, or billiards competition entries are open.",
-    href: "/signups",
+    title: "Competition Entry Form",
+    detail: "Submit your team’s entries when competitions are open.",
+    href: "/competition-entry",
   },
   {
     title: "Help / Handicaps",
