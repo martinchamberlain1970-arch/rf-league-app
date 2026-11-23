@@ -1,3 +1,4 @@
+import { emailFixtureCaptains } from "@/lib/fixture-date-emails";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireLeagueManager } from "@/lib/server-role";
@@ -71,5 +72,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: updReq.error.message }, { status: 400 });
   }
 
-  return NextResponse.json({ ok: true });
+  const captainEmails = await emailFixtureCaptains(adminClient, requestId, authData.user.id);
+  return NextResponse.json({ ok: true, captainEmails });
 }

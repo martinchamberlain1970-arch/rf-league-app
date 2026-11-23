@@ -306,7 +306,7 @@ export default function RescheduleFixturePage() {
       setSubmitting(false);
       return setMessage("Network error while recording the exceptional postponement.");
     }
-    const payload = (await res.json().catch(() => ({}))) as { error?: string };
+    const payload = (await res.json().catch(() => ({}))) as { error?: string; captainEmails?: { message: string } };
     setSubmitting(false);
     if (!res.ok) return setMessage(payload.error ?? "Failed to record the exceptional postponement.");
 
@@ -314,7 +314,7 @@ export default function RescheduleFixturePage() {
     const away = teamById.get(selectedOfficerFixture.away_team_id) ?? "Away team";
     setInfo({
       title: "Exceptional postponement recorded",
-      description: `${home} vs ${away} has been moved to ${new Date(`${officerAgreedDate}T12:00:00`).toLocaleDateString()}. The agreement, reason and Rules 17 / 29.1 basis have been retained in the fixture history and audit record.`,
+      description: `${home} vs ${away} has been moved to ${new Date(`${officerAgreedDate}T12:00:00`).toLocaleDateString()}. The agreement, reason and Rules 17 / 29.1 basis have been retained in the fixture history and audit record.${payload.captainEmails ? `\n\n${payload.captainEmails.message}` : ""}`,
     });
     setOfficerAgreedDate("");
     setOfficerReason("");

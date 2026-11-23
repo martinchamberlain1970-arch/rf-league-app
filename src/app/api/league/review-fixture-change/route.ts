@@ -1,3 +1,4 @@
+import { emailFixtureCaptains } from "@/lib/fixture-date-emails";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { requireLeagueManager } from "@/lib/server-role";
@@ -87,14 +88,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: updReq.error.message }, { status: 400 });
   }
 
+  const captainEmails = decision === "approved" && requestRes.data.request_type === "play_early"
+    ? await emailFixtureCaptains(adminClient, requestId, authData.user.id)
+    : null;
+
   if (requestRes.data.requested_by_user_id) {
     await sendPushToUserIds(adminClient, [requestRes.data.requested_by_user_id], {
       title: decision === "approved" ? "Fixture date request approved" : "Fixture date request declined",
       body: decision === "approved" ? "Your fixture date request has been approved. Open Rack & Frame for the updated details." : reviewNotes || "Your fixture date request was not approved.",
       url: "/results",
       tag: `fixture-change-review-${requestId}`,
-    });
+    }, { sendEmail: !captainEmails });
   }
 
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, captainEmails });
 }

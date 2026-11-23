@@ -29,10 +29,10 @@ function configurePush() {
   );
 }
 
-export async function sendPushToUserIds(client: SupabaseClient, userIds: string[], payload: PushPayload) {
+export async function sendPushToUserIds(client: SupabaseClient, userIds: string[], payload: PushPayload, options?: { sendEmail?: boolean }) {
   const uniqueUserIds = [...new Set(userIds.filter(Boolean))];
   const pushConfigured = pushIsConfigured();
-  const emailConfigured = notificationEmailIsConfigured();
+  const emailConfigured = options?.sendEmail !== false && notificationEmailIsConfigured();
   if (!uniqueUserIds.length) {
     return { sent: 0, failed: 0, configured: pushConfigured, emailSent: 0, emailFailed: 0, emailConfigured };
   }

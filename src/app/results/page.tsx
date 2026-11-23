@@ -512,12 +512,13 @@ function ResultsQueuePageContent() {
       setMessage("Network error while reviewing fixture date request.");
       return;
     }
-    const payload = (await res.json().catch(() => ({}))) as { error?: string };
+    const payload = (await res.json().catch(() => ({}))) as { error?: string; captainEmails?: { sent: boolean; message: string } | null };
     setBusyId(null);
     if (!res.ok) {
       setMessage(payload.error ?? "Failed to review fixture date request.");
       return;
     }
+    if (payload.captainEmails) setMessage(payload.captainEmails.message);
     refreshFixtureRequests();
   };
 
@@ -555,13 +556,34 @@ function ResultsQueuePageContent() {
       setMessage("Network error while scheduling fixture date.");
       return;
     }
-    const payload = (await res.json().catch(() => ({}))) as { error?: string };
+    const payload = (await res.json().catch(() => ({}))) as { error?: string; captainEmails?: { sent: boolean; message: string } | null };
     setBusyId(null);
     if (!res.ok) {
       setMessage(payload.error ?? "Failed to schedule fixture date.");
       return;
     }
+    if (payload.captainEmails) setMessage(payload.captainEmails.message);
     refreshFixtureRequests();
+  };
+
+  const onEmailFixtureCaptains = async (requestId: string) => {
+    setBusyId(requestId);
+    try {
+      const session = await supabase?.auth.getSession();
+      const token = session?.data.session?.access_token;
+      if (!token) return setMessage("Session expired. Please sign in again.");
+      const response = await fetch("/api/league/email-fixture-captains", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ requestId }),
+      });
+      const payload = (await response.json()) as { message?: string; error?: string };
+      setMessage(payload.message ?? payload.error ?? "Could not confirm the email status.");
+    } catch {
+      setMessage("Could not confirm the email status. Retry to check for any unsent confirmations.");
+    } finally {
+      setBusyId(null);
+    }
   };
 
   const onReviewCompetition = async (submissionId: string, decision: "approved" | "rejected") => {
@@ -793,6 +815,12 @@ function ResultsQueuePageContent() {
                   {r.requester_name ? <p className="mt-1 text-slate-600">Requested by {r.requester_name}{r.requester_team_name ? ` · ${r.requester_team_name}` : ""}</p> : null}
                   {r.agreed_fixture_date ? <p className="mt-1 text-slate-600">Agreed date: {new Date(`${r.agreed_fixture_date}T12:00:00`).toLocaleDateString()}</p> : null}
                   {r.review_notes ? <p className="mt-1 text-slate-600">Note: {r.review_notes}</p> : null}
+                  {admin.canManageLeague && r.status === "rescheduled" && r.agreed_fixture_date ? (
+                    <button type="button" className="mr-2 mt-2 rounded-lg border border-teal-300 bg-teal-50 px-2.5 py-1.5 font-semibold text-teal-900 disabled:opacity-60"
+                      onClick={() => void onEmailFixtureCaptains(r.id)} disabled={busyId === r.id}>
+                      {busyId === r.id ? "Checking email status…" : "Email both captains"}
+                    </button>
+                  ) : null}
                   {admin.canManageLeague && r.status === "rescheduled" ? (
                     <Link href="/reschedule-fixture" className="mt-2 inline-flex rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1.5 font-semibold text-amber-900 hover:bg-amber-100">
                       Change this fixture date again

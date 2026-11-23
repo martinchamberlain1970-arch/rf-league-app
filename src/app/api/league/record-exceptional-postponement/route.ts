@@ -1,3 +1,4 @@
+import { emailFixtureCaptains } from "@/lib/fixture-date-emails";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { resolveServerRole } from "@/lib/server-role";
@@ -164,5 +165,6 @@ export async function POST(req: NextRequest) {
     },
   });
 
-  return NextResponse.json({ ok: true, requestId: requestRes.data.id });
+  const captainEmails = await emailFixtureCaptains(adminClient, requestRes.data.id, authData.user.id);
+  return NextResponse.json({ ok: true, requestId: requestRes.data.id, captainEmails });
 }
