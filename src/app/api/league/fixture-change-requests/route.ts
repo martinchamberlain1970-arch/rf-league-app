@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createClient } from "@supabase/supabase-js";
+import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { canManageLeagueRole } from "@/lib/app-roles";
+import { fetchAllSupabasePages, fetchAllSupabasePagesByChunks } from "@/lib/supabase-pagination";
 import { resolveServerRole } from "@/lib/server-role";
 import { sendPushToLeagueManagers } from "@/lib/push-server";
 
@@ -52,6 +53,56 @@ async function authenticate(req: NextRequest) {
   return { user: data.user };
 }
 
+const requestColumns = "id,fixture_id,requested_by_user_id,requester_team_id,request_type,original_fixture_date,proposed_fixture_date,agreed_fixture_date,opposing_team_agreed,reason,status,review_notes,reviewed_by_user_id,reviewed_at,created_at";
+
+async function getApprovalRows(client: SupabaseClient, fixtureId: string) {
+  const requests = await fetchAllSupabasePages<{ fixture_id: string; requested_by_user_id: string; requester_team_id: string | null }>((from, to) => {
+    const query = client.from("league_fixture_change_requests").select(requestColumns);
+    const filtered = fixtureId ? query.eq("fixture_id", fixtureId) : query;
+    return filtered.order("created_at", { ascending: false }).order("id", { ascending: false }).range(from, to);
+  });
+  if (requests.error) return NextResponse.json({ error: requests.error.message }, { status: 500 });
+  const rows = requests.data ?? [];
+  const fixtureIds = Array.from(new Set(rows.map((row) => row.fixture_id)));
+  const requesterIds = Array.from(new Set(rows.map((row) => row.requested_by_user_id).filter(Boolean)));
+  const [fixtures, requesters] = await Promise.all([
+    fetchAllSupabasePagesByChunks<Pick<FixtureRow, "id" | "home_team_id" | "away_team_id"> & { season_id: string }, string>(fixtureIds, (ids, from, to) => client.from("league_fixtures")
+      .select("id,home_team_id,away_team_id,season_id").in("id", ids).order("id").range(from, to)),
+    fetchAllSupabasePagesByChunks<{ id: string; linked_player_id: string | null }, string>(requesterIds, (ids, from, to) => client.from("app_users")
+      .select("id,linked_player_id").in("id", ids).order("id").range(from, to)),
+  ]);
+  const fixtureRows = fixtures.data ?? [];
+  const teamIds = Array.from(new Set([...fixtureRows.flatMap((row) => [row.home_team_id, row.away_team_id]), ...rows.map((row) => row.requester_team_id)].filter((id): id is string => Boolean(id))));
+  const seasonIds = Array.from(new Set(fixtureRows.map((row) => row.season_id)));
+  const playerIds = Array.from(new Set((requesters.data ?? []).map((row) => row.linked_player_id).filter((id): id is string => Boolean(id))));
+  const [teams, seasons, players] = await Promise.all([
+    fetchAllSupabasePagesByChunks<{ id: string; name: string }, string>(teamIds, (ids, from, to) => client.from("league_teams").select("id,name").in("id", ids).order("id").range(from, to)),
+    fetchAllSupabasePagesByChunks<{ id: string; name: string }, string>(seasonIds, (ids, from, to) => client.from("league_seasons").select("id,name").in("id", ids).order("id").range(from, to)),
+    fetchAllSupabasePagesByChunks<{ id: string; full_name: string | null; display_name: string | null }, string>(playerIds, (ids, from, to) => client.from("players").select("id,full_name,display_name").in("id", ids).order("id").range(from, to)),
+  ]);
+  const error = fixtures.error ?? requesters.error ?? teams.error ?? seasons.error ?? players.error;
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  const fixtureById = new Map(fixtureRows.map((row) => [row.id, row]));
+  const requesterById = new Map((requesters.data ?? []).map((row) => [row.id, row.linked_player_id]));
+  const playerById = new Map((players.data ?? []).map((row) => [row.id, row]));
+  const teamById = new Map((teams.data ?? []).map((row) => [row.id, row.name]));
+  const seasonById = new Map((seasons.data ?? []).map((row) => [row.id, row.name]));
+
+  return NextResponse.json({ rows: rows.map((row) => {
+    const fixture = fixtureById.get(row.fixture_id);
+    const playerId = requesterById.get(row.requested_by_user_id);
+    const player = playerId ? playerById.get(playerId) : undefined;
+    return {
+      ...row,
+      home_team_name: teamById.get(fixture?.home_team_id ?? "") ?? null,
+      away_team_name: teamById.get(fixture?.away_team_id ?? "") ?? null,
+      season_name: seasonById.get(fixture?.season_id ?? "") ?? null,
+      requester_name: player?.full_name?.trim() || player?.display_name || null,
+      requester_team_name: teamById.get(row.requester_team_id ?? "") ?? null,
+    };
+  }) });
+}
+
 export async function GET(req: NextRequest) {
   const auth = await authenticate(req);
   if (auth.error) return auth.error;
@@ -65,9 +116,7 @@ export async function GET(req: NextRequest) {
 
   let query = adminClient
     .from("league_fixture_change_requests")
-    .select(
-      "id,fixture_id,requested_by_user_id,requester_team_id,request_type,original_fixture_date,proposed_fixture_date,agreed_fixture_date,opposing_team_agreed,reason,status,review_notes,reviewed_by_user_id,reviewed_at,created_at"
-    )
+    .select(requestColumns)
     .order("created_at", { ascending: false });
 
   if (fixtureId) query = query.eq("fixture_id", fixtureId);
@@ -77,6 +126,7 @@ export async function GET(req: NextRequest) {
     if (!isSuper && !canManageLeagueRole(role)) {
       return NextResponse.json({ error: "Forbidden." }, { status: 403 });
     }
+    if (req.nextUrl.searchParams.get("view") === "approvals") return getApprovalRows(adminClient, fixtureId);
   } else if (scope === "published") {
     const publishedSeasonsRes = await adminClient
       .from("league_seasons")

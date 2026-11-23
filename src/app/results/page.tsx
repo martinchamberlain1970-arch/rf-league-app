@@ -104,6 +104,11 @@ type FixtureChangeRequest = {
   fixture_id: string;
   requested_by_user_id: string;
   requester_team_id: string | null;
+  requester_name: string | null;
+  requester_team_name: string | null;
+  home_team_name: string | null;
+  away_team_name: string | null;
+  season_name: string | null;
   request_type: "play_early" | "play_late";
   original_fixture_date: string | null;
   proposed_fixture_date: string | null;
@@ -152,6 +157,10 @@ function ResultsQueuePageContent() {
   const [competitionMatches, setCompetitionMatches] = useState<MatchRow[]>([]);
   const [competitions, setCompetitions] = useState<CompetitionRow[]>([]);
   const [fixtureChangeRequests, setFixtureChangeRequests] = useState<FixtureChangeRequest[]>([]);
+  const [fixtureRequestsLoading, setFixtureRequestsLoading] = useState(true);
+  const [fixtureRequestsError, setFixtureRequestsError] = useState<string | null>(null);
+  const [fixtureRequestsRefresh, setFixtureRequestsRefresh] = useState(0);
+  const refreshFixtureRequests = () => setFixtureRequestsRefresh((value) => value + 1);
   const [message, setMessage] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [rejectReasons, setRejectReasons] = useState<Record<string, string>>({});
@@ -161,7 +170,11 @@ function ResultsQueuePageContent() {
   const [seasonFilter, setSeasonFilter] = useState("all");
   const [expandedPending, setExpandedPending] = useState<Set<string>>(new Set());
   const [reviewedLimit, setReviewedLimit] = useState(20);
-  const [queueTab, setQueueTab] = useState<"league" | "competition" | "fixture_changes">("league");
+  const [queueTab, setQueueTab] = useState<"league" | "competition" | "fixture_changes">(() => {
+    const tab = searchParams.get("tab");
+    return tab === "fixture_changes" || tab === "competition" ? tab : "league";
+  });
+  const showingFixtureRequests = queueTab === "fixture_changes";
   const [queueView, setQueueView] = useState<"pending" | "reviewed">("pending");
   const selectQueueTab = (tab: "league" | "competition" | "fixture_changes") => {
     setQueueTab(tab);
@@ -215,21 +228,6 @@ function ResultsQueuePageContent() {
         .range(from, to)
     );
 
-    const sessionRes = await client.auth.getSession();
-    const token = sessionRes.data.session?.access_token;
-    let loadedFixtureChangeRequests: FixtureChangeRequest[] = [];
-    if (token) {
-      const fixtureChangeRes = await fetch(`/api/league/fixture-change-requests?scope=${admin.isAdmin ? "admin" : "mine"}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const payload = (await fixtureChangeRes.json().catch(() => ({}))) as { error?: string; rows?: FixtureChangeRequest[] };
-      if (!fixtureChangeRes.ok) {
-        setMessage(payload.error ?? "Failed to load fixture date requests.");
-        return;
-      }
-      loadedFixtureChangeRequests = payload.rows ?? [];
-      setFixtureChangeRequests(loadedFixtureChangeRequests);
-    }
     if (competitionSubmissionRes.error && !isMissingOptionalTable(competitionSubmissionRes.error.message)) {
       setMessage(competitionSubmissionRes.error.message || "Failed to load competition results queue.");
       return;
@@ -238,7 +236,7 @@ function ResultsQueuePageContent() {
     setCompetitionSubmissions(competitionSubmissionRows);
 
     const fixtureIds = Array.from(
-      new Set([...submissionRows.map((s) => s.fixture_id).filter(Boolean), ...loadedFixtureChangeRequests.map((r) => r.fixture_id).filter(Boolean)])
+      new Set(submissionRows.map((s) => s.fixture_id).filter(Boolean))
     );
     const fRes = fixtureIds.length
       ? await fetchAllSupabasePagesByChunks<FixtureRow, string>(fixtureIds, (fixtureIdChunk, from, to) =>
@@ -328,8 +326,41 @@ function ResultsQueuePageContent() {
   };
 
   useEffect(() => {
+    if (admin.loading || (admin.isAdmin && showingFixtureRequests)) return;
     void load();
-  }, [admin.loading, admin.isAdmin, admin.userId]);
+  }, [admin.loading, admin.isAdmin, admin.userId, showingFixtureRequests]);
+
+  useEffect(() => {
+    if (!admin.canManageLeague || !admin.userId) return;
+    const controller = new AbortController();
+    const loadRequests = async () => {
+      setFixtureRequestsLoading(true);
+      setFixtureRequestsError(null);
+      try {
+        const session = await supabase?.auth.getSession();
+        const token = session?.data.session?.access_token;
+        if (!token) throw new Error("Session expired. Please sign in again.");
+        const response = await fetch("/api/league/fixture-change-requests?scope=admin&view=approvals", {
+          headers: { Authorization: `Bearer ${token}` },
+          cache: "no-store",
+          signal: controller.signal,
+        });
+        const payload = (await response.json().catch(() => null)) as { rows?: FixtureChangeRequest[]; error?: string } | null;
+        if (!response.ok || !Array.isArray(payload?.rows)) {
+          throw new Error(payload?.error ?? "Fixture date requests could not be loaded.");
+        }
+        if (!controller.signal.aborted) setFixtureChangeRequests(payload.rows);
+      } catch (error) {
+        if (!controller.signal.aborted) {
+          setFixtureRequestsError(error instanceof Error ? error.message : "Fixture date requests could not be loaded.");
+        }
+      } finally {
+        if (!controller.signal.aborted) setFixtureRequestsLoading(false);
+      }
+    };
+    void loadRequests();
+    return () => controller.abort();
+  }, [admin.canManageLeague, admin.userId, fixtureRequestsRefresh]);
 
   useEffect(() => {
     if (!admin.isAdmin) return;
@@ -487,7 +518,7 @@ function ResultsQueuePageContent() {
       setMessage(payload.error ?? "Failed to review fixture date request.");
       return;
     }
-    await load();
+    refreshFixtureRequests();
   };
 
   const onScheduleFixtureChange = async (requestId: string) => {
@@ -530,7 +561,7 @@ function ResultsQueuePageContent() {
       setMessage(payload.error ?? "Failed to schedule fixture date.");
       return;
     }
-    await load();
+    refreshFixtureRequests();
   };
 
   const onReviewCompetition = async (submissionId: string, decision: "approved" | "rejected") => {
@@ -610,7 +641,18 @@ function ResultsQueuePageContent() {
 
   const fixtureChangeQueueSection = (
     <section className={cardClass}>
-      {queueView === "pending" ? (
+      {!admin.canManageLeague ? (
+        <p className="text-sm text-slate-600">League management access is required to view fixture date approvals.</p>
+      ) : (
+        <div className="mb-3 flex flex-wrap items-center gap-3">
+          <button type="button" onClick={refreshFixtureRequests} disabled={fixtureRequestsLoading} className="rounded-lg border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-800 disabled:opacity-60">
+            {fixtureRequestsError ? "Retry fixture requests" : "Refresh fixture requests"}
+          </button>
+          {fixtureRequestsLoading ? <p role="status" className="text-sm text-slate-600">Loading fixture requests…</p> : null}
+          {fixtureRequestsError ? <p role="alert" className="text-sm text-red-700">{fixtureRequestsError}</p> : null}
+        </div>
+      )}
+      {admin.canManageLeague && !fixtureRequestsLoading && !fixtureRequestsError ? (queueView === "pending" ? (
         <>
       <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
         <div>
@@ -631,13 +673,13 @@ function ResultsQueuePageContent() {
       <div className="mt-3 space-y-3">
         {fixtureChangePending.length === 0 ? <p className="text-sm text-slate-600">No pending fixture date requests.</p> : null}
         {fixtureChangePending.map((r) => {
-          const f = fixtureById.get(r.fixture_id);
-          const home = f ? teamById.get(f.home_team_id) ?? "Home" : "Home";
-          const away = f ? teamById.get(f.away_team_id) ?? "Away" : "Away";
-          const seasonName = f ? seasonById.get(f.season_id) ?? "League" : "League";
+          const home = r.home_team_name ?? "Home";
+          const away = r.away_team_name ?? "Away";
+          const seasonName = r.season_name ?? "League";
           return (
             <article key={r.id} className={itemClass}>
               <p className="text-sm text-slate-600">{seasonName}</p>
+              {r.requester_name ? <p className="text-sm text-slate-600">Requested by {r.requester_name}{r.requester_team_name ? ` · ${r.requester_team_name}` : ""}</p> : null}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xl font-semibold text-slate-900">{home} vs {away}</p>
                 <span className="rounded-full border border-amber-200 bg-amber-50 px-2 py-0.5 text-xs font-semibold uppercase text-amber-800">pending</span>
@@ -688,13 +730,13 @@ function ResultsQueuePageContent() {
         </div>
         {fixtureChangeOutstanding.length === 0 ? <p className="text-sm text-slate-600">No approved outstanding fixtures.</p> : null}
         {fixtureChangeOutstanding.map((r) => {
-          const f = fixtureById.get(r.fixture_id);
-          const home = f ? teamById.get(f.home_team_id) ?? "Home" : "Home";
-          const away = f ? teamById.get(f.away_team_id) ?? "Away" : "Away";
-          const seasonName = f ? seasonById.get(f.season_id) ?? "League" : "League";
+          const home = r.home_team_name ?? "Home";
+          const away = r.away_team_name ?? "Away";
+          const seasonName = r.season_name ?? "League";
           return (
             <article key={r.id} className={itemClass}>
               <p className="text-sm text-slate-600">{seasonName}</p>
+              {r.requester_name ? <p className="text-sm text-slate-600">Requested by {r.requester_name}{r.requester_team_name ? ` · ${r.requester_team_name}` : ""}</p> : null}
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <p className="text-xl font-semibold text-slate-900">{home} vs {away}</p>
                 <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-xs font-semibold uppercase text-indigo-800">outstanding</span>
@@ -740,15 +782,15 @@ function ResultsQueuePageContent() {
           <div className="mt-3 space-y-2">
             {fixtureChangeReviewed.length === 0 ? <p className="text-sm text-slate-600">No reviewed fixture date requests yet.</p> : null}
             {fixtureChangeReviewed.slice(0, reviewedLimit).map((r) => {
-              const f = fixtureById.get(r.fixture_id);
-              const home = f ? teamById.get(f.home_team_id) ?? "Home" : "Home";
-              const away = f ? teamById.get(f.away_team_id) ?? "Away" : "Away";
+              const home = r.home_team_name ?? "Home";
+              const away = r.away_team_name ?? "Away";
               return (
                 <div key={r.id} className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs">
                   <div className="flex items-center justify-between gap-2">
                     <span>{home} vs {away} · {requestTypeLabel(r.request_type)}</span>
                     <span className={`rounded-full border px-2 py-0.5 ${statusChipClass(r.status)}`}>{r.status}</span>
                   </div>
+                  {r.requester_name ? <p className="mt-1 text-slate-600">Requested by {r.requester_name}{r.requester_team_name ? ` · ${r.requester_team_name}` : ""}</p> : null}
                   {r.agreed_fixture_date ? <p className="mt-1 text-slate-600">Agreed date: {new Date(`${r.agreed_fixture_date}T12:00:00`).toLocaleDateString()}</p> : null}
                   {r.review_notes ? <p className="mt-1 text-slate-600">Note: {r.review_notes}</p> : null}
                   {admin.canManageLeague && r.status === "rescheduled" ? (
@@ -766,7 +808,7 @@ function ResultsQueuePageContent() {
             ) : null}
           </div>
         </>
-      )}
+      )) : null}
     </section>
   );
 
