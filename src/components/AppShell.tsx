@@ -58,6 +58,7 @@ export const navigationGroups: NavigationGroup[] = [
     items: [
       { href: "/competition-vote", label: "Handicap proposal vote" },
       { href: "/signups", label: "Competition entries" },
+      { href: "/competition-submissions", label: "Team form submissions", officerOnly: true },
       { href: "/events", label: "Competition match centre" },
       { href: "/events/new", label: "Create competition", administratorOnly: true },
     ],
