@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
     id: string;
     match_id: string;
     competition_id: string;
-    submitted_by_user_id: string;
+    submitted_by_user_id: string | null;
     status: string;
     payload: CompetitionSubmissionPayload | null;
   };

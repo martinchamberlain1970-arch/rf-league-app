@@ -4,6 +4,7 @@ import { fixedHandicapsForMatch } from "@/lib/fixed-competition-handicaps-server
 import { usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
 import { sendPushToLeagueManagers } from "@/lib/push-server";
 import { isHodgeCup, scoreHodgeCup, type HodgeSide } from "@/lib/hodge-score";
+import { findScorecardLink, hasScorecardOpponents, scorecardMatchFields, scorecardPlayerIds, scorecardTokenHash } from "@/lib/competition-scorecard-links";
 import { canManageLeagueRole } from "@/lib/app-roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -35,15 +36,30 @@ export async function POST(req: NextRequest) {
   if (!supabaseUrl || !supabaseAnonKey || !serviceRoleKey) {
     return NextResponse.json({ error: "Server is not configured." }, { status: 500 });
   }
-  const token = req.headers.get("authorization")?.replace("Bearer ", "");
-  if (!token) return NextResponse.json({ error: "Missing auth token." }, { status: 401 });
-
-  const authClient = createClient(supabaseUrl, supabaseAnonKey);
-  const { data: authData, error: authError } = await authClient.auth.getUser(token);
-  if (authError || !authData.user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+  const authorization = req.headers.get("authorization") ?? "";
+  const guestToken = authorization.match(/^Scorecard ([a-f0-9]{64})$/)?.[1];
+  const tokenHash = guestToken ? scorecardTokenHash(guestToken) : null;
+  const adminClient = createClient(supabaseUrl, serviceRoleKey);
+  let userId: string | null = null;
+  if (!tokenHash) {
+    const token = authorization.match(/^Bearer (\S+)$/i)?.[1];
+    if (!token) return NextResponse.json({ error: "Sign in or open a valid private scorecard link." }, { status: 401 });
+    const { data: authData, error: authError } = await createClient(supabaseUrl, supabaseAnonKey).auth.getUser(token);
+    if (authError || !authData.user) return NextResponse.json({ error: "Unauthorized." }, { status: 401 });
+    userId = authData.user.id;
+  }
 
   const body = (await req.json().catch(() => ({}))) as SubmitPayload;
   const matchId = String(body?.matchId ?? "").trim();
+  const invalidLink = () => NextResponse.json({ error: "This scorecard link has expired, been used or been replaced. Contact a league officer for a new link." }, { status: 410 });
+  if (tokenHash) {
+    try {
+      const linkMatchId = await findScorecardLink(adminClient, tokenHash);
+      if (!linkMatchId || matchId !== linkMatchId) return invalidLink();
+    } catch {
+      return NextResponse.json({ error: "The scorecard link could not be checked. Try again." }, { status: 500 });
+    }
+  }
   const mode = body?.mode;
   const winnerSide = body?.winnerSide;
   if (!matchId || (mode !== "standard" && mode !== "albery") || (winnerSide !== "home" && winnerSide !== "away")) {
@@ -51,10 +67,9 @@ export async function POST(req: NextRequest) {
   }
   const breakEntries = Array.isArray(body.breakEntries) ? body.breakEntries : [];
 
-  const adminClient = createClient(supabaseUrl, serviceRoleKey);
   const matchRes = await adminClient
     .from("matches")
-    .select("id,competition_id,status,round_no,best_of,player1_id,player2_id,team1_player1_id,team1_player2_id,team2_player1_id,team2_player2_id")
+    .select(scorecardMatchFields)
     .eq("id", matchId)
     .eq("is_archived", false)
     .maybeSingle();
@@ -74,12 +89,14 @@ export async function POST(req: NextRequest) {
   };
 
   if (!match.competition_id) return NextResponse.json({ error: "This match is not linked to a competition." }, { status: 400 });
+  if (tokenHash && !hasScorecardOpponents(match)) return invalidLink();
   if (match.status !== "pending" && match.status !== "in_progress") return NextResponse.json({ error: "This match is locked for scoring." }, { status: 400 });
 
   const competitionRes = await adminClient
     .from("competitions")
     .select("id,name,best_of")
     .eq("id", match.competition_id)
+    .eq("is_archived", false).eq("is_completed", false)
     .maybeSingle();
   if (competitionRes.error || !competitionRes.data) return NextResponse.json({ error: "Competition not found." }, { status: 404 });
   const competition = competitionRes.data as { id: string; name: string; best_of: number };
@@ -94,23 +111,14 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Use the scorecard format for this competition." }, { status: 400 });
   }
 
-  const appUserRes = await adminClient.from("app_users").select("linked_player_id,role").eq("id", authData.user.id).maybeSingle();
-  if (appUserRes.error) return NextResponse.json({ error: appUserRes.error.message }, { status: 400 });
-  const linkedPlayerId = (appUserRes.data?.linked_player_id as string | null) ?? null;
-  const role = String(appUserRes.data?.role ?? "").toLowerCase();
-  const isSuper = canManageLeagueRole(role);
-  const participants = new Set(
-    [
-      match.player1_id,
-      match.player2_id,
-      match.team1_player1_id,
-      match.team1_player2_id,
-      match.team2_player1_id,
-      match.team2_player2_id,
-    ].filter(Boolean) as string[]
-  );
-  if (!isSuper && (!linkedPlayerId || !participants.has(linkedPlayerId))) {
-    return NextResponse.json({ error: "Only match participants can submit this result." }, { status: 403 });
+  const participants = new Set(scorecardPlayerIds(match));
+  if (userId) {
+    const appUserRes = await adminClient.from("app_users").select("linked_player_id,role").eq("id", userId).maybeSingle();
+    if (appUserRes.error) return NextResponse.json({ error: "Your scoring permissions could not be checked." }, { status: 500 });
+    const linkedPlayerId = appUserRes.data?.linked_player_id as string | undefined;
+    if (!canManageLeagueRole(appUserRes.data?.role) && (!linkedPlayerId || !participants.has(linkedPlayerId))) {
+      return NextResponse.json({ error: "Only match participants can submit this result." }, { status: 403 });
+    }
   }
 
   if (usesFixedCompetitionHandicaps(competition.name)) {
@@ -217,7 +225,10 @@ export async function POST(req: NextRequest) {
     body.awayScore = awayScore;
   } else {
     const a = body.albery;
-    if (!a) return NextResponse.json({ error: "Missing Albery details." }, { status: 400 });
+    if (!a || !Array.isArray(a.homePlayers) || !Array.isArray(a.awayPlayers) ||
+        a.homePlayers.length !== 3 || a.awayPlayers.length !== 3 || !a.leg1 || !a.leg2 || !a.leg3) {
+      return NextResponse.json({ error: "Missing Albery details." }, { status: 400 });
+    }
     const legs = [a.leg1, a.leg2, a.leg3];
     const targets = [100, 200, 300];
     for (let i = 0; i < 3; i += 1) {
@@ -246,28 +257,21 @@ export async function POST(req: NextRequest) {
     }
     const hasName = String(br?.entered_player_name ?? "").trim().length > 0;
     const hasId = String(br?.player_id ?? "").trim().length > 0;
+    if (tokenHash && (hasId ? !participants.has(String(br?.player_id)) : !isAlbery)) {
+      return NextResponse.json({ error: "Select a player in this match for each high break." }, { status: 400 });
+    }
     if (!hasName && !hasId) {
       return NextResponse.json({ error: "Select a player for each high break entry." }, { status: 400 });
     }
   }
 
-  const existingPending = await adminClient
-    .from("competition_result_submissions")
-    .select("id")
-    .eq("match_id", match.id)
-    .eq("status", "pending")
-    .limit(1);
-  if (existingPending.error) return NextResponse.json({ error: existingPending.error.message }, { status: 400 });
-  if ((existingPending.data ?? []).length > 0) {
-    return NextResponse.json({ error: "A result submission is already pending review for this match." }, { status: 400 });
-  }
-
-  const insRes = await adminClient.from("competition_result_submissions").insert({
-    match_id: match.id,
-    competition_id: match.competition_id,
-    submitted_by_user_id: authData.user.id,
-    payload: {
+  const queued = await adminClient.rpc("queue_competition_scorecard", {
+    p_match_id: match.id,
+    p_user_id: userId,
+    p_token_hash: tokenHash,
+    p_payload: {
       mode,
+      ...(tokenHash ? { source: "private_scorecard_link" } : {}),
       winnerSide: body.winnerSide,
       homeScore: body.homeScore ?? null,
       awayScore: body.awayScore ?? null,
@@ -286,19 +290,21 @@ export async function POST(req: NextRequest) {
       ...(isHodge ? { hodgeBlackWinners: body.hodgeBlackWinners ?? [] } : {}),
       albery: body.albery ?? null,
     },
-    status: "pending",
-    rejection_reason: null,
-    reviewed_by_user_id: null,
-    reviewed_at: null,
   });
-  if (insRes.error) return NextResponse.json({ error: insRes.error.message }, { status: 400 });
+  if (queued.error) {
+    console.error("Could not queue competition scorecard", queued.error.code);
+    return NextResponse.json({ error: "The result could not be saved. Try again." }, { status: 500 });
+  }
+  if (queued.data === "invalid_link") return invalidLink();
+  if (queued.data === "pending") return NextResponse.json({ error: "A result submission is already pending review for this match." }, { status: 409 });
+  if (queued.data !== "queued") return NextResponse.json({ error: "This match is locked for scoring." }, { status: 409 });
 
   await sendPushToLeagueManagers(adminClient, {
     title: "Competition result awaiting approval",
     body: "A knockout competition result has been submitted for review.",
     url: "/results",
     tag: `competition-submission-${match.id}`,
-  }, [authData.user.id]);
+  }, userId ? [userId] : []).catch(() => undefined);
 
   return NextResponse.json({ ok: true });
 }

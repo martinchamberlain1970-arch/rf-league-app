@@ -55,12 +55,13 @@ type CompetitionSubmission = {
   id: string;
   match_id: string;
   competition_id: string;
-  submitted_by_user_id: string;
+  submitted_by_user_id: string | null;
   created_at: string;
   status: "pending" | "approved" | "rejected" | "needs_correction";
   rejection_reason?: string | null;
   payload?: {
     mode?: "standard" | "albery";
+    source?: "private_scorecard_link";
     winnerSide?: "home" | "away";
     homeScore?: number | null;
     awayScore?: number | null;
@@ -862,7 +863,7 @@ function ResultsQueuePageContent() {
             <article key={s.id} className={itemClass}>
               <p className="text-sm font-semibold text-slate-900">{compName}</p>
               <p className="text-sm text-slate-700">{competitionMatchLabel(match)}</p>
-              <p className="text-xs text-slate-600">{detail}</p>
+              <p className="text-xs text-slate-600">{detail}{s.payload?.source === "private_scorecard_link" ? " · Private scorecard link" : ""}</p>
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Link href={`/matches/${s.match_id}`} className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50">
                   Open match entry

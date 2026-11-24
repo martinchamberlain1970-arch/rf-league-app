@@ -114,6 +114,7 @@ const alwaysBarePrefixes = [
   "/league-entry",
   "/entry-pack",
   "/competition-entry",
+  "/competition-scorecard",
   "/league-invoice",
   "/handicap-consultation/",
   "/premier-handicaps/",
