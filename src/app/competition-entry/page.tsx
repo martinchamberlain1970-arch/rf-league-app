@@ -2,11 +2,36 @@
 
 import { competitionDeadlineLabel, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ageFromDob, competitionAgeRule, entrantsRequired, type PublicCompetition, type PublicCompetitionEntry, type PublicCompetitionPartner, type PublicCompetitionPlayer, type PublicCompetitionSelection } from "@/lib/public-competition-entry";
+import { ageFromDob, competitionAgeRule, entrantsRequired, type PublicCompetition, type PublicCompetitionEntry, type PublicCompetitionPartner, type PublicCompetitionPlayer, type PublicCompetitionReceipt, type PublicCompetitionSelection } from "@/lib/public-competition-entry";
 
 type Team = { id: string; name: string; season_id: string };
 const makeToken = () => Array.from(crypto.getRandomValues(new Uint8Array(24)), (byte) => byte.toString(16).padStart(2, "0")).join("");
 const makeEntry = (count: number): PublicCompetitionEntry => ({ entryId: crypto.randomUUID(), playerIds: Array.from({ length: count }, () => ""), entrantDateOfBirth: "" });
+
+function SubmittedEntries({ receipt }: { receipt: PublicCompetitionReceipt }) {
+  return (
+    <section className="rounded-2xl border border-emerald-300 bg-white p-5 print:border-0">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="text-xl font-bold text-emerald-900">Submitted entries · {receipt.teamName}</h2>
+          {receipt.submittedAt ? <p className="mt-1 text-sm text-slate-600">Submitted {competitionDeadlineLabel(receipt.submittedAt)} (UK time)</p> : null}
+          <p className="mt-2 text-sm text-slate-700">Keep this copy for your records. You can reopen it on the same browser.</p>
+        </div>
+        <button type="button" onClick={() => window.print()} className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-semibold print:hidden">Print or save as PDF</button>
+      </div>
+      <dl className="mt-4 divide-y divide-slate-200">
+        {receipt.competitions.map(({ name, groups }, index) => (
+          <div key={index} className="py-3 sm:grid sm:grid-cols-[1fr_1fr] sm:gap-4">
+            <dt className="font-semibold text-slate-900">{name}</dt>
+            <dd className="mt-1 text-sm text-slate-700 sm:mt-0">
+              {groups.length ? <ul>{groups.map((group, index) => <li key={index}>{group.join(" & ")}</li>)}</ul> : "No entry"}
+            </dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
 
 export default function PublicCompetitionEntryPage() {
   const [teams, setTeams] = useState<Team[]>([]);
@@ -19,7 +44,7 @@ export default function PublicCompetitionEntryPage() {
   const [contactPhone, setContactPhone] = useState("");
   const [selections, setSelections] = useState<PublicCompetitionSelection[]>([]);
   const [draftToken, setDraftToken] = useState("");
-  const [status, setStatus] = useState<"draft" | "submitted">("draft");
+  const [receipt, setReceipt] = useState<PublicCompetitionReceipt | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
@@ -37,10 +62,11 @@ export default function PublicCompetitionEntryPage() {
       const base = await fetch(`/api/public/competition-entry-form?draftToken=${stored}`, { cache: "no-store" });
       const result = await base.json();
       if (!base.ok) return setMessage(result.error ?? "Form could not be loaded.");
+      if (result.receipt) return setReceipt(result.receipt);
       setTeams(result.teams ?? []); setCompetitions(result.competitions ?? []);
       const savedTeam = result.draft?.team_id ?? "";
       const savedContactName = result.draft?.contact_name ?? "";
-      setTeamId(savedTeam); setContactName(savedContactName); setContactPhone(result.draft?.contact_phone ?? ""); setStatus(result.draft?.status ?? "draft");
+      setTeamId(savedTeam); setContactName(savedContactName); setContactPhone(result.draft?.contact_phone ?? "");
       setSelections(mergeSelections(result.competitions ?? [], result.draft?.selections ?? []));
       if (savedTeam) {
         const roster = await fetch(`/api/public/competition-entry-form?teamId=${savedTeam}`, { cache: "no-store" });
@@ -83,15 +109,15 @@ export default function PublicCompetitionEntryPage() {
     const response = await fetch("/api/public/competition-entry-form", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, draftToken, teamId, contactName, contactPhone, selections }) });
     const result = await response.json(); setBusy(false);
     if (!response.ok) return setMessage(result.error ?? "Form could not be saved.");
-    if (action === "submit") setStatus("submitted");
+    if (action === "submit" && result.receipt) setReceipt(result.receipt);
     setMessage(action === "submit" ? `Competition entries submitted successfully${result.created ? ` (${result.created} sent for approval)` : ""}.` : "Draft saved privately. Return on this browser to continue.");
   };
 
   return <main className="min-h-screen bg-slate-100 p-3 sm:p-6"><div className="mx-auto max-w-5xl space-y-4">
     <header className="rounded-3xl bg-gradient-to-r from-slate-950 via-teal-950 to-slate-900 p-6 text-white shadow-xl"><p className="text-xs font-bold uppercase tracking-[.2em] text-teal-300">Rack &amp; Frame</p><h1 className="mt-2 text-3xl font-black">Competition Entry Form</h1><p className="mt-2 text-slate-300">One form for every team. Select your team, complete each competition and save as often as needed.</p></header>
-    <p className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">Captains submit one form per team. For doubles and three-player events, choose the first player from your team and any partners from the same club. Partners can play for different teams or divisions.</p>
-    {message ? <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-semibold text-sky-900">{message}</div> : null}
-    {status === "submitted" ? <section className="rounded-2xl border border-emerald-300 bg-emerald-50 p-5 text-emerald-900"><h2 className="font-bold">Form submitted</h2><p className="mt-1 text-sm">The entries are now awaiting league-officer approval.</p></section> : loading ? <p>Loading competitions…</p> : competitions.length === 0 ? <p className="rounded-2xl bg-white p-5">Competition entries are currently closed.</p> : <>
+    <p className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700 print:hidden">Captains submit one form per team. For doubles and three-player events, choose the first player from your team and any partners from the same club. Partners can play for different teams or divisions.</p>
+    {message ? <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-semibold text-sky-900 print:hidden">{message}</div> : null}
+    {receipt ? <SubmittedEntries receipt={receipt} /> : loading ? <p>Loading competitions…</p> : competitions.length === 0 ? <p className="rounded-2xl bg-white p-5">Competition entries are currently closed.</p> : <>
       <section className="rounded-2xl border border-slate-200 bg-white p-5"><h2 className="text-xl font-bold">1. Team and contact</h2><div className="mt-3 grid gap-3 md:grid-cols-3"><label className="text-sm font-bold">Team *<select value={teamId} onChange={(event) => void changeTeam(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 font-normal"><option value="">Select your team…</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label><label className="text-sm font-bold">Captain / contact name *<input value={contactName} onChange={(event) => setContactName(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 font-normal" /></label><label className="text-sm font-bold">Telephone *<input type="tel" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 font-normal" /></label></div>{teamId && players.length === 0 ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">This team has no registered players yet. Complete and approve its league welcome pack before entering competitions.</p> : null}</section>
       <section className="rounded-2xl border border-slate-200 bg-white p-5"><div className="flex items-center justify-between gap-3"><div><h2 className="text-xl font-bold">2. Competition entries</h2><p className="text-sm text-slate-600">Choose Enter or No entry for every competition.</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold">{complete}/{competitions.length} completed</span></div><div className="mt-4 space-y-4">{competitions.map((competition) => { const selection = selections.find((item) => item.competitionId === competition.id); if (!selection) return null; const required = entrantsRequired(competition); const ageRule = competitionAgeRule(competition.name); const ageRestricted = ageRule.minimum !== null || ageRule.maximum !== null; return <article key={competition.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><h3 className="font-bold">{competition.name}</h3><p className="text-xs text-slate-500">{required === 1 ? "Singles" : required === 2 ? "Doubles" : "Three-player team"}{competition.signup_deadline ? ` · closes ${competitionDeadlineLabel(competition.signup_deadline)}` : ""} (UK time)</p>{usesFixedCompetitionHandicaps(competition.name) ? <p className="mt-2 text-sm text-teal-900">Handicaps are set when entries close and stay fixed throughout. Division One players use their Elo-suggested handicap plus 8 points. Premier players use their published handicap.</p> : null}<select value={selection.decision} onChange={(event) => update(competition.id, (current) => ({ ...current, decision: event.target.value as PublicCompetitionSelection["decision"], entries: event.target.value === "enter" ? (current.entries.length ? current.entries : [makeEntry(required)]) : [] }))} className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"><option value="pending">Choose…</option><option value="enter">Enter player(s)</option><option value="no_entry">No entry</option></select>{selection.decision === "enter" ? <div className="mt-3 space-y-3">{selection.entries.map((entry, entryIndex) => {
           const ageEligibility = players.find((player) => player.id === entry.playerIds[0])?.ageEligibility?.[competition.id];

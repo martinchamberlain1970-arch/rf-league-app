@@ -77,3 +77,33 @@ export function validatePublicSelections(
   }
   return null;
 }
+
+export type PublicCompetitionReceipt = {
+  teamName: string;
+  submittedAt: string | null;
+  competitions: Array<{
+    name: string;
+    groups: string[][];
+  }>;
+};
+
+export function competitionEntryReceipt(
+  teamName: string,
+  submittedAt: string | null,
+  selections: PublicCompetitionSelection[],
+  competitionNames: ReadonlyMap<string, string>,
+  playerNames: ReadonlyMap<string, string>,
+): PublicCompetitionReceipt {
+  return {
+    teamName,
+    submittedAt,
+    competitions: selections
+      .filter(({ decision }) => decision === "enter" || decision === "no_entry")
+      .map(({ competitionId, decision, entries }) => ({
+        name: competitionNames.get(competitionId) ?? "Competition details unavailable",
+        groups: decision === "enter"
+          ? entries.map(({ playerIds }) => playerIds.map((id) => playerNames.get(id) ?? "Player name unavailable"))
+          : [],
+      })),
+  };
+}

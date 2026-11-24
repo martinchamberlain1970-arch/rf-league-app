@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { competitionEntriesOpen } from "@/lib/fixed-competition-handicaps";
-import { ageFromDob, competitionAgeRule, meetsCompetitionAgeRule, validatePublicSelections, type PublicCompetition, type PublicCompetitionPartner, type PublicCompetitionPlayer, type PublicCompetitionSelection } from "@/lib/public-competition-entry";
+import { ageFromDob, competitionAgeRule, competitionEntryReceipt, meetsCompetitionAgeRule, validatePublicSelections, type PublicCompetition, type PublicCompetitionPartner, type PublicCompetitionPlayer, type PublicCompetitionSelection } from "@/lib/public-competition-entry";
 
 export const dynamic = "force-dynamic";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -87,19 +87,41 @@ async function formData(client: SupabaseClient, teamId?: string) {
   };
 }
 
+async function loadReceipt(client: SupabaseClient, teamId: string, submittedAt: string | null, selections: PublicCompetitionSelection[]) {
+  const competitionIds = [...new Set(selections.map((selection) => selection.competitionId))];
+  const playerIds = [...new Set(selections.flatMap((selection) => selection.entries.flatMap((entry) => entry.playerIds)).filter(Boolean))];
+  const [team, competitions, players] = await Promise.all([
+    client.from("league_teams").select("name").eq("id", teamId).maybeSingle(),
+    competitionIds.length ? client.from("competitions").select("id,name").in("id", competitionIds) : null,
+    playerIds.length ? client.from("players").select("id,full_name,display_name").in("id", playerIds) : null,
+  ]);
+  if (team.error || competitions?.error || players?.error) throw new Error("The submitted entries could not be loaded. Refresh to try again.");
+  return competitionEntryReceipt(
+    team.data?.name ?? "Team",
+    submittedAt,
+    selections,
+    new Map((competitions?.data ?? []).map(({ id, name }) => [id, name])),
+    new Map((players?.data ?? []).map(({ id, full_name, display_name }) => [id, full_name?.trim() || display_name])),
+  );
+}
+
 export async function GET(req: NextRequest) {
   if (!url || !key) return NextResponse.json({ error: "Server is not configured." }, { status: 500, headers });
   try {
     const client = createClient(url, key);
     const teamId = req.nextUrl.searchParams.get("teamId")?.trim() || undefined;
     const draftToken = req.nextUrl.searchParams.get("draftToken")?.trim() || "";
-    const { data } = await formData(client, teamId);
     let draft = null;
     if (/^[a-f0-9]{48}$/i.test(draftToken)) {
-      const draftRes = await client.from("public_competition_entry_drafts").select("draft_token,season_id,team_id,contact_name,contact_phone,selections,status,submitted_at,updated_at").eq("draft_token", draftToken).maybeSingle();
+      const draftRes = await client.from("public_competition_entry_drafts").select("team_id,contact_name,contact_phone,selections,status,submitted_at").eq("draft_token", draftToken).maybeSingle();
       if (draftRes.error) throw new Error(draftRes.error.message);
       draft = draftRes.data;
     }
+    if (draft?.status === "submitted") {
+      const receipt = await loadReceipt(client, draft.team_id, draft.submitted_at, draft.selections as PublicCompetitionSelection[]);
+      return NextResponse.json({ receipt }, { headers });
+    }
+    const { data } = await formData(client, teamId);
     return NextResponse.json({ ...data, draft }, { headers });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Form could not be loaded." }, { status: 400, headers });
@@ -139,40 +161,45 @@ export async function POST(req: NextRequest) {
         : entry),
     }));
     const values = { draft_token: draftToken, season_id: team.season_id, team_id: teamId, contact_name: contactName || null, contact_phone: contactPhone || null, selections: draftSelections, status: "draft", submitted_at: null, updated_at: now };
-    let created = 0;
     if (action === "save") {
       const writeRes = existingRes.data
         ? await client.from("public_competition_entry_drafts").update(values).eq("id", existingRes.data.id).eq("status", "draft").select("id").maybeSingle()
         : await client.from("public_competition_entry_drafts").insert(values).select("id").single();
       if (writeRes.error) throw new Error(writeRes.error.message);
       if (!writeRes.data) throw new Error("This competition form has already been submitted.");
-    } else {
-      const teamPlayers = new Map(data.players.map((player) => [player.id, player]));
-      const partnerNames = new Map(data.partners.map((player) => [player.id, player.name]));
-      const entries = draftSelections.filter((item) => item.decision === "enter").flatMap((selection) =>
-        selection.entries.map((entry) => {
-          const [primary, ...teammates] = entry.playerIds;
-          return {
-            competition_id: selection.competitionId,
-            player_id: primary,
-            entrant_date_of_birth: teamPlayers.get(primary)?.ageEligibility[selection.competitionId] === "eligible"
-              ? registeredDobs.get(primary)
-              : entry.entrantDateOfBirth || null,
-            note: {
-              source: "public_team_competition_form",
-              draftToken,
-              teamId,
-              teamMemberIds: teammates,
-              teamMemberNames: teammates.map((id) => partnerNames.get(id) ?? ""),
-            },
-          };
-        }),
-      );
-      const submit = await client.rpc("submit_public_competition_form", { p_form: values, p_entries: entries });
-      if (submit.error) throw new Error(submit.error.message);
-      created = submit.data ?? 0;
+      return NextResponse.json({ ok: true, status: "draft" }, { headers });
     }
-    return NextResponse.json({ ok: true, status: action === "submit" ? "submitted" : "draft", created }, { headers });
+    const teamPlayers = new Map(data.players.map((player) => [player.id, player]));
+    const partnerNames = new Map(data.partners.map((player) => [player.id, player.name]));
+    const entries = draftSelections.filter((item) => item.decision === "enter").flatMap((selection) =>
+      selection.entries.map((entry) => {
+        const [primary, ...teammates] = entry.playerIds;
+        return {
+          competition_id: selection.competitionId,
+          player_id: primary,
+          entrant_date_of_birth: teamPlayers.get(primary)?.ageEligibility[selection.competitionId] === "eligible"
+            ? registeredDobs.get(primary)
+            : entry.entrantDateOfBirth || null,
+          note: {
+            source: "public_team_competition_form",
+            draftToken,
+            teamId,
+            teamMemberIds: teammates,
+            teamMemberNames: teammates.map((id) => partnerNames.get(id) ?? ""),
+          },
+        };
+      }),
+    );
+    const submit = await client.rpc("submit_public_competition_form", { p_form: values, p_entries: entries });
+    if (submit.error) throw new Error(submit.error.message);
+    const receipt = competitionEntryReceipt(
+      team.name,
+      now,
+      draftSelections,
+      new Map(data.competitions.map(({ id, name }) => [id, name])),
+      partnerNames,
+    );
+    return NextResponse.json({ ok: true, status: "submitted", created: submit.data ?? 0, receipt }, { headers });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Form could not be saved." }, { status: 400, headers });
   }
