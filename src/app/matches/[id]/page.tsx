@@ -9,6 +9,7 @@ import MessageModal from "@/components/MessageModal";
 import InfoModal from "@/components/InfoModal";
 import { competitionDeadlineLabel, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
 import { supabase } from "@/lib/supabase";
+import { isHodgeCup, scoreHodgeCup, type HodgeSide } from "@/lib/hodge-score";
 import useAdminStatus from "@/components/useAdminStatus";
 
 type MatchRow = {
@@ -67,6 +68,7 @@ export default function MatchPage() {
   const [info, setInfo] = useState<{ title: string; description: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
+  const [hodgeBlackWinners, setHodgeBlackWinners] = useState<Array<HodgeSide | null>>([null, null, null]);
   const [winnerSide, setWinnerSide] = useState<"home" | "away">("home");
   const [homeScore, setHomeScore] = useState("0");
   const [awayScore, setAwayScore] = useState("0");
@@ -120,7 +122,10 @@ export default function MatchPage() {
       if (mRes.data.competition_id) {
         const cRes = await client.from("competitions").select("id,name,sport_type").eq("id", mRes.data.competition_id).maybeSingle();
         if (!active) return;
-        if (cRes.data) setCompetition(cRes.data as CompetitionRow);
+        if (cRes.data) {
+          setCompetition(cRes.data as CompetitionRow);
+          if (isHodgeCup(cRes.data.name)) setFrameScores(Array.from({ length: 6 }, () => ({ home: "", away: "" })));
+        }
       }
 
       if (admin.userId) {
@@ -171,6 +176,7 @@ export default function MatchPage() {
   }, [matchId, usesFixedHandicap, admin.userId]);
 
   const playerById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
+  const isHodge = isHodgeCup(competition?.name);
   const isAlbery = Boolean(competition && isAlberyCompetitionName(competition.name));
   const isHamilton = Boolean(
     competition &&
@@ -179,7 +185,7 @@ export default function MatchPage() {
         competition.name === "Hamilton Cup (Billiards Singles)" ||
         competition.name.startsWith("Hamilton Cup (Billiards Singles) - "))
   );
-  const isLocked = match?.status === "complete";
+  const isLocked = match?.status === "complete" || match?.status === "bye";
   const participants = useMemo(
     () =>
       new Set(
@@ -259,16 +265,22 @@ export default function MatchPage() {
       setMessage("Only match participants or league officers can submit this result.");
       return;
     }
+    const frames = frameScores.flatMap(({ home, away }, index) => {
+      if (!home.trim() && !away.trim()) return [];
+      return [{ frameNo: index + 1, home: home.trim() ? Number(home) : NaN, away: away.trim() ? Number(away) : NaN }];
+    });
     if (isHamilton) {
       const h = Number(homeScore);
       const a = Number(awayScore);
-      if (!Number.isFinite(h) || !Number.isFinite(a) || h < 0 || a < 0) return setMessage("Enter valid scores.");
-      if (h === a) return setMessage("Scores cannot be tied.");
+      if (!Number.isSafeInteger(h) || !Number.isSafeInteger(a) || h < 0 || a < 0) return setMessage("Enter valid scores.");
+    } else if (isHodge) {
+      const points = scoreHodgeCup(frames, hodgeBlackWinners);
+      if ("error" in points) return setMessage(points.error ?? "Check the Hodge frame scores.");
     } else {
-      const played = frameScores
-        .map((fr, i) => ({ i, h: Number(fr.home), a: Number(fr.away) }))
-        .filter((r) => Number.isFinite(r.h) && Number.isFinite(r.a) && (String(frameScores[r.i].home).trim() !== "" || String(frameScores[r.i].away).trim() !== ""));
-      if (played.length === 0) return setMessage("Enter frame-by-frame scores.");
+      const played = frames.map(({ frameNo, home, away }) => ({ frameNo, h: home, a: away }));
+      if (!played.length || played.some(({ frameNo, h, a }, index) =>
+        frameNo !== index + 1 || !Number.isSafeInteger(h) || !Number.isSafeInteger(a)
+      )) return setMessage("Enter both scores for each frame in order.");
       let homeWins = 0;
       let awayWins = 0;
       for (const p of played) {
@@ -291,15 +303,8 @@ export default function MatchPage() {
       winnerSide,
       homeScore: Number(homeScore),
       awayScore: Number(awayScore),
-      frameResults: !isHamilton
-        ? frameScores
-            .map((fr, idx) => ({
-              frameNo: idx + 1,
-              home: Number(fr.home),
-              away: Number(fr.away),
-            }))
-            .filter((fr, idx) => Number.isFinite(fr.home) && Number.isFinite(fr.away) && (String(frameScores[idx].home).trim() !== "" || String(frameScores[idx].away).trim() !== ""))
-        : undefined,
+      frameResults: isHamilton ? undefined : frames,
+      ...(isHodge ? { hodgeBlackWinners } : {}),
       breakEntries: mappedBreakEntries,
     });
   };
@@ -399,7 +404,7 @@ export default function MatchPage() {
                 <p className="mt-1">Fixed at ${competitionDeadlineLabel(handicap.lockedAt)} UK time. Enter final scoreboard totals including the start.</p>
               </> : <p className="mt-1">{handicap?.reason ?? "Loading the fixed handicaps…"}</p>}
             </div> : null}
-            {isLocked ? <p className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">This match is complete and locked.</p> : null}
+            {isLocked ? <p className="mt-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-800">{match?.status === "bye" ? "First-round bye. No scorecard is needed." : "This match is complete and locked."}</p> : null}
             {latestSubmission?.status === "pending" ? (
               <p className="mt-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                 Result submission pending review. Editing is locked until reviewed.
@@ -503,8 +508,11 @@ export default function MatchPage() {
               ) : (
                 <form className="space-y-3" onSubmit={submitStandard}>
                   <p className="text-sm font-semibold text-slate-900">
-                    {isHamilton ? "Final points submission" : `Frame-by-frame submission (best of ${match?.best_of ?? 1})`}
+                    {isHamilton ? "Final points submission" : isHodge ? "Hodge Cup scorecard" : `Frame-by-frame submission (best of ${match?.best_of ?? 1})`}
                   </p>
+                  {isHodge ? (
+                    <p className="text-sm text-slate-600">Enter six frame scores. The app awards one point per frame and a bonus point for each aggregate pairing (1 and 4, 2 and 5, 3 and 6).</p>
+                  ) : null}
                   {isHamilton ? (
                     <>
                       <div className="grid gap-2 sm:grid-cols-2">
@@ -551,6 +559,29 @@ export default function MatchPage() {
                       ))}
                     </div>
                   )}
+                  {isHodge ? [0, 1, 2].map((index) => {
+                    const first = frameScores[index];
+                    const second = frameScores[index + 3];
+                    if (!first || !second || ![first.home, first.away, second.home, second.away].every((value) => value.trim())) return null;
+                    if (Number(first.home) + Number(second.home) !== Number(first.away) + Number(second.away)) return null;
+                    return (
+                      <label key={index} className="block text-sm font-semibold text-slate-700">
+                        Frames {index + 1} and {index + 4} are level. Who won the respotted black?
+                        <select
+                          value={hodgeBlackWinners[index] ?? ""}
+                          onChange={(event) => {
+                            const winner = event.target.value === "home" || event.target.value === "away" ? event.target.value : null;
+                            setHodgeBlackWinners((current) => current.map((side, slot) => slot === index ? winner : side));
+                          }}
+                          className="mt-1 block w-full rounded-xl border border-slate-300 px-3 py-2"
+                        >
+                          <option value="">Select winner</option>
+                          <option value="home">{homeLabel}</option>
+                          <option value="away">{awayLabel}</option>
+                        </select>
+                      </label>
+                    );
+                  }) : null}
                   <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <p className="text-sm font-semibold text-slate-900">High breaks (30+)</p>
                     <div className="mt-2 space-y-2">

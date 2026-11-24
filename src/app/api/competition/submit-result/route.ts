@@ -3,6 +3,7 @@ import { createClient } from "@supabase/supabase-js";
 import { fixedHandicapsForMatch } from "@/lib/fixed-competition-handicaps-server";
 import { usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
 import { sendPushToLeagueManagers } from "@/lib/push-server";
+import { isHodgeCup, scoreHodgeCup, type HodgeSide } from "@/lib/hodge-score";
 import { canManageLeagueRole } from "@/lib/app-roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -15,6 +16,7 @@ type SubmitPayload = {
   winnerSide: "home" | "away";
   homeScore?: number;
   awayScore?: number;
+  hodgeBlackWinners?: Array<HodgeSide | null>;
   frameResults?: Array<{ frameNo?: number; home: number; away: number }>;
   breakEntries?: Array<{ player_id?: string | null; entered_player_name?: string | null; break_value: number }>;
   albery?: {
@@ -52,8 +54,9 @@ export async function POST(req: NextRequest) {
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
   const matchRes = await adminClient
     .from("matches")
-    .select("id,competition_id,status,round_no,player1_id,player2_id,team1_player1_id,team1_player2_id,team2_player1_id,team2_player2_id")
+    .select("id,competition_id,status,round_no,best_of,player1_id,player2_id,team1_player1_id,team1_player2_id,team2_player1_id,team2_player2_id")
     .eq("id", matchId)
+    .eq("is_archived", false)
     .maybeSingle();
   if (matchRes.error || !matchRes.data) return NextResponse.json({ error: "Match not found." }, { status: 404 });
   const match = matchRes.data as {
@@ -61,6 +64,7 @@ export async function POST(req: NextRequest) {
     competition_id: string | null;
     status: string;
     round_no: number | null;
+    best_of: number | null;
     player1_id: string | null;
     player2_id: string | null;
     team1_player1_id: string | null;
@@ -70,7 +74,7 @@ export async function POST(req: NextRequest) {
   };
 
   if (!match.competition_id) return NextResponse.json({ error: "This match is not linked to a competition." }, { status: 400 });
-  if (match.status === "complete") return NextResponse.json({ error: "This match is already complete and locked." }, { status: 400 });
+  if (match.status !== "pending" && match.status !== "in_progress") return NextResponse.json({ error: "This match is locked for scoring." }, { status: 400 });
 
   const competitionRes = await adminClient
     .from("competitions")
@@ -80,13 +84,14 @@ export async function POST(req: NextRequest) {
   if (competitionRes.error || !competitionRes.data) return NextResponse.json({ error: "Competition not found." }, { status: 404 });
   const competition = competitionRes.data as { id: string; name: string; best_of: number };
   const isAlbery = isAlberyName(competition.name);
+  const isHodge = isHodgeCup(competition.name);
   const isHamilton =
     competition.name === "Hamilton Cup (Singles Billiards)" ||
     competition.name.startsWith("Hamilton Cup (Singles Billiards) - ") ||
     competition.name === "Hamilton Cup (Billiards Singles)" ||
     competition.name.startsWith("Hamilton Cup (Billiards Singles) - ");
-  if (isAlbery && mode !== "albery") {
-    return NextResponse.json({ error: "Albery Cup requires Albery-format submission." }, { status: 400 });
+  if (isAlbery !== (mode === "albery")) {
+    return NextResponse.json({ error: "Use the scorecard format for this competition." }, { status: 400 });
   }
 
   const appUserRes = await adminClient.from("app_users").select("linked_player_id,role").eq("id", authData.user.id).maybeSingle();
@@ -126,27 +131,39 @@ export async function POST(req: NextRequest) {
     let derivedWinnerSide: "home" | "away" = winnerSide;
     let homeScore = Number(body.homeScore ?? 0);
     let awayScore = Number(body.awayScore ?? 0);
-    if (frameRows.length > 0) {
+    if (isHodge) {
+      if (frameRows.some((frame, index) => !frame || (frame.frameNo !== undefined && frame.frameNo !== index + 1))) {
+        return NextResponse.json({ error: "Enter Hodge Cup frames in order from 1 to 6." }, { status: 400 });
+      }
+      const points = scoreHodgeCup(frameRows, Array.isArray(body.hodgeBlackWinners) ? body.hodgeBlackWinners : []);
+      if ("error" in points) return NextResponse.json({ error: points.error }, { status: 400 });
+      homeScore = points.home;
+      awayScore = points.away;
+      derivedWinnerSide = points.winnerSide;
+    } else if (frameRows.length > 0) {
+      if (isHamilton) return NextResponse.json({ error: "Enter final points for the Hamilton Cup." }, { status: 400 });
       let homeWins = 0;
       let awayWins = 0;
-      for (const fr of frameRows) {
-        const h = Number(fr.home ?? 0);
-        const a = Number(fr.away ?? 0);
-        if (!Number.isFinite(h) || !Number.isFinite(a) || h < 0 || a < 0) {
-          return NextResponse.json({ error: "Enter valid frame scores." }, { status: 400 });
+      const winsNeeded = Math.floor(Math.max(1, Number(match.best_of ?? competition.best_of ?? 1)) / 2) + 1;
+      for (const [index, frame] of frameRows.entries()) {
+        if (!frame || (frame.frameNo !== undefined && frame.frameNo !== index + 1)) {
+          return NextResponse.json({ error: "Enter frame scores in order without gaps." }, { status: 400 });
         }
-        if (h === a) return NextResponse.json({ error: "Frame scores cannot be tied." }, { status: 400 });
-        if (h > a) homeWins += 1;
+        const { home, away } = frame;
+        if (!Number.isSafeInteger(home) || !Number.isSafeInteger(away) || home < 0 || away < 0 || home === away) {
+          return NextResponse.json({ error: "Enter two different, valid scores for each frame." }, { status: 400 });
+        }
+        if (homeWins === winsNeeded || awayWins === winsNeeded) {
+          return NextResponse.json({ error: "Remove any frames entered after the winning frame." }, { status: 400 });
+        }
+        if (home > away) homeWins += 1;
         else awayWins += 1;
       }
       homeScore = homeWins;
       awayScore = awayWins;
       derivedWinnerSide = homeWins > awayWins ? "home" : "away";
-    } else {
-      if (!Number.isFinite(homeScore) || !Number.isFinite(awayScore) || homeScore < 0 || awayScore < 0) {
-        return NextResponse.json({ error: "Enter valid scores." }, { status: 400 });
-      }
-      if (homeScore === awayScore) return NextResponse.json({ error: "Scores cannot be tied." }, { status: 400 });
+    } else if (!Number.isSafeInteger(homeScore) || !Number.isSafeInteger(awayScore) || homeScore < 0 || awayScore < 0) {
+      return NextResponse.json({ error: "Enter valid scores." }, { status: 400 });
     }
     if (isHamilton) {
       if (!match.player1_id || !match.player2_id) {
@@ -154,16 +171,13 @@ export async function POST(req: NextRequest) {
       }
       const maxRoundRes = await adminClient
         .from("matches")
-        .select("round_no")
+        .select("round_no,match_no")
         .eq("competition_id", competition.id)
         .eq("is_archived", false);
       if (maxRoundRes.error) return NextResponse.json({ error: maxRoundRes.error.message }, { status: 400 });
-      const maxRound = Math.max(
-        1,
-        ...((maxRoundRes.data ?? [])
-          .map((r) => Number(r.round_no ?? 1))
-          .filter((n) => Number.isFinite(n)) as number[])
-      );
+      const bracket = maxRoundRes.data ?? [];
+      const firstRoundSlots = Math.max(1, ...bracket.filter((row) => (row.round_no ?? 1) === 1).map((row) => Number(row.match_no ?? 1)));
+      const maxRound = Math.max(1 + Math.ceil(Math.log2(firstRoundSlots)), ...bracket.map((row) => Number(row.round_no ?? 1)));
       const isSemiOrFinal = (match.round_no ?? 1) >= Math.max(1, maxRound - 1);
       const base = isSemiOrFinal ? 400 : 200;
       const handicapMultiplier = isSemiOrFinal ? 2 : 1;
@@ -173,10 +187,12 @@ export async function POST(req: NextRequest) {
         .select("id,snooker_handicap")
         .in("id", [match.player1_id, match.player2_id]);
       if (hcpRes.error) return NextResponse.json({ error: hcpRes.error.message }, { status: 400 });
-      const hcpById = new Map((hcpRes.data ?? []).map((r: any) => [r.id, Number(r.snooker_handicap ?? 0)]));
+      const hcpById = new Map((hcpRes.data ?? []).map((r) => [r.id, Number(r.snooker_handicap ?? 0)]));
       const homeTarget = base + (hcpById.get(match.player1_id) ?? 0) * handicapMultiplier;
       const awayTarget = base + (hcpById.get(match.player2_id) ?? 0) * handicapMultiplier;
       const winnerScore = derivedWinnerSide === "home" ? homeScore : awayScore;
+      const otherScore = derivedWinnerSide === "home" ? awayScore : homeScore;
+      const otherTarget = derivedWinnerSide === "home" ? awayTarget : homeTarget;
       const winnerTarget = derivedWinnerSide === "home" ? homeTarget : awayTarget;
       if (winnerScore < winnerTarget) {
         return NextResponse.json(
@@ -184,8 +200,12 @@ export async function POST(req: NextRequest) {
           { status: 400 }
         );
       }
-    } else {
-      const winsNeeded = Math.floor(Math.max(1, Number(competition.best_of || 1)) / 2) + 1;
+      if (otherScore >= otherTarget) {
+        return NextResponse.json({ error: "Only the winner can reach their Hamilton Cup target." }, { status: 400 });
+      }
+    } else if (!isHodge) {
+      const winsNeeded = Math.floor(Math.max(1, Number(match.best_of ?? competition.best_of ?? 1)) / 2) + 1;
+      derivedWinnerSide = homeScore > awayScore ? "home" : "away";
       const winnerScore = derivedWinnerSide === "home" ? homeScore : awayScore;
       const loserScore = derivedWinnerSide === "home" ? awayScore : homeScore;
       if (winnerScore !== winsNeeded || loserScore >= winsNeeded) {
@@ -263,6 +283,7 @@ export async function POST(req: NextRequest) {
         entered_player_name: br?.entered_player_name ?? null,
         break_value: Number(br?.break_value ?? 0),
       })),
+      ...(isHodge ? { hodgeBlackWinners: body.hodgeBlackWinners ?? [] } : {}),
       albery: body.albery ?? null,
     },
     status: "pending",
