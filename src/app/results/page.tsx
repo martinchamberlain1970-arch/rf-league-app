@@ -61,7 +61,8 @@ type CompetitionSubmission = {
   rejection_reason?: string | null;
   payload?: {
     mode?: "standard" | "albery";
-    source?: "private_scorecard_link";
+    source?: "private_scorecard_link" | "public_winner_scorecard";
+    declaredWinnerPlayerId?: string;
     winnerSide?: "home" | "away";
     homeScore?: number | null;
     awayScore?: number | null;
@@ -863,7 +864,14 @@ function ResultsQueuePageContent() {
             <article key={s.id} className={itemClass}>
               <p className="text-sm font-semibold text-slate-900">{compName}</p>
               <p className="text-sm text-slate-700">{competitionMatchLabel(match)}</p>
-              <p className="text-xs text-slate-600">{detail}{s.payload?.source === "private_scorecard_link" ? " · Private scorecard link" : ""}</p>
+              <p className="text-xs text-slate-600">{detail}</p>
+              {s.payload?.declaredWinnerPlayerId ? (
+                <p className="mt-1 text-xs text-slate-600">
+                  Public scorecard · Submitted as {named(playerById.get(s.payload.declaredWinnerPlayerId))} (self-declared)
+                </p>
+              ) : s.payload?.source === "private_scorecard_link" ? (
+                <p className="mt-1 text-xs text-slate-600">Private scorecard link</p>
+              ) : null}
               <div className="mt-2 flex flex-wrap items-center gap-2">
                 <Link href={`/matches/${s.match_id}`} className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs text-slate-700 hover:bg-slate-50">
                   Open match entry

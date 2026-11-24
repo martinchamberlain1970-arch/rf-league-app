@@ -38,7 +38,7 @@ function scorecard(name, { bestOf = 5, round = 1, status = "pending", linkAvaila
         eq: () => query,
         maybeSingle: async () => ({
           data: table === "matches" ? match :
-            table === "competitions" ? { id: "cup", name, best_of: 3 } : { role: "user", linked_player_id: "home" },
+            table === "competitions" ? { id: "cup", name, best_of: 3, competition_format: "knockout" } : { role: "user", linked_player_id: "home" },
         }),
         in: async () => ({ data: [{ id: "home", snooker_handicap: -20 }, { id: "away", snooker_handicap: 20 }] }),
         limit: async () => ({ data: [] }),
@@ -57,7 +57,7 @@ function scorecard(name, { bestOf = 5, round = 1, status = "pending", linkAvaila
     "@/lib/hodge-score": hodge,
     "@/lib/competition-scorecard-links": {
       scorecardTokenHash: (token) => token,
-      scorecardPlayerIds: (row) => [row.player1_id, row.player2_id],
+      scorecardSides: async (client, row) => ({ home: [row.player1_id], away: [row.player2_id] }),
       hasScorecardOpponents: (row) => Boolean(row.player1_id && row.player2_id),
       findScorecardLink: async () => linkAvailable && !linkUsed ? "match" : undefined,
       scorecardMatchFields: "*",
@@ -98,7 +98,7 @@ test("Hodge counts six frames and three aggregate points, including a respotted 
   const frames = [frame(65, 45), frame(75, 25), frame(20, 60), frame(40, 60), frame(35, 50), frame(65, 59)];
   assert.equal((await cup.post({ frameResults: frames.slice(0, 5) })).status, 400);
   assert.equal((await cup.post({ frameResults: frames })).status, 400);
-  assert.equal((await cup.post({ frameResults: frames, hodgeBlackWinners: ["away", null, null] })).status, 200);
+  assert.equal((await cup.post({ frameResults: frames, declaredWinnerPlayerId: "away", hodgeBlackWinners: ["away", null, null] }, "")).status, 200);
   const { homeScore, awayScore, winnerSide } = cup.submissions[0].payload;
   assert.deepEqual([homeScore, awayScore, winnerSide], [4, 5, "away"]);
 });
@@ -128,7 +128,7 @@ const guestAuthorization = "Scorecard " + "aa".repeat(32);
 
 test("a guest link submits for only its own match without a user ID", async () => {
   const cup = scorecard("Gary Webb (Singles Scratch)", { bestOf: 1 });
-  const result = { frameResults: [homeFrame] };
+  const result = { frameResults: [homeFrame], declaredWinnerPlayerId: "home" };
   assert.equal((await cup.post({ ...result, matchId: "another-match" }, guestAuthorization)).status, 410);
   assert.equal((await cup.post({ ...result, breakEntries: [{ player_id: "unrelated-player", break_value: 34 }] }, guestAuthorization)).status, 400);
   assert.equal((await cup.post(result, guestAuthorization)).status, 200);
@@ -140,9 +140,9 @@ test("a guest link submits for only its own match without a user ID", async () =
 
 test("unavailable links and races at the database are handled without duplicate submissions", async () => {
   const name = "Gary Webb (Singles Scratch)";
-  const result = { frameResults: [homeFrame] };
+  const result = { frameResults: [homeFrame], declaredWinnerPlayerId: "home" };
   const unavailable = scorecard(name, { bestOf: 1, linkAvailable: false });
-  assert.equal((await unavailable.post(result, "")).status, 401);
+  assert.equal((await unavailable.post({ frameResults: [homeFrame] }, "")).status, 400);
   assert.equal((await unavailable.post(result, guestAuthorization)).status, 410);
   const revoked = scorecard(name, { bestOf: 1, queueStatus: "invalid_link" });
   assert.equal((await revoked.post(result, guestAuthorization)).status, 410);
@@ -250,4 +250,20 @@ test("the public picker lists only scoreable fixtures in the selected competitio
     { id: "confirmed", name: "Round 1 · Alex Example vs Sam Example" },
   ]);
   assert.ok(calls.some(([table, field, value]) => table === "matches" && field === "competition_id" && value === competitionId));
+});
+
+
+test("public scorecards require the declared winner and queue once without an account or code", async () => {
+  const result = { frameResults: [homeFrame], declaredWinnerPlayerId: "home" };
+  const cup = scorecard("Gary Webb (Singles Scratch)", { bestOf: 1 });
+  assert.equal((await cup.post({ ...result, declaredWinnerPlayerId: "away" }, "")).status, 403);
+  assert.equal((await cup.post({ ...result, declaredWinnerPlayerId: "stranger" }, "")).status, 403);
+  assert.equal((await cup.post({ ...result, frameResults: [awayFrame] })).status, 403);
+  assert.equal((await cup.post({ ...result, winnerSide: "away" }, "")).status, 200);
+  assert.equal(cup.submissions[0].payload.winnerSide, "home");
+  assert.equal(cup.submissions[0].payload.source, "public_winner_scorecard");
+  assert.equal(cup.submissions[0].payload.declaredWinnerPlayerId, "home");
+  assert.equal(cup.submissions[0].submitted_by_user_id, null);
+  assert.equal((await cup.post(result, "")).status, 409);
+  assert.equal(cup.submissions.length, 1);
 });

@@ -54,6 +54,8 @@ const named = (p?: PlayerRow | null) => (p ? (p.full_name?.trim() ? p.full_name 
 export default function CompetitionMatchScorecard({
   requestedMatchId = "", guest = false, guestToken = "", admin,
 }: { requestedMatchId?: string; guest?: boolean; guestToken?: string; admin: AdminState }) {
+  const [declaredWinnerPlayerId, setDeclaredWinnerPlayerId] = useState("");
+  const [guestSides, setGuestSides] = useState<{ home: string[]; away: string[] } | null>(null);
   const [guestAccess, setGuestAccess] = useState<{ token: string } | { error: string } | null>(null);
   const [match, setMatch] = useState<MatchRow | null>(null);
   const matchId = match?.id ?? requestedMatchId;
@@ -97,7 +99,7 @@ export default function CompetitionMatchScorecard({
       try {
         const query = requestedMatchId ? `?matchId=${encodeURIComponent(requestedMatchId)}` : "";
         const response = await fetch(`/api/public/competition-scorecard${query}`, {
-          headers: { Authorization: `Scorecard ${guestToken}` },
+          headers: guestToken ? { Authorization: `Scorecard ${guestToken}` } : undefined,
           cache: "no-store",
           signal: controller.signal,
         });
@@ -110,6 +112,7 @@ export default function CompetitionMatchScorecard({
         setMatch(matchRow);
         setCompetition(competitionRow);
         setPlayers(data.players ?? []);
+        setGuestSides(data.sides ?? null);
         setFrameScores(Array.from({ length: slots }, () => ({ home: "", away: "" })));
         if (data.handicap) setFixedHandicap({ matchId: matchRow.id, data: data.handicap });
         setGuestAccess({ token: guestToken });
@@ -234,14 +237,15 @@ export default function CompetitionMatchScorecard({
     [match]
   );
   const canSubmit = Boolean((guestAccess && "token" in guestAccess) || admin.canManageLeague || (linkedPlayerId && participants.has(linkedPlayerId)));
-  const homeLabel =
+  const guestSideLabel = (side: "home" | "away") => guestSides?.[side].map((id) => named(playerById.get(id))).join(" & ");
+  const homeLabel = guestSideLabel("home") || (
     match?.team1_player1_id || match?.team1_player2_id
       ? `${named(playerById.get(match?.team1_player1_id ?? ""))} & ${named(playerById.get(match?.team1_player2_id ?? ""))}`
-      : named(playerById.get(match?.player1_id ?? ""));
-  const awayLabel =
+      : named(playerById.get(match?.player1_id ?? "")));
+  const awayLabel = guestSideLabel("away") || (
     match?.team2_player1_id || match?.team2_player2_id
       ? `${named(playerById.get(match?.team2_player1_id ?? ""))} & ${named(playerById.get(match?.team2_player2_id ?? ""))}`
-      : named(playerById.get(match?.player2_id ?? ""));
+      : named(playerById.get(match?.player2_id ?? "")));
   const breakPlayerOptions = useMemo(() => {
     const opts: Array<{ key: string; label: string; playerId: string | null; enteredName: string | null }> = [];
     const pushPlayer = (id: string | null | undefined) => {
@@ -381,9 +385,10 @@ export default function CompetitionMatchScorecard({
   };
 
   const submitPayload = async (payload: Record<string, unknown>) => {
-    let authorization: string;
+    if (guest && !declaredWinnerPlayerId) return setMessage("Select your name before submitting the result.");
+    let authorization: string | undefined;
     if (guestAccess && "token" in guestAccess) {
-      authorization = `Scorecard ${guestAccess.token}`;
+      if (guestAccess.token) authorization = `Scorecard ${guestAccess.token}`;
     } else {
       const session = await supabase?.auth.getSession();
       const token = session?.data.session?.access_token;
@@ -396,9 +401,9 @@ export default function CompetitionMatchScorecard({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: authorization,
+          ...(authorization ? { Authorization: authorization } : {}),
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...payload, ...(guest ? { declaredWinnerPlayerId } : {}) }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -421,9 +426,9 @@ export default function CompetitionMatchScorecard({
     return (
       <main className="min-h-screen bg-slate-100 p-5">
         <section className="mx-auto max-w-xl rounded-2xl bg-white p-5">
-          <h1 className="text-xl font-bold">Private competition scorecard</h1>
+          <h1 className="text-xl font-bold">Competition scorecard</h1>
           <p className="mt-2 text-slate-700" role={guestAccess ? "alert" : "status"}>
-            {guestAccess ? guestAccess.error : "Checking your scorecard link…"}
+            {guestAccess ? guestAccess.error : "Loading the scorecard…"}
           </p>
           {guestAccess ? <a href="/competition-scorecard" className="mt-3 inline-block font-semibold text-teal-800 underline">Choose a competition and fixture</a> : null}
         </section>
@@ -437,8 +442,8 @@ export default function CompetitionMatchScorecard({
           {guest ? (
             <header className="rounded-2xl bg-slate-900 p-5 text-white">
               <p className="text-sm font-semibold text-teal-200">Rack &amp; Frame</p>
-              <h1 className="text-2xl font-bold">Private competition scorecard</h1>
-              <p className="mt-1 text-sm text-slate-200">Submit this match result for league officer approval.</p>
+              <h1 className="text-2xl font-bold">Competition scorecard</h1>
+              <p className="mt-1 text-sm text-slate-200">The winner, or one player from the winning side, submits the result for league officer approval.</p>
             </header>
           ) : <ScreenHeader title="Match Result Entry" eyebrow="Competition Match" subtitle="Submit the result for league-officer approval." />}
           <MessageModal message={message} onClose={() => setMessage(null)} />
@@ -480,6 +485,20 @@ export default function CompetitionMatchScorecard({
 
           {!guest && admin.canManageLeague && match?.competition_id && !isLocked && latestSubmission?.status !== "pending" ? (
             <CompetitionScorecardLink matchId={match.id} />
+          ) : null}
+
+          {guest && guestSides && match && !isLocked && latestSubmission?.status !== "pending" ? (
+            <section className="rounded-2xl border border-slate-200 bg-white p-4">
+              <label className="block text-sm font-semibold text-slate-900">
+                Your name
+                <select value={declaredWinnerPlayerId} onChange={(event) => setDeclaredWinnerPlayerId(event.target.value)} className="mt-1 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-base">
+                  <option value="">Select your name</option>
+                  {[...new Set([...guestSides.home, ...guestSides.away])].map((id) => (
+                    <option key={id} value={id}>{named(playerById.get(id))}</option>
+                  ))}
+                </select>
+              </label>
+            </section>
           ) : null}
 
           {match && !isLocked && latestSubmission?.status !== "pending" ? (

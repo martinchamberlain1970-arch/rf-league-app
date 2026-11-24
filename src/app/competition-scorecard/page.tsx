@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import CompetitionScorecardPicker from "@/components/CompetitionScorecardPicker";
 
 export const metadata: Metadata = {
-  title: "Private competition scorecard",
+  title: "Competition results",
   referrer: "no-referrer",
   robots: { index: false, follow: false },
 };

@@ -4,7 +4,7 @@ import { fixedHandicapsForMatch } from "@/lib/fixed-competition-handicaps-server
 import { usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
 import { sendPushToLeagueManagers } from "@/lib/push-server";
 import { isHodgeCup, scoreHodgeCup, type HodgeSide } from "@/lib/hodge-score";
-import { findScorecardLink, hasScorecardOpponents, scorecardMatchFields, scorecardPlayerIds, scorecardTokenHash } from "@/lib/competition-scorecard-links";
+import { findScorecardLink, hasScorecardOpponents, scorecardMatchFields, scorecardSides, scorecardTokenHash } from "@/lib/competition-scorecard-links";
 import { canManageLeagueRole } from "@/lib/app-roles";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -15,6 +15,7 @@ type SubmitPayload = {
   matchId: string;
   mode: "standard" | "albery";
   winnerSide: "home" | "away";
+  declaredWinnerPlayerId?: string;
   homeScore?: number;
   awayScore?: number;
   hodgeBlackWinners?: Array<HodgeSide | null>;
@@ -41,7 +42,7 @@ export async function POST(req: NextRequest) {
   const tokenHash = guestToken ? scorecardTokenHash(guestToken) : null;
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
   let userId: string | null = null;
-  if (!tokenHash) {
+  if (authorization && !tokenHash) {
     const token = authorization.match(/^Bearer (\S+)$/i)?.[1];
     if (!token) return NextResponse.json({ error: "Sign in or open a valid private scorecard link." }, { status: 401 });
     const { data: authData, error: authError } = await createClient(supabaseUrl, supabaseAnonKey).auth.getUser(token);
@@ -50,6 +51,9 @@ export async function POST(req: NextRequest) {
   }
 
   const body = (await req.json().catch(() => ({}))) as SubmitPayload;
+  const guest = !userId;
+  const declaredWinner = typeof body?.declaredWinnerPlayerId === "string" ? body.declaredWinnerPlayerId : "";
+  if (guest && !declaredWinner) return NextResponse.json({ error: "Select your name. Only the winner or a player on the winning side should submit." }, { status: 400 });
   const matchId = String(body?.matchId ?? "").trim();
   const invalidLink = () => NextResponse.json({ error: "This scorecard link has expired, been used or been replaced. Contact a league officer for a new link." }, { status: 410 });
   if (tokenHash) {
@@ -89,17 +93,20 @@ export async function POST(req: NextRequest) {
   };
 
   if (!match.competition_id) return NextResponse.json({ error: "This match is not linked to a competition." }, { status: 400 });
-  if (tokenHash && !hasScorecardOpponents(match)) return invalidLink();
+  if (guest && !hasScorecardOpponents(match)) return NextResponse.json({ error: "Both opponents must be confirmed before scoring." }, { status: 409 });
   if (match.status !== "pending" && match.status !== "in_progress") return NextResponse.json({ error: "This match is locked for scoring." }, { status: 400 });
 
   const competitionRes = await adminClient
     .from("competitions")
-    .select("id,name,best_of")
+    .select("id,name,best_of,competition_format")
     .eq("id", match.competition_id)
     .eq("is_archived", false).eq("is_completed", false)
     .maybeSingle();
   if (competitionRes.error || !competitionRes.data) return NextResponse.json({ error: "Competition not found." }, { status: 404 });
-  const competition = competitionRes.data as { id: string; name: string; best_of: number };
+  const competition = competitionRes.data as { id: string; name: string; best_of: number; competition_format: string };
+  if (guest && competition.competition_format !== "knockout") {
+    return NextResponse.json({ error: "This fixture is unavailable for public scoring." }, { status: 404 });
+  }
   const isAlbery = isAlberyName(competition.name);
   const isHodge = isHodgeCup(competition.name);
   const isHamilton =
@@ -111,12 +118,21 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Use the scorecard format for this competition." }, { status: 400 });
   }
 
-  const participants = new Set(scorecardPlayerIds(match));
+  let sides;
+  try {
+    sides = await scorecardSides(adminClient, { ...match, competition_id: match.competition_id }, competition.name);
+  } catch {
+    return NextResponse.json({ error: "The fixture’s players could not be checked. Try again." }, { status: 500 });
+  }
+  const participants = new Set([...sides.home, ...sides.away]);
+  let linkedSubmitter: string | undefined;
+  let isOfficer = false;
   if (userId) {
     const appUserRes = await adminClient.from("app_users").select("linked_player_id,role").eq("id", userId).maybeSingle();
     if (appUserRes.error) return NextResponse.json({ error: "Your scoring permissions could not be checked." }, { status: 500 });
-    const linkedPlayerId = appUserRes.data?.linked_player_id as string | undefined;
-    if (!canManageLeagueRole(appUserRes.data?.role) && (!linkedPlayerId || !participants.has(linkedPlayerId))) {
+    linkedSubmitter = appUserRes.data?.linked_player_id as string | undefined;
+    isOfficer = canManageLeagueRole(appUserRes.data?.role);
+    if (!isOfficer && (!linkedSubmitter || !participants.has(linkedSubmitter))) {
       return NextResponse.json({ error: "Only match participants can submit this result." }, { status: 403 });
     }
   }
@@ -250,6 +266,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  const submitter = guest ? declaredWinner : linkedSubmitter;
+  if (!isOfficer && (!submitter || !sides[body.winnerSide].includes(submitter))) {
+    return NextResponse.json({ error: "Only the winner or a player on the winning side should submit this result." }, { status: 403 });
+  }
+
   for (const br of breakEntries) {
     const v = Number(br?.break_value ?? 0);
     if (!Number.isFinite(v) || v < 30) {
@@ -257,7 +278,7 @@ export async function POST(req: NextRequest) {
     }
     const hasName = String(br?.entered_player_name ?? "").trim().length > 0;
     const hasId = String(br?.player_id ?? "").trim().length > 0;
-    if (tokenHash && (hasId ? !participants.has(String(br?.player_id)) : !isAlbery)) {
+    if (guest && (hasId ? !participants.has(String(br?.player_id)) : !isAlbery)) {
       return NextResponse.json({ error: "Select a player in this match for each high break." }, { status: 400 });
     }
     if (!hasName && !hasId) {
@@ -271,7 +292,7 @@ export async function POST(req: NextRequest) {
     p_token_hash: tokenHash,
     p_payload: {
       mode,
-      ...(tokenHash ? { source: "private_scorecard_link" } : {}),
+      ...(guest ? { source: tokenHash ? "private_scorecard_link" : "public_winner_scorecard", declaredWinnerPlayerId: declaredWinner } : {}),
       winnerSide: body.winnerSide,
       homeScore: body.homeScore ?? null,
       awayScore: body.awayScore ?? null,
@@ -296,6 +317,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "The result could not be saved. Try again." }, { status: 500 });
   }
   if (queued.data === "invalid_link") return invalidLink();
+  if (queued.data === "winner_required") return NextResponse.json({ error: "Only the winning side can submit this result." }, { status: 403 });
   if (queued.data === "pending") return NextResponse.json({ error: "A result submission is already pending review for this match." }, { status: 409 });
   if (queued.data !== "queued") return NextResponse.json({ error: "This match is locked for scoring." }, { status: 409 });
 
