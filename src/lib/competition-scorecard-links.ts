@@ -30,7 +30,7 @@ export function hasScorecardOpponents(match: ScorecardParticipants) {
 }
 
 export function scorecardTokenHash(token: string) {
-  return /^[a-f0-9]{64}$/.test(token) ? createHash("sha256").update(token).digest("hex") : null;
+  return /^(?:[a-f0-9]{64}|[A-Za-z0-9_-]{16})$/.test(token) ? createHash("sha256").update(token).digest("hex") : null;
 }
 
 export async function findScorecardLink(client: SupabaseClient, tokenHash: string) {

@@ -157,7 +157,8 @@ test("only officers can issue and revoke links; the stored token is hashed and e
   const linkHelpers = load("src/lib/competition-scorecard-links.ts", { "node:crypto": crypto });
   let role = "user";
   const writes = [];
-  const legacyToken = "aa".repeat(32);
+  const tokenBytes = Buffer.alloc(12, 170);
+  const issuedToken = tokenBytes.toString("base64url");
   const service = {
     from(table) {
       const query = {
@@ -179,7 +180,7 @@ test("only officers can issue and revoke links; the stored token is hashed and e
   };
   const { POST } = load("src/app/api/competition/scorecard-links/route.ts", {
     "next/server": { NextResponse: Response },
-    "node:crypto": { randomBytes: () => Buffer.from(legacyToken, "hex") },
+    "node:crypto": { randomBytes: () => tokenBytes },
     "@supabase/supabase-js": {
       createClient: (_url, key) => key === "service" ? service : {
         auth: { getUser: async () => ({ data: { user: { id: "actor" } } }) },
@@ -201,12 +202,52 @@ test("only officers can issue and revoke links; the stored token is hashed and e
   assert.equal(issued.status, 200);
   assert.equal(issued.headers.get("cache-control"), "no-store");
   const link = await issued.json();
-  assert.equal(link.path, "/competition-scorecard#" + legacyToken);
+  assert.equal(link.path, "/competition-scorecard#" + issuedToken);
   const stored = writes[0].row;
-  assert.equal(stored.token_hash, crypto.createHash("sha256").update(legacyToken).digest("hex"));
+  assert.equal(stored.token_hash, crypto.createHash("sha256").update(issuedToken).digest("hex"));
   assert.equal(stored.match_id, matchId);
   assert.equal(writes[0].options.onConflict, "match_id");
   assert.ok(Date.parse(stored.expires_at) >= before + 7 * 24 * 60 * 60 * 1000);
   assert.equal((await post("revoke")).status, 200);
   assert.deepEqual(writes[1], { revoked: matchId, field: "match_id" });
+});
+
+test("the public picker lists only scoreable fixtures in the selected competition", async () => {
+  const competitionId = "33333333-3333-4333-8333-333333333333";
+  const calls = [];
+  const service = {
+    from(table) {
+      const query = {
+        select: () => query,
+        eq: (field, value) => { calls.push([table, field, value]); return query; },
+        order: () => query,
+        maybeSingle: async () => ({ data: { id: competitionId, name: "Hamilton Cup" } }),
+        in: () => query,
+        then: (resolve) => resolve({ data: {
+          competitions: [{ id: competitionId, name: "Hamilton Cup" }],
+          matches: [
+            { id: "confirmed", round_no: 1, player1_id: "one", player2_id: "two" },
+            { id: "awaiting-opponent", round_no: 2, player1_id: "one", player2_id: null },
+          ],
+          players: [
+            { id: "one", full_name: "Alex Example", email: "private" },
+            { id: "two", full_name: "Sam Example", email: "private" },
+          ],
+        }[table] }),
+      };
+      return query;
+    },
+  };
+  const { GET } = load("src/app/api/public/competition-scorecard-options/route.ts", {
+    "next/server": { NextResponse: Response },
+    "@supabase/supabase-js": { createClient: () => service },
+    "@/lib/competition-scorecard-links": load("src/lib/competition-scorecard-links.ts", { "node:crypto": require("node:crypto") }),
+  });
+  const get = (query = "") => GET({ nextUrl: new URL("https://test/choices" + query) });
+  assert.equal((await get("?competitionId=invalid")).status, 400);
+  assert.deepEqual((await (await get()).json()).competitions, [{ id: competitionId, name: "Hamilton Cup" }]);
+  assert.deepEqual((await (await get("?competitionId=" + competitionId)).json()).fixtures, [
+    { id: "confirmed", name: "Round 1 · Alex Example vs Sam Example" },
+  ]);
+  assert.ok(calls.some(([table, field, value]) => table === "matches" && field === "competition_id" && value === competitionId));
 });

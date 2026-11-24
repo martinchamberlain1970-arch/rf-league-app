@@ -1,6 +1,5 @@
 import type { Metadata } from "next";
-import CompetitionMatchScorecard from "@/components/CompetitionMatchScorecard";
-import { emptyAdminState } from "@/lib/admin-status-controller";
+import CompetitionScorecardPicker from "@/components/CompetitionScorecardPicker";
 
 export const metadata: Metadata = {
   title: "Private competition scorecard",
@@ -9,5 +8,5 @@ export const metadata: Metadata = {
 };
 
 export default function PrivateScorecardPage() {
-  return <CompetitionMatchScorecard guest admin={emptyAdminState} />;
+  return <CompetitionScorecardPicker />;
 }

@@ -52,6 +52,7 @@ export default function CompetitionScorecardLink({ matchId }: { matchId: string 
             Private link
             <input readOnly value={link.url} onFocus={(event) => event.currentTarget.select()} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
           </label>
+          <p className="mt-2 text-sm text-slate-700">Code <code className="font-semibold">{link.url.split("#")[1]}</code></p>
           <p className="mt-1 text-xs text-slate-600">Expires {competitionDeadlineLabel(link.expiresAt)} UK time</p>
           <button type="button" className="mt-2 rounded-lg border border-slate-300 px-3 py-2 text-sm" onClick={async () => {
             try {

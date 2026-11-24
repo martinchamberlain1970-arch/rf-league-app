@@ -48,7 +48,7 @@ export async function POST(request: NextRequest) {
     if (competition.error || pending.error) throw competition.error ?? pending.error;
     if (!competition.data || pending.data?.length) return reply({ error: "This match is unavailable for a new scorecard." }, 409);
 
-    const guestToken = randomBytes(32).toString("hex");
+    const guestToken = randomBytes(12).toString("base64url");
     const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
     const issued = await client.from("competition_scorecard_links").upsert({
       match_id: matchId, token_hash: scorecardTokenHash(guestToken),

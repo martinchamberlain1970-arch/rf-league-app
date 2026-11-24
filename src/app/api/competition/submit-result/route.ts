@@ -37,7 +37,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Server is not configured." }, { status: 500 });
   }
   const authorization = req.headers.get("authorization") ?? "";
-  const guestToken = authorization.match(/^Scorecard ([a-f0-9]{64})$/)?.[1];
+  const guestToken = authorization.match(/^Scorecard ([A-Za-z0-9_-]+)$/)?.[1];
   const tokenHash = guestToken ? scorecardTokenHash(guestToken) : null;
   const adminClient = createClient(supabaseUrl, serviceRoleKey);
   let userId: string | null = null;

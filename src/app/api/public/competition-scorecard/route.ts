@@ -9,14 +9,15 @@ const reply = (body: object, status = 200) => NextResponse.json(body, { status, 
 const unavailable = () => reply({ error: "This scorecard link has expired, been used or been replaced. Contact a league officer for a new link." }, 410);
 
 export async function GET(request: NextRequest) {
-  const hash = scorecardTokenHash(request.headers.get("authorization")?.match(/^Scorecard ([a-f0-9]{64})$/)?.[1] ?? "");
+  const hash = scorecardTokenHash(request.headers.get("authorization")?.match(/^Scorecard ([A-Za-z0-9_-]+)$/)?.[1] ?? "");
   if (!hash) return unavailable();
   if (!url || !serviceKey) return reply({ error: "Scorecards are temporarily unavailable." }, 503);
 
   try {
     const client = createClient(url, serviceKey);
     const matchId = await findScorecardLink(client, hash);
-    if (!matchId) return unavailable();
+    const requested = request.nextUrl.searchParams.get("matchId");
+    if (!matchId || (requested && requested !== matchId)) return unavailable();
     const { data: match, error } = await client.from("matches").select(scorecardMatchFields).eq("id", matchId).eq("is_archived", false).maybeSingle();
     if (error) throw error;
     if (!match?.competition_id || !["pending", "in_progress"].includes(match.status) || !hasScorecardOpponents(match)) return unavailable();

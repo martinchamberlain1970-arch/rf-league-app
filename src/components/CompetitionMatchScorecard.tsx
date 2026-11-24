@@ -52,8 +52,8 @@ const isAlberyCompetitionName = (name: string) =>
 const named = (p?: PlayerRow | null) => (p ? (p.full_name?.trim() ? p.full_name : p.display_name) : "TBC");
 
 export default function CompetitionMatchScorecard({
-  requestedMatchId = "", guest = false, admin,
-}: { requestedMatchId?: string; guest?: boolean; admin: AdminState }) {
+  requestedMatchId = "", guest = false, guestToken = "", admin,
+}: { requestedMatchId?: string; guest?: boolean; guestToken?: string; admin: AdminState }) {
   const [guestAccess, setGuestAccess] = useState<{ token: string } | { error: string } | null>(null);
   const [match, setMatch] = useState<MatchRow | null>(null);
   const matchId = match?.id ?? requestedMatchId;
@@ -95,9 +95,9 @@ export default function CompetitionMatchScorecard({
     const controller = new AbortController();
     const load = async () => {
       try {
-        const token = window.location.hash.slice(1);
-        const response = await fetch("/api/public/competition-scorecard", {
-          headers: { Authorization: `Scorecard ${token}` },
+        const query = requestedMatchId ? `?matchId=${encodeURIComponent(requestedMatchId)}` : "";
+        const response = await fetch(`/api/public/competition-scorecard${query}`, {
+          headers: { Authorization: `Scorecard ${guestToken}` },
           cache: "no-store",
           signal: controller.signal,
         });
@@ -112,7 +112,7 @@ export default function CompetitionMatchScorecard({
         setPlayers(data.players ?? []);
         setFrameScores(Array.from({ length: slots }, () => ({ home: "", away: "" })));
         if (data.handicap) setFixedHandicap({ matchId: matchRow.id, data: data.handicap });
-        setGuestAccess({ token });
+        setGuestAccess({ token: guestToken });
       } catch (error) {
         if (!controller.signal.aborted) {
           setGuestAccess({ error: error instanceof Error ? error.message : "The private scorecard could not be opened." });
@@ -121,7 +121,7 @@ export default function CompetitionMatchScorecard({
     };
     void load();
     return () => controller.abort();
-  }, [guest]);
+  }, [guest, guestToken, requestedMatchId]);
 
   useEffect(() => {
     if (guest) return;
@@ -425,6 +425,7 @@ export default function CompetitionMatchScorecard({
           <p className="mt-2 text-slate-700" role={guestAccess ? "alert" : "status"}>
             {guestAccess ? guestAccess.error : "Checking your scorecard link…"}
           </p>
+          {guestAccess ? <a href="/competition-scorecard" className="mt-3 inline-block font-semibold text-teal-800 underline">Choose a competition and fixture</a> : null}
         </section>
       </main>
     );
