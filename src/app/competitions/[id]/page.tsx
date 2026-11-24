@@ -8,6 +8,7 @@ import ScreenHeader from "@/components/ScreenHeader";
 import { competitionDeadlineLabel, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
+import CompetitionEntryWithdrawal from "@/components/CompetitionEntryWithdrawal";
 import MessageModal from "@/components/MessageModal";
 
 type Competition = {
@@ -140,6 +141,7 @@ export default function CompetitionPage() {
   const [matches, setMatches] = useState<Match[]>([]);
   const [players, setPlayers] = useState<Player[]>([]);
   const [frames, setFrames] = useState<Frame[]>([]);
+  const [withdrawalRevision, setWithdrawalRevision] = useState(0);
   const [entries, setEntries] = useState<Entry[]>([]);
   const [signupDeadlineInput, setSignupDeadlineInput] = useState("");
   const [signupMaxEntriesInput, setSignupMaxEntriesInput] = useState("");
@@ -232,7 +234,6 @@ export default function CompetitionPage() {
       .from("competition_entries")
       .select("id,competition_id,requester_user_id,player_id,status,created_at,note")
       .eq("competition_id", competition.id)
-      .neq("status", "withdrawn")
       .order("created_at", { ascending: false });
     if (!entryRes.error && entryRes.data) setEntries(entryRes.data as Entry[]);
   };
@@ -352,7 +353,6 @@ export default function CompetitionPage() {
         .from("competition_entries")
         .select("id,competition_id,requester_user_id,player_id,status,created_at,note")
         .eq("competition_id", id)
-        .neq("status", "withdrawn")
         .order("created_at", { ascending: false });
       if (entryRes.data) setEntries(entryRes.data as Entry[]);
       setSignupDeadlineInput(comp.signup_deadline ? new Date(comp.signup_deadline).toISOString().slice(0, 16) : "");
@@ -374,13 +374,23 @@ export default function CompetitionPage() {
     return () => {
       active = false;
     };
-  }, [id]);
+  }, [id, withdrawalRevision]);
 
   const shortMap = useMemo(() => new Map(players.map((p) => [p.id, p.display_name])), [players]);
   const fullMap = useMemo(
     () => new Map(players.map((p) => [p.id, p.full_name?.trim() ? p.full_name : p.display_name])),
     [players]
   );
+  const entryLabel = (entry: Entry) => {
+    const name = fullMap.get(entry.player_id) ?? shortMap.get(entry.player_id) ?? "Unknown player";
+    try {
+      const partners = JSON.parse(entry.note ?? "{}")?.teamMemberNames;
+      return Array.isArray(partners) ? [name, ...partners].join(" & ") : name;
+    } catch {
+      return name;
+    }
+  };
+
   const rounds = useMemo(() => {
     const grouped = new Map<number, Match[]>();
     for (const m of matches) {
@@ -622,7 +632,8 @@ export default function CompetitionPage() {
     return `${shortMap.get(m.player1_id ?? "") ?? "TBC"} vs ${shortMap.get(m.player2_id ?? "") ?? "TBC"}`;
   };
 
-  const getStatusLabel = (m: Match) => (m.status === "bye" ? "Locked" : m.status.replace("_", " "));
+  const walkoverMatchIds = useMemo(() => new Set(frames.filter((frame) => frame.is_walkover_award).map((frame) => frame.match_id)), [frames]);
+  const getStatusLabel = (m: Match) => walkoverMatchIds.has(m.id) ? "Walkover" : m.status === "bye" ? "Locked" : m.status.replace("_", " ");
   const fixtureRowsByRound = useMemo(() => {
     if (!competition) return [] as Array<{ roundNo: number; title: string; bestOf: number; rows: FixtureRow[] }>;
     const roundCount = Math.max(1, totalBracketRounds);
@@ -679,7 +690,7 @@ export default function CompetitionPage() {
       });
     }
     return out;
-  }, [competition, totalBracketRounds, round1MatchCount, matchesByKey]);
+  }, [competition, totalBracketRounds, round1MatchCount, matchesByKey, walkoverMatchIds]);
 
   const leagueTable = useMemo(() => {
     if (!competition || competition.competition_format !== "league") return [];
@@ -907,20 +918,10 @@ export default function CompetitionPage() {
                 ) : null}
                 {entries.length > 0 ? (
                   <div className="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    {entries.map((entry) => (
+                    {entries.filter((entry) => isSuperManager || entry.status !== "withdrawn").map((entry) => (
                       <div key={entry.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
                         <p className="text-sm text-slate-800">
-                          {fullMap.get(entry.player_id) ?? shortMap.get(entry.player_id) ?? "Unknown player"}
-                          {(() => {
-                            if (!entry.note) return null;
-                            try {
-                              const parsed = JSON.parse(entry.note) as { teamMemberNames?: string[] };
-                              if (!Array.isArray(parsed.teamMemberNames) || parsed.teamMemberNames.length === 0) return null;
-                              return ` + ${parsed.teamMemberNames.join(" + ")}`;
-                            } catch {
-                              return null;
-                            }
-                          })()}
+                          {entryLabel(entry)}
                         </p>
                         <div className="flex items-center gap-2">
                           <span className={`rounded-full border px-2 py-0.5 text-xs font-semibold uppercase ${entryStatusClass(entry.status)}`}>{entry.status}</span>
@@ -941,6 +942,13 @@ export default function CompetitionPage() {
                                 Reject
                               </button>
                             </>
+                          ) : null}
+                          {isSuperManager && competition.competition_format === "knockout" && ["approved", "pending", "withdrawn"].includes(entry.status) ? (
+                            <CompetitionEntryWithdrawal entryId={entry.id} withdrawn={entry.status === "withdrawn"}
+                              label={entryLabel(entry)}
+                              mayAwardWalkover={matches.some((match) => (match.status === "pending" || match.status === "in_progress") &&
+                                [match.player1_id, match.player2_id, match.team1_player1_id, match.team1_player2_id, match.team2_player1_id, match.team2_player2_id].includes(entry.player_id))}
+                              onDone={(message) => { setMessage(message); setWithdrawalRevision((revision) => revision + 1); }} />
                           ) : null}
                         </div>
                       </div>
@@ -1024,7 +1032,7 @@ export default function CompetitionPage() {
               ) : null}
               <section className="space-y-2">
                 {!isSuperManager ? (
-                  <p className="text-xs text-slate-600">Any player entered in this competition can submit the final score, regardless of draw side.</p>
+                  <p className="text-xs text-slate-600">One player from the winning side submits each result for officer approval.</p>
                 ) : null}
                 <div className="inline-flex rounded-lg border border-slate-300 bg-white p-1">
                   <button
@@ -1064,7 +1072,7 @@ export default function CompetitionPage() {
                             </p>
                             {m.id ? (
                               <Link href={`/matches/${m.id}`} className="mt-2 inline-block text-sm font-medium text-teal-700 underline">
-                                {m.status === "complete" ? "View submitted result" : isSuperManager ? "Open match" : "Submit result"}
+                                {m.status === "complete" || m.status === "Walkover" ? "View result" : isSuperManager ? "Open match" : "Submit result"}
                               </Link>
                             ) : (
                               <p className="mt-2 text-sm text-slate-500">Match will auto-create when feeder results are ready.</p>

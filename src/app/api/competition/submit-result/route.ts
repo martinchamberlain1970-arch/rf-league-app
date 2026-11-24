@@ -312,6 +312,9 @@ export async function POST(req: NextRequest) {
       albery: body.albery ?? null,
     },
   });
+  if (queued.error?.code === "P0011") {
+    return NextResponse.json({ error: "A player or team has withdrawn. A league officer must resolve this tie." }, { status: 409 });
+  }
   if (queued.error) {
     console.error("Could not queue competition scorecard", queued.error.code);
     return NextResponse.json({ error: "The result could not be saved. Try again." }, { status: 500 });

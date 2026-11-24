@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
+import CompetitionEntryWithdrawal from "@/components/CompetitionEntryWithdrawal";
 import MessageModal from "@/components/MessageModal";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
@@ -196,8 +197,17 @@ export default function CompetitionSignupsPage() {
     await reload();
   };
 
+  const entryLabel = (entry: Entry) => [
+    playerNameMap.get(entry.player_id) ?? "Unknown player",
+    ...(parseTeamNote(entry.note).teamMemberNames ?? []),
+  ].join(" & ");
+  const onWithdrawal = (message: string) => {
+    setMessage(message);
+    void reload();
+  };
+
   const visibleCompetitions = competitions.filter((competition) => competition.signup_open ||
-    (admin.canManageLeague && entries.some((entry) => entry.competition_id === competition.id && entry.status === "pending"))
+    (admin.canManageLeague && entries.some((entry) => entry.competition_id === competition.id && (entry.status === "pending" || entry.status === "approved" || entry.status === "withdrawn")))
   );
 
   return (
@@ -236,11 +246,13 @@ export default function CompetitionSignupsPage() {
                         </summary>
                         <ul className="mt-2 divide-y divide-slate-200">
                           {form.entries.map((entry) => (
-                            <li key={entry.id} className="py-2 text-sm">
-                              <strong className="text-slate-800">{competitionNames.get(entry.competition_id)}</strong>
-                              <p className="text-slate-600">
-                                {[playerNameMap.get(entry.player_id) ?? "Unknown player", ...(parseTeamNote(entry.note).teamMemberNames ?? [])].join(" & ")}
-                              </p>
+                            <li key={entry.id} className="flex flex-wrap items-start justify-between gap-2 py-2 text-sm">
+                              <div>
+                                <strong className="text-slate-800">{competitionNames.get(entry.competition_id)}</strong>
+                                <p className="text-slate-600">{entryLabel(entry)}</p>
+                              </div>
+                              <CompetitionEntryWithdrawal entryId={entry.id} label={entryLabel(entry)} withdrawn={false}
+                                disabled={busyId !== null} onDone={onWithdrawal} mayAwardWalkover={false} />
                             </li>
                           ))}
                         </ul>
@@ -268,7 +280,7 @@ export default function CompetitionSignupsPage() {
           <section className="space-y-3">
             {visibleCompetitions.map((c) => {
               const userEntry = entries.find((e) => e.competition_id === c.id && e.requester_user_id === userId);
-              const allEntries = entries.filter((e) => e.competition_id === c.id && e.status !== "withdrawn");
+              const allEntries = entries.filter((e) => e.competition_id === c.id && (admin.canManageLeague || e.status !== "withdrawn"));
               const approvedCount = allEntries.filter((e) => e.status === "approved").length;
               const pendingCount = allEntries.filter((e) => e.status === "pending").length;
               const deadlinePassed = !competitionEntriesOpen(c.signup_deadline);
@@ -364,6 +376,10 @@ export default function CompetitionSignupsPage() {
                                     Reject
                                   </button>
                                 </>
+                              ) : null}
+                              {admin.canManageLeague && c.competition_format === "knockout" && ["approved", "pending", "withdrawn"].includes(e.status) ? (
+                                <CompetitionEntryWithdrawal entryId={e.id} label={entryLabel(e)} withdrawn={e.status === "withdrawn"}
+                                  disabled={busyId !== null} onDone={onWithdrawal} mayAwardWalkover={false} />
                               ) : null}
                             </div>
                           </div>

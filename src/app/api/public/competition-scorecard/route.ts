@@ -24,15 +24,17 @@ export async function GET(request: NextRequest) {
     if (error) throw error;
     if (!match?.competition_id || !["pending", "in_progress"].includes(match.status) || !hasScorecardOpponents(match)) return hash ? unavailable() : reply({ error: "This fixture is unavailable for scoring." }, 404);
 
-    const [competition, pending] = await Promise.all([
+    const [competition, pending, withdrawal] = await Promise.all([
       client.from("competitions").select("id,name,sport_type").eq("id", match.competition_id)
         .eq("competition_format", "knockout").eq("is_archived", false).eq("is_completed", false).maybeSingle(),
       client.from("competition_result_submissions").select("id").eq("match_id", match.id).eq("status", "pending").limit(1),
+      client.rpc("knockout_match_has_withdrawal", { p_match_id: match.id }),
     ]);
-    if (competition.error || pending.error) throw competition.error ?? pending.error;
+    if (competition.error || pending.error || withdrawal.error) throw competition.error ?? pending.error ?? withdrawal.error;
     if (!competition.data) return unavailable();
     if (pending.data?.length) return reply({ error: "A result has already been submitted for this match and is awaiting approval." }, 409);
 
+    if (withdrawal.data) return reply({ error: "A player or team has withdrawn. A league officer must resolve this tie." }, 409);
     const sides = await scorecardSides(client, { ...match, competition_id: match.competition_id }, competition.data.name);
     const players = await client.from("players").select("id,display_name,full_name").in("id", [...new Set([...sides.home, ...sides.away])]);
     if (players.error) throw players.error;
