@@ -74,8 +74,8 @@ function CompetitionSubmissions() {
           <>
             <section className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-teal-200 bg-teal-50 p-4 text-teal-950">
               <p role="status" className="font-semibold">{submitted.length} of {teams.length} teams have submitted</p>
-              <Link href="/signups" className="rounded-xl bg-teal-800 px-3 py-2 text-sm font-semibold text-white">
-                Review competition entries
+              <Link href="/signups#team-form-approvals" className="rounded-xl bg-teal-800 px-3 py-2 text-sm font-semibold text-white">
+                Review team forms
               </Link>
             </section>
             {teams.length ? (

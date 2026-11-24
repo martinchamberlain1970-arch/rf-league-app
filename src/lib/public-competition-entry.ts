@@ -123,3 +123,29 @@ export function competitionEntryReceipt(
       })),
   };
 }
+
+export function groupTeamCompetitionEntries<T extends {
+  id: string;
+  requester_user_id: string | null;
+  note: string | null;
+}>(entries: readonly T[]) {
+  const groups = new Map<string, { id: string; teamId: string; entries: T[] }>();
+  const individual: T[] = [];
+  for (const entry of entries) {
+    let form = null;
+    if (entry.requester_user_id === null && entry.note) {
+      try { form = JSON.parse(entry.note); } catch { /* Older entries can have a plain-text note. */ }
+    }
+    if (form?.source !== "public_team_competition_form" ||
+        typeof form.teamId !== "string" || !form.teamId ||
+        typeof form.draftToken !== "string" || !/^[a-f0-9]{48}$/i.test(form.draftToken)) {
+      individual.push(entry);
+      continue;
+    }
+    const key = `${form.teamId}:${form.draftToken}`;
+    const group = groups.get(key);
+    if (group) group.entries.push(entry);
+    else groups.set(key, { id: entry.id, teamId: form.teamId, entries: [entry] });
+  }
+  return { forms: [...groups.values()], individual };
+}

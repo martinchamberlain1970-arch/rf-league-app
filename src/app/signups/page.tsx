@@ -8,7 +8,7 @@ import MessageModal from "@/components/MessageModal";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
 import { competitionDeadlineLabel, competitionEntriesOpen, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
-import { competitionAgeRule } from "@/lib/public-competition-entry";
+import { competitionAgeRule, groupTeamCompetitionEntries } from "@/lib/public-competition-entry";
 import { fetchAllSupabasePages } from "@/lib/supabase-pagination";
 
 type Competition = {
@@ -28,7 +28,7 @@ type Competition = {
 type Entry = {
   id: string;
   competition_id: string;
-  requester_user_id: string;
+  requester_user_id: string | null;
   player_id: string;
   entrant_date_of_birth?: string | null;
   status: "pending" | "approved" | "rejected" | "withdrawn";
@@ -73,10 +73,16 @@ export default function CompetitionSignupsPage() {
   const [players, setPlayers] = useState<Player[]>([]);
   const [locations, setLocations] = useState<Location[]>([]);
   const [userId, setUserId] = useState<string | null>(null);
+  const [teamNames, setTeamNames] = useState<Map<string, string>>(new Map());
+  const [confirmForm, setConfirmForm] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
 
   const playerNameMap = useMemo(() => new Map(players.map((p) => [p.id, p.full_name?.trim() ? p.full_name : p.display_name])), [players]);
   const locationNameMap = useMemo(() => new Map(locations.map((l) => [l.id, l.name])), [locations]);
+  const competitionNames = useMemo(() => new Map(competitions.map((competition) => [competition.id, competition.name])), [competitions]);
+  const pendingForms = useMemo(() => groupTeamCompetitionEntries(
+    entries.filter((entry) => entry.status === "pending" && competitionNames.has(entry.competition_id)),
+  ).forms, [entries, competitionNames]);
   const reload = async () => {
     const client = supabase;
     if (!client) {
@@ -94,7 +100,6 @@ export default function CompetitionSignupsPage() {
         .select("id,name,sport_type,competition_format,match_mode,location_id,signup_open,signup_deadline,max_entries,is_archived,is_completed")
         .eq("is_archived", false)
         .eq("is_completed", false)
-        .eq("signup_open", true)
         .order("name"),
       fetchAllSupabasePages<Entry>((from, to) =>
         client
@@ -135,6 +140,13 @@ export default function CompetitionSignupsPage() {
       setMessage(compRes.error?.message || playerRes.error?.message || locationRes.error?.message || "Failed to load sign-ups.");
       return;
     }
+    const formTeamIds = [...new Set(groupTeamCompetitionEntries(entryRows.filter((entry) => entry.status === "pending")).forms.map((form) => form.teamId))];
+    if (formTeamIds.length) {
+      const teams = await client.from("league_teams").select("id,name").in("id", formTeamIds);
+      setTeamNames(new Map((teams.data ?? []).map(({ id, name }) => [id, name])));
+    } else {
+      setTeamNames(new Map());
+    }
     setCompetitions((compRes.data ?? []) as Competition[]);
     setEntries(entryRows);
     setPlayers(playerRes.data ?? []);
@@ -145,23 +157,34 @@ export default function CompetitionSignupsPage() {
     void reload();
   }, []);
 
-  const reviewEntry = async (entryId: string, status: "approved" | "rejected") => {
+  const reviewEntries = async (entryIds: string[], status: "approved" | "rejected", actionId: string) => {
     const client = supabase;
-    if (!client) return;
+    if (!client || !entryIds.length) return;
     if (!admin.canManageLeague || !admin.userId) {
-      setMessage("League Secretary, Chairman or Treasurer access is required to review competition entries.");
+      setMessage("League officer access is required to review competition entries.");
       return;
     }
-    setBusyId(entryId);
-    const res = await client
-      .from("competition_entries")
-      .update({ status, reviewed_by_user_id: admin.userId, reviewed_at: new Date().toISOString() })
-      .eq("id", entryId)
-      .eq("status", "pending");
-    if (res.error) setMessage(res.error.message);
-    setBusyId(null);
-    await reload();
+    setConfirmForm(null);
+    setBusyId(actionId);
+    try {
+      const { data, error } = await client
+        .from("competition_entries")
+        .update({ status, reviewed_by_user_id: admin.userId, reviewed_at: new Date().toISOString() })
+        .in("id", entryIds)
+        .eq("status", "pending")
+        .select("id");
+      if (error) throw error;
+      if (!data.length) setMessage("These entries are no longer pending.");
+      else if (entryIds.length > 1) setMessage(`${data.length} competition ${data.length === 1 ? "entry" : "entries"} approved.`);
+      await reload();
+    } catch (error) {
+      setMessage(error && typeof error === "object" && "message" in error ? String(error.message) : "The entries could not be reviewed.");
+    } finally {
+      setBusyId(null);
+    }
   };
+
+  const reviewEntry = (entryId: string, status: "approved" | "rejected") => reviewEntries([entryId], status, entryId);
 
   const withdrawEntry = async (entryId: string) => {
     const client = supabase;
@@ -172,6 +195,10 @@ export default function CompetitionSignupsPage() {
     setBusyId(null);
     await reload();
   };
+
+  const visibleCompetitions = competitions.filter((competition) => competition.signup_open ||
+    (admin.canManageLeague && entries.some((entry) => entry.competition_id === competition.id && entry.status === "pending"))
+  );
 
   return (
     <main className="min-h-screen bg-slate-100 p-6">
@@ -195,8 +222,51 @@ export default function CompetitionSignupsPage() {
             </Link>
           </section>
 
+          {admin.canManageLeague ? (
+            <section id="team-form-approvals" className="scroll-mt-28 rounded-2xl border border-teal-200 bg-white p-4 shadow-sm">
+              <h2 className="text-lg font-bold text-slate-900">Team forms awaiting approval</h2>
+              {pendingForms.length ? (
+                <div className="mt-3 space-y-3">
+                  {pendingForms.map((form) => {
+                    const teamName = teamNames.get(form.teamId) ?? "Team";
+                    return (
+                      <details key={form.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                        <summary className="cursor-pointer font-semibold text-slate-900">
+                          {teamName} · {form.entries.length} pending {form.entries.length === 1 ? "entry" : "entries"}
+                        </summary>
+                        <ul className="mt-2 divide-y divide-slate-200">
+                          {form.entries.map((entry) => (
+                            <li key={entry.id} className="py-2 text-sm">
+                              <strong className="text-slate-800">{competitionNames.get(entry.competition_id)}</strong>
+                              <p className="text-slate-600">
+                                {[playerNameMap.get(entry.player_id) ?? "Unknown player", ...(parseTeamNote(entry.note).teamMemberNames ?? [])].join(" & ")}
+                              </p>
+                            </li>
+                          ))}
+                        </ul>
+                        {confirmForm === form.id ? (
+                          <div className="mt-3 flex flex-wrap items-center gap-2">
+                            <p className="text-sm text-slate-700">Approve all {form.entries.length} pending entries from this form?</p>
+                            <button type="button" disabled={busyId !== null} onClick={() => void reviewEntries(form.entries.map(({ id }) => id), "approved", form.id)} className="rounded-lg bg-teal-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                              Confirm approval
+                            </button>
+                            <button type="button" onClick={() => setConfirmForm(null)} className="rounded-lg border border-slate-300 px-3 py-2 text-sm">Cancel</button>
+                          </div>
+                        ) : (
+                          <button type="button" disabled={busyId !== null} onClick={() => setConfirmForm(form.id)} className="mt-3 rounded-lg bg-teal-800 px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">
+                            {busyId === form.id ? "Approving…" : "Approve all pending entries"}
+                          </button>
+                        )}
+                      </details>
+                    );
+                  })}
+                </div>
+              ) : <p className="mt-2 text-sm text-slate-600">No team forms are awaiting approval.</p>}
+            </section>
+          ) : null}
+
           <section className="space-y-3">
-            {competitions.map((c) => {
+            {visibleCompetitions.map((c) => {
               const userEntry = entries.find((e) => e.competition_id === c.id && e.requester_user_id === userId);
               const allEntries = entries.filter((e) => e.competition_id === c.id && e.status !== "withdrawn");
               const approvedCount = allEntries.filter((e) => e.status === "approved").length;
@@ -279,7 +349,7 @@ export default function CompetitionSignupsPage() {
                                 <>
                                   <button
                                     type="button"
-                                    disabled={busyId === e.id}
+                                    disabled={busyId !== null}
                                     onClick={() => void reviewEntry(e.id, "approved")}
                                     className="rounded-lg bg-emerald-700 px-2.5 py-1 text-xs font-semibold text-white disabled:opacity-60"
                                   >
@@ -287,7 +357,7 @@ export default function CompetitionSignupsPage() {
                                   </button>
                                   <button
                                     type="button"
-                                    disabled={busyId === e.id}
+                                    disabled={busyId !== null}
                                     onClick={() => void reviewEntry(e.id, "rejected")}
                                     className="rounded-lg border border-slate-300 bg-white px-2.5 py-1 text-xs font-semibold text-slate-700 disabled:opacity-60"
                                   >
@@ -304,7 +374,7 @@ export default function CompetitionSignupsPage() {
                 </div>
               );
             })}
-            {!competitions.length ? (
+            {!visibleCompetitions.length ? (
               <div className="rounded-2xl border border-slate-200 bg-white p-4 text-slate-600 shadow-sm">
                 No competitions are currently open for sign-up.
               </div>

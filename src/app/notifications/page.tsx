@@ -7,6 +7,7 @@ import useAdminStatus from "@/components/useAdminStatus";
 import { supabase } from "@/lib/supabase";
 import ScreenHeader from "@/components/ScreenHeader";
 import MessageModal from "@/components/MessageModal";
+import { groupTeamCompetitionEntries } from "@/lib/public-competition-entry";
 
 type NotificationItem = {
   key: string;
@@ -68,10 +69,11 @@ type LeagueTeamNameRow = { id: string; name: string };
 type CompetitionEntryNotifyRow = {
   id: string;
   competition_id: string;
-  requester_user_id: string;
+  requester_user_id: string | null;
   player_id: string | null;
   status: "pending" | "approved" | "rejected" | "withdrawn";
   created_at: string;
+  note: string | null;
 };
 type AppUserEmailRow = { id: string; email: string | null };
 type PlayerNameRow = { id: string; full_name: string | null; display_name: string | null };
@@ -660,7 +662,7 @@ export default function NotificationsPage() {
             ? softQuery<{ id: string; created_at: string; status: string }>(client.from("admin_requests").select("id,created_at,status").eq("status", "pending").order("created_at", { ascending: false }))
             : Promise.resolve({ data: [] as { id: string; created_at: string; status: string }[], error: null }),
           softQuery<{ id: string; requester_full_name: string; requested_location_name: string; created_at: string; status: string }>(client.from("location_requests").select("id,requester_full_name,requested_location_name,created_at,status").eq("status", "pending").order("created_at", { ascending: false })),
-          softQuery<CompetitionEntryNotifyRow>(client.from("competition_entries").select("id,competition_id,requester_user_id,player_id,status,created_at").eq("status", "pending").order("created_at", { ascending: false })),
+          softQuery<CompetitionEntryNotifyRow>(client.from("competition_entries").select("id,competition_id,requester_user_id,player_id,status,created_at,note").eq("status", "pending").order("created_at", { ascending: false })),
           softQuery<{ id: string; season_id: string; team_id: string; contact_name: string | null; status: string; updated_at: string }>(client.from("league_entry_packs").select("id,season_id,team_id,contact_name,status,updated_at").eq("status", "submitted").order("updated_at", { ascending: false })),
           softQuery<{ id: string; team_id: string; requested_full_name: string; status: string; created_at: string }>(client.from("league_player_addition_requests").select("id,team_id,requested_full_name,status,created_at").eq("status", "pending").order("created_at", { ascending: false })),
         ]);
@@ -778,10 +780,25 @@ export default function NotificationsPage() {
             status: row.status,
           });
         });
-        const pendingCompetitionEntries = (competitionPendingRes.data ?? []) as CompetitionEntryNotifyRow[];
+        const { forms: pendingCompetitionForms, individual: pendingCompetitionEntries } = groupTeamCompetitionEntries(competitionPendingRes.data ?? []);
+        const formTeamIds = [...new Set(pendingCompetitionForms.map((form) => form.teamId))];
+        const formTeams = formTeamIds.length
+          ? await client.from("league_teams").select("id,name").in("id", formTeamIds)
+          : { data: [] };
+        const formTeamNames = new Map((formTeams.data ?? []).map(({ id, name }) => [id, name]));
+        for (const form of pendingCompetitionForms) {
+          out.push({
+            key: `competition_form_pending:${form.id}`,
+            title: "Team competition form awaiting approval",
+            detail: `${formTeamNames.get(form.teamId) ?? "Team"} · ${form.entries.length} pending ${form.entries.length === 1 ? "entry" : "entries"}`,
+            created_at: form.entries[0].created_at,
+            href: "/signups#team-form-approvals",
+            status: "pending",
+          });
+        }
         const pendingCompetitionIds = Array.from(new Set(pendingCompetitionEntries.map((r) => r.competition_id).filter(Boolean)));
         const pendingCompetitionPlayerIds = Array.from(new Set(pendingCompetitionEntries.map((r) => r.player_id).filter(Boolean))) as string[];
-        const pendingCompetitionRequesterIds = Array.from(new Set(pendingCompetitionEntries.map((r) => r.requester_user_id).filter(Boolean)));
+        const pendingCompetitionRequesterIds = Array.from(new Set(pendingCompetitionEntries.flatMap((r) => r.requester_user_id ? [r.requester_user_id] : [])));
         const competitionNamesRes = pendingCompetitionIds.length
           ? await client.from("competitions").select("id,name").in("id", pendingCompetitionIds)
           : { data: [] as Array<{ id: string; name: string }> };
@@ -799,7 +816,7 @@ export default function NotificationsPage() {
         pendingCompetitionEntries.forEach((r) => {
           const entrantLabel = r.player_id
             ? playerNameById.get(r.player_id) ?? "Unknown player"
-            : requesterEmailById.get(r.requester_user_id) ?? "Unknown user";
+            : requesterEmailById.get(r.requester_user_id ?? "") ?? "Unknown user";
           out.push({
             key: `competition_entry_pending:${r.id}`,
             title: "Competition entry pending approval",

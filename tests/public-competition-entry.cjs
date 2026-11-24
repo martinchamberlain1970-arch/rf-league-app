@@ -111,3 +111,24 @@ test("a saved submission can be reopened after closing and returns names without
   assert.equal((await (await get("?draftToken=" + "b".repeat(48))).json()).receipt, undefined);
   assert.equal((await (await get("?teamId=team")).json()).receipt, undefined);
 });
+
+test("pending competition entries group by captain's form without merging separate forms or individual entries", () => {
+  const { groupTeamCompetitionEntries } = exportsForTest;
+  const teamEntry = (id, teamId, token) => ({
+    id, requester_user_id: null,
+    note: JSON.stringify({ source: "public_team_competition_form", teamId, draftToken: token.repeat(48) }),
+  });
+  const first = teamEntry("a1", "greenhithe", "a");
+  const second = teamEntry("a2", "greenhithe", "a");
+  const separate = teamEntry("b1", "greenhithe", "b");
+  const jordans = teamEntry("c1", "jordans", "c");
+  const individual = { ...teamEntry("d1", "greenhithe", "a"), requester_user_id: "player" };
+  const malformed = { id: "e1", requester_user_id: null, note: "old note" };
+  const grouped = groupTeamCompetitionEntries([first, second, separate, jordans, individual, malformed]);
+  assert.equal(grouped.forms.length, 3);
+  assert.equal(grouped.forms[0].id, "a1");
+  assert.equal(grouped.forms[0].entries.length, 2);
+  assert.equal(grouped.forms[1].entries[0].id, "b1");
+  assert.equal(grouped.forms[2].teamId, "jordans");
+  assert.equal(grouped.individual.length, 2);
+});
