@@ -10,6 +10,22 @@ export type PublicCompetitionPartner = { id: string; name: string; teamNames: st
 export type PublicCompetitionEntry = { entryId: string; playerIds: string[]; entrantDateOfBirth: string };
 export type PublicCompetitionSelection = { competitionId: string; decision: "pending" | "enter" | "no_entry"; entries: PublicCompetitionEntry[] };
 
+export function selectedPlayerCounts(entries: readonly PublicCompetitionEntry[]) {
+  const counts = new Map<string, number>();
+  for (const { playerIds } of entries) {
+    for (const id of playerIds) {
+      if (id) counts.set(id, (counts.get(id) ?? 0) + 1);
+    }
+  }
+  return counts;
+}
+
+export const maySelectCompetitionPlayer = (
+  playerId: string,
+  currentPlayerId: string,
+  counts: ReadonlyMap<string, number>,
+) => playerId === currentPlayerId || !counts.has(playerId);
+
 export const entrantsRequired = (competition: Pick<PublicCompetition, "name" | "match_mode">) =>
   /Hodge Cup \(Triples\)|Albery Cup \(Billiards 3-Man Team\)/i.test(competition.name) ? 3 : competition.match_mode === "doubles" ? 2 : 1;
 

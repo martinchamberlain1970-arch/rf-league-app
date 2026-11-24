@@ -39,6 +39,21 @@ test("rejects a partner entered twice in the same competition", () => {
   assert.match(check(doubles, ["captain-player", "other-team-player"], ["same-team-player", "other-team-player"]), /repeated/);
 });
 
+test("all dropdowns for a competition exclude selected players and partners except the current slot", () => {
+  const { selectedPlayerCounts, maySelectCompetitionPlayer } = exportsForTest;
+  const counts = selectedPlayerCounts([
+    { playerIds: ["first", "partner"] },
+    { playerIds: ["", "third"] },
+  ]);
+  assert.equal(maySelectCompetitionPlayer("first", "", counts), false);
+  assert.equal(maySelectCompetitionPlayer("partner", "", counts), false);
+  assert.equal(maySelectCompetitionPlayer("third", "first", counts), false);
+  assert.equal(maySelectCompetitionPlayer("first", "first", counts), true);
+  assert.equal(maySelectCompetitionPlayer("unused", "", counts), true);
+  const afterRemoval = selectedPlayerCounts([{ playerIds: ["", "third"] }]);
+  assert.equal(maySelectCompetitionPlayer("partner", "", afterRemoval), true);
+});
+
 test("a saved submission can be reopened after closing and returns names without private form details", async () => {
   const token = "a".repeat(48);
   const queried = [];
