@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { competitionEntriesOpen } from "@/lib/fixed-competition-handicaps";
-import { ageFromDob, competitionAgeRule, meetsCompetitionAgeRule, validatePublicSelections, type PublicCompetition, type PublicCompetitionPlayer, type PublicCompetitionSelection } from "@/lib/public-competition-entry";
+import { ageFromDob, competitionAgeRule, meetsCompetitionAgeRule, validatePublicSelections, type PublicCompetition, type PublicCompetitionPartner, type PublicCompetitionPlayer, type PublicCompetitionSelection } from "@/lib/public-competition-entry";
 
 export const dynamic = "force-dynamic";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -29,22 +29,43 @@ async function formData(client: SupabaseClient, teamId?: string) {
     teams = (teamsRes.data ?? []) as typeof teams;
   }
   let players: PublicCompetitionPlayer[] = [];
+  let partners: PublicCompetitionPartner[] = [];
   const registeredDobs = new Map<string, string>();
   let captainName: string | null = null;
-  if (teamId && teams.some((team) => team.id === teamId)) {
-    const membersRes = await client.from("league_team_members").select("player_id,is_captain").eq("team_id", teamId);
+  const selectedTeam = teams.find((team) => team.id === teamId);
+  if (selectedTeam) {
+    const clubTeams = selectedTeam.location_id
+      ? teams.filter((team) => team.location_id === selectedTeam.location_id)
+      : [selectedTeam];
+    const clubTeamNames = new Map(clubTeams.map((team) => [team.id, team.name]));
+    const membersRes = await client.from("league_team_members")
+      .select("player_id,team_id,is_captain").in("team_id", [...clubTeamNames.keys()]);
     if (membersRes.error) throw new Error(membersRes.error.message);
-    const members = (membersRes.data ?? []) as Array<{ player_id: string; is_captain: boolean }>;
-    const ids = members.map((member) => member.player_id);
-    if (ids.length) {
+    const roster = (membersRes.data ?? []).filter((member) => member.team_id === selectedTeam.id);
+    const rosterIds = new Set(roster.map((member) => member.player_id));
+    const teamNamesByPlayer = new Map<string, Set<string>>();
+    for (const member of membersRes.data ?? []) {
+      const teamName = clubTeamNames.get(member.team_id);
+      if (!teamName) continue;
+      const playerTeams = teamNamesByPlayer.get(member.player_id) ?? new Set();
+      playerTeams.add(teamName);
+      teamNamesByPlayer.set(member.player_id, playerTeams);
+    }
+
+    if (teamNamesByPlayer.size) {
       const [playersRes, linkedUsersRes] = await Promise.all([
-        client.from("players").select("id,display_name,full_name,date_of_birth").in("id", ids).eq("is_archived", false).order("display_name"),
-        ageRestricted.length ? client.from("app_users").select("linked_player_id").in("linked_player_id", ids) : null,
+        client.from("players").select("id,display_name,full_name,date_of_birth").in("id", [...teamNamesByPlayer.keys()]).eq("is_archived", false).order("display_name"),
+        ageRestricted.length && rosterIds.size ? client.from("app_users").select("linked_player_id").in("linked_player_id", [...rosterIds]) : null,
       ]);
       if (playersRes.error) throw new Error(playersRes.error.message);
       if (linkedUsersRes?.error) throw new Error(linkedUsersRes.error.message);
       const linkedIds = new Set(linkedUsersRes?.data?.map((user) => user.linked_player_id));
-      players = (playersRes.data ?? []).map((player) => {
+      partners = (playersRes.data ?? []).map((player) => ({
+        id: player.id,
+        name: player.full_name?.trim() || player.display_name,
+        teamNames: [...(teamNamesByPlayer.get(player.id) ?? [])].sort(),
+      }));
+      players = (playersRes.data ?? []).filter((player) => rosterIds.has(player.id)).map((player) => {
         const dob = player.date_of_birth;
         const age = dob && linkedIds.has(player.id) ? ageFromDob(dob) : null;
         const ageEligibility: PublicCompetitionPlayer["ageEligibility"] = {};
@@ -56,12 +77,12 @@ async function formData(client: SupabaseClient, teamId?: string) {
         }
         return { id: player.id, name: player.full_name?.trim() || player.display_name, ageEligibility };
       });
-      const captainId = members.find((member) => member.is_captain)?.player_id;
+      const captainId = roster.find((member) => member.is_captain)?.player_id;
       captainName = players.find((player) => player.id === captainId)?.name ?? null;
     }
   }
   return {
-    data: { seasons, teams, competitions, players, captainName },
+    data: { seasons, teams, competitions, players, partners, captainName },
     registeredDobs,
   };
 }
@@ -104,7 +125,7 @@ export async function POST(req: NextRequest) {
     if (selections.some((selection) => !data.competitions.some((competition) => competition.id === selection.competitionId))) {
       throw new Error("The form includes a competition that is closed. Refresh and try again.");
     }
-    const validation = validatePublicSelections(selections, data.competitions, new Set(data.players.map((player) => player.id)), action === "submit", registeredDobs);
+    const validation = validatePublicSelections(selections, data.competitions, new Set(data.players.map((player) => player.id)), new Set(data.partners.map((player) => player.id)), action === "submit", registeredDobs);
     if (validation) throw new Error(validation);
     if (action === "submit" && (!contactName || contactPhone.replace(/\D/g, "").length < 10)) throw new Error("Enter the captain or team contact name and a valid telephone number.");
     const existingRes = await client.from("public_competition_entry_drafts").select("id,status").eq("draft_token", draftToken).maybeSingle();
@@ -118,27 +139,38 @@ export async function POST(req: NextRequest) {
         : entry),
     }));
     const values = { draft_token: draftToken, season_id: team.season_id, team_id: teamId, contact_name: contactName || null, contact_phone: contactPhone || null, selections: draftSelections, status: "draft", submitted_at: null, updated_at: now };
-    const writeRes = existingRes.data ? await client.from("public_competition_entry_drafts").update(values).eq("id", existingRes.data.id) : await client.from("public_competition_entry_drafts").insert(values);
-    if (writeRes.error) throw new Error(writeRes.error.message);
     let created = 0;
-    if (action === "submit") {
-      const playersById = new Map(data.players.map((player) => [player.id, player]));
-      for (const selection of selections.filter((item) => item.decision === "enter")) {
-        for (const entry of selection.entries) {
-          const primary = entry.playerIds[0];
-          const duplicateRes = await client.from("competition_entries").select("id").eq("competition_id", selection.competitionId).eq("player_id", primary).in("status", ["pending", "approved"]).limit(1);
-          if (duplicateRes.error) throw new Error(duplicateRes.error.message);
-          if ((duplicateRes.data?.length ?? 0) > 0) continue;
-          const teammates = entry.playerIds.slice(1);
-          const ageEligibility = playersById.get(primary)?.ageEligibility[selection.competitionId];
-          const dob = ageEligibility === "eligible" ? registeredDobs.get(primary) : entry.entrantDateOfBirth;
-          const insertRes = await client.from("competition_entries").insert({ competition_id: selection.competitionId, requester_user_id: null, player_id: primary, entrant_date_of_birth: dob || null, status: "pending", note: JSON.stringify({ source: "public_team_competition_form", draftToken, teamId, teamMemberIds: teammates, teamMemberNames: teammates.map((id) => playersById.get(id)?.name ?? "") }) });
-          if (insertRes.error) throw new Error(insertRes.error.message);
-          created += 1;
-        }
-      }
-      const submittedRes = await client.from("public_competition_entry_drafts").update({ status: "submitted", submitted_at: now, updated_at: now }).eq("draft_token", draftToken).eq("status", "draft");
-      if (submittedRes.error) throw new Error(submittedRes.error.message);
+    if (action === "save") {
+      const writeRes = existingRes.data
+        ? await client.from("public_competition_entry_drafts").update(values).eq("id", existingRes.data.id).eq("status", "draft").select("id").maybeSingle()
+        : await client.from("public_competition_entry_drafts").insert(values).select("id").single();
+      if (writeRes.error) throw new Error(writeRes.error.message);
+      if (!writeRes.data) throw new Error("This competition form has already been submitted.");
+    } else {
+      const teamPlayers = new Map(data.players.map((player) => [player.id, player]));
+      const partnerNames = new Map(data.partners.map((player) => [player.id, player.name]));
+      const entries = draftSelections.filter((item) => item.decision === "enter").flatMap((selection) =>
+        selection.entries.map((entry) => {
+          const [primary, ...teammates] = entry.playerIds;
+          return {
+            competition_id: selection.competitionId,
+            player_id: primary,
+            entrant_date_of_birth: teamPlayers.get(primary)?.ageEligibility[selection.competitionId] === "eligible"
+              ? registeredDobs.get(primary)
+              : entry.entrantDateOfBirth || null,
+            note: {
+              source: "public_team_competition_form",
+              draftToken,
+              teamId,
+              teamMemberIds: teammates,
+              teamMemberNames: teammates.map((id) => partnerNames.get(id) ?? ""),
+            },
+          };
+        }),
+      );
+      const submit = await client.rpc("submit_public_competition_form", { p_form: values, p_entries: entries });
+      if (submit.error) throw new Error(submit.error.message);
+      created = submit.data ?? 0;
     }
     return NextResponse.json({ ok: true, status: action === "submit" ? "submitted" : "draft", created }, { headers });
   } catch (error) {

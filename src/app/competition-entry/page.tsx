@@ -1,8 +1,8 @@
 "use client";
 
 import { competitionDeadlineLabel, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
-import { useEffect, useMemo, useState } from "react";
-import { ageFromDob, competitionAgeRule, entrantsRequired, type PublicCompetition, type PublicCompetitionEntry, type PublicCompetitionPlayer, type PublicCompetitionSelection } from "@/lib/public-competition-entry";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { ageFromDob, competitionAgeRule, entrantsRequired, type PublicCompetition, type PublicCompetitionEntry, type PublicCompetitionPartner, type PublicCompetitionPlayer, type PublicCompetitionSelection } from "@/lib/public-competition-entry";
 
 type Team = { id: string; name: string; season_id: string };
 const makeToken = () => Array.from(crypto.getRandomValues(new Uint8Array(24)), (byte) => byte.toString(16).padStart(2, "0")).join("");
@@ -11,6 +11,8 @@ const makeEntry = (count: number): PublicCompetitionEntry => ({ entryId: crypto.
 export default function PublicCompetitionEntryPage() {
   const [teams, setTeams] = useState<Team[]>([]);
   const [competitions, setCompetitions] = useState<PublicCompetition[]>([]);
+  const rosterRequest = useRef<AbortController | null>(null);
+  const [partners, setPartners] = useState<PublicCompetitionPartner[]>([]);
   const [players, setPlayers] = useState<PublicCompetitionPlayer[]>([]);
   const [teamId, setTeamId] = useState("");
   const [contactName, setContactName] = useState("");
@@ -45,6 +47,7 @@ export default function PublicCompetitionEntryPage() {
         const rosterResult = await roster.json();
         if (roster.ok) {
           setPlayers(rosterResult.players ?? []);
+          setPartners(rosterResult.partners ?? []);
           if (!savedContactName) setContactName(rosterResult.captainName ?? "");
         }
       }
@@ -53,14 +56,23 @@ export default function PublicCompetitionEntryPage() {
   }, []);
 
   const changeTeam = async (id: string) => {
-    setTeamId(id); setPlayers([]); setMessage("");
+    rosterRequest.current?.abort();
+    setTeamId(id); setPlayers([]); setPartners([]); setMessage(""); setContactName("");
     setSelections(mergeSelections(competitions));
     if (!id) return;
-    const response = await fetch(`/api/public/competition-entry-form?teamId=${id}`, { cache: "no-store" });
-    const result = await response.json();
-    if (!response.ok) return setMessage(result.error ?? "Team roster could not be loaded.");
-    setPlayers(result.players ?? []);
-    setContactName(result.captainName ?? "");
+    const controller = new AbortController();
+    rosterRequest.current = controller;
+    try {
+      const response = await fetch(`/api/public/competition-entry-form?teamId=${encodeURIComponent(id)}`, { cache: "no-store", signal: controller.signal });
+      const result = await response.json();
+      if (controller.signal.aborted) return;
+      if (!response.ok) return setMessage(result.error ?? "Team roster could not be loaded.");
+      setPlayers(result.players ?? []);
+      setPartners(result.partners ?? []);
+      setContactName(result.captainName ?? "");
+    } catch {
+      if (!controller.signal.aborted) setMessage("Team roster could not be loaded. Select the team again to retry.");
+    }
   };
 
   const update = (competitionId: string, fn: (value: PublicCompetitionSelection) => PublicCompetitionSelection) => setSelections((current) => current.map((item) => item.competitionId === competitionId ? fn(item) : item));
@@ -77,14 +89,17 @@ export default function PublicCompetitionEntryPage() {
 
   return <main className="min-h-screen bg-slate-100 p-3 sm:p-6"><div className="mx-auto max-w-5xl space-y-4">
     <header className="rounded-3xl bg-gradient-to-r from-slate-950 via-teal-950 to-slate-900 p-6 text-white shadow-xl"><p className="text-xs font-bold uppercase tracking-[.2em] text-teal-300">Rack &amp; Frame</p><h1 className="mt-2 text-3xl font-black">Competition Entry Form</h1><p className="mt-2 text-slate-300">One form for every team. Select your team, complete each competition and save as often as needed.</p></header>
-    <p className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">Captains submit one form per team. If you’d like to enter a competition, please tell your captain which events you want to play in.</p>
+    <p className="rounded-2xl border border-slate-200 bg-white p-4 text-sm text-slate-700">Captains submit one form per team. For doubles and three-player events, choose the first player from your team and any partners from the same club. Partners can play for different teams or divisions.</p>
     {message ? <div className="rounded-2xl border border-sky-200 bg-sky-50 p-4 text-sm font-semibold text-sky-900">{message}</div> : null}
     {status === "submitted" ? <section className="rounded-2xl border border-emerald-300 bg-emerald-50 p-5 text-emerald-900"><h2 className="font-bold">Form submitted</h2><p className="mt-1 text-sm">The entries are now awaiting league-officer approval.</p></section> : loading ? <p>Loading competitions…</p> : competitions.length === 0 ? <p className="rounded-2xl bg-white p-5">Competition entries are currently closed.</p> : <>
       <section className="rounded-2xl border border-slate-200 bg-white p-5"><h2 className="text-xl font-bold">1. Team and contact</h2><div className="mt-3 grid gap-3 md:grid-cols-3"><label className="text-sm font-bold">Team *<select value={teamId} onChange={(event) => void changeTeam(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 font-normal"><option value="">Select your team…</option>{teams.map((team) => <option key={team.id} value={team.id}>{team.name}</option>)}</select></label><label className="text-sm font-bold">Captain / contact name *<input value={contactName} onChange={(event) => setContactName(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 font-normal" /></label><label className="text-sm font-bold">Telephone *<input type="tel" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} className="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 font-normal" /></label></div>{teamId && players.length === 0 ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-sm text-amber-900">This team has no registered players yet. Complete and approve its league welcome pack before entering competitions.</p> : null}</section>
       <section className="rounded-2xl border border-slate-200 bg-white p-5"><div className="flex items-center justify-between gap-3"><div><h2 className="text-xl font-bold">2. Competition entries</h2><p className="text-sm text-slate-600">Choose Enter or No entry for every competition.</p></div><span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold">{complete}/{competitions.length} completed</span></div><div className="mt-4 space-y-4">{competitions.map((competition) => { const selection = selections.find((item) => item.competitionId === competition.id); if (!selection) return null; const required = entrantsRequired(competition); const ageRule = competitionAgeRule(competition.name); const ageRestricted = ageRule.minimum !== null || ageRule.maximum !== null; return <article key={competition.id} className="rounded-2xl border border-slate-200 bg-slate-50 p-4"><h3 className="font-bold">{competition.name}</h3><p className="text-xs text-slate-500">{required === 1 ? "Singles" : required === 2 ? "Doubles" : "Three-player team"}{competition.signup_deadline ? ` · closes ${competitionDeadlineLabel(competition.signup_deadline)}` : ""} (UK time)</p>{usesFixedCompetitionHandicaps(competition.name) ? <p className="mt-2 text-sm text-teal-900">Handicaps are set when entries close and stay fixed throughout. Division One players use their Elo-suggested handicap plus 8 points. Premier players use their published handicap.</p> : null}<select value={selection.decision} onChange={(event) => update(competition.id, (current) => ({ ...current, decision: event.target.value as PublicCompetitionSelection["decision"], entries: event.target.value === "enter" ? (current.entries.length ? current.entries : [makeEntry(required)]) : [] }))} className="mt-3 w-full rounded-xl border border-slate-300 bg-white px-3 py-2"><option value="pending">Choose…</option><option value="enter">Enter player(s)</option><option value="no_entry">No entry</option></select>{selection.decision === "enter" ? <div className="mt-3 space-y-3">{selection.entries.map((entry, entryIndex) => {
           const ageEligibility = players.find((player) => player.id === entry.playerIds[0])?.ageEligibility?.[competition.id];
           const ageRequirement = ageRule.maximum !== null ? "Must be under 25" : `Must be ${ageRule.minimum}+`;
-          return <div key={entry.entryId} className="rounded-xl bg-white p-3"><div className="flex justify-between"><strong className="text-sm">Entry {entryIndex + 1}</strong>{selection.entries.length > 1 ? <button type="button" onClick={() => update(competition.id, (current) => ({ ...current, entries: current.entries.filter((item) => item.entryId !== entry.entryId) }))} className="text-xs font-bold text-rose-700">Remove</button> : null}</div><div className="mt-2 grid gap-2 md:grid-cols-3">{Array.from({ length: required }, (_, index) => <select key={index} value={entry.playerIds[index] ?? ""} onChange={(event) => update(competition.id, (current) => ({ ...current, entries: current.entries.map((item) => item.entryId === entry.entryId ? { ...item, entrantDateOfBirth: index === 0 ? "" : item.entrantDateOfBirth, playerIds: Array.from({ length: required }, (_, slot) => slot === index ? event.target.value : item.playerIds[slot] ?? "") } : item) }))} className="rounded-lg border border-slate-300 px-3 py-2"><option value="">Player {index + 1}…</option>{players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)}</select>)}
+          return <div key={entry.entryId} className="rounded-xl bg-white p-3"><div className="flex justify-between"><strong className="text-sm">Entry {entryIndex + 1}</strong>{selection.entries.length > 1 ? <button type="button" onClick={() => update(competition.id, (current) => ({ ...current, entries: current.entries.filter((item) => item.entryId !== entry.entryId) }))} className="text-xs font-bold text-rose-700">Remove</button> : null}</div><div className="mt-2 grid gap-2 md:grid-cols-3">{Array.from({ length: required }, (_, index) => <select key={index} value={entry.playerIds[index] ?? ""} onChange={(event) => update(competition.id, (current) => ({ ...current, entries: current.entries.map((item) => item.entryId === entry.entryId ? { ...item, entrantDateOfBirth: index === 0 ? "" : item.entrantDateOfBirth, playerIds: Array.from({ length: required }, (_, slot) => slot === index ? event.target.value : item.playerIds[slot] === event.target.value ? "" : item.playerIds[slot] ?? "") } : item) }))} className="rounded-lg border border-slate-300 px-3 py-2"><option value="">{index === 0 ? "Player from your team…" : `Club partner ${index}…`}</option>{index === 0
+                ? players.map((player) => <option key={player.id} value={player.id}>{player.name}</option>)
+                : partners.filter((player) => !entry.playerIds.some((id, slot) => slot !== index && id === player.id))
+                    .map((player) => <option key={player.id} value={player.id}>{player.name} · {player.teamNames.join(" / ")}</option>)}</select>)}
             {ageRestricted && entry.playerIds[0] ? ageEligibility ? (
               <p role="status" className={ageEligibility === "eligible"
                 ? "rounded-lg bg-emerald-50 px-3 py-2 text-sm text-emerald-900"

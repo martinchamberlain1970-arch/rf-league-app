@@ -5,6 +5,8 @@ export type PublicCompetitionPlayer = {
   ageEligibility: Record<string, "eligible" | "ineligible">;
 };
 
+export type PublicCompetitionPartner = { id: string; name: string; teamNames: string[] };
+
 export type PublicCompetitionEntry = { entryId: string; playerIds: string[]; entrantDateOfBirth: string };
 export type PublicCompetitionSelection = { competitionId: string; decision: "pending" | "enter" | "no_entry"; entries: PublicCompetitionEntry[] };
 
@@ -40,7 +42,8 @@ export const meetsCompetitionAgeRule = (age: number, { minimum, maximum }: Compe
 export function validatePublicSelections(
   selections: PublicCompetitionSelection[],
   competitions: PublicCompetition[],
-  playerIds: Set<string>,
+  teamPlayerIds: ReadonlySet<string>,
+  clubPlayerIds: ReadonlySet<string>,
   final: boolean,
   registeredDobs: ReadonlyMap<string, string>,
 ) {
@@ -56,11 +59,12 @@ export function validatePublicSelections(
     if (!selection.entries.length) return `Add an entry for ${competition.name}.`;
     const used = new Set<string>();
     for (const entry of selection.entries) {
-      const selected = entry.playerIds.filter(Boolean);
+      const selected = entry.playerIds;
       const required = entrantsRequired(competition);
-      if (selected.length !== required) return `${competition.name} needs ${required} player${required === 1 ? "" : "s"} per entry.`;
+      if (selected.length !== required || selected.some((id) => !id)) return `${competition.name} needs ${required} player${required === 1 ? "" : "s"} per entry.`;
       if (new Set(selected).size !== selected.length || selected.some((id) => used.has(id))) return `A player is repeated in ${competition.name}.`;
-      if (selected.some((id) => !playerIds.has(id))) return `${competition.name} contains a player outside the selected team.`;
+      if (!teamPlayerIds.has(selected[0])) return `Choose the first player in ${competition.name} from the selected team.`;
+      if (selected.slice(1).some((id) => !clubPlayerIds.has(id))) return `Choose partners in ${competition.name} from the same club.`;
       selected.forEach((id) => used.add(id));
       const { minimum: min, maximum: max } = competitionAgeRule(competition.name);
       if (min !== null || max !== null) {
