@@ -267,3 +267,12 @@ test("public scorecards require the declared winner and queue once without an ac
   assert.equal((await cup.post(result, "")).status, 409);
   assert.equal(cup.submissions.length, 1);
 });
+
+test("Hodge can finish before six frames when the winner has five points", () => {
+  const frames = Array.from({ length: 4 }, () => ({ home: 70, away: 30 }));
+  const result = hodge.scoreHodgeCup(frames);
+  assert.equal(result.home, 5);
+  assert.equal(result.away, 0);
+  assert.equal(result.winnerSide, "home");
+  assert.match(hodge.scoreHodgeCup(frames.slice(0, 3)).error, /reaches five points/);
+});

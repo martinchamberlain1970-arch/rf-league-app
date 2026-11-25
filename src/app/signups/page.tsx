@@ -9,7 +9,7 @@ import MessageModal from "@/components/MessageModal";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
 import { competitionDeadlineLabel, competitionEntriesOpen, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
-import { competitionAgeRule, groupTeamCompetitionEntries } from "@/lib/public-competition-entry";
+import { competitionAgeRule, competitionEntryFormat, entrantsRequired, groupTeamCompetitionEntries } from "@/lib/public-competition-entry";
 import { fetchAllSupabasePages } from "@/lib/supabase-pagination";
 
 type Competition = {
@@ -41,20 +41,6 @@ type Entry = {
 type Player = { id: string; display_name: string; full_name: string | null };
 type Location = { id: string; name: string };
 type TeamEntryNote = { teamMemberNames?: string[] };
-
-function isHodgeCompetitionName(name: string) {
-  return name === "Hodge Cup (Triples)" || name.startsWith("Hodge Cup (Triples) - ");
-}
-
-function isAlberyCompetitionName(name: string) {
-  return name === "Albery Cup (Billiards 3-Man Team)" || name.startsWith("Albery Cup (Billiards 3-Man Team) - ");
-}
-
-function requiredEntrants(c: Competition) {
-  if (isHodgeCompetitionName(c.name) || isAlberyCompetitionName(c.name)) return 3;
-  if (c.match_mode === "doubles") return 2;
-  return 1;
-}
 
 function parseTeamNote(note: string | null): TeamEntryNote {
   if (!note) return {};
@@ -287,14 +273,14 @@ export default function CompetitionSignupsPage() {
               const full = c.max_entries ? approvedCount >= c.max_entries : false;
               const isAlreadyEntered = userEntry?.status === "approved";
               const ageRule = competitionAgeRule(c.name);
-              const entrantsRequired = requiredEntrants(c);
+              const rosterSize = entrantsRequired(c);
               return (
                 <div key={c.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex flex-wrap items-start justify-between gap-2">
                     <div>
                       <p className="text-lg font-semibold text-slate-900">{c.name}</p>
                       <p className="text-sm text-slate-600">
-                        {(isAlberyCompetitionName(c.name) ? "Billiards" : c.sport_type === "billiards" ? "Billiards" : "Snooker")} · {entrantsRequired === 3 ? "Triples" : c.match_mode === "doubles" ? "Doubles" : "Singles"} · {c.competition_format}
+                        {competitionEntryFormat(c).sport} · {competitionEntryFormat(c).mode} · {c.competition_format}
                         {c.location_id ? ` · ${locationNameMap.get(c.location_id) ?? "Location"}` : ""}
                       </p>
                       <p className="text-xs text-slate-500">
@@ -334,8 +320,8 @@ export default function CompetitionSignupsPage() {
                     {full ? <span className="text-xs text-rose-700">Competition full</span> : null}
                     {ageRule.minimum !== null ? <span className="text-xs text-slate-600">Eligibility: age {ageRule.minimum}+</span> : null}
                     {ageRule.maximum !== null ? <span className="text-xs text-slate-600">Eligibility: under 25</span> : null}
-                    {entrantsRequired === 2 ? <span className="text-xs text-slate-600">Entry requires 2 players.</span> : null}
-                    {entrantsRequired === 3 ? <span className="text-xs text-slate-600">Entry requires 3 players.</span> : null}
+                    {rosterSize === 2 ? <span className="text-xs text-slate-600">Entry requires 2 players.</span> : null}
+                    {rosterSize === 3 ? <span className="text-xs text-slate-600">Entry requires 3 players.</span> : null}
                   </div>
 
                   {admin.isAdmin && allEntries.length > 0 ? (

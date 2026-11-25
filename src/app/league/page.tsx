@@ -1,5 +1,6 @@
 "use client";
 
+import { competitionEntryFormat, isAlberyCompetitionName, isHamiltonCompetitionName, isHodgeCompetitionName, specialCompetitionScoring } from "@/lib/public-competition-entry";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -593,15 +594,7 @@ const LEAGUE_KNOCKOUT_TEMPLATES = [
 const LEAGUE_KNOCKOUT_NAMES = LEAGUE_KNOCKOUT_TEMPLATES.map((t) => t.name);
 const isLeagueKnockoutName = (name: string) =>
   LEAGUE_KNOCKOUT_NAMES.some((base) => name === base || name.startsWith(`${base} - `));
-const isHodgeCompetitionName = (name: string) =>
-  name === "Hodge Cup (Triples)" || name.startsWith("Hodge Cup (Triples) - ");
-const isHamiltonCompetitionName = (name: string) =>
-  name === "Hamilton Cup (Singles Billiards)" ||
-  name.startsWith("Hamilton Cup (Singles Billiards) - ") ||
-  name === "Hamilton Cup (Billiards Singles)" ||
-  name.startsWith("Hamilton Cup (Billiards Singles) - ");
-const isAlberyCompetitionName = (name: string) =>
-  name === "Albery Cup (Billiards 3-Man Team)" || name.startsWith("Albery Cup (Billiards 3-Man Team) - ");
+
 type LeagueTemplateKey = keyof typeof LEAGUE_TEMPLATES;
 const seasonDisplayLabel = (
   season: Pick<Season, "name" | "handicap_enabled"> & Partial<Pick<Season, "is_active">>
@@ -2074,19 +2067,6 @@ function LeaguePageContent() {
             .eq("id", row.id);
           continue;
         }
-        const needsFix =
-          row.best_of !== 3 ||
-          roundCfg.round1 !== 3 ||
-          roundCfg.semi_final !== 3 ||
-          roundCfg.final !== 3;
-        if (!needsFix) continue;
-        await client
-          .from("competitions")
-          .update({
-            best_of: 3,
-            knockout_round_best_of: { round1: 3, semi_final: 3, final: 3 },
-          })
-          .eq("id", row.id);
       }
       if (leagueRows.length > 0) {
         const refresh = await client
@@ -5564,7 +5544,7 @@ function LeaguePageContent() {
           ? { round1: 9, semi_final: 9, final: 9 }
           : tpl.key === "hamilton_cup" || tpl.key === "albery_cup"
             ? null
-            : { round1: 3, semi_final: 3, final: 3 },
+            : { round1: 3, semi_final: 5, final: 5 },
       signup_open: false,
       is_archived: false,
       is_completed: false,
@@ -6850,7 +6830,7 @@ function LeaguePageContent() {
                                 })()}
                               </div>
                               <p className="text-xs text-slate-600">
-                                {c.sport_type === "billiards" ? "Billiards" : "Snooker"} · {isHodgeComp ? "triples (6 frames + 3 aggregate bonus points)" : isAlberyComp ? "3-man team race to 300 (100/200/300 legs)" : c.match_mode} · {isHodgeComp ? "First to 5 points (9-point format)" : isHamiltonComp ? "200 up + handicap (SF/Final 400 up + 2x handicap)" : isAlberyComp ? "First team to 300 wins (best players should play the final leg)" : `Best of ${c.best_of}`}
+                                {competitionEntryFormat(c).sport} · {competitionEntryFormat(c).mode} · {specialCompetitionScoring(c.name) ?? `Best of ${c.best_of} frames`}
                               </p>
                               <p className="text-xs text-slate-600">
                                 Sign-ups: {c.signup_open ? "Open" : "Closed"}

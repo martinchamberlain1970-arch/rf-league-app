@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { competitionEntryFormat, specialCompetitionScoring } from "@/lib/public-competition-entry";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import { competitionDeadlineLabel, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
@@ -105,15 +106,6 @@ function resolveWinnerSide(m: Match): 1 | 2 | 0 {
   if (m.winner_player_id === m.player2_id) return 2;
   return 0;
 }
-const isHodgeCompetitionName = (name: string) =>
-  name === "Hodge Cup (Triples)" || name.startsWith("Hodge Cup (Triples) - ");
-const isHamiltonCompetitionName = (name: string) =>
-  name === "Hamilton Cup (Singles Billiards)" ||
-  name.startsWith("Hamilton Cup (Singles Billiards) - ") ||
-  name === "Hamilton Cup (Billiards Singles)" ||
-  name.startsWith("Hamilton Cup (Billiards Singles) - ");
-const isAlberyCompetitionName = (name: string) =>
-  name === "Albery Cup (Billiards 3-Man Team)" || name.startsWith("Albery Cup (Billiards 3-Man Team) - ");
 const entryStatusClass = (status: Entry["status"]) => {
   if (status === "pending") return "border-amber-200 bg-amber-50 text-amber-800";
   if (status === "approved") return "border-emerald-200 bg-emerald-50 text-emerald-800";
@@ -268,7 +260,7 @@ export default function CompetitionPage() {
     let bracketSize = 1;
     while (bracketSize < seeds.length) bracketSize *= 2;
 
-    const baseBestOf = competition.knockout_round_best_of?.round1 ?? competition.best_of;
+    const baseBestOf = getRoundBestOf(1, Math.log2(bracketSize), competition.best_of);
     const inserts: Array<Record<string, unknown>> = [];
     for (let i = 0; i < bracketSize; i += 2) {
       const p1 = seeds[i]?.player_id ?? null;
@@ -788,13 +780,10 @@ export default function CompetitionPage() {
                 <p className="mt-1 text-slate-700">Venue: {competition.venue || "-"}</p>
                 <p className="mt-1 text-slate-700">Format: {competition.competition_format}</p>
                 <p className="mt-1 text-slate-700">
-                  {isHodgeCompetitionName(competition.name)
-                    ? "Triples · First to 5 points (9-point format)"
-                    : isHamiltonCompetitionName(competition.name)
-                      ? "Billiards Singles · 200 up + handicap (SF/Final 400 up + handicap x2)"
-                      : isAlberyCompetitionName(competition.name)
-                        ? "Billiards 3-man team · race to 300 (legs to 100 / 200 / 300)"
-                        : `Best of ${competition.best_of}`}
+                  {competitionEntryFormat(competition).sport} · {competitionEntryFormat(competition).mode}
+                </p>
+                <p className="mt-1 text-slate-700">
+                  {specialCompetitionScoring(competition.name) ?? `Best of ${competition.best_of} frames`}
                 </p>
               </section>
               <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -1057,7 +1046,7 @@ export default function CompetitionPage() {
                       <div key={`fixtures-round-${round.roundNo}`} className="space-y-2">
                         <div className="rounded-xl border border-teal-300 bg-teal-50 px-4 py-2">
                           <p className="text-sm font-semibold text-teal-900">
-                            {round.title} · {isHodgeCompetitionName(competition.name) ? "First to 5 points (9-point format)" : `Best of ${round.bestOf} frames`}
+                            {round.title} · {specialCompetitionScoring(competition.name, round.roundNo >= totalBracketRounds - 1 ? "late" : "early") ?? `Best of ${round.bestOf} frames`}
                           </p>
                         </div>
                         {round.rows.map((m) => (
@@ -1106,7 +1095,7 @@ export default function CompetitionPage() {
                                     </p>
                                     <p className="mt-1 text-sm font-semibold text-slate-900">{node.p1} vs {node.p2}</p>
                                     <p className="mt-1 text-xs text-slate-700">
-                                      {isHodgeCompetitionName(competition.name) ? "First to 5 points (9-point format)" : `Best of ${node.bestOf}`}
+                                      {specialCompetitionScoring(competition.name, node.roundNo >= totalBracketRounds - 1 ? "late" : "early") ?? `Best of ${node.bestOf} frames`}
                                     </p>
                                     <p className="mt-1 text-xs text-slate-700">
                                       Status: {node.status === "bye" ? "Locked" : node.status === "tbc" ? "TBC" : node.status.replace("_", " ")}

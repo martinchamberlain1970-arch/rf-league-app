@@ -132,3 +132,18 @@ test("pending competition entries group by captain's form without merging separa
   assert.equal(grouped.forms[2].teamId, "jordans");
   assert.equal(grouped.individual.length, 2);
 });
+
+test("three-player cups retain their own sport, entry size and scoring descriptions", () => {
+  const { competitionEntryFormat, entrantsRequired, specialCompetitionScoring } = exportsForTest;
+  const hodge = { ...triples, name: "Hodge Cup (Triples) - 2026/2027" };
+  const albery = { ...doubles, name: "Albery Cup (Billiards 3-Man Team) - 2026/2027", sport_type: "snooker" };
+  assert.equal(entrantsRequired(hodge), 3);
+  assert.equal(entrantsRequired(albery), 3);
+  assert.equal(competitionEntryFormat(hodge).mode, "Three-player team");
+  assert.equal(competitionEntryFormat(hodge).sport, "Snooker");
+  assert.equal(competitionEntryFormat(albery).mode, "Three-player team");
+  assert.equal(competitionEntryFormat(albery).sport, "Billiards");
+  assert.match(specialCompetitionScoring(hodge.name), /First to 5 points/);
+  assert.match(specialCompetitionScoring(albery.name), /100, 200 and 300/);
+  assert.equal(competitionEntryFormat(doubles).mode, "Doubles");
+});

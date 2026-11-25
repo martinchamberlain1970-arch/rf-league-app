@@ -7,6 +7,7 @@ import RequireAuth from "@/components/RequireAuth";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
 import ScreenHeader from "@/components/ScreenHeader";
+import { competitionEntryFormat, specialCompetitionScoring } from "@/lib/public-competition-entry";
 import { logAudit } from "@/lib/audit";
 import { calculateAdjustedScoresWithCap } from "@/lib/snooker-handicap";
 import ConfirmModal from "@/components/ConfirmModal";
@@ -17,7 +18,7 @@ import { fetchAllSupabasePages, fetchAllSupabasePagesByChunks } from "@/lib/supa
 type Competition = {
   id: string;
   name: string;
-  sport_type: "snooker";
+  sport_type: "snooker" | "billiards";
   competition_format: "knockout" | "league";
   match_mode: "singles" | "doubles";
   best_of: number;
@@ -1998,10 +1999,10 @@ function EventsPageContent() {
               <article key={r.id} className={cardBaseClass}>
                 <h2 className="text-xl font-semibold text-slate-900">{r.name}</h2>
                 <p className="mt-1 text-slate-700">
-                  Snooker · {r.competition_format === "knockout" ? "Knockout" : "League"}{r.is_practice ? " · Practice" : ""}
+                  {competitionEntryFormat(r).sport} · {r.competition_format === "knockout" ? "Knockout" : "League"}{r.is_practice ? " · Practice" : ""}
                 </p>
-                <p className="mt-1 text-slate-700">Mode: {r.match_mode === "doubles" ? "Doubles" : "Singles"}</p>
-                <p className="mt-1 text-slate-700">Best of {r.best_of}</p>
+                <p className="mt-1 text-slate-700">Mode: {competitionEntryFormat(r).mode}</p>
+                <p className="mt-1 text-slate-700">{specialCompetitionScoring(r.name) ?? `Best of ${r.best_of} frames`}</p>
                 {statsByComp.get(r.id) ? (
                   <p className="mt-1 text-sm text-slate-600">
                     Progress: {statsByComp.get(r.id)!.done}/{statsByComp.get(r.id)!.total} complete

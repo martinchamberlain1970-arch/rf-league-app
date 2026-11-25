@@ -26,8 +26,36 @@ export const maySelectCompetitionPlayer = (
   counts: ReadonlyMap<string, number>,
 ) => playerId === currentPlayerId || !counts.has(playerId);
 
-export const entrantsRequired = (competition: Pick<PublicCompetition, "name" | "match_mode">) =>
-  /Hodge Cup \(Triples\)|Albery Cup \(Billiards 3-Man Team\)/i.test(competition.name) ? 3 : competition.match_mode === "doubles" ? 2 : 1;
+export const isHodgeCompetitionName = (name: string) => /^Hodge Cup \(Triples\)(?: - |$)/i.test(name);
+export const isAlberyCompetitionName = (name: string) => /^Albery Cup \(Billiards 3-Man Team\)(?: - |$)/i.test(name);
+export const isHamiltonCompetitionName = (name: string) =>
+  /^Hamilton Cup \((?:Singles Billiards|Billiards Singles)\)(?: - |$)/i.test(name);
+
+type CompetitionFormatFields = { name: string; match_mode?: string; sport_type?: string };
+
+export const entrantsRequired = (competition: CompetitionFormatFields) =>
+  isHodgeCompetitionName(competition.name) || isAlberyCompetitionName(competition.name) ? 3 : competition.match_mode === "doubles" ? 2 : 1;
+
+export function competitionEntryFormat(competition: CompetitionFormatFields) {
+  const { name, sport_type } = competition;
+  const entrants = entrantsRequired(competition);
+  const sport = isAlberyCompetitionName(name) || isHamiltonCompetitionName(name) || sport_type === "billiards"
+    ? "Billiards"
+    : "Snooker";
+  const mode = entrants === 3 ? "Three-player team" : entrants === 2 ? "Doubles" : "Singles";
+  return { sport, mode };
+}
+
+export function specialCompetitionScoring(name: string, stage?: "early" | "late") {
+  if (isHodgeCompetitionName(name)) return "First to 5 points · 6 singles frames and 3 aggregate points";
+  if (isAlberyCompetitionName(name)) return "Race to 300 · cumulative legs to 100, 200 and 300";
+  if (isHamiltonCompetitionName(name)) {
+    if (stage === "early") return "200 up plus handicap";
+    if (stage === "late") return "400 up plus twice the handicap";
+    return "200 up plus handicap · 400 up plus twice the handicap in the semi-finals and final";
+  }
+  return null;
+}
 
 export type CompetitionAgeRule = { minimum: number | null; maximum: number | null };
 

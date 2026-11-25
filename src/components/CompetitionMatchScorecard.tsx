@@ -311,6 +311,9 @@ export default function CompetitionMatchScorecard({
       const a = Number(awayScore);
       if (!Number.isSafeInteger(h) || !Number.isSafeInteger(a) || h < 0 || a < 0) return setMessage("Enter valid scores.");
     } else if (isHodge) {
+      if (frames.some(({ frameNo }, index) => frameNo !== index + 1)) {
+        return setMessage("Enter the Hodge Cup frames in order without gaps.");
+      }
       const points = scoreHodgeCup(frames, hodgeBlackWinners);
       if ("error" in points) return setMessage(points.error ?? "Check the Hodge frame scores.");
     } else {
@@ -590,7 +593,7 @@ export default function CompetitionMatchScorecard({
                     {isHamilton ? "Final points submission" : isHodge ? "Hodge Cup scorecard" : `Frame-by-frame submission (best of ${match?.best_of ?? 1})`}
                   </p>
                   {isHodge ? (
-                    <p className="text-sm text-slate-600">Enter six frame scores. The app awards one point per frame and a bonus point for each aggregate pairing (1 and 4, 2 and 5, 3 and 6).</p>
+                    <p className="text-sm text-slate-600">Enter the scores for the frames played. The first team to five points wins. The app awards one point per frame and one for each completed aggregate pairing (1 and 4, 2 and 5, 3 and 6).</p>
                   ) : null}
                   {isHamilton ? (
                     <>
