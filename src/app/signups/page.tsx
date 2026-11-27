@@ -10,6 +10,7 @@ import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
 import { competitionDeadlineLabel, competitionEntriesOpen, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
 import { competitionAgeRule, competitionEntryFormat, entrantsRequired, groupTeamCompetitionEntries } from "@/lib/public-competition-entry";
+import { isLeagueCup, knockoutRoundLabel, knockoutSize } from "@/lib/knockout-draw";
 import { fetchAllSupabasePages } from "@/lib/supabase-pagination";
 
 type Competition = {
@@ -274,6 +275,8 @@ export default function CompetitionSignupsPage() {
               const isAlreadyEntered = userEntry?.status === "approved";
               const ageRule = competitionAgeRule(c.name);
               const rosterSize = entrantsRequired(c);
+              const draw = knockoutSize(approvedCount);
+              const rule30Warning = isLeagueCup(c.name) && approvedCount < 4;
               return (
                 <div key={c.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -290,10 +293,27 @@ export default function CompetitionSignupsPage() {
                         {usesFixedCompetitionHandicaps(c.name) ? " · Fixed at entry close · Division One Elo +8" : ""}
                       </p>
                     </div>
-                    <Link href={`/competitions/${c.id}`} className="rounded-full border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-slate-50">
-                      View Event
-                    </Link>
+                    <div className="flex flex-wrap gap-2">
+                      {admin.canManageLeague && c.competition_format === "knockout" ? (
+                        <Link href={`/competitions/${c.id}#manual-entry`} className="rounded-full bg-teal-800 px-3 py-1 text-sm font-medium text-white">
+                          Add entry
+                        </Link>
+                      ) : null}
+                      <Link href={`/competitions/${c.id}`} className="rounded-full border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-slate-50">
+                        View Event
+                      </Link>
+                    </div>
                   </div>
+                  {admin.canManageLeague && c.competition_format === "knockout" ? (
+                    <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
+                      <strong>Draw forecast</strong>
+                      <p>{draw.rounds
+                        ? `${draw.rounds} ${draw.rounds === 1 ? "round" : "rounds"} including the final · ${knockoutRoundLabel(1, draw.rounds)} opening · ${draw.byes} ${draw.byes === 1 ? "bye" : "byes"}`
+                        : "At least two entries are needed for a draw."}</p>
+                      {rule30Warning ? <p className="mt-1 text-amber-800">Rule 30 requires the winner to play before the final. A standard knockout needs four entries.</p> : null}
+                      <Link href={`/competitions/${c.id}#draw-preview`} className="mt-1 inline-block font-semibold text-teal-800 underline">Review draw</Link>
+                    </div>
+                  ) : null}
 
                   <div className="mt-3 flex flex-wrap items-center gap-2">
                     {userEntry ? (

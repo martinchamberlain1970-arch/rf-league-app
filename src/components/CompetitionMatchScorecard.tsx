@@ -55,7 +55,7 @@ export default function CompetitionMatchScorecard({
   requestedMatchId = "", guest = false, guestToken = "", admin,
 }: { requestedMatchId?: string; guest?: boolean; guestToken?: string; admin: AdminState }) {
   const [declaredWinnerPlayerId, setDeclaredWinnerPlayerId] = useState("");
-  const [guestSides, setGuestSides] = useState<{ home: string[]; away: string[] } | null>(null);
+  const [scorecardSides, setScorecardSides] = useState<{ home: string[]; away: string[] } | null>(null);
   const [guestAccess, setGuestAccess] = useState<{ token: string } | { error: string } | null>(null);
   const [match, setMatch] = useState<MatchRow | null>(null);
   const matchId = match?.id ?? requestedMatchId;
@@ -112,7 +112,7 @@ export default function CompetitionMatchScorecard({
         setMatch(matchRow);
         setCompetition(competitionRow);
         setPlayers(data.players ?? []);
-        setGuestSides(data.sides ?? null);
+        setScorecardSides(data.sides ?? null);
         setFrameScores(Array.from({ length: slots }, () => ({ home: "", away: "" })));
         if (data.handicap) setFixedHandicap({ matchId: matchRow.id, data: data.handicap });
         setGuestAccess({ token: guestToken });
@@ -161,6 +161,14 @@ export default function CompetitionMatchScorecard({
         if (cRes.data) {
           setCompetition(cRes.data as CompetitionRow);
           if (isHodgeCup(cRes.data.name)) setFrameScores(Array.from({ length: 6 }, () => ({ home: "", away: "" })));
+          if (isHodgeCup(cRes.data.name) || isAlberyCompetitionName(cRes.data.name)) {
+            const response = await fetch(`/api/public/competition-scorecard?matchId=${encodeURIComponent(requestedMatchId)}`, { cache: "no-store" })
+              .catch(() => null);
+            const data = response?.ok ? await response.json().catch(() => null) : null;
+            if (!active) return;
+            setScorecardSides(data?.sides ?? null);
+          }
+
         }
       }
 
@@ -224,7 +232,7 @@ export default function CompetitionMatchScorecard({
   const isLocked = match?.status === "complete" || match?.status === "bye";
   const participants = useMemo(
     () =>
-      new Set(
+      scorecardSides ? new Set([...scorecardSides.home, ...scorecardSides.away]) : new Set(
         [
           match?.player1_id,
           match?.player2_id,
@@ -234,15 +242,15 @@ export default function CompetitionMatchScorecard({
           match?.team2_player2_id,
         ].filter(Boolean) as string[]
       ),
-    [match]
+    [match, scorecardSides]
   );
   const canSubmit = Boolean((guestAccess && "token" in guestAccess) || admin.canManageLeague || (linkedPlayerId && participants.has(linkedPlayerId)));
-  const guestSideLabel = (side: "home" | "away") => guestSides?.[side].map((id) => named(playerById.get(id))).join(" & ");
-  const homeLabel = guestSideLabel("home") || (
+  const scorecardSideLabel = (side: "home" | "away") => scorecardSides?.[side].map((id) => named(playerById.get(id))).join(" & ");
+  const homeLabel = scorecardSideLabel("home") || (
     match?.team1_player1_id || match?.team1_player2_id
       ? `${named(playerById.get(match?.team1_player1_id ?? ""))} & ${named(playerById.get(match?.team1_player2_id ?? ""))}`
       : named(playerById.get(match?.player1_id ?? "")));
-  const awayLabel = guestSideLabel("away") || (
+  const awayLabel = scorecardSideLabel("away") || (
     match?.team2_player1_id || match?.team2_player2_id
       ? `${named(playerById.get(match?.team2_player1_id ?? ""))} & ${named(playerById.get(match?.team2_player2_id ?? ""))}`
       : named(playerById.get(match?.player2_id ?? "")));
@@ -253,6 +261,8 @@ export default function CompetitionMatchScorecard({
       const label = named(playerById.get(id));
       if (!opts.some((o) => o.key === `id:${id}`)) opts.push({ key: `id:${id}`, label, playerId: id, enteredName: null });
     };
+    scorecardSides?.home.forEach(pushPlayer);
+    scorecardSides?.away.forEach(pushPlayer);
     pushPlayer(match?.player1_id);
     pushPlayer(match?.player2_id);
     pushPlayer(match?.team1_player1_id);
@@ -269,6 +279,7 @@ export default function CompetitionMatchScorecard({
     [alberyHomeP1, alberyHomeP2, alberyHomeP3, alberyAwayP1, alberyAwayP2, alberyAwayP3].forEach(pushName);
     return opts;
   }, [
+    scorecardSides,
     match?.player1_id,
     match?.player2_id,
     match?.team1_player1_id,
@@ -490,13 +501,13 @@ export default function CompetitionMatchScorecard({
             <CompetitionScorecardLink matchId={match.id} />
           ) : null}
 
-          {guest && guestSides && match && !isLocked && latestSubmission?.status !== "pending" ? (
+          {guest && scorecardSides && match && !isLocked && latestSubmission?.status !== "pending" ? (
             <section className="rounded-2xl border border-slate-200 bg-white p-4">
               <label className="block text-sm font-semibold text-slate-900">
                 Your name
                 <select value={declaredWinnerPlayerId} onChange={(event) => setDeclaredWinnerPlayerId(event.target.value)} className="mt-1 block w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-base">
                   <option value="">Select your name</option>
-                  {[...new Set([...guestSides.home, ...guestSides.away])].map((id) => (
+                  {[...new Set([...scorecardSides.home, ...scorecardSides.away])].map((id) => (
                     <option key={id} value={id}>{named(playerById.get(id))}</option>
                   ))}
                 </select>

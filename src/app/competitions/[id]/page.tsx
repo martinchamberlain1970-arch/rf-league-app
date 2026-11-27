@@ -9,6 +9,9 @@ import ScreenHeader from "@/components/ScreenHeader";
 import { competitionDeadlineLabel, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
+import CompetitionDrawPreview from "@/components/CompetitionDrawPreview";
+import CompetitionOfficerEntry from "@/components/CompetitionOfficerEntry";
+import { entryRoster, knockoutBestOf, knockoutMatchSides } from "@/lib/knockout-draw";
 import CompetitionEntryWithdrawal from "@/components/CompetitionEntryWithdrawal";
 import MessageModal from "@/components/MessageModal";
 
@@ -47,7 +50,7 @@ type Match = {
   team2_player2_id?: string | null;
   winner_player_id: string | null;
 };
-type Player = { id: string; display_name: string; full_name: string | null };
+type Player = { id: string; display_name: string; full_name: string | null; is_archived: boolean };
 type Frame = {
   match_id: string;
   winner_player_id: string | null;
@@ -140,8 +143,8 @@ export default function CompetitionPage() {
   const [finalDateInput, setFinalDateInput] = useState("");
   const [finalVenueInput, setFinalVenueInput] = useState("");
   const [locations, setLocations] = useState<VenueLocation[]>([]);
-  const [offlinePlayerId, setOfflinePlayerId] = useState("");
-  const [offlineExtraNames, setOfflineExtraNames] = useState("");
+  const [deadlines, setDeadlines] = useState<Array<{ round_no: number; deadline_at: string }>>([]);
+  const [entriesLoaded, setEntriesLoaded] = useState(false);
   const [view, setView] = useState<View>("fixtures");
   const [message, setMessage] = useState<string | null>(null);
   const isSuperManager = admin.canManageLeague;
@@ -179,120 +182,31 @@ export default function CompetitionPage() {
     setEntries((prev) => prev.map((e) => (e.id === entryId ? { ...e, status } : e)));
   };
 
-  const addOfflineEntry = async () => {
-    const client = supabase;
-    if (!client || !competition || !admin.userId) return;
-    if (!isSuperManager) {
-      setMessage("League management access is required to add offline entries.");
-      return;
+  const manageCompetition = async (action: Record<string, unknown>) => {
+    const { data } = await supabase?.auth.getSession() ?? {};
+    const token = data?.session?.access_token;
+    if (!token) {
+      setMessage("Sign in as a league officer.");
+      return false;
     }
-    const pid = offlinePlayerId.trim();
-    if (!pid) {
-      setMessage("Select a player to add an offline entry.");
-      return;
-    }
-    const existing = entries.find((e) => e.player_id === pid && (e.status === "pending" || e.status === "approved"));
-    if (existing) {
-      setMessage("This player already has an active entry.");
-      return;
-    }
-    const extraNames = offlineExtraNames
-      .split(",")
-      .map((v) => v.trim())
-      .filter(Boolean);
-    const note =
-      extraNames.length > 0
-        ? JSON.stringify({
-            source: "offline_superuser_entry",
-            teamMemberNames: extraNames,
-          })
-        : "offline_superuser_entry";
-    const ins = await client.from("competition_entries").insert({
-      competition_id: competition.id,
-      requester_user_id: admin.userId,
-      player_id: pid,
-      status: "approved",
-      reviewed_by_user_id: admin.userId,
-      reviewed_at: new Date().toISOString(),
-      note,
-    });
-    if (ins.error) {
-      setMessage(ins.error.message);
-      return;
-    }
-    setOfflinePlayerId("");
-    setOfflineExtraNames("");
-    const entryRes = await client
-      .from("competition_entries")
-      .select("id,competition_id,requester_user_id,player_id,status,created_at,note")
-      .eq("competition_id", competition.id)
-      .order("created_at", { ascending: false });
-    if (!entryRes.error && entryRes.data) setEntries(entryRes.data as Entry[]);
-  };
-
-  const generateRoundOneDraw = async () => {
-    const client = supabase;
-    if (!client || !competition) return;
-    if (!isSuperManager) {
-      setMessage("League management access is required to generate the draw.");
-      return;
-    }
-    if (competition.competition_format !== "knockout") {
-      setMessage("Draw generation is for knockout competitions only.");
-      return;
-    }
-    if ((competition.match_mode ?? "singles") !== "singles") {
-      setMessage("Auto-draw currently supports singles only. Doubles/triples draw will follow.");
-      return;
-    }
-    const existingRound1 = matches.filter((m) => (m.round_no ?? 1) === 1);
-    if (existingRound1.length > 0) {
-      setMessage("Round 1 matches already exist. Delete/reset them first if you want to regenerate.");
-      return;
-    }
-    const approved = entries.filter((e) => e.status === "approved");
-    if (approved.length < 2) {
-      setMessage("Approve at least 2 entries before generating the draw.");
-      return;
-    }
-
-    const seeds = [...approved].sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
-    let bracketSize = 1;
-    while (bracketSize < seeds.length) bracketSize *= 2;
-
-    const baseBestOf = getRoundBestOf(1, Math.log2(bracketSize), competition.best_of);
-    const inserts: Array<Record<string, unknown>> = [];
-    for (let i = 0; i < bracketSize; i += 2) {
-      const p1 = seeds[i]?.player_id ?? null;
-      const p2 = seeds[i + 1]?.player_id ?? null;
-      const isBye = Boolean(p1 && !p2);
-      inserts.push({
-        competition_id: competition.id,
-        round_no: 1,
-        match_no: (i / 2) + 1,
-        best_of: baseBestOf,
-        status: isBye ? "bye" : "pending",
-        match_mode: "singles",
-        player1_id: p1,
-        player2_id: p2,
-        team1_player1_id: null,
-        team1_player2_id: null,
-        team2_player1_id: null,
-        team2_player2_id: null,
-        winner_player_id: isBye ? p1 : null,
-        opening_break_player_id: competition.app_assign_opening_break && p1 && p2 ? (Math.random() < 0.5 ? p1 : p2) : null,
+    try {
+      const response = await fetch("/api/league/manage-competition", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ ...action, competitionId: id }),
       });
+      const payload = await response.json();
+      if (!response.ok) {
+        setMessage(payload.error ?? "The competition could not be updated.");
+        return false;
+      }
+      setWithdrawalRevision((revision) => revision + 1);
+      setMessage(action.action === "publish_draw" ? "Draw published." : "Approved entry added.");
+      return true;
+    } catch {
+      setMessage("The competition could not be updated. Refresh to check before retrying.");
+      return false;
     }
-    const res = await client
-      .from("matches")
-      .insert(inserts)
-      .select("id,round_no,match_no,best_of,status,player1_id,player2_id,team1_player1_id,team1_player2_id,team2_player1_id,team2_player2_id,winner_player_id");
-    if (res.error) {
-      setMessage(res.error.message);
-      return;
-    }
-    setMatches((prev) => [...prev, ...((res.data ?? []) as Match[])].sort((a, b) => (a.round_no ?? 1) - (b.round_no ?? 1) || (a.match_no ?? 1) - (b.match_no ?? 1)));
-    setMessage("Round 1 draw generated from approved entries.");
   };
 
   useEffect(() => {
@@ -303,7 +217,7 @@ export default function CompetitionPage() {
     }
     let active = true;
     const load = async () => {
-      const [cRes, mRes, pRes, locRes] = await Promise.all([
+      const [cRes, mRes, pRes, locRes, entryRes, deadlineRes] = await Promise.all([
         client
           .from("competitions")
           .select("id,name,venue,sport_type,competition_format,match_mode,app_assign_opening_break,best_of,knockout_round_best_of,signup_open,signup_deadline,final_scheduled_at,final_venue_location_id,max_entries")
@@ -316,8 +230,13 @@ export default function CompetitionPage() {
           .eq("is_archived", false)
           .order("round_no")
           .order("match_no"),
-        client.from("players").select("id,display_name,full_name"),
+        client.from("players").select("id,display_name,full_name,is_archived"),
         client.from("locations").select("id,name").order("name", { ascending: true }),
+        client.from("competition_entries")
+          .select("id,competition_id,requester_user_id,player_id,status,created_at,note")
+          .eq("competition_id", id).order("created_at", { ascending: false }),
+        isSuperManager ? client.from("competition_round_deadlines").select("round_no,deadline_at").eq("competition_id", id) : null,
+
       ]);
       if (!active) return;
       if (cRes.error || !cRes.data) {
@@ -326,8 +245,11 @@ export default function CompetitionPage() {
       }
       const comp = cRes.data as Competition;
       let loadedMatches = (mRes.data ?? []) as Match[];
+      if (mRes.error || entryRes.error || deadlineRes?.error) {
+        setMessage(mRes.error?.message ?? entryRes.error?.message ?? deadlineRes?.error?.message ?? "Competition details could not be loaded.");
+      }
       setCompetition(comp);
-      const changed = await ensureKnockoutNextRoundMatches(client, comp, loadedMatches);
+      const changed = isSuperManager && !mRes.error && await ensureKnockoutNextRoundMatches(client, comp, loadedMatches);
       if (changed) {
         const refreshed = await client
           .from("matches")
@@ -341,12 +263,10 @@ export default function CompetitionPage() {
       setMatches(loadedMatches);
       setPlayers((pRes.data ?? []) as Player[]);
       setLocations((locRes.data ?? []) as VenueLocation[]);
-      const entryRes = await client
-        .from("competition_entries")
-        .select("id,competition_id,requester_user_id,player_id,status,created_at,note")
-        .eq("competition_id", id)
-        .order("created_at", { ascending: false });
+      if (!active) return;
       if (entryRes.data) setEntries(entryRes.data as Entry[]);
+      setEntriesLoaded(!mRes.error && !entryRes.error && !deadlineRes?.error);
+      setDeadlines(deadlineRes?.data ?? []);
       setSignupDeadlineInput(comp.signup_deadline ? new Date(comp.signup_deadline).toISOString().slice(0, 16) : "");
       setSignupMaxEntriesInput(comp.max_entries ? String(comp.max_entries) : "");
       setFinalDateInput(comp.final_scheduled_at ? new Date(comp.final_scheduled_at).toISOString().slice(0, 16) : "");
@@ -366,14 +286,22 @@ export default function CompetitionPage() {
     return () => {
       active = false;
     };
-  }, [id, withdrawalRevision]);
+  }, [id, withdrawalRevision, isSuperManager]);
+
+  useEffect(() => {
+    if (!entriesLoaded) return;
+    const anchor = window.location.hash.slice(1);
+    if (anchor === "manual-entry" || anchor === "draw-preview") {
+      document.getElementById(anchor)?.scrollIntoView({ block: "start" });
+    }
+  }, [entriesLoaded]);
 
   const shortMap = useMemo(() => new Map(players.map((p) => [p.id, p.display_name])), [players]);
   const fullMap = useMemo(
     () => new Map(players.map((p) => [p.id, p.full_name?.trim() ? p.full_name : p.display_name])),
     [players]
   );
-  const entryLabel = (entry: Entry) => {
+  const entryLabel = (entry: Pick<Entry, "player_id" | "note">) => {
     const name = fullMap.get(entry.player_id) ?? shortMap.get(entry.player_id) ?? "Unknown player";
     try {
       const partners = JSON.parse(entry.note ?? "{}")?.teamMemberNames;
@@ -413,13 +341,8 @@ export default function CompetitionPage() {
     return offset + roundMatchNo;
   };
 
-  const getRoundBestOf = (roundNo: number, totalRounds: number, fallback: number) => {
-    const cfg = competition?.knockout_round_best_of;
-    if (!cfg) return fallback;
-    if (roundNo >= totalRounds) return cfg.final ?? fallback;
-    if (roundNo === totalRounds - 1) return cfg.semi_final ?? fallback;
-    return cfg.round1 ?? fallback;
-  };
+  const getRoundBestOf = (roundNo: number, totalRounds: number, fallback: number) =>
+    knockoutBestOf(competition?.knockout_round_best_of, fallback, roundNo, totalRounds);
 
   const getSinglesWinner = (m: Match): string | null => {
     if (!(m.status === "complete" || m.status === "bye")) return null;
@@ -429,12 +352,10 @@ export default function CompetitionPage() {
 
   const getDoublesWinnerTeam = (m: Match): { p1: string; p2: string } | null => {
     if (!(m.status === "complete" || m.status === "bye") || !m.winner_player_id) return null;
-    if (!m.team1_player1_id || !m.team1_player2_id || !m.team2_player1_id || !m.team2_player2_id) return null;
-    if (m.winner_player_id === m.team1_player1_id || m.winner_player_id === m.team1_player2_id) {
-      return { p1: m.team1_player1_id, p2: m.team1_player2_id };
-    }
-    if (m.winner_player_id === m.team2_player1_id || m.winner_player_id === m.team2_player2_id) {
-      return { p1: m.team2_player1_id, p2: m.team2_player2_id };
+    const sides = knockoutMatchSides(m);
+    const side = sides.home.includes(m.winner_player_id) ? sides.home : sides.away;
+    if (side.length === 2 && side.includes(m.winner_player_id)) {
+      return { p1: side[0], p2: side[1] };
     }
     return null;
   };
@@ -475,7 +396,7 @@ export default function CompetitionPage() {
             competition_id: comp.id,
             round_no: roundNo + 1,
             match_no: nextMatchNo,
-            best_of: getRoundBestOf(roundNo + 1, totalRounds, comp.best_of),
+            best_of: knockoutBestOf(comp.knockout_round_best_of, comp.best_of, roundNo + 1, totalRounds),
             status: "pending" as const,
             match_mode: "doubles" as const,
             player1_id: null,
@@ -501,7 +422,7 @@ export default function CompetitionPage() {
             competition_id: comp.id,
             round_no: roundNo + 1,
             match_no: nextMatchNo,
-            best_of: getRoundBestOf(roundNo + 1, totalRounds, comp.best_of),
+            best_of: knockoutBestOf(comp.knockout_round_best_of, comp.best_of, roundNo + 1, totalRounds),
             status: "pending" as const,
             match_mode: "singles" as const,
             player1_id: aWinner,
@@ -522,6 +443,16 @@ export default function CompetitionPage() {
       }
     }
     return changed;
+  };
+
+  const rosterByLead = useMemo(() => new Map(
+    entries.filter((entry) => entry.status === "approved" || entry.status === "withdrawn").reverse()
+      .map((entry) => [entry.player_id, entryRoster(entry)]),
+  ), [entries]);
+  const teamLabelFor = (team: string[]) => {
+    const roster = team.length === 2 ? rosterByLead.get(team[0]) : undefined;
+    const ids = roster?.length === 3 ? roster : team;
+    return ids.map((id) => shortMap.get(id) ?? "TBC").join(" & ");
   };
 
   const bracketRounds = useMemo(() => {
@@ -545,47 +476,20 @@ export default function CompetitionPage() {
         let status: BracketNode["status"] = live?.status ?? "tbc";
         let winnerId = live?.winner_player_id ?? null;
 
+        const displayWinner = (feeder: Match | undefined) => {
+          if (!feeder || (feeder.status !== "complete" && feeder.status !== "bye")) return "TBC";
+          const winner = resolveWinnerSide(feeder);
+          const sides = knockoutMatchSides(feeder);
+          return winner ? teamLabelFor(winner === 1 ? sides.home : sides.away) : "TBC";
+        };
         if (!live && roundNo > 1) {
-          const prevA = byKey.get(`${roundNo - 1}-${(matchNo * 2) - 1}`);
-          const prevB = byKey.get(`${roundNo - 1}-${matchNo * 2}`);
-          const prevASide = prevA ? resolveWinnerSide(prevA) : 0;
-          const prevBSide = prevB ? resolveWinnerSide(prevB) : 0;
-          const prevAWinner = prevA && (prevA.status === "complete" || prevA.status === "bye") && prevASide
-            ? (
-                prevA.team1_player1_id || prevA.team2_player1_id
-                  ? (
-                      prevASide === 1
-                        ? `${shortMap.get(prevA.team1_player1_id ?? "") ?? "TBC"} & ${shortMap.get(prevA.team1_player2_id ?? "") ?? "TBC"}`
-                        : `${shortMap.get(prevA.team2_player1_id ?? "") ?? "TBC"} & ${shortMap.get(prevA.team2_player2_id ?? "") ?? "TBC"}`
-                    )
-                  : (shortMap.get(prevA.winner_player_id ?? "") ?? "TBC")
-              )
-            : "TBC";
-          const prevBWinner = prevB && (prevB.status === "complete" || prevB.status === "bye") && prevBSide
-            ? (
-                prevB.team1_player1_id || prevB.team2_player1_id
-                  ? (
-                      prevBSide === 1
-                        ? `${shortMap.get(prevB.team1_player1_id ?? "") ?? "TBC"} & ${shortMap.get(prevB.team1_player2_id ?? "") ?? "TBC"}`
-                        : `${shortMap.get(prevB.team2_player1_id ?? "") ?? "TBC"} & ${shortMap.get(prevB.team2_player2_id ?? "") ?? "TBC"}`
-                    )
-                  : (shortMap.get(prevB.winner_player_id ?? "") ?? "TBC")
-              )
-            : "TBC";
-          p1 = prevAWinner;
-          p2 = prevBWinner;
+          p1 = displayWinner(byKey.get(`${roundNo - 1}-${matchNo * 2 - 1}`));
+          p2 = displayWinner(byKey.get(`${roundNo - 1}-${matchNo * 2}`));
         }
-
-        if (status === "bye" && live?.player1_id && live.player1_id === live.player2_id) {
-          p2 = "BYE";
-        }
-        if (live && (live.team1_player1_id || live.team2_player1_id)) {
-          const t1a = shortMap.get(live.team1_player1_id ?? "") ?? "TBC";
-          const t1b = shortMap.get(live.team1_player2_id ?? "") ?? "TBC";
-          const t2a = shortMap.get(live.team2_player1_id ?? "") ?? "TBC";
-          const t2b = shortMap.get(live.team2_player2_id ?? "") ?? "TBC";
-          p1 = `${t1a} & ${t1b}`;
-          p2 = `${t2a} & ${t2b}`;
+        if (live) {
+          const sides = knockoutMatchSides(live);
+          p1 = teamLabelFor(sides.home) || "TBC";
+          p2 = status === "bye" ? "BYE" : teamLabelFor(sides.away) || "TBC";
         }
 
         row.push({
@@ -602,7 +506,7 @@ export default function CompetitionPage() {
       out.push(row);
     }
     return out;
-  }, [competition, matches, shortMap, round1MatchCount]);
+  }, [competition, matches, shortMap, round1MatchCount, rosterByLead]);
   const totalBracketRounds = bracketRounds.length;
   const matchesByKey = useMemo(() => {
     const m = new Map<string, Match>();
@@ -611,17 +515,8 @@ export default function CompetitionPage() {
   }, [matches]);
 
   const getMatchLabel = (m: Match) => {
-    if (m.team1_player1_id || m.team1_player2_id || m.team2_player1_id || m.team2_player2_id) {
-      const t1a = shortMap.get(m.team1_player1_id ?? "") ?? "TBC";
-      const t1b = shortMap.get(m.team1_player2_id ?? "") ?? "TBC";
-      const t2a = shortMap.get(m.team2_player1_id ?? "") ?? "TBC";
-      const t2b = shortMap.get(m.team2_player2_id ?? "") ?? "TBC";
-      return `${t1a} & ${t1b} vs ${t2a} & ${t2b}`;
-    }
-    if (m.status === "bye" && m.player1_id && m.player1_id === m.player2_id) {
-      return `${shortMap.get(m.player1_id) ?? "TBC"} vs BYE`;
-    }
-    return `${shortMap.get(m.player1_id ?? "") ?? "TBC"} vs ${shortMap.get(m.player2_id ?? "") ?? "TBC"}`;
+    const sides = knockoutMatchSides(m);
+    return `${teamLabelFor(sides.home) || "TBC"} vs ${m.status === "bye" ? "BYE" : teamLabelFor(sides.away) || "TBC"}`;
   };
 
   const walkoverMatchIds = useMemo(() => new Set(frames.filter((frame) => frame.is_walkover_award).map((frame) => frame.match_id)), [frames]);
@@ -682,7 +577,7 @@ export default function CompetitionPage() {
       });
     }
     return out;
-  }, [competition, totalBracketRounds, round1MatchCount, matchesByKey, walkoverMatchIds]);
+  }, [competition, totalBracketRounds, round1MatchCount, matchesByKey, walkoverMatchIds, rosterByLead, shortMap]);
 
   const leagueTable = useMemo(() => {
     if (!competition || competition.competition_format !== "league") return [];
@@ -894,16 +789,20 @@ export default function CompetitionPage() {
                     </div>
                   </div>
                 ) : null}
-                {isSuperManager && competition.competition_format === "knockout" ? (
-                  <div className="mt-3">
-                    <button
-                      type="button"
-                      onClick={() => void generateRoundOneDraw()}
-                      className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-medium text-white"
-                    >
-                      Generate Round 1 Draw (from approved entries)
-                    </button>
-                  </div>
+                {isSuperManager && entriesLoaded && (competition.competition_format !== "knockout" || !matches.length) ? (
+                  <CompetitionOfficerEntry key={id} competition={competition} players={players.filter((player) => !player.is_archived)}
+                    usedPlayerIds={new Set([...pendingEntries, ...approvedEntries].flatMap(entryRoster))}
+                    onAdd={(playerIds, dateOfBirth) => manageCompetition({ action: "add_entry", playerIds, dateOfBirth })} />
+                ) : null}
+                {isSuperManager && entriesLoaded && competition.competition_format === "knockout" && matches.length > 0 ? (
+                  <p id="manual-entry" className="mt-3 scroll-mt-28 text-sm text-slate-700">
+                    <span id="draw-preview">The draw has been published. See the fixture list below.</span>
+                  </p>
+                ) : null}
+                {isSuperManager && entriesLoaded && competition.competition_format === "knockout" && !matches.length ? (
+                  <CompetitionDrawPreview key={id} competition={competition} entries={approvedEntries} pendingCount={pendingEntries.length}
+                    entryLabel={entryLabel} deadlines={deadlines}
+                    onPublish={(entryIds) => manageCompetition({ action: "publish_draw", entryIds })} />
                 ) : null}
                 {entries.length > 0 ? (
                   <div className="mt-3 space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -946,44 +845,6 @@ export default function CompetitionPage() {
                 ) : (
                   <p className="mt-2 text-sm text-slate-600">No entries yet.</p>
                 )}
-                {isSuperManager ? (
-                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-sm font-semibold text-slate-900">Add Offline Entry (League Officers)</p>
-                    <p className="text-xs text-slate-600">
-                      Use this for WhatsApp, email, or paper entries from players not registered online.
-                    </p>
-                    <div className="mt-2 grid gap-2 sm:grid-cols-3">
-                      <select
-                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-                        value={offlinePlayerId}
-                        onChange={(e) => setOfflinePlayerId(e.target.value)}
-                      >
-                        <option value="">Select player</option>
-                        {players
-                          .slice()
-                          .sort((a, b) => (a.full_name?.trim() || a.display_name).localeCompare(b.full_name?.trim() || b.display_name))
-                          .map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.full_name?.trim() || p.display_name}
-                            </option>
-                          ))}
-                      </select>
-                      <input
-                        value={offlineExtraNames}
-                        onChange={(e) => setOfflineExtraNames(e.target.value)}
-                        placeholder="Extra names (comma separated)"
-                        className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => void addOfflineEntry()}
-                        className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white"
-                      >
-                        Add approved entry
-                      </button>
-                    </div>
-                  </div>
-                ) : null}
               </section>
               {competition.competition_format === "league" ? (
                 <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
