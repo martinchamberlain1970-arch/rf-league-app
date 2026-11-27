@@ -217,6 +217,9 @@ export default function CompetitionSignupsPage() {
             <Link href="/competition-entry" className="mt-3 inline-block font-semibold text-teal-800 underline">
               Open the captains’ entry form
             </Link>
+            <Link href="/competition-entry/overview" className="ml-4 mt-3 inline-block font-semibold text-teal-800 underline">
+              Public entry totals and formats
+            </Link>
           </section>
 
           {admin.canManageLeague ? (
