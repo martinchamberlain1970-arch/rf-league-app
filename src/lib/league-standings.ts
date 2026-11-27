@@ -1,3 +1,5 @@
+// Rule 27 uses frame points first and match wins to break a points tie.
+// Teams still level share a position until the league resolves a season-end tie.
 export function rankLeagueStandings<T extends { points: number; won: number }>(
   rows: readonly T[],
   teamName: (row: T) => string

@@ -85,6 +85,17 @@ export default function PublicLeagueTablePage() {
               ))}
             </div>
           ) : null}
+          <details className="mt-3 text-sm text-slate-300">
+            <summary className="cursor-pointer font-medium">How standings are ranked (Rule 27)</summary>
+            <p className="mt-2">
+              Each frame won earns one league point. Teams are ranked by points, then matches won.
+              Teams level on both share a position.
+            </p>
+            <p className="mt-2">
+              If two teams are still tied at the end of the season, they play off at a neutral venue using the league format.
+              If more than two teams remain tied, the League Committee proposes how to resolve it.
+            </p>
+          </details>
         </header>
 
         {data?.error ? <section className="rounded-2xl border border-rose-400/40 bg-rose-500/10 p-4 text-rose-100">{data.error}</section> : null}
