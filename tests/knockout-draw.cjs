@@ -42,3 +42,19 @@ test("league cup checks and short brackets apply special round settings", () => 
   assert.equal(knockoutBestOf(bestOf, 3, 1, 1), 7);
   assert.equal(knockoutBestOf(bestOf, 3, 1, 4), 3);
 });
+
+test("all selected partners must share the same club, including multi-club registrations", () => {
+  const clubExports = {};
+  vm.runInNewContext(ts.transpileModule(readFileSync("src/lib/competition-clubs.ts", "utf8"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, { exports: clubExports, require: () => ({}) });
+  const clubs = new Map([
+    ["lead", [{ id: "bexley" }, { id: "hartley" }]],
+    ["partner", [{ id: "bexley" }]],
+    ["clubmate", [{ id: "bexley" }]],
+    ["other-player", [{ id: "hartley" }]],
+  ]);
+  assert.equal(clubExports.playersShareCompetitionClub(clubs, ["lead", "partner", "clubmate"]), true);
+  assert.equal(clubExports.playersShareCompetitionClub(clubs, ["lead", "partner", "other-player"]), false);
+  assert.equal(clubExports.playersShareCompetitionClub(clubs, ["lead", "unregistered"]), false);
+});

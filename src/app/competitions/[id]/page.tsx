@@ -3,15 +3,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { competitionEntryFormat, specialCompetitionScoring } from "@/lib/public-competition-entry";
+import { competitionEntryFormat, entrantsRequired, specialCompetitionScoring } from "@/lib/public-competition-entry";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
-import { competitionDeadlineLabel, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
+import { competitionDeadlineLabel, competitionEntriesOpen, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
 import CompetitionOfficialDraw from "@/components/CompetitionOfficialDraw";
 import CompetitionOfficerEntry from "@/components/CompetitionOfficerEntry";
-import { entryRoster, knockoutBestOf, knockoutMatchSides } from "@/lib/knockout-draw";
+import { entryRoster, isLeagueCup, knockoutBestOf, knockoutMatchSides, knockoutRosterProblems } from "@/lib/knockout-draw";
 import CompetitionEntryWithdrawal from "@/components/CompetitionEntryWithdrawal";
 import MessageModal from "@/components/MessageModal";
 
@@ -50,7 +50,7 @@ type Match = {
   team2_player2_id?: string | null;
   winner_player_id: string | null;
 };
-type Player = { id: string; display_name: string; full_name: string | null; is_archived: boolean };
+type Player = { id: string; display_name: string; full_name: string | null; is_archived: boolean; location_id: string | null };
 type Frame = {
   match_id: string;
   winner_player_id: string | null;
@@ -134,6 +134,7 @@ export default function CompetitionPage() {
   const admin = useAdminStatus();
   const [competition, setCompetition] = useState<Competition | null>(null);
   const [matches, setMatches] = useState<Match[]>([]);
+  const [fixtureLoad, setFixtureLoad] = useState<{ competitionId: string; failed: boolean } | null>(null);
   const [players, setPlayers] = useState<Player[]>([]);
   const [frames, setFrames] = useState<Frame[]>([]);
   const [withdrawalRevision, setWithdrawalRevision] = useState(0);
@@ -230,7 +231,7 @@ export default function CompetitionPage() {
           .eq("is_archived", false)
           .order("round_no")
           .order("match_no"),
-        client.from("players").select("id,display_name,full_name,is_archived"),
+        client.from("players").select("id,display_name,full_name,is_archived,location_id"),
         client.from("locations").select("id,name").order("name", { ascending: true }),
         client.from("competition_entries")
           .select("id,competition_id,requester_user_id,player_id,status,created_at,note")
@@ -260,7 +261,9 @@ export default function CompetitionPage() {
           .order("match_no");
         if (refreshed.data) loadedMatches = refreshed.data as Match[];
       }
+      if (!active) return;
       setMatches(loadedMatches);
+      setFixtureLoad({ competitionId: id, failed: Boolean(mRes.error) });
       setPlayers((pRes.data ?? []) as Player[]);
       setLocations((locRes.data ?? []) as VenueLocation[]);
       if (!active) return;
@@ -508,6 +511,39 @@ export default function CompetitionPage() {
     return out;
   }, [competition, matches, shortMap, round1MatchCount, rosterByLead]);
   const totalBracketRounds = bracketRounds.length;
+  const knockout = competition?.competition_format === "knockout";
+  const fixturesReady = fixtureLoad?.competitionId === id && !fixtureLoad.failed;
+  const finalReady = knockout && fixturesReady && matches.some((match) => {
+    if ((match.round_no ?? 1) !== totalBracketRounds || match.status === "bye") return false;
+    const sides = knockoutMatchSides(match);
+    return sides.home.length > 0 && sides.away.length > 0;
+  });
+  const entriesOpen = Boolean(competition?.signup_open && competitionEntriesOpen(competition.signup_deadline));
+  let officerStatus: { label: string; detail?: string; target?: string } | null = null;
+  if (competition && knockout && isSuperManager && entriesLoaded && fixturesReady) {
+    const minimum = isLeagueCup(competition.name) ? 4 : 2;
+    const { incomplete, duplicated } = knockoutRosterProblems(approvedEntries, entrantsRequired(competition));
+    if (matches.length) {
+      officerStatus = finalReady && (!competition.final_scheduled_at || !competition.final_venue_location_id)
+        ? { label: "Schedule the final", detail: "Set the date and neutral venue.", target: "#final-scheduling" }
+        : { label: "Draw published", target: "#competition-fixtures" };
+    } else if (entriesOpen) {
+      officerStatus = {
+        label: "Entries open",
+        detail: competition.signup_deadline ? `Closes ${competitionDeadlineLabel(competition.signup_deadline)} (UK time).` : undefined,
+        target: "#competition-entries",
+      };
+    } else if (pendingEntries.length) {
+      officerStatus = { label: "Review pending entries", detail: `${pendingEntries.length} awaiting approval.`, target: "#competition-entries" };
+    } else if (approvedEntries.length < minimum) {
+      officerStatus = { label: "Confirm the competition format", detail: `${minimum - approvedEntries.length} more needed for a standard knockout.`, target: "#official-draw" };
+    } else if (incomplete.length || duplicated) {
+      officerStatus = { label: "Check player records", detail: "Resolve incomplete or duplicate entries.", target: "#official-draw" };
+    } else {
+      officerStatus = { label: "Ready to draw", detail: "Run the official draw when you’re ready to publish the fixtures.", target: "#official-draw" };
+    }
+  }
+
   const matchesByKey = useMemo(() => {
     const m = new Map<string, Match>();
     for (const match of matches) m.set(`${match.round_no ?? 1}-${match.match_no ?? 1}`, match);
@@ -680,8 +716,14 @@ export default function CompetitionPage() {
                 <p className="mt-1 text-slate-700">
                   {specialCompetitionScoring(competition.name) ?? `Best of ${competition.best_of} frames`}
                 </p>
+                {officerStatus ? (
+                  <aside className="mt-4 rounded-xl border border-teal-200 bg-teal-50 px-4 py-3 text-sm text-teal-950">
+                    <a href={officerStatus.target} className="font-semibold underline underline-offset-4">{officerStatus.label}</a>
+                    {officerStatus.detail ? <p className="mt-1">{officerStatus.detail}</p> : null}
+                  </aside>
+                ) : null}
               </section>
-              <section className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+              <section id="competition-entries" className="scroll-mt-28 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="text-lg font-semibold text-slate-900">Competition Entries</p>
                   <Link href="/signups" className="rounded-full border border-slate-300 bg-white px-3 py-1 text-sm text-slate-700 hover:bg-slate-50">
@@ -689,17 +731,10 @@ export default function CompetitionPage() {
                   </Link>
                 </div>
                 <p className="mt-1 text-sm text-slate-600">
-                  Status: {competition.signup_open ? "Open" : "Closed"} · Pending {pendingEntries.length} · Approved {approvedEntries.length}
+                  {!officerStatus ? `Entries ${entriesOpen ? "open" : "closed"} · ` : ""}
+                  {approvedEntries.length} approved · {pendingEntries.length} awaiting approval
                   {competition.max_entries ? ` / Max ${competition.max_entries}` : ""}
                 </p>
-                <div className="mt-1 flex flex-wrap items-center gap-2">
-                  <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${competition.signup_open ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-slate-200 bg-slate-100 text-slate-700"}`}>
-                    Entries {competition.signup_open ? "open" : "closed"}
-                  </span>
-                  <span className={`rounded-full border px-2 py-0.5 text-xs font-medium ${competition.final_scheduled_at && competition.final_venue_location_id ? "border-emerald-200 bg-emerald-50 text-emerald-800" : "border-amber-200 bg-amber-50 text-amber-800"}`}>
-                    {competition.final_scheduled_at && competition.final_venue_location_id ? "Final set" : "Final pending"}
-                  </span>
-                </div>
                 {usesFixedCompetitionHandicaps(competition.name) ? (
                   <p className="mt-2 text-sm font-medium text-teal-900">Handicaps are fixed when entries close. Division One players use their Elo-suggested handicap plus 8 points. Premier players use their published handicap.</p>
                 ) : null}
@@ -752,9 +787,9 @@ export default function CompetitionPage() {
                   </div>
                 ) : null}
                 {isSuperManager ? (
-                  <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-3">
-                    <p className="text-sm font-semibold text-slate-900">Final scheduling (League Officers)</p>
-                    <p className="text-xs text-slate-600">Set final date and neutral venue after semi-finals are complete.</p>
+                  <details id="final-scheduling" open={finalReady} className="mt-3 scroll-mt-28 rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <summary className="cursor-pointer text-sm font-semibold text-slate-900">Final scheduling (League Officers)</summary>
+                    <p className="mt-2 text-xs text-slate-600">Set final date and neutral venue after semi-finals are complete.</p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <input
                         type="datetime-local"
@@ -787,10 +822,10 @@ export default function CompetitionPage() {
                         Save final details
                       </button>
                     </div>
-                  </div>
+                  </details>
                 ) : null}
                 {isSuperManager && entriesLoaded && (competition.competition_format !== "knockout" || !matches.length) ? (
-                  <CompetitionOfficerEntry key={`entry-${id}`} competition={competition} players={players.filter((player) => !player.is_archived)}
+                  <CompetitionOfficerEntry key={`entry-${id}`} competition={competition} players={players.filter((player) => !player.is_archived)} locations={locations}
                     usedPlayerIds={new Set([...pendingEntries, ...approvedEntries].flatMap(entryRoster))}
                     onAdd={(playerIds, dateOfBirth) => manageCompetition({ action: "add_entry", playerIds, dateOfBirth })} />
                 ) : null}
@@ -880,7 +915,16 @@ export default function CompetitionPage() {
                   </div>
                 </section>
               ) : null}
-              <section className="space-y-2">
+              {!fixturesReady || !matches.length ? (
+                <section id="competition-fixtures" className="scroll-mt-28 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                  <h3 className="font-semibold text-slate-900">
+                    {!fixturesReady ? (fixtureLoad?.competitionId === id && fixtureLoad.failed ? "Fixtures could not be loaded" : "Loading fixtures…")
+                      : knockout ? "Awaiting official draw" : "No fixtures yet"}
+                  </h3>
+                  {fixturesReady && knockout ? <p className="mt-1 text-sm text-slate-600">Fixtures will appear once the league publishes the draw.</p> : null}
+                </section>
+              ) : (
+              <section id="competition-fixtures" className="scroll-mt-28 space-y-2">
                 {!isSuperManager ? (
                   <p className="text-xs text-slate-600">One player from the winning side submits each result for officer approval.</p>
                 ) : null}
@@ -991,6 +1035,7 @@ export default function CompetitionPage() {
                   </div>
                 )}
               </section>
+              )}
             </>
           ) : null}
         </RequireAuth>

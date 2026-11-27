@@ -1,5 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { NextRequest, NextResponse } from "next/server";
+import { loadCompetitionClubs, playersShareCompetitionClub } from "@/lib/competition-clubs";
 import { competitionEntriesOpen } from "@/lib/fixed-competition-handicaps";
 import { entryRoster, isLeagueCup, knockoutBestOf, knockoutMatchFields, knockoutOpeningRound, knockoutSize, shuffleDraw } from "@/lib/knockout-draw";
 import { ageFromDob, competitionAgeRule, entrantsRequired, meetsCompetitionAgeRule } from "@/lib/public-competition-entry";
@@ -56,25 +57,13 @@ export async function POST(request: NextRequest) {
     }
 
     if (required > 1 && isLeagueCup(cup.name)) {
-      const seasons = await client.from("league_seasons").select("id").eq("is_active", true).eq("is_published", true);
-      if (seasons.error) return error("The players’ club registrations could not be checked.", 500);
-      const seasonIds = seasons.data.map((season) => season.id);
-      const roster = seasonIds.length
-        ? await client.from("league_team_members").select("player_id,team_id").in("player_id", ids).in("season_id", seasonIds)
-        : { data: [], error: null };
-      if (roster.error) return error("The players’ club registrations could not be checked.", 500);
-      const teamIds = [...new Set(roster.data.map((member) => member.team_id))];
-      const teams = teamIds.length
-        ? await client.from("league_teams").select("id,location_id").in("id", teamIds).eq("is_active", true)
-        : { data: [], error: null };
-      if (teams.error) return error("The players’ club registrations could not be checked.", 500);
-      const clubs = new Map(teams.data.map((team) => [team.id, team.location_id ?? team.id]));
-      const clubIds = (playerId: string) => roster.data.flatMap((member) => {
-        const club = clubs.get(member.team_id);
-        return member.player_id === playerId && club ? [club] : [];
-      });
-      if (!clubIds(lead.id).some((club) => ids.every((id) => clubIds(id).includes(club)))) {
-        return error("Choose players registered at the same club.");
+      try {
+        const clubs = await loadCompetitionClubs(client, ids);
+        if (!playersShareCompetitionClub(clubs, ids)) {
+          return error("Choose players registered at the same club.");
+        }
+      } catch {
+        return error("The players’ club registrations could not be checked.", 500);
       }
     }
 

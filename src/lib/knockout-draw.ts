@@ -9,6 +9,15 @@ export function entryRoster(entry: DrawEntry): string[] {
   }
 }
 
+export function knockoutRosterProblems<T extends DrawEntry>(entries: readonly T[], required: number) {
+  const rosters = entries.map(entryRoster);
+  const players = rosters.flat();
+  return {
+    incomplete: entries.filter((_, index) => rosters[index].length !== required),
+    duplicated: new Set(players).size !== players.length,
+  };
+}
+
 export function knockoutRoundLabel(round: number, total: number) {
   return ["Final", "Semi-finals", "Quarter-finals", "Last 16", "Last 32"][total - round] ?? `Round ${round}`;
 }

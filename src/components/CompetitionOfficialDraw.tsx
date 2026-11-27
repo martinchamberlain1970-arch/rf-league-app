@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { competitionDeadlineLabel, competitionEntriesOpen } from "@/lib/fixed-competition-handicaps";
-import { entryRoster, isLeagueCup, knockoutRoundLabel, knockoutSize } from "@/lib/knockout-draw";
+import { isLeagueCup, knockoutRosterProblems, knockoutRoundLabel, knockoutSize } from "@/lib/knockout-draw";
 import { entrantsRequired } from "@/lib/public-competition-entry";
 
 type Entry = { id: string; player_id: string; note?: string | null };
@@ -24,9 +24,7 @@ export default function CompetitionOfficialDraw({ competition, entries, entryLab
   const snapshot = [...ids].sort().join(",");
   const confirming = confirmation === snapshot;
   const minimum = isLeagueCup(competition.name) ? 4 : 2;
-  const rosters = entries.map(entryRoster);
-  const incomplete = entries.filter((_, index) => rosters[index].length !== entrantsRequired(competition));
-  const duplicated = new Set(rosters.flat()).size !== rosters.flat().length;
+  const { incomplete, duplicated } = knockoutRosterProblems(entries, entrantsRequired(competition));
   const entriesOpen = competition.signup_open && competitionEntriesOpen(competition.signup_deadline);
   const blocked = entriesOpen || pendingCount > 0 || entries.length < minimum || incomplete.length > 0 || duplicated;
 
