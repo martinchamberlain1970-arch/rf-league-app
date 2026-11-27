@@ -1,3 +1,4 @@
+import { rankLeagueStandings } from "@/lib/league-standings";
 import { liveMatchStatus } from "@/lib/live-match-status";
 import { NextRequest, NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -419,7 +420,7 @@ export async function GET(req: NextRequest) {
     );
     const rank = (includeTonight: boolean) => {
       const rows = seasonTeams.map((team) => ({
-        teamId: team.id, teamName: team.name, played: 0, framesFor: 0, framesAgainst: 0, points: 0, frameDiff: 0,
+        teamId: team.id, teamName: team.name, played: 0, won: 0, framesFor: 0, framesAgainst: 0, points: 0, frameDiff: 0,
       }));
       const byId = new Map(rows.map((row) => [row.teamId, row]));
       for (const fixture of seasonFixtures) {
@@ -427,11 +428,15 @@ export async function GET(req: NextRequest) {
         if (isTonight && !includeTonight) continue;
         let home = 0;
         let away = 0;
+        const homeRow = byId.get(fixture.home_team_id)!;
+        const awayRow = byId.get(fixture.away_team_id)!;
         if (fixture.status === "complete") {
           home = Number(fixture.home_points ?? 0);
           away = Number(fixture.away_points ?? 0);
-          byId.get(fixture.home_team_id)!.played += 1;
-          byId.get(fixture.away_team_id)!.played += 1;
+          homeRow.played += 1;
+          awayRow.played += 1;
+          if (home > away) homeRow.won += 1;
+          if (away > home) awayRow.won += 1;
         } else if (isTonight && includeTonight && fixture.status !== "bye") {
           const fixtureFrames = frames.filter((frame) => frame.fixture_id === fixture.id);
           home = fixtureFrames.filter((frame) => frame.winner_side === "home").length;
@@ -439,16 +444,13 @@ export async function GET(req: NextRequest) {
         } else {
           continue;
         }
-        const homeRow = byId.get(fixture.home_team_id)!;
-        const awayRow = byId.get(fixture.away_team_id)!;
         homeRow.framesFor += home;
         homeRow.framesAgainst += away;
         awayRow.framesFor += away;
         awayRow.framesAgainst += home;
       }
-      return rows.map((row) => ({ ...row, points: row.framesFor, frameDiff: row.framesFor - row.framesAgainst }))
-        .sort((a, b) => b.points - a.points || b.frameDiff - a.frameDiff || b.framesFor - a.framesFor || a.teamName.localeCompare(b.teamName))
-        .map((row, index) => ({ ...row, rank: index + 1 }));
+      const standings = rows.map((row) => ({ ...row, points: row.framesFor, frameDiff: row.framesFor - row.framesAgainst }));
+      return rankLeagueStandings(standings, (row) => row.teamName);
     };
     const beforeRanks = new Map(rank(false).map((row) => [row.teamId, row.rank]));
     return {

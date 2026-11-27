@@ -1,6 +1,7 @@
 "use client";
 
 export type LeagueStandingRow = {
+  rank: number;
   team_id: string;
   team_name: string;
   played: number;
@@ -47,9 +48,9 @@ export function LeagueStandings({ rows, onSelectTeam }: { rows: LeagueStandingRo
             {['#', 'Team', 'P', 'W', 'D', 'L', 'FF', 'FA', 'FD', 'Points', 'Streak', 'Last 5'].map((heading) => <th key={heading} className="px-2 py-2">{heading}</th>)}
           </tr></thead>
           <tbody>
-            {rows.map((row, index) => (
+            {rows.map((row) => (
               <tr key={row.team_id} className="border-b border-slate-100 text-slate-800">
-                <td className="px-2 py-2">{index + 1}</td>
+                <td className="px-2 py-2">{row.rank}</td>
                 <td className="px-2 py-2"><button type="button" className="text-left underline decoration-slate-300 underline-offset-2 hover:text-slate-900" onClick={() => onSelectTeam(row.team_id)}>{row.team_name}</button></td>
                 <td className="px-2 py-2">{row.played}</td><td className="px-2 py-2">{row.won}</td><td className="px-2 py-2">{row.drawn}</td><td className="px-2 py-2">{row.lost}</td>
                 <td className="px-2 py-2">{row.frames_for}</td><td className="px-2 py-2">{row.frames_against}</td><td className="px-2 py-2">{row.frame_diff}</td>

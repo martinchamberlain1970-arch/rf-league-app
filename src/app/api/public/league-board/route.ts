@@ -1,3 +1,4 @@
+import { rankLeagueStandings } from "@/lib/league-standings";
 import { publicJson } from "@/lib/public-response";
 import { NextRequest } from "next/server";
 import { createClient } from "@supabase/supabase-js";
@@ -230,7 +231,7 @@ export async function GET(req: NextRequest) {
     .filter((member) => /^Greenhithe\s/i.test(teamById.get(member.team_id)?.name ?? ""))
     .map((member) => member.player_id));
 
-  const leagueTable = teams
+  const leagueRows = teams
     .map((team) => ({
       team_id: team.id,
       team_name: team.name,
@@ -261,15 +262,8 @@ export async function GET(req: NextRequest) {
       }
       row.frame_diff = row.frames_for - row.frames_against;
       return row;
-    })
-    .sort(
-      (a, b) =>
-        b.points - a.points ||
-        b.frame_diff - a.frame_diff ||
-        b.frames_for - a.frames_for ||
-        a.team_name.localeCompare(b.team_name)
-    )
-    .map((row, index) => ({ ...row, rank: index + 1 }));
+    });
+  const leagueTable = rankLeagueStandings(leagueRows, (row) => row.team_name);
 
   const rosterPlayerIds = new Set<string>(members.map((member) => member.player_id));
   const playerTeamName = new Map<string, string>();

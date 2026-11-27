@@ -1,5 +1,6 @@
 "use client";
 
+import { rankLeagueStandings } from "@/lib/league-standings";
 import { competitionEntryFormat, isAlberyCompetitionName, isHamiltonCompetitionName, isHodgeCompetitionName, specialCompetitionScoring } from "@/lib/public-competition-entry";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -5700,13 +5701,7 @@ function LeaguePageContent() {
       };
     });
 
-    return rows.sort(
-      (a, b) =>
-        b.points - a.points ||
-        b.frame_diff - a.frame_diff ||
-        b.frames_for - a.frames_for ||
-        a.team_name.localeCompare(b.team_name)
-    );
+    return rankLeagueStandings(rows, (row) => row.team_name);
   }, [seasonTeams, seasonFixtures]);
   const selectedTeamRoster = useMemo(() => {
     if (!selectedTableTeamId) return [] as Array<{ id: string; name: string; handicap: number | null; isCaptain: boolean; isViceCaptain: boolean }>;

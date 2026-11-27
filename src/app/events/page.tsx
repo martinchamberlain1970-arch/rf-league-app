@@ -1,5 +1,6 @@
 "use client";
 
+import { rankLeagueStandings } from "@/lib/league-standings";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
@@ -700,17 +701,14 @@ function EventsPageContent() {
     return map;
   }, [seasonFixtures]);
   const teamPosition = useMemo(() => {
-    const rows = Array.from(teamStats.entries()).map(([teamId, s]) => ({
+    const rows = Array.from(teamStats.entries()).map(([teamId, stats]) => ({
       teamId,
-      points: s.points,
-      frameDiff: s.framesFor - s.framesAgainst,
-      framesFor: s.framesFor,
+      points: stats.framesFor,
+      won: stats.won,
     }));
-    rows.sort((a, b) => b.points - a.points || b.frameDiff - a.frameDiff || b.framesFor - a.framesFor);
-    const pos = new Map<string, number>();
-    rows.forEach((r, idx) => pos.set(r.teamId, idx + 1));
-    return pos;
-  }, [teamStats]);
+    const standings = rankLeagueStandings(rows, (row) => teamById.get(row.teamId) ?? row.teamId);
+    return new Map(standings.map((row) => [row.teamId, row.rank]));
+  }, [teamStats, teamById]);
   const completedFixtureIds = useMemo(
     () => new Set(seasonFixtures.filter((x) => x.status === "complete").map((x) => x.id)),
     [seasonFixtures]
