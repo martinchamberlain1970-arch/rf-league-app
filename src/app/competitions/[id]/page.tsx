@@ -790,7 +790,7 @@ export default function CompetitionPage() {
                   </div>
                 ) : null}
                 {isSuperManager && entriesLoaded && (competition.competition_format !== "knockout" || !matches.length) ? (
-                  <CompetitionOfficerEntry key={id} competition={competition} players={players.filter((player) => !player.is_archived)}
+                  <CompetitionOfficerEntry key={`entry-${id}`} competition={competition} players={players.filter((player) => !player.is_archived)}
                     usedPlayerIds={new Set([...pendingEntries, ...approvedEntries].flatMap(entryRoster))}
                     onAdd={(playerIds, dateOfBirth) => manageCompetition({ action: "add_entry", playerIds, dateOfBirth })} />
                 ) : null}
@@ -800,7 +800,7 @@ export default function CompetitionPage() {
                   </p>
                 ) : null}
                 {isSuperManager && entriesLoaded && competition.competition_format === "knockout" && !matches.length ? (
-                  <CompetitionOfficialDraw key={id} competition={competition} entries={approvedEntries} pendingCount={pendingEntries.length}
+                  <CompetitionOfficialDraw key={`draw-${id}`} competition={competition} entries={approvedEntries} pendingCount={pendingEntries.length}
                     entryLabel={entryLabel} deadlines={deadlines}
                     onPublish={(entryIds) => manageCompetition({ action: "publish_draw", entryIds })} />
                 ) : null}
