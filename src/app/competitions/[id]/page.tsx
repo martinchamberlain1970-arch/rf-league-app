@@ -9,7 +9,7 @@ import ScreenHeader from "@/components/ScreenHeader";
 import { competitionDeadlineLabel, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
-import CompetitionDrawPreview from "@/components/CompetitionDrawPreview";
+import CompetitionOfficialDraw from "@/components/CompetitionOfficialDraw";
 import CompetitionOfficerEntry from "@/components/CompetitionOfficerEntry";
 import { entryRoster, knockoutBestOf, knockoutMatchSides } from "@/lib/knockout-draw";
 import CompetitionEntryWithdrawal from "@/components/CompetitionEntryWithdrawal";
@@ -291,7 +291,7 @@ export default function CompetitionPage() {
   useEffect(() => {
     if (!entriesLoaded) return;
     const anchor = window.location.hash.slice(1);
-    if (anchor === "manual-entry" || anchor === "draw-preview") {
+    if (anchor === "manual-entry" || anchor === "official-draw") {
       document.getElementById(anchor)?.scrollIntoView({ block: "start" });
     }
   }, [entriesLoaded]);
@@ -796,11 +796,11 @@ export default function CompetitionPage() {
                 ) : null}
                 {isSuperManager && entriesLoaded && competition.competition_format === "knockout" && matches.length > 0 ? (
                   <p id="manual-entry" className="mt-3 scroll-mt-28 text-sm text-slate-700">
-                    <span id="draw-preview">The draw has been published. See the fixture list below.</span>
+                    <span id="official-draw">The draw has been published. See the fixture list below.</span>
                   </p>
                 ) : null}
                 {isSuperManager && entriesLoaded && competition.competition_format === "knockout" && !matches.length ? (
-                  <CompetitionDrawPreview key={id} competition={competition} entries={approvedEntries} pendingCount={pendingEntries.length}
+                  <CompetitionOfficialDraw key={id} competition={competition} entries={approvedEntries} pendingCount={pendingEntries.length}
                     entryLabel={entryLabel} deadlines={deadlines}
                     onPublish={(entryIds) => manageCompetition({ action: "publish_draw", entryIds })} />
                 ) : null}

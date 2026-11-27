@@ -314,7 +314,6 @@ export default function CompetitionSignupsPage() {
                         ? `${draw.rounds} ${draw.rounds === 1 ? "round" : "rounds"} including the final · ${knockoutRoundLabel(1, draw.rounds)} opening · ${draw.byes} ${draw.byes === 1 ? "bye" : "byes"}`
                         : "At least two entries are needed for a draw."}</p>
                       {rule30Warning ? <p className="mt-1 text-amber-800">Rule 30 requires the winner to play before the final. A standard knockout needs four entries.</p> : null}
-                      <Link href={`/competitions/${c.id}#draw-preview`} className="mt-1 inline-block font-semibold text-teal-800 underline">Review draw</Link>
                     </div>
                   ) : null}
 

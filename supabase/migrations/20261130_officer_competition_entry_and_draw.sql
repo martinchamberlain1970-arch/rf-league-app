@@ -72,7 +72,7 @@ begin
   select array_agg(e.id order by e.id) into current_entries
     from public.competition_entries e where e.competition_id = cup.id and e.status = 'approved';
   if current_entries is distinct from array(select id from unnest(p_entry_ids) as id order by id) then
-    raise exception 'Entries changed. Create a fresh preview.';
+    raise exception 'Entries changed. Reload the competition before running the draw.';
   end if;
 
   insert into public.matches (
