@@ -1,5 +1,6 @@
 "use client";
 
+import LeagueAuthLayout from "@/components/LeagueAuthLayout";
 import Link from "next/link";
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
@@ -293,41 +294,7 @@ export default function SignInPage() {
   };
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,_rgba(186,230,253,0.45),_transparent_30%),radial-gradient(circle_at_bottom_right,_rgba(253,230,138,0.28),_transparent_28%),#f8fafc] px-4 py-6 sm:px-6 lg:py-10">
-      <div className="mx-auto grid w-full max-w-5xl gap-5 lg:grid-cols-[0.9fr_1.1fr] lg:items-start">
-        <section className="rounded-2xl border border-sky-100 bg-white/95 p-5 shadow-[0_18px_55px_-38px_rgba(15,23,42,0.5)] sm:p-6 lg:sticky lg:top-8">
-          <div className="flex items-center gap-4">
-            <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-slate-200 bg-slate-950 p-2">
-              <img src="/rf-logo.png" alt="Rack & Frame League logo" className="max-h-full w-auto object-contain" />
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-teal-700">Rack & Frame League</p>
-              <h1 className="mt-1 text-2xl font-black tracking-tight text-slate-950 sm:text-3xl">Sign in</h1>
-            </div>
-          </div>
-          <p className="mt-5 text-sm leading-6 text-slate-600">
-            Access fixtures, league tables, live matches, notifications, and match-night tools from one account.
-          </p>
-          <div className="mt-5 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-900">
-            New player profile links are reviewed separately by a league officer after account creation.
-          </div>
-          <div className="mt-5 grid gap-2 text-sm text-slate-600">
-            <Link href="/display/live-matches" className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-800 hover:bg-white">
-              Follow live matches
-            </Link>
-            <Link href="/captain-guide" className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 font-semibold text-slate-800 hover:bg-white">
-              Captain / Vice-captain guide
-            </Link>
-          </div>
-        </section>
-
-        <section className="rounded-2xl border border-slate-200 bg-white/95 p-5 shadow-[0_18px_55px_-38px_rgba(15,23,42,0.5)] sm:p-6">
-          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Welcome back</p>
-          <h2 className="mt-2 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl">League account</h2>
-          <p className="mt-3 text-sm leading-6 text-slate-600">
-            Captains, vice-captains, and players all sign in here. Team permissions are managed centrally.
-          </p>
-
+    <LeagueAuthLayout title="Sign in" intro="Players, captains and league officers use the same Rack & Frame account.">
           <form method="post" onSubmit={onSignIn} className="mt-6 space-y-4">
             <div>
               <label htmlFor="sign-in-email" className="mb-2 block text-sm font-medium text-slate-700">Email address</label>
@@ -363,26 +330,17 @@ export default function SignInPage() {
             <button
               type="submit"
               disabled={busy}
-              className="flex h-12 w-full items-center justify-center rounded-xl bg-teal-700 px-5 text-base font-semibold text-white transition hover:bg-teal-800 disabled:opacity-60 sm:w-auto"
+              className="flex h-12 w-full items-center justify-center rounded-xl bg-teal-700 px-5 text-base font-semibold text-white transition hover:bg-teal-800 disabled:opacity-60"
             >
               {busy ? "Please wait..." : "Sign in"}
             </button>
           </form>
 
-          <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <p className="text-sm text-slate-700">
-              Don&apos;t have an account yet?{" "}
-              <Link href="/auth/register" className="font-semibold text-teal-700 underline underline-offset-4">
-                Create one here
-              </Link>
-              .
-            </p>
+          <div className="mt-5 flex flex-wrap items-center gap-x-2 gap-y-1 text-sm text-slate-700">
+            New to Rack &amp; Frame?
+            <Link href="/auth/register" className="font-bold text-teal-800 underline underline-offset-4">Create an account</Link>
           </div>
-
-          <p className="mt-6 text-xs uppercase tracking-[0.2em] text-slate-400">Designed and developed by Martin Chamberlain</p>
           <MessageModal message={message} onClose={() => setMessage(null)} />
-        </section>
-      </div>
-    </main>
+    </LeagueAuthLayout>
   );
 }

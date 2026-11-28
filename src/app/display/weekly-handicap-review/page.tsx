@@ -108,7 +108,7 @@ export default function PublicWeeklyHandicapReviewPage() {
           <p className="mt-2 text-sm text-slate-300">
             {data?.isInformationOnly
               ? "Players whose Elo changed in the completed week, with an indicative Elo-derived handicap. Division 1 remains scratch, so this is a performance review rather than an applied handicap review."
-              : "Players whose Elo and/or playing handicap changed this week. Elo comes from eligible singles and doubles results; no-shows and voids are excluded. In a nominated-player frame, only the nominated player is excluded. After the first four weekly reviews, handicap reviews are every four fixture weeks (Weeks 8, 12 and so on). The Elo target is an illustration, not a live change between reviews."}
+              : "Players whose Elo and/or playing handicap changed this week. Elo comes from eligible singles and doubles results; no-shows and voids are excluded. In a nominated-player frame, only the nominated player is excluded. After the first four weekly reviews, handicap reviews are every four fixture weeks (Weeks 8, 12 and so on). Use the published handicap between reviews."}
           </p>
           {(data?.seasons?.length ?? 0) > 1 ? (
             <label className="mt-4 block max-w-xl text-sm font-semibold text-white">
@@ -201,7 +201,7 @@ export default function PublicWeeklyHandicapReviewPage() {
                 </div>
                 <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    {data?.isInformationOnly ? "Indicative Handicap" : "Playing Handicap Change"}
+                    {data?.isInformationOnly ? "Elo suggestion" : "Published handicap change"}
                   </p>
                   <p className="mt-2 text-2xl font-bold text-white">
                     {data?.isInformationOnly
@@ -217,9 +217,9 @@ export default function PublicWeeklyHandicapReviewPage() {
                   </p>
                 </div>
                 {!data?.isInformationOnly ? <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/5 p-4">
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">If reviewed today</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-cyan-300">Elo suggestion</p>
                   <p className="mt-2 text-2xl font-bold text-white">{formatHandicap(row.target)}</p>
-                  <p className="mt-1 text-xs text-slate-300">Gap to current: {formatHandicap(row.gapToTarget)} · illustrative only</p>
+                  <p className="mt-1 text-xs text-slate-300">Gap to published handicap: {formatHandicap(row.gapToTarget)} · illustrative only</p>
                 </div> : null}
               </div>
               <p className="mt-4 text-xs text-slate-400">

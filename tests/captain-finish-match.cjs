@@ -15,12 +15,14 @@ function loadFunction(name, context) {
   assert.ok(found, name);
   return vm.runInNewContext(ts.transpileModule(`(${found})`, {compilerOptions:{target:ts.ScriptTarget.ES2022}}).outputText, context);
 }
-function loadModule(file) {
+function loadModule(file, dependencies = {}) {
   const exports={};
-  vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'), {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports});
+  vm.runInNewContext(ts.transpileModule(fs.readFileSync(file,'utf8'), {compilerOptions:{module:ts.ModuleKind.CommonJS,target:ts.ScriptTarget.ES2022}}).outputText,{exports, require: name => dependencies[name]});
   return exports;
 }
-const {validateCompleteLeagueScorecard}=loadModule('src/lib/league-scorecard-validation.ts');
+const scorecardValidation=loadModule('src/lib/league-scorecard-validation.ts');
+const {validateCompleteLeagueScorecard}=scorecardValidation;
+const {submittedForApprovalLabel}=loadModule('src/lib/live-match-status.ts', {'./league-scorecard-validation': scorecardValidation});
 const {matchSubmissionConfirmation}=loadModule('src/lib/match-submission-confirmation.ts');
 function harness(overrides={}) {
   const events=[];
@@ -32,7 +34,7 @@ function harness(overrides={}) {
     currentUserId:'scorer',canSubmit:true,scoreEntryTeamIds:new Set(['home']),
     isFixtureOpenForSubmission:()=>true,pendingByFixture:new Set(),guardAgainstRemoteOverwrite:async()=>false,
     slots,deriveWinnerFromFrame:r=>r.winner_side,selectedSeason:{singles_count:4,doubles_count:1},
-    validateCompleteLeagueScorecard, setMessage:m=>events.push(['error',m]),
+    validateCompleteLeagueScorecard, submittedForApprovalLabel, setMessage:m=>events.push(['error',m]),
     getValidatedBreakRows:()=>({rows:[],error:null}),breakRowsContainUnsavedDraft:()=>false,fixtureBreaks:[],
     matchSubmissionConfirmation,teamById:new Map([['home',{name:'Greenhithe B'}],['away',{name:'Hartley CC'}]]),playerById:new Map(),
     showConfirm:async options=>{events.push(['confirm',options]);return true;},
@@ -53,7 +55,7 @@ test('final frame saves, confirms the 4–1 score, then submits exactly once',as
  const h=harness();await h.finish();
  assert.deepEqual(h.events.filter(e=>['save','confirm','post','success'].includes(e[0])).map(e=>e[0]),['save','confirm','post','success']);
  assert.match(h.events.find(e=>e[0]==='confirm')[1].description,/Greenhithe B 4–1 Hartley CC/);
- assert.match(h.events.find(e=>e[0]==='success')[1].title,/nothing else to do/);
+ assert.equal(h.events.find(e=>e[0]==='success')[1].title, 'Submitted for approval');
 });
 test('cancel leaves saved scores for review and sends no submission',async()=>{
  const h=harness({showConfirm:async()=>false});await h.finish();
@@ -68,6 +70,17 @@ test('missing doubles and incomplete break drafts cannot submit',async()=>{
 });
 test('failed submission shows error, no success, and can retry',async()=>{
  const h=harness({fetch:async()=>({ok:false,json:async()=>({error:'Connection failed'})})});await h.finish();assert.ok(h.events.some(e=>e[0]==='error'));assert.ok(!h.events.some(e=>e[0]==='success'));assert.equal(h.context.submitInFlightRef.current,false);assert.equal(h.context.saveFrameInFlightRef.current,false);
+});
+test('connection drop after frame save keeps the result open until a retry is confirmed',async()=>{
+ const h=harness({fetch:async()=>{throw new TypeError('Network connection lost');}});
+ await h.finish();
+ assert.ok(h.events.some(e=>e[0]==='save'));
+ assert.match(h.events.find(e=>e[0]==='error')[1], /saved scores are safe/);
+ assert.ok(!h.events.some(e=>e[0]==='pending'));
+ h.context.fetch=async()=>({ok:true,json:async()=>({})});
+ await h.context.submit();
+ assert.ok(h.events.some(e=>e[0]==='pending'));
+ assert.ok(h.events.some(e=>e[0]==='success'));
 });
 test('double taps while confirmation is open do not submit twice',async()=>{
  let answer;const h=harness({showConfirm:()=>new Promise(r=>answer=r)});const first=h.finish();

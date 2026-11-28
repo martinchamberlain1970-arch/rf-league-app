@@ -10,6 +10,10 @@ import { appRoleLabel } from "@/lib/app-roles";
 import { supabase } from "@/lib/supabase";
 import ConfirmModal from "@/components/ConfirmModal";
 import useFeatureAccess from "@/components/useFeatureAccess";
+import DashboardActions, { oldestWaiting, type DashboardAction } from "@/components/DashboardActions";
+import { groupTeamCompetitionEntries } from "@/lib/public-competition-entry";
+import { fetchAllSupabasePages } from "@/lib/supabase-pagination";
+import type { HandicapReviewSummary } from "@/lib/handicap-review-summary";
 import ImportantAnnouncementBanner from "@/components/ImportantAnnouncementBanner";
 
 const links = [
@@ -41,27 +45,25 @@ const links = [
   { href: "/legal", title: "Legal & Credits", desc: "Legal and support information." },
 ];
 
-type PriorityTone = "rose" | "indigo" | "amber" | "emerald" | "sky" | "violet";
-type PriorityCard = {
-  href: string;
-  title: string;
-  value: number;
-  tone: PriorityTone;
-  detail: string;
-  displayValue?: string | null;
-  compactDisplay?: boolean;
+type DashboardFixture = {
+  id: string;
+  season_id: string;
+  home_team_id: string;
+  away_team_id: string;
+  fixture_date: string;
+  status: string;
+  pre_match_paper_record: boolean | null;
+  home_lineup_submitted_at: string | null;
+  away_lineup_submitted_at: string | null;
 };
+type QueueItem = { count: number; oldest: string | null };
+const ukFixtureDate = new Intl.DateTimeFormat("en-GB", { weekday: "short", day: "numeric", month: "short", timeZone: "Europe/London" });
+const todayUK = () => new Date().toLocaleDateString("en-CA", { timeZone: "Europe/London" });
+
 type SiteAnnouncement = { id?: string; title?: string | null; body?: string | null; is_active?: boolean | null; updated_at?: string | null };
 
-function isLineupWindowLive(fixtureDate: string | null) {
-  if (!fixtureDate) return false;
-  const start = new Date(`${fixtureDate}T00:00:00`);
-  if (Number.isNaN(start.getTime())) return false;
-  const hardStop = new Date(start);
-  hardStop.setDate(hardStop.getDate() + 1);
-  hardStop.setHours(1, 0, 0, 0);
-  const now = new Date();
-  return now >= start && now <= hardStop;
+function isMatchNight(date: string) {
+  return date === todayUK();
 }
 
 export default function HomePage() {
@@ -70,7 +72,6 @@ export default function HomePage() {
   const features = useFeatureAccess();
   const [completionMessage, setCompletionMessage] = useState<string | null>(null);
   const [userName, setUserName] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
   const [userPlayerId, setUserPlayerId] = useState<string | null>(null);
   const [userMissingAvatar, setUserMissingAvatar] = useState(false);
   const [userMissingDob, setUserMissingDob] = useState(false);
@@ -81,16 +82,15 @@ export default function HomePage() {
   const [pendingClaim, setPendingClaim] = useState<{ id: string; name: string } | null>(null);
   const [claimStatusOpen, setClaimStatusOpen] = useState(false);
   const [pendingAdminRequest, setPendingAdminRequest] = useState<{ id: string; createdAt: string } | null>(null);
-  const [openEventsCount, setOpenEventsCount] = useState<number | null>(null);
-  const [resultsQueueCount, setResultsQueueCount] = useState<number | null>(null);
+  const [officerQueue, setOfficerQueue] = useState<Record<string, QueueItem>>({});
+  const [fixtureRequests, setFixtureRequests] = useState<QueueItem | null>(null);
+  const [teamFixture, setTeamFixture] = useState<{ id: string; detail: string; resume: boolean; canOpen: boolean } | null>(null);
+  const [playerHandicap, setPlayerHandicap] = useState<{ href: string; value: string; review: string | null } | null>(null);
   const [pendingRequestsCount, setPendingRequestsCount] = useState<number | null>(null);
   const [pendingRequestsHref, setPendingRequestsHref] = useState("/notifications");
   const [pendingResultSubmissionsCount, setPendingResultSubmissionsCount] = useState<number>(0);
   const [fixtureChangeActionCount, setFixtureChangeActionCount] = useState<number>(0);
   const [outstandingFixtureCount, setOutstandingFixtureCount] = useState<number>(0);
-  const [tonightLineupCount, setTonightLineupCount] = useState<number>(0);
-  const [tonightLineupLabel, setTonightLineupLabel] = useState<string | null>(null);
-  const [tonightLineupHref, setTonightLineupHref] = useState("/captain-results");
   const [leagueRole, setLeagueRole] = useState<{ isCaptain: boolean; isViceCaptain: boolean; isMatchScorer: boolean; teamNames: string[] }>({
     isCaptain: false,
     isViceCaptain: false,
@@ -99,7 +99,6 @@ export default function HomePage() {
   });
   const [pendingFeatureRequests, setPendingFeatureRequests] = useState<Set<string>>(new Set());
   const [showProfilePrompt, setShowProfilePrompt] = useState(false);
-  const [showCaptainGuidePrompt, setShowCaptainGuidePrompt] = useState(false);
   const [announcement, setAnnouncement] = useState<SiteAnnouncement | null>(null);
   const [dashboardQuery, setDashboardQuery] = useState("");
   const [confirmState, setConfirmState] = useState<{
@@ -191,7 +190,6 @@ export default function HomePage() {
   const mainTabLinksWithGovernance = leagueRequestsTile ? [leagueRequestsTile, ...mainTabLinks] : mainTabLinks;
   const compactSuper = admin.isSuper;
   const cardBaseClass = `mx-4 rounded-2xl border border-slate-200 bg-white shadow-sm sm:mx-0 ${compactSuper ? "p-2.5" : "p-3 sm:p-4"}`;
-  const subtleCardClass = `mx-4 rounded-2xl border border-slate-200 bg-white shadow-sm sm:mx-0 ${compactSuper ? "p-3" : "p-3 sm:p-4"}`;
   const primaryTileBadgeText = (href: string) => {
     if (href === "/results?tab=fixture_changes" && admin.canManageLeague) {
       return fixtureChangeActionCount > 0 ? `${fixtureChangeActionCount} to review` : "Open";
@@ -328,132 +326,25 @@ export default function HomePage() {
         ? "Captain"
         : "Vice-captain"
     : leagueRole.isMatchScorer ? "Match-night scorer" : "Player";
-  const priorityCards = useMemo<PriorityCard[]>(() => {
-    if (admin.canManageLeague) {
-      return [
-        {
-          href: "/results",
-          title: "Results Awaiting Review",
-          value: resultsQueueCount ?? 0,
-          tone: "rose",
-          detail: "Approve captain submissions and locked result decisions.",
-        },
-        {
-          href: "/results?tab=fixture_changes",
-          title: "Fixture Date Requests",
-          value: fixtureChangeActionCount,
-          tone: "indigo",
-          detail: "Review early-play and exceptional postponement requests.",
-        },
-        {
-          href: pendingRequestsHref,
-          title: "Pending League Requests",
-          value: pendingRequestsCount ?? 0,
-          tone: "amber",
-          detail: "Team registrations, profile claims, location requests, and participant updates awaiting review.",
-        },
-      ];
-    }
-    if (hasScoreEntryRole) {
-      return [
-        {
-          href: tonightLineupHref,
-          title: "Tonight's Lineup",
-          value: tonightLineupCount,
-          tone: "emerald",
-          displayValue: tonightLineupCount > 0 ? tonightLineupLabel ?? String(tonightLineupCount) : "Ready",
-          compactDisplay: true,
-          detail:
-            tonightLineupCount > 0
-              ? "A live fixture is waiting for lineup action from your side."
-              : "Open your fixture to enter the pre-match lineup first, then submit the result later.",
-        },
-        ...(hasCaptainRole ? [{
-          href: "/reschedule-fixture",
-          title: "Fixture Date Requests",
-          value: outstandingFixtureCount,
-          tone: "indigo",
-          displayValue: outstandingFixtureCount > 0 ? String(outstandingFixtureCount) : "None",
-          detail:
-            outstandingFixtureCount > 0
-              ? "A fixture is waiting for review or a new agreed date."
-              : "Request early play or track an approved outstanding fixture.",
-        } as PriorityCard] : []),
-        {
-          href: "/events?view=league",
-          title: "Match Centre",
-          value: openEventsCount ?? 0,
-          tone: "sky",
-          displayValue: (openEventsCount ?? 0) > 0 ? String(openEventsCount ?? 0) : "View",
-          detail: "Check your next league fixtures, results and match reports.",
-        },
-      ];
-    }
-    return [
-      {
-        href: "/league",
-        title: "Published League",
-        value: openEventsCount ?? 0,
-        tone: "indigo",
-        displayValue: "View",
-        compactDisplay: true,
-        detail: "View the latest league fixtures, table, and player standings.",
-      },
-      {
-        href: "/notifications",
-        title: "Notifications",
-        value: pendingResultSubmissionsCount,
-        tone: "violet",
-        displayValue: pendingResultSubmissionsCount > 0 ? String(pendingResultSubmissionsCount) : "None",
-        compactDisplay: true,
-        detail: "Track profile, result, and competition updates in one place.",
-      },
-      {
-        href: "/events?view=league",
-        title: "Match Centre",
-        value: openEventsCount ?? 0,
-        tone: "sky",
-        displayValue: "View",
-        compactDisplay: true,
-        detail: "See your upcoming league fixtures, results and match reports.",
-      },
-    ];
-  }, [
-    admin.canManageLeague,
-    fixtureChangeActionCount,
-    hasCaptainRole,
-    hasScoreEntryRole,
-    openEventsCount,
-    outstandingFixtureCount,
-    pendingRequestsCount,
-    pendingRequestsHref,
-    pendingResultSubmissionsCount,
-    resultsQueueCount,
-    tonightLineupCount,
-    tonightLineupHref,
-    tonightLineupLabel,
-  ]);
-  const priorityCardClass = (tone: PriorityTone) => {
-    if (tone === "rose") return "border-rose-200 bg-gradient-to-br from-rose-50 to-white";
-    if (tone === "indigo") return "border-indigo-200 bg-gradient-to-br from-indigo-50 to-white";
-    if (tone === "amber") return "border-amber-200 bg-gradient-to-br from-amber-50 to-white";
-    if (tone === "emerald") return "border-emerald-200 bg-gradient-to-br from-emerald-50 to-white";
-    if (tone === "sky") return "border-sky-200 bg-gradient-to-br from-sky-50 to-white";
-    return "border-violet-200 bg-gradient-to-br from-violet-50 to-white";
-  };
-  const priorityValueClass = (tone: PriorityTone) => {
-    if (tone === "rose") return "text-rose-700";
-    if (tone === "indigo") return "text-indigo-700";
-    if (tone === "amber") return "text-amber-700";
-    if (tone === "emerald") return "text-emerald-700";
-    if (tone === "sky") return "text-sky-700";
-    return "text-violet-700";
-  };
-  const accountStatusText = userPlayerId
-    ? "Your player profile is linked and active."
-    : pendingClaim
-      ? "Your profile claim is pending review."
-      : "No linked player profile yet. Complete profile check to continue.";
+  const queueAction = (href: string, title: string, queue?: QueueItem | null): DashboardAction => ({
+    href, title, count: queue?.count ?? null, detail: queue?.oldest ?? (queue?.count === 0 ? "Up to date" : null),
+  });
+  const officerActions = [
+    queueAction("/results?tab=fixture_changes", "Fixture date requests", fixtureRequests),
+    queueAction("/results", "League results to review", officerQueue.league),
+    queueAction("/results?tab=competition", "Competition results to review", officerQueue.competition),
+    queueAction("/outstanding-scorecards", "Outstanding scorecards", officerQueue.scorecards),
+    queueAction("/signups#team-forms", "Competition forms to review", officerQueue.forms),
+    { href: "/events#cup-schedule", title: "Competition schedule watch" },
+    queueAction(pendingRequestsHref, "Registrations and other requests", pendingRequestsCount === null ? null : { count: pendingRequestsCount, oldest: null }),
+  ];
+  const personalActions: DashboardAction[] = [
+    { href: "/display/league-table", title: "League tables" },
+    { href: "/competition-entry/overview", title: "Competition entries and draw formats" },
+    ...(hasCaptainRole ? [{ href: "/reschedule-fixture", title: "Fixture date requests", count: outstandingFixtureCount }] : []),
+    { href: "/notifications", title: "Notifications" },
+    ...(hasCaptainRole ? [{ href: "/captain-guide", title: "Captain and vice-captain guide" }] : []),
+  ];
   const welcomeName = admin.isSuper
     ? "Martin"
     : userName?.trim().split(/\s+/)[0] || appRoleLabel(admin.role);
@@ -547,7 +438,6 @@ export default function HomePage() {
       if (!client) return;
       const { data } = await client.auth.getUser();
       const userId = data.user?.id;
-      setUserEmail(data.user?.email ?? null);
       if (!userId) return;
       if (admin.isSuper) {
         setUserName(null);
@@ -662,88 +552,99 @@ export default function HomePage() {
   }, [admin.loading, admin.isSuper, userPlayerId]);
 
   useEffect(() => {
+    const client = supabase;
+    if (!client || admin.loading || admin.canManageLeague || !userPlayerId) return;
+    let active = true;
     const run = async () => {
-      const client = supabase;
-      if (!client || admin.loading || admin.isSuper || !userPlayerId) {
-        setTonightLineupCount(0);
-        setTonightLineupLabel(null);
-        setTonightLineupHref("/captain-results");
-        return;
+      const seasons = await client.from("league_seasons").select("id,name").eq("is_active", true).eq("is_published", true);
+      if (!active || seasons.error || !seasons.data.length) return;
+      const roster = await client.from("league_team_members").select("team_id,season_id,is_captain,is_vice_captain,is_match_scorer")
+        .eq("player_id", userPlayerId).in("season_id", seasons.data.map(({ id }) => id));
+      if (!active || roster.error || !roster.data.length) return;
+      const myTeams = [...new Set(roster.data.map(({ team_id }) => team_id))];
+      const season = seasons.data.find(({ id, name }) => /premier league/i.test(name) && roster.data.some((row) => row.season_id === id));
+      if (season) {
+        const href = `/display/handicaps?seasonId=${season.id}`;
+        void client.from("players").select("snooker_handicap").eq("id", userPlayerId).maybeSingle().then(({ data }) => {
+          if (!active || typeof data?.snooker_handicap !== "number") return;
+          const value = data.snooker_handicap;
+          setPlayerHandicap({ href, value: value > 0 ? `+${value}` : String(value), review: null });
+          void fetch(`/api/public/weekly-handicap-review?seasonId=${season.id}`).then(async (response) => {
+            if (!response.ok || !active) return;
+            const { reviewSummary } = await response.json() as { reviewSummary?: HandicapReviewSummary & { unavailable?: boolean } };
+            if (!active || reviewSummary?.unavailable || !reviewSummary?.nextReview) return;
+            const { date, week } = reviewSummary.nextReview;
+            const review = date ? `Next review after Week ${week} · ${ukFixtureDate.format(new Date(date))}` : `Next review after Week ${week}`;
+            setPlayerHandicap({ href, value: value > 0 ? `+${value}` : String(value), review });
+          }).catch(() => {});
+        });
+      } else if (seasons.data.some(({ id, name }) => /division\s*1/i.test(name) && roster.data.some((row) => row.season_id === id))) {
+        setPlayerHandicap({ href: "/display/handicaps", value: "Off scratch", review: "Division 1 league fixtures" });
       }
-      let membersRes = await client
-        .from("league_team_members")
-        .select("team_id,is_captain,is_vice_captain,is_match_scorer")
-        .eq("player_id", userPlayerId);
-      if (membersRes.error && membersRes.error.message.toLowerCase().includes("is_match_scorer")) {
-        const fallback = await client.from("league_team_members").select("team_id,is_captain,is_vice_captain").eq("player_id", userPlayerId);
-        membersRes = { ...fallback, data: (fallback.data ?? []).map((row) => ({ ...row, is_match_scorer: false })) } as unknown as typeof membersRes;
-      }
-      if (membersRes.error || !membersRes.data) {
-        setTonightLineupCount(0);
-        setTonightLineupLabel(null);
-        setTonightLineupHref("/captain-results");
-        return;
-      }
-      const scoreEntryTeamIds = new Set(
-        (membersRes.data as Array<{ team_id: string; is_captain: boolean; is_vice_captain?: boolean | null; is_match_scorer?: boolean | null }>)
-          .filter((row) => row.is_captain || Boolean(row.is_vice_captain) || Boolean(row.is_match_scorer))
-          .map((row) => row.team_id)
-      );
-      if (scoreEntryTeamIds.size === 0) {
-        setTonightLineupCount(0);
-        setTonightLineupLabel(null);
-        setTonightLineupHref("/captain-results");
-        return;
-      }
-      const teamsRes = await client.from("league_teams").select("id,name");
-      const teamNameById = new Map(
-        ((teamsRes.data ?? []) as Array<{ id: string; name: string }>).map((row) => [row.id, row.name])
-      );
-      const fixturesRes = await client
-        .from("league_fixtures")
-        .select("id,home_team_id,away_team_id,fixture_date,status,pre_match_paper_record,home_lineup_submitted_at,away_lineup_submitted_at");
-      if (fixturesRes.error || !fixturesRes.data) {
-        setTonightLineupCount(0);
-        setTonightLineupLabel(null);
-        setTonightLineupHref("/captain-results");
-        return;
-      }
-      const actionableFixtures = (fixturesRes.data as Array<{
-        id: string;
-        home_team_id: string;
-        away_team_id: string;
-        fixture_date: string | null;
-        status?: string | null;
-        pre_match_paper_record?: boolean | null;
-        home_lineup_submitted_at?: string | null;
-        away_lineup_submitted_at?: string | null;
-      }>).filter((fixture) => {
-        if (fixture.pre_match_paper_record) return false;
-        if (!isLineupWindowLive(fixture.fixture_date)) return false;
-        if (fixture.status === "complete") return false;
-        const isHomeCaptain = scoreEntryTeamIds.has(fixture.home_team_id);
-        const isAwayCaptain = scoreEntryTeamIds.has(fixture.away_team_id);
-        if (isHomeCaptain && !fixture.home_lineup_submitted_at && !fixture.away_lineup_submitted_at) return true;
-        if (isAwayCaptain && Boolean(fixture.home_lineup_submitted_at) && !fixture.away_lineup_submitted_at) return true;
-        return false;
-      });
-      setTonightLineupCount(actionableFixtures.length);
-      if (actionableFixtures.length === 1) {
-        const fixture = actionableFixtures[0];
-        const myTeamId = scoreEntryTeamIds.has(fixture.home_team_id) ? fixture.home_team_id : fixture.away_team_id;
-        const opponentId = myTeamId === fixture.home_team_id ? fixture.away_team_id : fixture.home_team_id;
-        setTonightLineupLabel(teamNameById.get(opponentId) ? `vs. ${teamNameById.get(opponentId)}` : "Opponent due");
-        setTonightLineupHref(`/captain-results?fixtureId=${fixture.id}`);
-      } else if (actionableFixtures.length > 1) {
-        setTonightLineupLabel(`${actionableFixtures.length} due`);
-        setTonightLineupHref("/captain-results");
-      } else {
-        setTonightLineupLabel(null);
-        setTonightLineupHref("/captain-results");
-      }
+
+      const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toLocaleDateString("en-CA", { timeZone: "Europe/London" });
+      const today = todayUK();
+      const fixtures = await client.from("league_fixtures")
+        .select("id,season_id,home_team_id,away_team_id,fixture_date,status,pre_match_paper_record,home_lineup_submitted_at,away_lineup_submitted_at")
+        .in("season_id", seasons.data.map(({ id }) => id))
+        .or(`home_team_id.in.(${myTeams.join(",")}),away_team_id.in.(${myTeams.join(",")})`)
+        .in("status", ["pending", "in_progress"]).gte("fixture_date", yesterday).order("fixture_date").order("id").limit(12);
+      if (!active || fixtures.error || !fixtures.data.length) return;
+      const rows = fixtures.data as DashboardFixture[];
+      const scorerTeams = new Set(roster.data.filter((row) => row.is_captain || row.is_vice_captain || row.is_match_scorer).map((row) => row.team_id));
+      const scorable = rows.filter((row) => row.fixture_date <= today && (scorerTeams.has(row.home_team_id) || scorerTeams.has(row.away_team_id)));
+      const submissions = scorable.length ? await client.from("league_result_submissions").select("fixture_id")
+        .in("fixture_id", scorable.map(({ id }) => id)).in("status", ["pending", "approved"]) : null;
+      if (!active) return;
+      const submitted = new Set((submissions?.data ?? []).map(({ fixture_id }) => fixture_id));
+      const resumable = submissions && !submissions.error ? scorable.find((row) =>
+        scorerTeams.has(row.home_team_id) && !submitted.has(row.id) &&
+        (row.pre_match_paper_record || (row.home_lineup_submitted_at && row.away_lineup_submitted_at))) : null;
+      const fixture = resumable ?? rows.find((row) => row.fixture_date >= today);
+      if (!fixture) return;
+      const teams = await client.from("league_teams").select("id,name").in("id", [fixture.home_team_id, fixture.away_team_id]);
+      if (!active) return;
+      const names = new Map((teams.data ?? []).map(({ id, name }) => [id, name]));
+      const detail = `${names.get(fixture.home_team_id) ?? "Home team"} vs ${names.get(fixture.away_team_id) ?? "Away team"} · ${ukFixtureDate.format(new Date(fixture.fixture_date))}`;
+      const canOpen = Boolean(resumable) || (isMatchNight(fixture.fixture_date) &&
+        (scorerTeams.has(fixture.home_team_id) || scorerTeams.has(fixture.away_team_id)));
+      setTeamFixture({ id: fixture.id, detail, resume: Boolean(resumable), canOpen });
+
     };
     void run();
-  }, [admin.loading, admin.isSuper, userPlayerId]);
+    return () => { active = false; };
+  }, [admin.loading, admin.canManageLeague, userPlayerId]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !admin.canManageLeague) return;
+    let active = true;
+    const load = async () => {
+      const { data } = await client.auth.getSession();
+      const token = data.session?.access_token;
+      if (!token || !active) return;
+      const outstanding = fetch("/api/league/outstanding-scorecards", { headers: { Authorization: `Bearer ${token}` } })
+        .then(async (response) => response.ok ? (await response.json()).fixtures as { date: string | null }[] : null)
+        .catch(() => null);
+      const [league, competition, entries, scorecards] = await Promise.all([
+        client.from("league_result_submissions").select("created_at", { count: "exact" }).eq("status", "pending").order("created_at").limit(1),
+        client.from("competition_result_submissions").select("created_at", { count: "exact" }).eq("status", "pending").order("created_at").limit(1),
+        fetchAllSupabasePages<{ id: string; requester_user_id: string | null; note: string | null; created_at: string }>((from, to) => client
+          .from("competition_entries").select("id,requester_user_id,note,created_at").eq("status", "pending").order("id").range(from, to)),
+        outstanding,
+      ]);
+      if (!active) return;
+      const forms = entries.error ? null : groupTeamCompetitionEntries(entries.data ?? []).forms;
+      setOfficerQueue({
+        ...(!league.error && { league: { count: league.count ?? 0, oldest: oldestWaiting(league.data.map(({ created_at }) => created_at)) } }),
+        ...(!competition.error && { competition: { count: competition.count ?? 0, oldest: oldestWaiting(competition.data.map(({ created_at }) => created_at)) } }),
+        ...(forms && { forms: { count: forms.length, oldest: oldestWaiting(forms.flatMap(({ entries }) => entries.map(({ created_at }) => created_at))) } }),
+        ...(scorecards && { scorecards: { count: scorecards.length, oldest: oldestWaiting(scorecards.map(({ date }) => date)) } }),
+      });
+    };
+    void load();
+    return () => { active = false; };
+  }, [admin.canManageLeague, admin.userId]);
 
   useEffect(() => {
     const run = async () => {
@@ -778,20 +679,6 @@ export default function HomePage() {
         const league = await q2;
         return league.count ?? 0;
       };
-      const { count: openCount } = await client
-        .from("competitions")
-        .select("id", { count: "exact", head: true })
-        .eq("is_archived", false)
-        .eq("is_completed", false);
-      setOpenEventsCount(openCount ?? 0);
-
-      if (admin.isAdmin || admin.isSuper) {
-        const resultsCount = await countPendingResults();
-        setResultsQueueCount(resultsCount ?? 0);
-      } else {
-        setResultsQueueCount(null);
-      }
-
       if (admin.canManageLeague) {
         const tables = ["player_claim_requests", "player_update_requests", "location_requests", "league_player_addition_requests"];
         if (admin.isSuper) tables.push("admin_requests", "profile_merge_requests", "player_deletion_requests");
@@ -857,7 +744,7 @@ export default function HomePage() {
       setPendingResultSubmissionsCount(pendingResultCount);
     };
     run();
-  }, [admin.isAdmin, admin.isSuper, admin.userId, pendingClaim]);
+  }, [admin.canManageLeague, admin.isAdmin, admin.isSuper, admin.userId, pendingClaim]);
 
   useEffect(() => {
     const run = async () => {
@@ -880,13 +767,13 @@ export default function HomePage() {
         return;
       }
       const data = (await resp.json().catch(() => ({}))) as {
-        rows?: Array<{ status?: string }>;
+        rows?: Array<{ status?: string; created_at?: string }>;
       };
       const rows = data.rows ?? [];
       if (admin.canManageLeague) {
-        setFixtureChangeActionCount(
-          rows.filter((row) => row.status === "pending" || row.status === "approved_outstanding").length
-        );
+        const pending = rows.filter((row) => row.status === "pending" || row.status === "approved_outstanding");
+        setFixtureChangeActionCount(pending.length);
+        setFixtureRequests({ count: pending.length, oldest: oldestWaiting(pending.map(({ created_at }) => created_at)) });
         setOutstandingFixtureCount(0);
         return;
       }
@@ -913,13 +800,6 @@ export default function HomePage() {
     }
     setShowProfilePrompt(false);
   }, [admin.loading, admin.isSuper, admin.userId, userPlayerId, userMissingAvatar, userMissingDob]);
-
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (admin.loading || admin.isSuper || !hasCaptainRole || !admin.userId) return;
-    const storageKey = `captain_guide_prompt_dismissed_${admin.userId}`;
-    setShowCaptainGuidePrompt(window.localStorage.getItem(storageKey) !== "1");
-  }, [admin.loading, admin.isSuper, admin.userId, hasCaptainRole]);
 
   useEffect(() => {
     let active = true;
@@ -1089,45 +969,17 @@ export default function HomePage() {
           <section className="relative overflow-hidden bg-gradient-to-br from-[#08172b] via-[#0b353c] to-[#087b78] px-5 py-7 text-white shadow-lg sm:rounded-3xl sm:px-8 sm:py-9">
             <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full border border-white/10" />
             <div className="pointer-events-none absolute -bottom-28 right-20 h-64 w-64 rounded-full border border-white/10" />
-            <div className="relative grid gap-6 md:grid-cols-[1fr_auto] md:items-center">
+            <div className="relative flex flex-wrap items-end justify-between gap-4">
               <div>
-                <p className="text-[11px] font-bold uppercase tracking-[0.28em] text-cyan-200">Welcome back</p>
-                <h1 className="mt-2 text-3xl font-black tracking-tight sm:text-4xl">Hi, {welcomeName}</h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-200">
-                  {admin.canManageLeague
-                    ? "Here’s what needs your attention across the league today."
-                    : hasScoreEntryRole
-                      ? "Your fixtures, lineup actions and league updates are ready below."
-                      : "Your league fixtures, results and player information are ready below."}
-                </p>
-                <div className="mt-5 flex flex-wrap items-center gap-2">
-                  <span className="rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs font-semibold text-white">
-                    {appRoleLabel(admin.role)}
-                  </span>
-                  {leagueRole.teamNames.map((teamName) => (
-                    <span key={teamName} className="rounded-full border border-cyan-200/30 bg-cyan-100/10 px-3 py-1 text-xs font-semibold text-cyan-50">
-                      {teamName}
-                    </span>
-                  ))}
-                </div>
+                <p className="text-sm font-semibold text-cyan-100">{admin.canManageLeague ? appRoleLabel(admin.role) : roleGuideLabel}</p>
+                <h1 className="mt-1 text-3xl font-black tracking-tight sm:text-4xl">Hi, {welcomeName}</h1>
+                {leagueRole.teamNames.length ? <p className="mt-2 text-sm text-cyan-100">{leagueRole.teamNames.join(" · ")}</p> : null}
               </div>
-              <div className="min-w-0 rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm md:min-w-64">
-                <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-cyan-200">Your account</p>
-                <p className="mt-1 truncate text-sm font-semibold text-white">
-                  {admin.isSuper ? "System Owner · Martin Chamberlain" : userName || appRoleLabel(admin.role)}
-                </p>
-                {userEmail ? <p className="mt-1 truncate text-xs text-slate-300">{userEmail}</p> : null}
-                {!admin.isSuper && userPlayerId ? (
-                  <Link href={`/players/${userPlayerId}`} className="mt-3 inline-flex rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-950 hover:bg-cyan-50">
-                    View my profile
-                  </Link>
-                ) : null}
-                {!admin.isAdmin && !userName ? (
-                  <button type="button" onClick={() => setProfileModalOpen(true)} className="mt-3 rounded-lg bg-white px-3 py-2 text-xs font-bold text-slate-950 hover:bg-cyan-50">
-                    Complete profile check
-                  </button>
-                ) : null}
-              </div>
+              {userPlayerId ? (
+                <Link href={`/players/${userPlayerId}`} className="rounded-xl border border-white/30 px-3 py-2 text-sm font-semibold hover:bg-white/10">My player profile</Link>
+              ) : !admin.isAdmin && !userName ? (
+                <button type="button" onClick={() => setProfileModalOpen(true)} className="rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-900">Link my player profile</button>
+              ) : null}
             </div>
             {!admin.isAdmin && !userName && pendingClaim ? (
               <div className="relative mt-4 flex flex-wrap items-center gap-2 rounded-xl border border-amber-200/30 bg-amber-100/10 px-4 py-3 text-sm text-amber-50">
@@ -1152,130 +1004,25 @@ export default function HomePage() {
           <div className="mx-4 sm:mx-0">
             <ImportantAnnouncementBanner announcement={announcement} />
           </div>
-          {!admin.isSuper ? (
-            <section className={subtleCardClass}>
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <p className="text-sm font-semibold text-slate-900">Welcome & User Guide</p>
-                {hasScoreEntryRole ? (
-                  <Link href={tonightLineupHref} className="rounded-full border border-emerald-300 bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">
-                    {roleGuideLabel}
-                  </Link>
-                ) : (
-                  <span className="rounded-full border border-slate-300 bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-700">
-                    {roleGuideLabel}
-                  </span>
-                )}
-              </div>
-              <p className="mt-1 text-xs text-slate-600">{accountStatusText}</p>
-              {leagueRole.teamNames.length > 0 ? (
-                <p className="mt-1 text-xs text-slate-600">Linked team: {leagueRole.teamNames.join(", ")}</p>
-              ) : null}
-              {hasCaptainRole && showCaptainGuidePrompt ? (
-                <div className="mt-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <p className="text-sm font-semibold text-emerald-900">Read this before your first fixture</p>
-                      <p className="mt-1 text-sm text-emerald-800">
-                        Check the captain guide for when to enter your lineup, the home-team submission rule, and the midnight result deadline.
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (typeof window !== "undefined" && admin.userId) {
-                          window.localStorage.setItem(`captain_guide_prompt_dismissed_${admin.userId}`, "1");
-                        }
-                        setShowCaptainGuidePrompt(false);
-                      }}
-                      className="rounded-full border border-emerald-300 bg-white px-3 py-1 text-xs font-semibold text-emerald-900 hover:bg-emerald-100"
-                    >
-                      Don&apos;t show again
-                    </button>
-                  </div>
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    <Link href="/captain-guide" className="rounded-full border border-emerald-300 bg-white px-3 py-1 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">
-                      Open guide
-                    </Link>
-                    <Link href={tonightLineupHref} className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                      Enter tonight&apos;s lineup
-                    </Link>
-                  </div>
-                </div>
-              ) : null}
-              {hasScoreEntryRole ? (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {hasCaptainRole ? <Link href="/captain-guide" className="rounded-full border border-emerald-300 bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-900 hover:bg-emerald-100">Open captain guide</Link> : null}
-                  <Link href={tonightLineupHref} className="rounded-full border border-slate-300 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-50">
-                    Open line-ups &amp; results
-                  </Link>
-                </div>
-              ) : null}
-              <div className="mt-3 grid gap-2 sm:grid-cols-3">
-                <div className="rounded-xl border border-slate-200 bg-white p-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">1. View</p>
-                  <p className="mt-1 text-sm text-slate-800">
-                    Open <span className="font-semibold">League Manager</span> to view published fixtures, league table, and player table.
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">2. Submit</p>
-                  <p className="mt-1 text-sm text-slate-800">
-                    {hasScoreEntryRole
-                      ? "Use Line-ups & results for pre-match lineups. The authorised home-team scorer should then submit the result by midnight on the following day."
-                      : "A captain, vice-captain or assigned match-night scorer uses Line-ups & results for result submission."}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-white p-3">
-                  <p className="text-xs uppercase tracking-wide text-slate-500">3. Track</p>
-                  <p className="mt-1 text-sm text-slate-800">
-                    Check <span className="font-semibold">Notifications</span> for lineup prompts, fixture reminders, and result approval updates.
-                  </p>
-                </div>
-              </div>
-            </section>
-          ) : null}
-
-          <section className={`${subtleCardClass} p-4 sm:p-5`}>
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-teal-700">Your workspace</p>
-                <h2 className="mt-1 text-xl font-black text-slate-950">Needs your attention</h2>
-                <p className="mt-1 text-sm text-slate-600">
-                  Start with these live actions. Everything else remains available from Menu or the management catalogue below.
-                </p>
-              </div>
-              <div className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs font-semibold text-slate-700">
-                {admin.canManageLeague ? `${appRoleLabel(admin.role)} view` : hasCaptainRole ? "Captain workflow view" : leagueRole.isMatchScorer ? "Match-night scorer view" : "Player view"}
-              </div>
-            </div>
-            <div className="mt-4 grid gap-3 lg:grid-cols-3">
-              {priorityCards.map((card) => (
-                <Link
-                  key={`${card.href}|${card.title}`}
-                  href={card.href}
-                  className={`rounded-2xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md ${priorityCardClass(card.tone)}`}
-                >
-                  <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{card.title}</p>
-                  <div className="mt-2 flex items-end justify-between gap-3">
-                    <p
-                      className={`leading-tight ${priorityValueClass(card.tone)} ${
-                        card.compactDisplay
-                          ? "max-w-[12rem] text-xl font-black sm:text-2xl"
-                          : "text-4xl font-black leading-none"
-                      }`}
-                    >
-                      {card.displayValue ?? (card.value > 0 ? String(card.value) : "Clear")}
-                    </p>
-                    <span className="rounded-full border border-white/70 bg-white/80 px-3 py-1 text-xs font-semibold text-slate-700">
-                      Open
-                    </span>
-                  </div>
-                  <p className="mt-3 text-sm font-medium text-slate-900">{card.detail}</p>
-                </Link>
-              ))}
-            </div>
-          </section>
-
+          <div className="mx-4 space-y-4 sm:mx-0">
+            {admin.loading ? null : admin.canManageLeague ? (
+              <DashboardActions title="Needs your attention" actions={officerActions} />
+            ) : (
+              <>
+                <DashboardActions title={hasScoreEntryRole ? "My team" : "My league"} actions={[
+                  {
+                    href: hasScoreEntryRole && teamFixture?.canOpen ? `/captain-results?fixtureId=${teamFixture.id}` : "/events?view=league",
+                    title: teamFixture?.resume && hasScoreEntryRole ? "Resume scorecard" : hasScoreEntryRole && teamFixture?.canOpen ? "Open match-night scorecard" : "Next league fixture",
+                    detail: teamFixture?.detail ?? "View fixtures and results",
+                  },
+                  ...(playerHandicap ? [{ title: playerHandicap.value === "Off scratch" ? "League handicap · Off scratch" : `Published handicap · ${playerHandicap.value}`, href: playerHandicap.href, detail: playerHandicap.review }] : []),
+                  ...(userPlayerId && !playerHandicap ? [{ title: "Handicaps and reviews", href: "/display/handicaps" }] : []),
+                  ...(hasScoreEntryRole ? [{ title: "All line-ups and results", href: "/captain-results" }] : []),
+                ]} />
+                <DashboardActions title="League shortcuts" actions={personalActions} />
+              </>
+            )}
+          </div>
           <details className={`${cardBaseClass} overflow-hidden p-0`}>
             <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-4 marker:hidden sm:px-5">
               <div>

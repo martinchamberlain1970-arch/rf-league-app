@@ -14,6 +14,7 @@ import CompetitionOfficerEntry from "@/components/CompetitionOfficerEntry";
 import { entryRoster, isLeagueCup, knockoutBestOf, knockoutMatchSides, knockoutRosterProblems } from "@/lib/knockout-draw";
 import CompetitionEntryWithdrawal from "@/components/CompetitionEntryWithdrawal";
 import MessageModal from "@/components/MessageModal";
+import { loadLastLeagueFixture, semiFinalScheduleWarning } from "@/lib/competition-schedule";
 
 type Competition = {
   id: string;
@@ -144,11 +145,31 @@ export default function CompetitionPage() {
   const [finalDateInput, setFinalDateInput] = useState("");
   const [finalVenueInput, setFinalVenueInput] = useState("");
   const [locations, setLocations] = useState<VenueLocation[]>([]);
+  const [myPlayerId, setMyPlayerId] = useState<string | null>(null);
+  const [lastLeagueDate, setLastLeagueDate] = useState<string | null>(null);
   const [deadlines, setDeadlines] = useState<Array<{ round_no: number; deadline_at: string }>>([]);
   const [entriesLoaded, setEntriesLoaded] = useState(false);
   const [view, setView] = useState<View>("fixtures");
   const [message, setMessage] = useState<string | null>(null);
   const isSuperManager = admin.canManageLeague;
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !admin.userId) return;
+    let active = true;
+    void client.from("app_users").select("linked_player_id").eq("id", admin.userId).maybeSingle()
+      .then(({ data }) => { if (active) setMyPlayerId(data?.linked_player_id ?? null); });
+    return () => { active = false; };
+  }, [admin.userId]);
+
+  useEffect(() => {
+    const client = supabase;
+    if (!client || !isSuperManager || !matches.length || competition?.competition_format !== "knockout") return;
+    let active = true;
+    void loadLastLeagueFixture(client)
+      .then(({ data }) => { if (active) setLastLeagueDate(data?.fixture_date ?? null); });
+    return () => { active = false; };
+  }, [competition?.competition_format, isSuperManager, matches.length]);
 
   const updateSignupSettings = async (patch: Partial<Competition>) => {
     const client = supabase;
@@ -236,7 +257,7 @@ export default function CompetitionPage() {
         client.from("competition_entries")
           .select("id,competition_id,requester_user_id,player_id,status,created_at,note")
           .eq("competition_id", id).order("created_at", { ascending: false }),
-        isSuperManager ? client.from("competition_round_deadlines").select("round_no,deadline_at").eq("competition_id", id) : null,
+        client.from("competition_round_deadlines").select("round_no,deadline_at").eq("competition_id", id),
 
       ]);
       if (!active) return;
@@ -615,6 +636,32 @@ export default function CompetitionPage() {
     return out;
   }, [competition, totalBracketRounds, round1MatchCount, matchesByKey, walkoverMatchIds, rosterByLead, shortMap]);
 
+  const deadlineByRound = new Map(deadlines.map(({ round_no, deadline_at }) => [round_no, deadline_at]));
+  const leagueDateFormat = new Intl.DateTimeFormat("en-GB", {
+    weekday: "short", day: "numeric", month: "short", timeZone: "Europe/London",
+  });
+  const playableMatches = matches.filter((match) => {
+    if (match.status !== "pending" && match.status !== "in_progress") return false;
+    const { home, away } = knockoutMatchSides(match);
+    return home.length > 0 && away.length > 0;
+  });
+  const currentRound = playableMatches[0]?.round_no ?? 1;
+  const myMatch = myPlayerId ? playableMatches.find((match) => {
+    const { home, away } = knockoutMatchSides(match);
+    return [home, away].some((side) => (side.length > 1 ? rosterByLead.get(side[0]) ?? side : side).includes(myPlayerId));
+  }) : null;
+  const myRound = myMatch?.round_no ?? 1;
+  const overdueMatches = playableMatches.filter((match) => {
+    const deadline = deadlineByRound.get(match.round_no ?? 1);
+    return deadline && new Date(deadline).getTime() < Date.now();
+  });
+  const semiRound = totalBracketRounds - 1;
+  const semiDeadline = deadlineByRound.get(semiRound);
+  const semiMatches = matches.filter((match) => match.round_no === semiRound);
+  const semiFinalsComplete = finalReady || (semiMatches.length === 2 && semiMatches.every(({ status }) => status === "complete" || status === "bye"));
+  const scheduleNotice = semiRound > 0 && !semiFinalsComplete
+    ? semiFinalScheduleWarning(lastLeagueDate, semiDeadline) : null;
+
   const leagueTable = useMemo(() => {
     if (!competition || competition.competition_format !== "league") return [];
     const isWalkoverMatch = (m: Match) => {
@@ -925,8 +972,32 @@ export default function CompetitionPage() {
                 </section>
               ) : (
               <section id="competition-fixtures" className="scroll-mt-28 space-y-2">
+                {knockout && playableMatches.length ? (
+                  <section className="rounded-2xl border border-teal-200 bg-teal-50 p-4">
+                    <h3 className="text-lg font-bold text-teal-950">{myMatch ? "My competition match" : "Current round"}</h3>
+                    <p className="mt-1 text-sm font-semibold text-teal-950">{getRoundLabel(myMatch ? myRound : currentRound, totalBracketRounds)}</p>
+                    {myMatch ? <p className="mt-1 text-sm text-slate-800">{getMatchLabel(myMatch)}</p> : null}
+                    {deadlineByRound.get(myMatch ? myRound : currentRound) ? (
+                      <p className="mt-1 text-sm text-slate-700">Play by {leagueDateFormat.format(new Date(deadlineByRound.get(myMatch ? myRound : currentRound)!))}</p>
+                    ) : <p className="mt-1 text-sm text-slate-700">Play-by date to be confirmed</p>}
+                    {myMatch ? (
+                      <Link href={`/matches/${myMatch.id}`} className="mt-3 inline-flex rounded-xl bg-teal-800 px-4 py-2 text-sm font-bold text-white">Submit result</Link>
+                    ) : null}
+                  </section>
+                ) : null}
+                {knockout && isSuperManager && (overdueMatches.length || scheduleNotice) ? (
+                  <section className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-950">
+                    <h3 className="font-bold">Schedule watch</h3>
+                    {scheduleNotice ? <p className="mt-1 text-sm">{scheduleNotice} Last league fixture: {leagueDateFormat.format(new Date(lastLeagueDate!))}.</p> : null}
+                    {overdueMatches.length ? (
+                      <ul className="mt-2 space-y-1 text-sm">
+                        {overdueMatches.map((match) => <li key={match.id}><Link className="font-semibold underline" href={`/matches/${match.id}`}>{getMatchLabel(match)}</Link> · Overdue</li>)}
+                      </ul>
+                    ) : null}
+                  </section>
+                ) : null}
                 {!isSuperManager ? (
-                  <p className="text-xs text-slate-600">One player from the winning side submits each result for officer approval.</p>
+                  <p className="text-xs text-slate-600">One player from the winning side submits each result for officer approval. <Link className="font-semibold underline" href="/competition-scorecard">Share the public results form</Link></p>
                 ) : null}
                 <div className="inline-flex rounded-lg border border-slate-300 bg-white p-1">
                   <button
@@ -957,7 +1028,7 @@ export default function CompetitionPage() {
                         {round.rows.map((m) => (
                           <article key={`${round.roundNo}-${m.matchNo}-${m.id ?? "placeholder"}`} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                             <p className="text-sm text-slate-600">
-                              Round {m.roundNo} · Match {m.displayMatchNo}
+                              Round {m.roundNo} · Match {m.displayMatchNo}{deadlineByRound.get(m.roundNo) && !m.isPlaceholder ? ` · Play by ${leagueDateFormat.format(new Date(deadlineByRound.get(m.roundNo)!))}` : ""}
                             </p>
                             <p className="mt-1 text-2xl font-semibold text-slate-900">{m.label}</p>
                             <p className="mt-1 text-slate-700">Status: {m.status}</p>

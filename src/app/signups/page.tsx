@@ -224,7 +224,7 @@ export default function CompetitionSignupsPage() {
 
           {admin.canManageLeague ? (
             <section id="team-form-approvals" className="scroll-mt-28 rounded-2xl border border-teal-200 bg-white p-4 shadow-sm">
-              <h2 className="text-lg font-bold text-slate-900">Team forms awaiting approval</h2>
+              <h2 id="team-forms" className="scroll-mt-24 text-lg font-bold text-slate-900">Team forms awaiting approval</h2>
               {pendingForms.length ? (
                 <div className="mt-3 space-y-3">
                   {pendingForms.map((form) => {

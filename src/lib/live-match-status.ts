@@ -1,5 +1,8 @@
 import { expectedLeagueScorecardFrames } from "./league-scorecard-validation";
 
+export const allFramesSavedLabel = "All frames saved · Result still to submit";
+export const submittedForApprovalLabel = "Submitted for approval";
+
 type Frame = {
   slot_no: number;
   slot_type: "singles" | "doubles";
@@ -23,8 +26,8 @@ export function liveMatchStatus(input: {
       (frame.winner_side || frame.home_forfeit || frame.away_forfeit))
   );
   if (input.approved) return { matchState: "match_ended", statusLabel: "Match Ended — approved" } as const;
-  if (input.submitted) return { matchState: "awaiting_approval", statusLabel: "Submitted — awaiting approval" } as const;
-  if (allRecorded) return { matchState: "awaiting_submission", statusLabel: "All frames recorded — awaiting submission" } as const;
+  if (input.submitted) return { matchState: "awaiting_approval", statusLabel: submittedForApprovalLabel } as const;
+  if (allRecorded) return { matchState: "awaiting_submission", statusLabel: allFramesSavedLabel } as const;
   if (input.hasSavedScore) return { matchState: "in_progress", statusLabel: "In progress" } as const;
   if (input.lineupsSubmitted) return { matchState: "awaiting_scores", statusLabel: "Awaiting scores" } as const;
   return { matchState: "awaiting_lineup", statusLabel: "Awaiting line-up" } as const;

@@ -1,5 +1,7 @@
 "use client";
 
+import { allFramesSavedLabel } from "@/lib/live-match-status";
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import RequireAuth from "@/components/RequireAuth";
@@ -24,7 +26,7 @@ type OutstandingFixture = {
 };
 
 const statusLabel: Record<OutstandingFixture["status"], string> = {
-  ready_to_submit: "All frames saved · not submitted",
+  ready_to_submit: allFramesSavedLabel,
   needs_scorecard_check: "Scorecard needs checking",
   awaiting_scores: "Awaiting scores",
   awaiting_lineup: "Awaiting line-up",

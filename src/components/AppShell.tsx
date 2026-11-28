@@ -56,7 +56,6 @@ export const navigationGroups: NavigationGroup[] = [
   {
     label: "Competitions",
     items: [
-      { href: "/competition-vote", label: "Handicap proposal vote" },
       { href: "/signups", label: "Competition entries" },
       { href: "/competition-submissions", label: "Team form submissions", officerOnly: true },
       { href: "/events", label: "Competition match centre" },
@@ -89,6 +88,7 @@ export const navigationGroups: NavigationGroup[] = [
       { href: "/signup-requests", label: "Access requests", officerOnly: true },
       { href: "/notifications", label: "Notifications" },
       { href: "/documents", label: "League documents" },
+      { href: "/competition-vote", label: "Competition voting & history" },
       { href: "/announcements", label: "Announcements", officerOnly: true },
       { href: "/player-guide", label: "Player guide" },
       { href: "/captain-guide", label: "Captain guide" },

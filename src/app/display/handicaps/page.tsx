@@ -65,26 +65,26 @@ export default function PublicHandicapsPage() {
         </header>
 
         <section className="rounded-2xl border border-sky-400/20 bg-sky-500/10 p-4 text-sm text-sky-100">
-          {data?.isInformationOnly ? "Division 1 league matches remain off scratch. Suggested Handicap shows what each player's current Elo would translate to if the league used Elo-based handicaps. These figures are illustrative, not approved playing handicaps." : "Elo updates automatically when a match result is approved and complete. Handicap does not auto-change after every match; it is reviewed from Elo and any league decisions."}
+          {data?.isInformationOnly ? "Division 1 league matches remain off scratch. The Elo suggestion shows the points start each player’s rating would imply." : "Elo updates automatically when a match result is approved and complete. Handicap does not auto-change after every match; it is reviewed from Elo and any league decisions."}
         </section>
 
         {data?.isInformationOnly ? <section className="rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4 text-sm text-cyan-100">
           <h2 className="font-bold text-white">How to read the suggested handicaps</h2>
-          <p className="mt-1">These suggestions follow each player’s latest recorded Elo, so they can change as rated results are processed. They do not include the proposed +20 adjustment for Division 1 competition entrants.</p>
+          <p className="mt-1">These suggestions follow each player’s latest recorded Elo, so they can change as rated results are processed. For the 2026/27 Lee Ford Handicap Singles and Handicap Doubles, the Division 1 adjustment is +8. Competition handicaps are fixed at the entry deadline.</p>
           <p className="mt-2">Against a scratch player, a negative figure gives that many points and a positive figure receives that many points. Between two players, the lower figure gives the difference to the higher figure, subject to any competition start limit. For example, −12 against +4 means the player on −12 gives a 16-point start.</p>
         </section> : null}
 
         {!data?.isInformationOnly ? <section className="rounded-2xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-sm text-emerald-100">
           <h2 className="font-bold text-white">When are handicaps reviewed?</h2>
-          <p className="mt-1">Premier League reviews are scheduled after fixture Weeks 1, 2, 3 and 4, then every four fixture weeks: Weeks 8, 12, 16 and so on. Between reviews, your current playing handicap remains in force unless a league officer authorises a correction. The Elo target below is only an indication of what a review today would suggest.</p>
+          <p className="mt-1">Premier League reviews are scheduled after fixture Weeks 1, 2, 3 and 4, then every four fixture weeks: Weeks 8, 12, 16 and so on. Between reviews, your current playing handicap remains in force unless a league officer authorises a correction. </p>
         </section> : null}
 
         {data?.isInformationOnly ? <section className="rounded-2xl border border-violet-400/20 bg-violet-500/10 p-4 text-sm text-violet-100">A Division 1 Elo does not transfer into the Premier League. If a team is promoted, each player must be given a separately assessed and approved Premier League starting handicap and rating.</section> : <section className="rounded-2xl border border-violet-400/20 bg-violet-500/10 p-4 text-sm text-violet-100">
-          `Target from Elo` shows where a player currently projects from their rating. `Current` is the live handicap being used on match night. A difference can be normal between scheduled reviews; it does not change the playing start tonight.
+          Elo suggestion updates with approved results. Use the published handicap for match night. The two figures can differ between scheduled reviews.
         </section>}
 
         {!data?.isInformationOnly ? <section className="rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4 text-sm text-cyan-100">
-          `Gap to target` is `target from Elo - current handicap`. `0` means aligned. Negative means the handicap needs to move further into giving start, while positive means it needs to move further into receiving start.
+          The gap is the Elo suggestion minus the published handicap. `0` means aligned. Negative means the handicap needs to move further into giving start, while positive means it needs to move further into receiving start.
         </section> : null}
 
         {data?.error ? <section className="rounded-2xl border border-rose-400/40 bg-rose-500/10 p-4 text-rose-100">{data.error}</section> : null}
@@ -97,8 +97,8 @@ export default function PublicHandicapsPage() {
                   <th className="px-3 py-3">#</th>
                   <th className="px-3 py-3">Player</th>
                   <th className="px-3 py-3 text-center">Elo</th>
-                  <th className="px-3 py-3 text-center">{data?.isInformationOnly ? "Suggested Handicap" : "Target From Elo"}</th>
-                  {!data?.isInformationOnly ? <><th className="px-3 py-3 text-center">Current</th><th className="px-3 py-3 text-center">Gap To Target</th><th className="px-3 py-3 text-center">Baseline</th></> : null}
+                  <th className="px-3 py-3 text-center">Elo suggestion</th>
+                  {!data?.isInformationOnly ? <><th className="px-3 py-3 text-center">Published handicap</th><th className="px-3 py-3 text-center">Gap To Target</th><th className="px-3 py-3 text-center">Baseline</th></> : null}
                   <th className="px-3 py-3 text-center">Rated Matches</th>
                 </tr>
               </thead>
