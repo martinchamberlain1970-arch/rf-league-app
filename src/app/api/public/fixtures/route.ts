@@ -141,6 +141,7 @@ export async function GET(req: NextRequest) {
     const openFixturesRes = await adminClient
       .from("league_fixtures")
       .select("season_id")
+      .is("cup_competition_id", null)
       .in("season_id", seasons.map((season) => season.id))
       .neq("status", "complete");
 
@@ -166,6 +167,7 @@ export async function GET(req: NextRequest) {
     adminClient
       .from("league_fixtures")
       .select("id,fixture_date,week_no,home_team_id,away_team_id,status,home_points,away_points")
+      .is("cup_competition_id", null)
       .eq("season_id", selectedSeason.id)
       .order("week_no", { ascending: true })
       .order("fixture_date", { ascending: true })

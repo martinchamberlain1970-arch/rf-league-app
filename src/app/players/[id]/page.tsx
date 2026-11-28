@@ -287,6 +287,7 @@ export default function PlayerProfilePage() {
           .limit(1),
         fetchAllSupabasePages<LeagueFixtureLite>((from, to) => client.from("league_fixtures")
           .select("id,season_id,fixture_date,week_no,home_team_id,away_team_id,home_points,away_points,status")
+          .is("cup_competition_id", null)
           .order("id").range(from, to)),
         client.from("league_teams").select("id,name"),
         fetchAllSupabasePages<LeagueTeamMemberLite>((from, to) => client.from("league_team_members")

@@ -40,6 +40,7 @@ type TeamMember = {
 type Fixture = {
   id: string;
   season_id: string;
+  cup_competition_id?: string | null;
   home_team_id: string;
   away_team_id: string;
   fixture_date: string | null;
@@ -421,7 +422,7 @@ export default function CaptainResultsPage() {
       fetchAllSupabasePages<Fixture>((from, to) =>
         client
           .from("league_fixtures")
-          .select("id,season_id,home_team_id,away_team_id,fixture_date,week_no,status,pre_match_paper_record,pre_match_paper_at,pre_match_paper_by_user_id,home_lineup_submitted_at,home_lineup_submitted_by_user_id,away_lineup_submitted_at,away_lineup_submitted_by_user_id,proxy_entry_enabled,proxy_entry_confirmed_at,proxy_entry_confirmed_by_user_id,proxy_entry_by_team_side,proxy_entry_note")
+          .select("id,season_id,cup_competition_id,home_team_id,away_team_id,fixture_date,week_no,status,pre_match_paper_record,pre_match_paper_at,pre_match_paper_by_user_id,home_lineup_submitted_at,home_lineup_submitted_by_user_id,away_lineup_submitted_at,away_lineup_submitted_by_user_id,proxy_entry_enabled,proxy_entry_confirmed_at,proxy_entry_confirmed_by_user_id,proxy_entry_by_team_side,proxy_entry_note")
           .order("fixture_date", { ascending: true })
           .order("id", { ascending: true })
           .range(from, to)
@@ -450,7 +451,7 @@ export default function CaptainResultsPage() {
       const fallbackFixtureRes = await fetchAllSupabasePages<Fixture>((from, to) =>
         client
           .from("league_fixtures")
-          .select("id,season_id,home_team_id,away_team_id,fixture_date,week_no,status")
+          .select("id,season_id,cup_competition_id,home_team_id,away_team_id,fixture_date,week_no,status")
           .order("fixture_date", { ascending: true })
           .order("id", { ascending: true })
           .range(from, to)
@@ -2323,6 +2324,7 @@ export default function CaptainResultsPage() {
                 {myCurrentWeekFixtures.map((f) => (
                   <option key={f.id} value={f.id}>
                     {f.fixture_date ? new Date(`${f.fixture_date}T12:00:00`).toLocaleDateString() : `Week ${f.week_no ?? "-"}`} · {teamById.get(f.home_team_id)?.name ?? "Home"} vs {teamById.get(f.away_team_id)?.name ?? "Away"}
+                    {f.cup_competition_id ? " · Mick White Cup" : ""}
                     {pendingByFixture.has(f.id) ? " · pending review" : ""}
                   </option>
                 ))}
@@ -2396,6 +2398,7 @@ export default function CaptainResultsPage() {
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">Selected Fixture</p>
                       <p className="mt-2 text-lg font-black text-slate-950">
                         {teamById.get(selectedFixture.home_team_id)?.name ?? "Home"} vs {teamById.get(selectedFixture.away_team_id)?.name ?? "Away"}
+                        {selectedFixture.cup_competition_id ? " · Mick White Cup" : ""}
                       </p>
                       <p className="mt-1 text-sm text-slate-600">
                         {selectedFixture.fixture_date

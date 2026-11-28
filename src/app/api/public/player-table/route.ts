@@ -92,7 +92,7 @@ export async function GET(req: NextRequest) {
   const [teamsRes, membersRes, fixturesRes] = await Promise.all([
     adminClient.from("league_teams").select("id,season_id,name").eq("season_id", selectedSeason.id),
     adminClient.from("league_team_members").select("season_id,team_id,player_id").eq("season_id", selectedSeason.id),
-    adminClient.from("league_fixtures").select("id,season_id,status").eq("season_id", selectedSeason.id),
+    adminClient.from("league_fixtures").select("id,season_id,status").is("cup_competition_id", null).eq("season_id", selectedSeason.id),
   ]);
 
   const firstError =

@@ -79,6 +79,7 @@ type CompetitionSubmission = {
 type FixtureRow = {
   id: string;
   season_id: string;
+  cup_competition_id: string | null;
   home_team_id: string;
   away_team_id: string;
   status: "pending" | "in_progress" | "complete";
@@ -244,7 +245,7 @@ function ResultsQueuePageContent() {
       ? await fetchAllSupabasePagesByChunks<FixtureRow, string>(fixtureIds, (fixtureIdChunk, from, to) =>
           client
             .from("league_fixtures")
-            .select("id,season_id,home_team_id,away_team_id,status,home_points,away_points,fixture_date")
+            .select("id,season_id,cup_competition_id,home_team_id,away_team_id,status,home_points,away_points,fixture_date")
             .in("id", fixtureIdChunk)
             .order("id", { ascending: true })
             .range(from, to)
@@ -642,7 +643,7 @@ function ResultsQueuePageContent() {
     if (seasonFilter !== "all" && f?.season_id !== seasonFilter) return false;
     const home = f ? teamById.get(f.home_team_id) ?? "Home" : "Home";
     const away = f ? teamById.get(f.away_team_id) ?? "Away" : "Away";
-    const seasonName = f ? seasonById.get(f.season_id) ?? "League" : "League";
+    const seasonName = f?.cup_competition_id ? "Mick White Memorial Cup" : f ? seasonById.get(f.season_id) ?? "League" : "League";
     const haystack = `${home} ${away} ${seasonName}`.toLowerCase();
     return query.trim().length === 0 || haystack.includes(query.trim().toLowerCase());
   };
@@ -1036,7 +1037,7 @@ function ResultsQueuePageContent() {
                   const f = fixtureById.get(s.fixture_id);
                   const home = f ? teamById.get(f.home_team_id) ?? "Home" : "Home";
                   const away = f ? teamById.get(f.away_team_id) ?? "Away" : "Away";
-                  const seasonName = f ? seasonById.get(f.season_id) ?? "League" : "League";
+                  const seasonName = f?.cup_competition_id ? "Mick White Memorial Cup" : f ? seasonById.get(f.season_id) ?? "League" : "League";
                   const score = submittedMatchScore(s);
                   return (
                     <div key={s.id} className={itemClass}>
@@ -1065,7 +1066,7 @@ function ResultsQueuePageContent() {
                     const f = fixtureById.get(s.fixture_id);
                     const home = f ? teamById.get(f.home_team_id) ?? "Home" : "Home";
                     const away = f ? teamById.get(f.away_team_id) ?? "Away" : "Away";
-                    const seasonName = f ? seasonById.get(f.season_id) ?? "League" : "League";
+                    const seasonName = f?.cup_competition_id ? "Mick White Memorial Cup" : f ? seasonById.get(f.season_id) ?? "League" : "League";
                     const frameRows = [...(s.frame_results ?? [])].sort((a, b) => a.slot_no - b.slot_no);
                     const submittedBreaks = frameRows.flatMap((r) => r.break_entries ?? []);
                     const score = submittedMatchScore(s);

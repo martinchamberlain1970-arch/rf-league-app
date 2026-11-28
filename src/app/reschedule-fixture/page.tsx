@@ -88,7 +88,7 @@ export default function RescheduleFixturePage() {
       client.from("league_seasons").select("id,name,is_published,is_active").eq("is_published", true).eq("is_active", true).order("created_at", { ascending: false }),
       client.from("league_teams").select("id,season_id,name"),
       client.from("league_team_members").select("season_id,team_id,player_id,is_captain,is_vice_captain"),
-      client.from("league_fixtures").select("id,season_id,home_team_id,away_team_id,fixture_date,week_no,status").order("fixture_date", { ascending: true }),
+      client.from("league_fixtures").select("id,season_id,home_team_id,away_team_id,fixture_date,week_no,status").is("cup_competition_id", null).order("fixture_date", { ascending: true }),
     ]);
     const firstError = seasonRes.error?.message || teamRes.error?.message || memberRes.error?.message || fixtureRes.error?.message || null;
     if (firstError) {

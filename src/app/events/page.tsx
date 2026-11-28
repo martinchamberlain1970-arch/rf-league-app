@@ -321,6 +321,7 @@ function EventsPageContent() {
             client
               .from("league_fixtures")
               .select("id,season_id,week_no,fixture_date,home_team_id,away_team_id,status,home_points,away_points")
+              .is("cup_competition_id", null)
               .in("season_id", chunk)
               .order("fixture_date", { ascending: true })
               .order("id", { ascending: true })

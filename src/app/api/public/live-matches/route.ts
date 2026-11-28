@@ -170,6 +170,7 @@ export async function GET(req: NextRequest) {
         .from("league_fixtures")
         .select("id,season_id,fixture_date,week_no,home_team_id,away_team_id,status,home_points,away_points,pre_match_paper_record,home_lineup_submitted_at,away_lineup_submitted_at")
         .in("season_id", selectedSeasonIds)
+        .is("cup_competition_id", null)
         .order("id", { ascending: true })
         .range(from, to)
     ),

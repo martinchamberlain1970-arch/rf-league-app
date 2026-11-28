@@ -95,6 +95,7 @@ type Fixture = {
   id: string;
   season_id: string;
   location_id: string;
+  cup_competition_id?: string | null;
   week_no: number | null;
   fixture_date: string | null;
   home_team_id: string;
@@ -931,7 +932,7 @@ function LeaguePageContent() {
     () => new Map(seasonVenueCapacitySummary.map((row) => [row.locationId, row])),
     [seasonVenueCapacitySummary]
   );
-  const seasonFixtures = useMemo(() => fixtures.filter((f) => f.season_id === seasonId), [fixtures, seasonId]);
+  const seasonFixtures = useMemo(() => fixtures.filter((f) => f.season_id === seasonId && !f.cup_competition_id), [fixtures, seasonId]);
   const fixtureById = useMemo(() => new Map(fixtures.map((f) => [f.id, f])), [fixtures]);
   const playerById = useMemo(() => new Map(players.map((p) => [p.id, p])), [players]);
   const selectedSeasonRosterTeam = useMemo(
@@ -1768,7 +1769,7 @@ function LeaguePageContent() {
       fetchAllSupabasePages<Fixture>((from, to) =>
         client
           .from("league_fixtures")
-          .select("id,season_id,location_id,week_no,fixture_date,home_team_id,away_team_id,status,home_points,away_points,home_lineup_submitted_at,away_lineup_submitted_at")
+          .select("id,season_id,location_id,cup_competition_id,week_no,fixture_date,home_team_id,away_team_id,status,home_points,away_points,home_lineup_submitted_at,away_lineup_submitted_at")
           .order("fixture_date", { ascending: true })
           .order("id", { ascending: true })
           .range(from, to)
@@ -3110,7 +3111,7 @@ function LeaguePageContent() {
     const roundSlots = buildFixtureRoundSlots(genStartDate, totalRoundCount, breakWeekSet);
     const yearLabel = winterSeasons[0].name.match(/\b\d{4}\/\d{4}\b/)?.[0] ?? "";
     const externalFixtures = fixtures.filter((fixture) => {
-      if (seasonIds.includes(fixture.season_id)) return false;
+      if (seasonIds.includes(fixture.season_id)) return Boolean(fixture.cup_competition_id);
       const fixtureSeason = seasonById.get(fixture.season_id);
       if (!fixtureSeason || fixtureSeason.is_active === false) return false;
       return yearLabel ? fixtureSeason.name.includes(yearLabel) : true;
@@ -3727,7 +3728,7 @@ function LeaguePageContent() {
     const roundSlots = buildFixtureRoundSlots(genStartDate, totalRoundCount, breakWeekSet);
     const seasonYearLabel = currentSeason?.name.match(/\b\d{4}\/\d{4}\b/)?.[0] ?? null;
     const otherScheduledFixtures = fixtures.filter((fixture) => {
-      if (fixture.season_id === seasonId) return !genClearExisting;
+      if (fixture.season_id === seasonId) return !genClearExisting || Boolean(fixture.cup_competition_id);
       const otherSeason = seasonById.get(fixture.season_id);
       if (!otherSeason || otherSeason.is_active === false) return false;
       return seasonYearLabel ? otherSeason.name.includes(seasonYearLabel) : true;
@@ -4061,7 +4062,7 @@ function LeaguePageContent() {
     });
     if (genClearExisting) {
       setFixtureGenerationProgress({ running: true, percent: 92, message: "Replacing the existing fixture list…" });
-      const clearRes = await client.from("league_fixtures").delete().eq("season_id", seasonId);
+      const clearRes = await client.from("league_fixtures").delete().eq("season_id", seasonId).is("cup_competition_id", null);
       if (clearRes.error) {
         stopFixtureGeneration(92, "The existing fixtures could not be replaced.", clearRes.error.message);
         return;

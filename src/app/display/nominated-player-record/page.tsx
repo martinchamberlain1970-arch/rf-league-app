@@ -77,7 +77,7 @@ export default async function NominatedPlayerRecordPage({
           admin.from("league_teams").select("id,name").eq("season_id", selectedSeason!.id).order("id", { ascending: true }).range(from, to)
         ),
         fetchAllSupabasePages<Fixture>((from, to) =>
-          admin.from("league_fixtures").select("id,home_team_id,away_team_id,status").eq("season_id", selectedSeason!.id).eq("status", "complete").order("id", { ascending: true }).range(from, to)
+          admin.from("league_fixtures").select("id,home_team_id,away_team_id,status").is("cup_competition_id", null).eq("season_id", selectedSeason!.id).eq("status", "complete").order("id", { ascending: true }).range(from, to)
         ),
       ]);
 

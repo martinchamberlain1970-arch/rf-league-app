@@ -3,7 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { competitionEntryFormat, competitionEntryTeamName, entrantsRequired, isMickWhiteCompetitionName, mickWhiteScoring, specialCompetitionScoring } from "@/lib/public-competition-entry";
+import MickWhiteFixtures from "@/components/MickWhiteFixtures";
+import { competitionEntryFormat, competitionEntryTeamName, entrantsRequired, isMickWhiteCompetitionName, specialCompetitionScoring } from "@/lib/public-competition-entry";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import { competitionDeadlineLabel, competitionEntriesOpen, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
@@ -271,7 +272,7 @@ export default function CompetitionPage() {
         setMessage(mRes.error?.message ?? entryRes.error?.message ?? deadlineRes?.error?.message ?? "Competition details could not be loaded.");
       }
       setCompetition(comp);
-      const changed = isSuperManager && !mRes.error && await ensureKnockoutNextRoundMatches(client, comp, loadedMatches);
+      const changed = isSuperManager && !isMickWhiteCompetitionName(comp.name) && !mRes.error && await ensureKnockoutNextRoundMatches(client, comp, loadedMatches);
       if (changed) {
         const refreshed = await client
           .from("matches")
@@ -562,7 +563,7 @@ export default function CompetitionPage() {
     } else if (pendingEntries.length) {
       officerStatus = { label: "Review pending entries", detail: `${pendingEntries.length} awaiting approval.`, target: "#competition-entries" };
     } else if (mickWhite) {
-      officerStatus = { label: "Team entries collected", detail: "Team fixtures use the Division One winter format.", target: "#competition-entries" };
+      officerStatus = { label: "Team entries collected", detail: "Add scheduled fixtures once the official draw has taken place.", target: "#competition-fixtures" };
     } else if (approvedEntries.length < minimum) {
       officerStatus = { label: "Confirm the competition format", detail: `${minimum - approvedEntries.length} more needed for a standard knockout.`, target: "#official-draw" };
     } else if (incomplete.length || duplicated) {
@@ -969,14 +970,16 @@ export default function CompetitionPage() {
                   </div>
                 </section>
               ) : null}
-              {!fixturesReady || !matches.length ? (
+              {mickWhite ? (
+                <MickWhiteFixtures key={id} competitionId={id} canManage={isSuperManager} entriesOpen={entriesOpen}
+                  entryRevision={approvedEntries.map(({ id }) => id).join(",")} />
+              ) : !fixturesReady || !matches.length ? (
                 <section id="competition-fixtures" className="scroll-mt-28 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                   <h3 className="font-semibold text-slate-900">
                     {!fixturesReady ? (fixtureLoad?.competitionId === id && fixtureLoad.failed ? "Fixtures could not be loaded" : "Loading fixtures…")
                       : knockout ? "Awaiting official draw" : "No fixtures yet"}
                   </h3>
                   {fixturesReady && knockout ? <p className="mt-1 text-sm text-slate-600">Fixtures will appear once the league publishes the draw.</p> : null}
-                  {mickWhite ? <p className="mt-1 text-sm text-slate-600">{mickWhiteScoring}</p> : null}
                 </section>
               ) : (
               <section id="competition-fixtures" className="scroll-mt-28 space-y-2">

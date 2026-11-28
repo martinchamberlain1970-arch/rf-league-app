@@ -5,6 +5,7 @@ const londonDate = (value: Date) => value.toLocaleDateString("sv-SE", { timeZone
 export async function loadLastLeagueFixture(client: SupabaseClient) {
   return client.from("league_fixtures")
     .select("fixture_date,league_seasons!inner(is_active,is_published)")
+    .is("cup_competition_id", null)
     .eq("league_seasons.is_active", true).eq("league_seasons.is_published", true)
     .in("status", ["pending", "in_progress", "complete"]).not("fixture_date", "is", null)
     .order("fixture_date", { ascending: false }).limit(1).maybeSingle();

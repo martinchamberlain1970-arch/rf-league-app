@@ -112,6 +112,7 @@ export async function loadPublicLeagueRecordContext(seasonId: string): Promise<P
     admin
       .from("league_fixtures")
       .select("id,fixture_date,week_no,home_team_id,away_team_id,status,home_points,away_points")
+      .is("cup_competition_id", null)
       .eq("season_id", seasonId)
       .order("week_no", { ascending: true })
       .order("fixture_date", { ascending: true }),

@@ -48,6 +48,7 @@ const links = [
 type DashboardFixture = {
   id: string;
   season_id: string;
+  cup_competition_id: string | null;
   home_team_id: string;
   away_team_id: string;
   fixture_date: string;
@@ -84,7 +85,7 @@ export default function HomePage() {
   const [pendingAdminRequest, setPendingAdminRequest] = useState<{ id: string; createdAt: string } | null>(null);
   const [officerQueue, setOfficerQueue] = useState<Record<string, QueueItem>>({});
   const [fixtureRequests, setFixtureRequests] = useState<QueueItem | null>(null);
-  const [teamFixture, setTeamFixture] = useState<{ id: string; detail: string; resume: boolean; canOpen: boolean } | null>(null);
+  const [teamFixture, setTeamFixture] = useState<{ id: string; detail: string; resume: boolean; canOpen: boolean; cupId: string | null } | null>(null);
   const [playerHandicap, setPlayerHandicap] = useState<{ href: string; value: string; review: string | null } | null>(null);
   const [pendingRequestsCount, setPendingRequestsCount] = useState<number | null>(null);
   const [pendingRequestsHref, setPendingRequestsHref] = useState("/notifications");
@@ -585,7 +586,7 @@ export default function HomePage() {
       const yesterday = new Date(Date.now() - 24 * 60 * 60 * 1000).toLocaleDateString("en-CA", { timeZone: "Europe/London" });
       const today = todayUK();
       const fixtures = await client.from("league_fixtures")
-        .select("id,season_id,home_team_id,away_team_id,fixture_date,status,pre_match_paper_record,home_lineup_submitted_at,away_lineup_submitted_at")
+        .select("id,season_id,cup_competition_id,home_team_id,away_team_id,fixture_date,status,pre_match_paper_record,home_lineup_submitted_at,away_lineup_submitted_at")
         .in("season_id", seasons.data.map(({ id }) => id))
         .or(`home_team_id.in.(${myTeams.join(",")}),away_team_id.in.(${myTeams.join(",")})`)
         .in("status", ["pending", "in_progress"]).gte("fixture_date", yesterday).order("fixture_date").order("id").limit(12);
@@ -605,10 +606,10 @@ export default function HomePage() {
       const teams = await client.from("league_teams").select("id,name").in("id", [fixture.home_team_id, fixture.away_team_id]);
       if (!active) return;
       const names = new Map((teams.data ?? []).map(({ id, name }) => [id, name]));
-      const detail = `${names.get(fixture.home_team_id) ?? "Home team"} vs ${names.get(fixture.away_team_id) ?? "Away team"} · ${ukFixtureDate.format(new Date(fixture.fixture_date))}`;
+      const detail = `${names.get(fixture.home_team_id) ?? "Home team"} vs ${names.get(fixture.away_team_id) ?? "Away team"} · ${ukFixtureDate.format(new Date(fixture.fixture_date))}${fixture.cup_competition_id ? " · Mick White Cup" : ""}`;
       const canOpen = Boolean(resumable) || (isMatchNight(fixture.fixture_date) &&
         (scorerTeams.has(fixture.home_team_id) || scorerTeams.has(fixture.away_team_id)));
-      setTeamFixture({ id: fixture.id, detail, resume: Boolean(resumable), canOpen });
+      setTeamFixture({ id: fixture.id, detail, resume: Boolean(resumable), canOpen, cupId: fixture.cup_competition_id });
 
     };
     void run();
@@ -1011,8 +1012,8 @@ export default function HomePage() {
               <>
                 <DashboardActions title={hasScoreEntryRole ? "My team" : "My league"} actions={[
                   {
-                    href: hasScoreEntryRole && teamFixture?.canOpen ? `/captain-results?fixtureId=${teamFixture.id}` : "/events?view=league",
-                    title: teamFixture?.resume && hasScoreEntryRole ? "Resume scorecard" : hasScoreEntryRole && teamFixture?.canOpen ? "Open match-night scorecard" : "Next league fixture",
+                    href: hasScoreEntryRole && teamFixture?.canOpen ? `/captain-results?fixtureId=${teamFixture.id}` : teamFixture?.cupId ? `/competitions/${teamFixture.cupId}#competition-fixtures` : "/events?view=league",
+                    title: teamFixture?.resume && hasScoreEntryRole ? "Resume scorecard" : hasScoreEntryRole && teamFixture?.canOpen ? "Open match-night scorecard" : teamFixture?.cupId ? "Next cup fixture" : "Next league fixture",
                     detail: teamFixture?.detail ?? "View fixtures and results",
                   },
                   ...(playerHandicap ? [{ title: playerHandicap.value === "Off scratch" ? "League handicap · Off scratch" : `Published handicap · ${playerHandicap.value}`, href: playerHandicap.href, detail: playerHandicap.review }] : []),

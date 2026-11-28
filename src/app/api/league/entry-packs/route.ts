@@ -37,6 +37,7 @@ async function assertEntryPacksOpen(adminClient: SupabaseClient, seasonId: strin
     adminClient
       .from("league_fixtures")
       .select("id")
+      .is("cup_competition_id", null)
       .eq("season_id", seasonId)
       .in("status", ["in_progress", "complete"])
       .limit(1),
@@ -59,7 +60,7 @@ export async function GET(req: NextRequest) {
       adminClient.from("league_seasons").select("id,name,is_published,is_active,created_at").eq("is_active", true).order("created_at", { ascending: false }),
       adminClient.from("league_teams").select("id,season_id,location_id,name,is_active").order("name"),
       adminClient.from("locations").select("id,name").order("name"),
-      adminClient.from("league_fixtures").select("season_id").in("status", ["in_progress", "complete"]),
+      adminClient.from("league_fixtures").select("season_id").is("cup_competition_id", null).in("status", ["in_progress", "complete"]),
       adminClient.from("players").select("id,full_name,display_name,location_id,is_archived"),
     ]);
     const firstError = packsRes.error?.message || seasonsRes.error?.message || teamsRes.error?.message || locationsRes.error?.message || startedFixturesRes.error?.message || playersRes.error?.message;

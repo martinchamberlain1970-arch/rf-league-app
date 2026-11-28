@@ -34,7 +34,22 @@ export async function POST(request: NextRequest) {
   if (competition.error) return error("Competition settings could not be loaded.", 500);
   const cup = competition.data;
   if (!cup || cup.is_archived || cup.is_completed) return error("This competition is unavailable.", 404);
-  if (isMickWhiteCompetitionName(cup.name)) return error("The Mick White Cup uses team entries and team fixtures.");
+  if (isMickWhiteCompetitionName(cup.name)) {
+    if (body.action !== "schedule_team_fixture") return error("The Mick White Cup uses team entries and team fixtures.");
+    const { homeTeamId, awayTeamId, fixtureDate } = body;
+    if (typeof homeTeamId !== "string" || !uuid.test(homeTeamId) ||
+        typeof awayTeamId !== "string" || !uuid.test(awayTeamId) || homeTeamId === awayTeamId ||
+        typeof fixtureDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(fixtureDate)) {
+      return error("Select two different teams and an agreed date.");
+    }
+    const scheduled = await client.rpc("schedule_mick_white_fixture", {
+      p_competition_id: cup.id, p_home_team_id: homeTeamId, p_away_team_id: awayTeamId, p_fixture_date: fixtureDate,
+    });
+    if (scheduled.error) return scheduled.error.code === "P0001" || scheduled.error.code === "22008"
+      ? error(scheduled.error.message)
+      : error("The team fixture could not be saved.", 500);
+    return NextResponse.json({ fixtureId: scheduled.data });
+  }
   const required = entrantsRequired(cup);
 
   if (body.action === "add_entry") {

@@ -154,6 +154,7 @@ export async function GET(req: NextRequest) {
           adminClient
             .from("league_fixtures")
             .select("id,season_id,fixture_date,home_team_id,away_team_id,status")
+            .is("cup_competition_id", null)
             .in("season_id", selectedSeasonIds)
             .eq("status", "complete")
             .order("id", { ascending: true })

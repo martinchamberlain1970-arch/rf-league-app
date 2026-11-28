@@ -19,7 +19,7 @@ async function openRegistrationData(client: SupabaseClient) {
     client.from("league_teams").select("id,season_id,location_id,name,is_active").eq("is_active", true).order("name"),
     client.from("locations").select("id,name"),
     client.from("league_entry_packs").select("team_id,status,players,common_draft_token"),
-    client.from("league_fixtures").select("season_id").in("status", ["in_progress", "complete"]),
+    client.from("league_fixtures").select("season_id").is("cup_competition_id", null).in("status", ["in_progress", "complete"]),
   ]);
   const error = seasonsRes.error?.message || teamsRes.error?.message || locationsRes.error?.message || packsRes.error?.message || startedFixturesRes.error?.message;
   if (error) throw new Error(error);
