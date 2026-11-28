@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { competitionEntryFormat, entrantsRequired, isMickWhiteCompetitionName, specialCompetitionScoring } from "@/lib/public-competition-entry";
+import { competitionEntryFormat, competitionEntryTeamName, entrantsRequired, isMickWhiteCompetitionName, mickWhiteScoring, specialCompetitionScoring } from "@/lib/public-competition-entry";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import { competitionDeadlineLabel, competitionEntriesOpen, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
@@ -326,10 +326,12 @@ export default function CompetitionPage() {
     [players]
   );
   const entryLabel = (entry: Pick<Entry, "player_id" | "note">) => {
+    if (!entry.player_id && isMickWhiteCompetitionName(competition?.name ?? "")) {
+      return competitionEntryTeamName(entry.note ?? null);
+    }
     const name = fullMap.get(entry.player_id) ?? shortMap.get(entry.player_id) ?? "Unknown player";
     try {
       const note = JSON.parse(entry.note ?? "{}");
-      if (!entry.player_id && typeof note.teamName === "string") return note.teamName;
       const partners = note.teamMemberNames;
       return Array.isArray(partners) ? [name, ...partners].join(" & ") : name;
     } catch {
@@ -974,6 +976,7 @@ export default function CompetitionPage() {
                       : knockout ? "Awaiting official draw" : "No fixtures yet"}
                   </h3>
                   {fixturesReady && knockout ? <p className="mt-1 text-sm text-slate-600">Fixtures will appear once the league publishes the draw.</p> : null}
+                  {mickWhite ? <p className="mt-1 text-sm text-slate-600">{mickWhiteScoring}</p> : null}
                 </section>
               ) : (
               <section id="competition-fixtures" className="scroll-mt-28 space-y-2">

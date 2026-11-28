@@ -9,7 +9,7 @@ import MessageModal from "@/components/MessageModal";
 import { supabase } from "@/lib/supabase";
 import useAdminStatus from "@/components/useAdminStatus";
 import { competitionDeadlineLabel, competitionEntriesOpen, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
-import { competitionAgeRule, competitionEntryFormat, entrantsRequired, groupTeamCompetitionEntries } from "@/lib/public-competition-entry";
+import { competitionAgeRule, competitionEntryFormat, competitionEntryTeamName, entrantsRequired, groupTeamCompetitionEntries, isMickWhiteCompetitionName, mickWhiteScoring } from "@/lib/public-competition-entry";
 import { isLeagueCup, knockoutRoundLabel, knockoutSize } from "@/lib/knockout-draw";
 import { fetchAllSupabasePages } from "@/lib/supabase-pagination";
 
@@ -31,7 +31,7 @@ type Entry = {
   id: string;
   competition_id: string;
   requester_user_id: string | null;
-  player_id: string;
+  player_id: string | null;
   entrant_date_of_birth?: string | null;
   status: "pending" | "approved" | "rejected" | "withdrawn";
   created_at: string;
@@ -41,7 +41,7 @@ type Entry = {
 
 type Player = { id: string; display_name: string; full_name: string | null };
 type Location = { id: string; name: string };
-type TeamEntryNote = { teamMemberNames?: string[]; teamName?: string };
+type TeamEntryNote = { teamMemberNames?: string[] };
 
 function parseTeamNote(note: string | null): TeamEntryNote {
   if (!note) return {};
@@ -128,7 +128,7 @@ export default function CompetitionSignupsPage() {
       setMessage(compRes.error?.message || playerRes.error?.message || locationRes.error?.message || "Failed to load sign-ups.");
       return;
     }
-    const formTeamIds = [...new Set(groupTeamCompetitionEntries(entryRows.filter((entry) => entry.status === "pending")).forms.map((form) => form.teamId))];
+    const formTeamIds = [...new Set(groupTeamCompetitionEntries(entryRows).forms.map((form) => form.teamId))];
     if (formTeamIds.length) {
       const teams = await client.from("league_teams").select("id,name").in("id", formTeamIds);
       setTeamNames(new Map((teams.data ?? []).map(({ id, name }) => [id, name])));
@@ -185,9 +185,11 @@ export default function CompetitionSignupsPage() {
   };
 
   const entryLabel = (entry: Entry) => {
+    if (isMickWhiteCompetitionName(competitionNames.get(entry.competition_id) ?? "")) {
+      return competitionEntryTeamName(entry.note, teamNames);
+    }
     const note = parseTeamNote(entry.note);
-    if (!entry.player_id && note.teamName) return note.teamName;
-    return [playerNameMap.get(entry.player_id) ?? "Unknown player", ...(note.teamMemberNames ?? [])].join(" & ");
+    return [playerNameMap.get(entry.player_id ?? "") ?? "Unknown player", ...(note.teamMemberNames ?? [])].join(" & ");
   };
   const onWithdrawal = (message: string) => {
     setMessage(message);
@@ -281,6 +283,7 @@ export default function CompetitionSignupsPage() {
               const rosterSize = entrantsRequired(c);
               const draw = knockoutSize(approvedCount);
               const rule30Warning = isLeagueCup(c.name) && approvedCount < 4;
+              const teamCup = isMickWhiteCompetitionName(c.name);
               return (
                 <div key={c.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                   <div className="flex flex-wrap items-start justify-between gap-2">
@@ -298,7 +301,7 @@ export default function CompetitionSignupsPage() {
                       </p>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {admin.canManageLeague && c.competition_format === "knockout" ? (
+                      {admin.canManageLeague && c.competition_format === "knockout" && !teamCup ? (
                         <Link href={`/competitions/${c.id}#manual-entry`} className="rounded-full bg-teal-800 px-3 py-1 text-sm font-medium text-white">
                           Add entry
                         </Link>
@@ -308,6 +311,7 @@ export default function CompetitionSignupsPage() {
                       </Link>
                     </div>
                   </div>
+                  {teamCup ? <p className="mt-3 text-sm text-slate-700">{mickWhiteScoring}</p> : null}
                   {admin.canManageLeague && c.competition_format === "knockout" ? (
                     <div className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
                       <strong>Draw forecast</strong>

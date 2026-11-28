@@ -34,6 +34,18 @@ export const isHamiltonCompetitionName = (name: string) =>
 export const isMickWhiteCompetitionName = (name: string) => /^Mick White\b/i.test(name);
 export const isDivisionOneSeason = (name: string) => /\b(?:division\s+(?:1|one)|first division)\b/i.test(name);
 export const mickWhiteFormat = "Four singles and one doubles · off scratch";
+export const mickWhiteScoring =
+  "Use the normal Division One match-night scoring. Record all five frames off scratch and award one point per frame won. The team with more frame wins goes through.";
+
+export function competitionEntryTeamName(note: string | null, teamNames?: ReadonlyMap<string, string>) {
+  try {
+    const { teamId, teamName }: { teamId?: unknown; teamName?: unknown } = JSON.parse(note ?? "{}") ?? {};
+    const registeredName = typeof teamId === "string" ? teamNames?.get(teamId) : undefined;
+    return registeredName || (typeof teamName === "string" ? teamName.trim() : "") || "League team";
+  } catch {
+    return "League team";
+  }
+}
 
 type CompetitionFormatFields = { name: string; match_mode?: string; sport_type?: string };
 

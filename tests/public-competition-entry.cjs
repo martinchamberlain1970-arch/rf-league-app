@@ -161,3 +161,11 @@ test("the Mick White Cup takes a league team selection with no individual player
   const receipt = competitionEntryReceipt("Division One Team", null, [selection], new Map([[cup.id, cup.name]]), new Map());
   assert.equal(receipt.competitions[0].groups[0][0], "Division One Team");
 });
+
+test("the Mick White approval label uses the registered team when the note has no team name", () => {
+  const { competitionEntryTeamName } = exportsForTest;
+  const teams = new Map([["pst-e", "Perry Street E"]]);
+  assert.equal(competitionEntryTeamName('{"teamId":"pst-e"}', teams), "Perry Street E");
+  assert.equal(competitionEntryTeamName('{"teamName":"Perry Street E"}'), "Perry Street E");
+  assert.equal(competitionEntryTeamName("invalid note", teams), "League team");
+});
