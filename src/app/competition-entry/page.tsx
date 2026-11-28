@@ -105,7 +105,16 @@ export default function PublicCompetitionEntryPage() {
   };
 
   const update = (competitionId: string, fn: (value: PublicCompetitionSelection) => PublicCompetitionSelection) => setSelections((current) => current.map((item) => item.competitionId === competitionId ? fn(item) : item));
-  const complete = useMemo(() => selections.filter((item) => item.decision !== "pending" && (item.decision === "no_entry" || item.entries.length > 0)).length, [selections]);
+  const complete = useMemo(() => {
+    const competitionsById = new Map(competitions.map((competition) => [competition.id, competition]));
+    return selections.filter(({ competitionId, decision, entries }) => {
+      if (decision === "no_entry") return true;
+      const competition = competitionsById.get(competitionId);
+      if (decision !== "enter" || !competition || !entries.length) return false;
+      const required = entrantsRequired(competition);
+      return entries.every(({ playerIds }) => playerIds.length === required && playerIds.every(Boolean));
+    }).length;
+  }, [competitions, selections]);
 
   const countsByCompetition = useMemo(() => new Map(selections
     .filter(({ decision }) => decision === "enter")
@@ -118,7 +127,7 @@ export default function PublicCompetitionEntryPage() {
     ...(!contactName.trim() || contactPhone.replace(/\D/g, "").length < 10
       ? ["Enter the captain or contact name and a telephone number with at least 10 digits."] : []),
     ...(unanswered ? [`Choose Enter or No entry for ${unanswered} unanswered ${unanswered === 1 ? "competition" : "competitions"}.`] : []),
-    ...(complete + unanswered !== competitions.length ? ["Add at least one entry wherever you selected Enter player(s)."] : []),
+    ...(complete + unanswered !== competitions.length ? ["Fill in every player slot for the competitions you’re entering, or remove any empty entry rows."] : []),
     ...(duplicates ? ["Remove any repeated players in the same competition."] : []),
   ];
   const markRemainingNoEntry = () => {
@@ -234,7 +243,7 @@ export default function PublicCompetitionEntryPage() {
               {submissionIssues.map((issue) => <li key={issue}>{issue}</li>)}
             </ul>
           </div>
-        ) : <p id="competition-submit-help" role="status" className="mt-3 text-sm font-medium text-teal-950">All competitions have a choice. Review your entries, then submit.</p>}
+        ) : <p id="competition-submit-help" role="status" className="mt-3 text-sm font-medium text-teal-950">All competition choices and player slots are filled. Review your entries, then submit.</p>}
         {teamId && unanswered > 0 ? (
           <button type="button" disabled={busy} onClick={markRemainingNoEntry}
             className="mt-3 rounded-xl border border-teal-700 bg-white px-4 py-2.5 text-sm font-bold text-teal-900 hover:bg-teal-50 disabled:opacity-50">
