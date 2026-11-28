@@ -563,7 +563,7 @@ export default function CompetitionPage() {
     } else if (pendingEntries.length) {
       officerStatus = { label: "Review pending entries", detail: `${pendingEntries.length} awaiting approval.`, target: "#competition-entries" };
     } else if (mickWhite) {
-      officerStatus = { label: "Team entries collected", detail: "Add scheduled fixtures once the official draw has taken place.", target: "#competition-fixtures" };
+      officerStatus = { label: "Cup fixtures", detail: "Manage the official draw and enter the agreed dates for each tie.", target: "#competition-fixtures" };
     } else if (approvedEntries.length < minimum) {
       officerStatus = { label: "Confirm the competition format", detail: `${minimum - approvedEntries.length} more needed for a standard knockout.`, target: "#official-draw" };
     } else if (incomplete.length || duplicated) {
@@ -844,14 +844,14 @@ export default function CompetitionPage() {
                 {isSuperManager ? (
                   <details id="final-scheduling" open={finalReady} className="mt-3 scroll-mt-28 rounded-xl border border-slate-200 bg-slate-50 p-3">
                     <summary className="cursor-pointer text-sm font-semibold text-slate-900">Final scheduling (League Officers)</summary>
-                    <p className="mt-2 text-xs text-slate-600">Set final date and neutral venue after semi-finals are complete.</p>
+                    <p className="mt-2 text-xs text-slate-600">{mickWhite ? "Set the neutral venue here, then save the agreed date on the final tie." : "Set final date and neutral venue after semi-finals are complete."}</p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <input
+                      {!mickWhite ? <input
                         type="datetime-local"
                         value={finalDateInput}
                         onChange={(e) => setFinalDateInput(e.target.value)}
                         className="rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-700"
-                      />
+                      /> : null}
                       <select
                         value={finalVenueInput}
                         onChange={(e) => setFinalVenueInput(e.target.value)}
@@ -868,7 +868,7 @@ export default function CompetitionPage() {
                         type="button"
                         onClick={() =>
                           void updateSignupSettings({
-                            final_scheduled_at: finalDateInput ? new Date(finalDateInput).toISOString() : null,
+                            ...(mickWhite ? {} : { final_scheduled_at: finalDateInput ? new Date(finalDateInput).toISOString() : null }),
                             final_venue_location_id: finalVenueInput || null,
                           })
                         }
@@ -972,7 +972,8 @@ export default function CompetitionPage() {
               ) : null}
               {mickWhite ? (
                 <MickWhiteFixtures key={id} competitionId={id} canManage={isSuperManager} entriesOpen={entriesOpen}
-                  entryRevision={approvedEntries.map(({ id }) => id).join(",")} />
+                  entryRevision={approvedEntries.map(({ id }) => id).join(",")} pendingCount={pendingEntries.length}
+                  finalVenueId={competition.final_venue_location_id ?? null} />
               ) : !fixturesReady || !matches.length ? (
                 <section id="competition-fixtures" className="scroll-mt-28 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
                   <h3 className="font-semibold text-slate-900">

@@ -35,15 +35,27 @@ export async function POST(request: NextRequest) {
   const cup = competition.data;
   if (!cup || cup.is_archived || cup.is_completed) return error("This competition is unavailable.", 404);
   if (isMickWhiteCompetitionName(cup.name)) {
-    if (body.action !== "schedule_team_fixture") return error("The Mick White Cup uses team entries and team fixtures.");
-    const { homeTeamId, awayTeamId, fixtureDate } = body;
-    if (typeof homeTeamId !== "string" || !uuid.test(homeTeamId) ||
-        typeof awayTeamId !== "string" || !uuid.test(awayTeamId) || homeTeamId === awayTeamId ||
-        typeof fixtureDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(fixtureDate)) {
-      return error("Select two different teams and an agreed date.");
+    if (body.action === "publish_team_draw") {
+      const teamIds: unknown = body.teamIds;
+      if (!Array.isArray(teamIds) || teamIds.length < 4 ||
+          teamIds.some((id) => typeof id !== "string" || !uuid.test(id)) ||
+          new Set(teamIds).size !== teamIds.length) return error("Reload the approved teams before running the draw.");
+      const openingTies = knockoutOpeningRound(shuffleDraw(teamIds));
+      const { error: published } = await client.rpc("publish_mick_white_draw", {
+        p_competition_id: cup.id, p_opening_ties: openingTies,
+      });
+      if (published) return published.code === "P0001"
+        ? error(published.message, 409) : error("The team draw could not be saved.", 500);
+      return NextResponse.json({ ok: true });
     }
-    const scheduled = await client.rpc("schedule_mick_white_fixture", {
-      p_competition_id: cup.id, p_home_team_id: homeTeamId, p_away_team_id: awayTeamId, p_fixture_date: fixtureDate,
+    if (body.action !== "date_team_tie") return error("Choose a team draw action.");
+    const { tieId, fixtureDate } = body;
+    if (typeof tieId !== "string" || !uuid.test(tieId) ||
+        typeof fixtureDate !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(fixtureDate)) {
+      return error("Choose the cup tie and enter the agreed date.");
+    }
+    const scheduled = await client.rpc("date_mick_white_draw_tie", {
+      p_competition_id: cup.id, p_tie_id: tieId, p_fixture_date: fixtureDate,
     });
     if (scheduled.error) return scheduled.error.code === "P0001" || scheduled.error.code === "22008"
       ? error(scheduled.error.message)

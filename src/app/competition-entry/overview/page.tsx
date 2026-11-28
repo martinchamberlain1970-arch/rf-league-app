@@ -62,7 +62,7 @@ async function loadCompetitionCounts() {
       id, name, approved, pending, forecast, scoring, size, format,
       open: signup_open && competitionEntriesOpen(signup_deadline),
       deadline: signup_deadline ? competitionDeadlineLabel(signup_deadline) : null,
-      extraNeeded: isLeagueCup(name) ? Math.max(0, 4 - approved - pending) : 0,
+      extraNeeded: (isLeagueCup(name) || isMickWhiteCompetitionName(name)) ? Math.max(0, 4 - approved - pending) : 0,
     };
   });
 }
