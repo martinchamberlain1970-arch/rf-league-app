@@ -50,6 +50,7 @@ export default function PublicCompetitionEntryPage() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [saveMessage, setSaveMessage] = useState("");
 
   const mergeSelections = (comps: PublicCompetition[], saved: PublicCompetitionSelection[] = []): PublicCompetitionSelection[] => {
     const byId = new Map(saved.map((item) => [item.competitionId, item]));
@@ -85,7 +86,7 @@ export default function PublicCompetitionEntryPage() {
 
   const changeTeam = async (id: string) => {
     rosterRequest.current?.abort();
-    setTeamId(id); setPlayers([]); setPartners([]); setMessage(""); setContactName("");
+    setTeamId(id); setPlayers([]); setPartners([]); setMessage(""); setSaveMessage(""); setContactName("");
     setSelections(mergeSelections(competitions));
     if (!id) return;
     const controller = new AbortController();
@@ -111,6 +112,22 @@ export default function PublicCompetitionEntryPage() {
     .map(({ competitionId, entries }) => [competitionId, selectedPlayerCounts(entries)])), [selections]);
   const duplicates = [...countsByCompetition.values()].some((counts) => [...counts.values()].some((count) => count > 1));
 
+  const unanswered = selections.filter(({ decision }) => decision === "pending").length;
+  const submissionIssues = [
+    ...(!teamId ? ["Select your team."] : []),
+    ...(!contactName.trim() || contactPhone.replace(/\D/g, "").length < 10
+      ? ["Enter the captain or contact name and a telephone number with at least 10 digits."] : []),
+    ...(unanswered ? [`Choose Enter or No entry for ${unanswered} unanswered ${unanswered === 1 ? "competition" : "competitions"}.`] : []),
+    ...(complete + unanswered !== competitions.length ? ["Add at least one entry wherever you selected Enter player(s)."] : []),
+    ...(duplicates ? ["Remove any repeated players in the same competition."] : []),
+  ];
+  const markRemainingNoEntry = () => {
+    setSelections((current) => current.map((item) => item.decision === "pending"
+      ? { ...item, decision: "no_entry", entries: [] }
+      : item));
+    setSaveMessage("");
+  };
+
   const selectPlayer = (competitionId: string, entryId: string, slot: number, playerId: string) => {
     update(competitionId, (current) => {
       const entry = current.entries.find((item) => item.entryId === entryId);
@@ -129,12 +146,32 @@ export default function PublicCompetitionEntryPage() {
   };
 
   const save = async (action: "save" | "submit") => {
-    setBusy(true); setMessage("");
-    const response = await fetch("/api/public/competition-entry-form", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, draftToken, teamId, contactName, contactPhone, selections }) });
-    const result = await response.json(); setBusy(false);
-    if (!response.ok) return setMessage(result.error ?? "Form could not be saved.");
-    if (action === "submit" && result.receipt) setReceipt(result.receipt);
-    setMessage(action === "submit" ? `Competition entries submitted successfully${result.created ? ` (${result.created} sent for approval)` : ""}.` : "Draft saved privately. Return on this browser to continue.");
+    setBusy(true);
+    setSaveMessage("");
+    try {
+      const response = await fetch("/api/public/competition-entry-form", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, draftToken, teamId, contactName, contactPhone, selections }),
+      });
+      const result = await response.json();
+      if (!response.ok) {
+        setSaveMessage(result.error ?? "The form could not be saved. Please try again.");
+        return;
+      }
+      if (action === "submit" && result.receipt) {
+        setReceipt(result.receipt);
+        setMessage(`Competition entries submitted successfully${result.created ? ` (${result.created} sent for approval)` : ""}.`);
+      } else {
+        setSaveMessage(action === "save"
+          ? "Draft saved privately. Return on this browser to continue."
+          : "Competition form submitted. Refresh to view your receipt.");
+      }
+    } catch {
+      setSaveMessage("We couldn’t confirm the request. Check your connection and try again. Your choices are still on this page.");
+    } finally {
+      setBusy(false);
+    }
   };
 
   return <main className="min-h-screen bg-slate-100 p-3 sm:p-6"><div className="mx-auto max-w-5xl space-y-4">
@@ -187,7 +224,33 @@ export default function PublicCompetitionEntryPage() {
                 {ageEligibility === "eligible" ? "Age eligibility verified from player profile." : `Player does not meet the age requirement. ${ageRequirement}.`}
               </p>
             ) : <label className="text-xs font-bold">Entrant DOB *<input type="date" value={entry.entrantDateOfBirth} onChange={(event) => update(competition.id, (current) => ({ ...current, entries: current.entries.map((item) => item.entryId === entry.entryId ? { ...item, entrantDateOfBirth: event.target.value } : item) }))} className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 font-normal" /><span className="block font-normal text-slate-500">{entry.entrantDateOfBirth ? `Age ${ageFromDob(entry.entrantDateOfBirth) ?? "invalid"}` : ageRequirement}</span></label> : null}</div></div>; })}<button type="button" onClick={() => update(competition.id, (current) => ({ ...current, entries: [...current.entries, makeEntry(required)] }))} className="rounded-lg border border-teal-300 bg-white px-3 py-2 text-sm font-bold text-teal-800">Add another entry</button></div> : null}</article>; })}</div></section>
-      <section className="rounded-2xl border border-teal-200 bg-teal-50 p-5"><h2 className="text-xl font-bold">3. Save or submit</h2><p className="mt-1 text-sm text-slate-700">Drafts are private to this browser. Submit only after all {competitions.length} competitions have been completed.</p><div className="mt-4 flex gap-3"><button type="button" disabled={busy || !teamId} onClick={() => void save("save")} className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-bold disabled:opacity-50">Save draft</button><button type="button" disabled={busy || !teamId || duplicates || complete !== competitions.length} onClick={() => void save("submit")} className="rounded-xl bg-teal-700 px-5 py-3 font-bold text-white disabled:opacity-50">Submit completed form</button></div></section>
+      <section className="rounded-2xl border border-teal-200 bg-teal-50 p-5">
+        <h2 className="text-xl font-bold">3. Save or submit</h2>
+        <p className="mt-1 text-sm text-slate-700">Save a draft to continue later in this browser.</p>
+        {submissionIssues.length ? (
+          <div id="competition-submit-help" role="status" className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
+            <p className="font-bold">Before you can submit</p>
+            <ul className="mt-1 list-disc space-y-1 pl-5">
+              {submissionIssues.map((issue) => <li key={issue}>{issue}</li>)}
+            </ul>
+          </div>
+        ) : <p id="competition-submit-help" role="status" className="mt-3 text-sm font-medium text-teal-950">All competitions have a choice. Review your entries, then submit.</p>}
+        {teamId && unanswered > 0 ? (
+          <button type="button" disabled={busy} onClick={markRemainingNoEntry}
+            className="mt-3 rounded-xl border border-teal-700 bg-white px-4 py-2.5 text-sm font-bold text-teal-900 hover:bg-teal-50 disabled:opacity-50">
+            Mark remaining competitions as No entry ({unanswered})
+          </button>
+        ) : null}
+        <div className="mt-4 flex flex-wrap gap-3">
+          <button type="button" disabled={busy || !teamId} onClick={() => void save("save")}
+            className="rounded-xl border border-slate-300 bg-white px-5 py-3 font-bold disabled:opacity-50">Save draft</button>
+          <button type="button" aria-describedby="competition-submit-help" disabled={busy || submissionIssues.length > 0}
+            onClick={() => void save("submit")} className="rounded-xl bg-teal-700 px-5 py-3 font-bold text-white disabled:opacity-50">
+            Submit completed form
+          </button>
+        </div>
+        {saveMessage ? <p role="status" className="mt-3 rounded-xl border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-900">{saveMessage}</p> : null}
+      </section>
     </>}
   </div></main>;
 }
