@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 
 export default function WebAppExperience({ appName }: { appName: string }) {
+  const pathname = usePathname();
+  const showShare = !pathname.startsWith("/auth/") && pathname !== "/captain-results";
   const [online, setOnline] = useState(true);
   const [recovered, setRecovered] = useState(false);
   const [shareMessage, setShareMessage] = useState("");
@@ -53,8 +56,8 @@ export default function WebAppExperience({ appName }: { appName: string }) {
           You’re back online. You can continue safely.
         </div>
       ) : null}
-      <button type="button" onClick={() => void shareCurrentPage()} className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-4 z-[60] grid h-12 w-12 place-items-center rounded-full border border-white/20 bg-[#0b1730] text-xl text-white shadow-xl transition hover:bg-teal-700 focus:outline-none focus:ring-4 focus:ring-cyan-200" aria-label="Share this page" title="Share this page">↗</button>
-      {shareMessage ? <div role="status" className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] right-4 z-[61] rounded-lg bg-slate-950 px-3 py-2 text-xs font-bold text-white shadow-lg">{shareMessage}</div> : null}
+      {showShare ? <button type="button" onClick={() => void shareCurrentPage()} className="fixed bottom-[calc(env(safe-area-inset-bottom)+1rem)] right-4 z-[60] grid h-12 w-12 place-items-center rounded-full border border-white/20 bg-[#0b1730] text-xl text-white shadow-xl transition hover:bg-teal-700 focus:outline-none focus:ring-4 focus:ring-cyan-200" aria-label="Share this page" title="Share this page">↗</button> : null}
+      {showShare && shareMessage ? <div role="status" className="fixed bottom-[calc(env(safe-area-inset-bottom)+4.75rem)] right-4 z-[61] rounded-lg bg-slate-950 px-3 py-2 text-xs font-bold text-white shadow-lg">{shareMessage}</div> : null}
     </>
   );
 }
