@@ -1,5 +1,6 @@
 "use client";
 
+import { allFramesSavedLabel, submittedForApprovalLabel } from "@/lib/live-match-status";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { expectedLeagueScorecardFrames, validateCompleteLeagueScorecard } from "@/lib/league-scorecard-validation";
@@ -2061,7 +2062,7 @@ export default function CaptainResultsPage() {
       }
 
       setPendingByFixture((current) => new Set(current).add(selectedFixture.id));
-      setInfo({ title: "✅ Result submitted — nothing else to do", description: "Your match result has been sent for league-officer approval. You can now close this screen." });
+      setInfo({ title: submittedForApprovalLabel, description: "Your match result has been sent for league-officer approval. You can now close this screen." });
       if (typeof window !== "undefined") {
         window.localStorage.removeItem(`rf_league_captain_draft_${selectedFixture.id}`);
       }
@@ -2159,6 +2160,9 @@ export default function CaptainResultsPage() {
     });
   };
 
+  const showFinishBar = Boolean(selectedFixture && activeEntryTab === "scorecard" && homeSideCanManageScorecard &&
+    !scorecardDirty && orderedScoreSlots.length > 0 && firstIncompleteScorecardIndex < 0 && !pendingByFixture.has(selectedFixture.id));
+
   const mobileMatchActionBar = selectedFixture ? (() => {
     if (activeEntryTab === "lineup") {
       return (
@@ -2243,11 +2247,25 @@ export default function CaptainResultsPage() {
       );
     }
 
-    return null;
+    if (!showFinishBar) return null;
+    return (
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-amber-200 bg-white px-4 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] pt-3 shadow-lg sm:sticky sm:bottom-0 sm:rounded-t-2xl">
+        <p role="status" className="mb-2 text-sm font-bold text-amber-950">{allFramesSavedLabel}</p>
+        <button type="button" disabled={submitting} onClick={() => {
+          if (scorecardReviewMode) void submit();
+          else {
+            setScorecardReviewMode(true);
+            window.requestAnimationFrame(() => document.getElementById("submit-match-review")?.scrollIntoView({ block: "start" }));
+          }
+        }} className="min-h-11 w-full rounded-xl bg-teal-800 px-4 py-2 text-sm font-bold text-white disabled:opacity-60">
+          {submitting ? "Submitting…" : scorecardReviewMode ? "Finish match & submit" : "Review and finish match"}
+        </button>
+      </div>
+    );
   })() : null;
 
   return (
-    <main className={`min-h-screen bg-slate-100 px-4 pt-4 sm:p-6 ${activeEntryTab === "lineup" && selectedFixture ? "pb-36" : "pb-8"}`}>
+    <main className={`min-h-screen bg-slate-100 px-4 pt-4 sm:p-6 ${(activeEntryTab === "lineup" && selectedFixture) || showFinishBar ? "pb-36" : "pb-8"}`}>
       <div className="mx-auto max-w-6xl space-y-4">
         <RequireAuth>
           <ScreenHeader title="Captain Lineups & Results" eyebrow="League" subtitle="Enter pre-match lineups first, then submit your team result for league-officer approval." />
@@ -2657,7 +2675,7 @@ export default function CaptainResultsPage() {
                   ) : null}
                   {activeEntryTab === "scorecard" && pendingByFixture.has(selectedFixture.id) ? (
                     <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-                      This fixture has been submitted and is pending league-officer review. Your submitted details are shown below in read-only mode.
+                      <strong>{submittedForApprovalLabel}</strong><p>Your submitted scorecard is shown below.</p>
                     </div>
                   ) : null}
                   {activeEntryTab === "scorecard" ? (
@@ -2818,7 +2836,7 @@ export default function CaptainResultsPage() {
 
                       {homeSideCanManageScorecard && !scorecardDirty && orderedScoreSlots.length > 0 && firstIncompleteScorecardIndex < 0 && !pendingByFixture.has(selectedFixture.id) ? (
                         <div role="status" className="rounded-xl border-2 border-amber-400 bg-amber-50 p-4 text-amber-950">
-                          <p className="text-base font-bold">All frames saved — match NOT submitted</p>
+                          <p className="text-base font-bold">{allFramesSavedLabel}</p>
                           <p className="mt-1 text-sm">The live score is visible, but the result is not in the league officer’s approval queue. Check the scorecard and submit it below.</p>
                           {!scorecardReviewMode ? (
                             <button
@@ -2826,7 +2844,7 @@ export default function CaptainResultsPage() {
                               onClick={() => setScorecardReviewMode(true)}
                               className="mt-3 min-h-11 rounded-xl bg-amber-900 px-4 py-2 text-sm font-semibold text-white"
                             >
-                              Review and submit match
+                              Review scorecard
                             </button>
                           ) : null}
                         </div>
@@ -3394,7 +3412,7 @@ export default function CaptainResultsPage() {
                       ) : null}
 
                       {scorecardReviewMode ? (
-                        <div className="rounded-xl border-2 border-emerald-400 bg-emerald-50 p-4">
+                        <div id="submit-match-review" className="scroll-mt-24 rounded-xl border-2 border-emerald-400 bg-emerald-50 p-4">
                           <p className="mb-2 text-sm font-bold text-emerald-950">
                             Final step: submit the match for league-officer approval
                           </p>

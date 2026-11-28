@@ -80,7 +80,7 @@ export default function PublicHandicapsPage() {
         </section> : null}
 
         {data?.isInformationOnly ? <section className="rounded-2xl border border-violet-400/20 bg-violet-500/10 p-4 text-sm text-violet-100">A Division 1 Elo does not transfer into the Premier League. If a team is promoted, each player must be given a separately assessed and approved Premier League starting handicap and rating.</section> : <section className="rounded-2xl border border-violet-400/20 bg-violet-500/10 p-4 text-sm text-violet-100">
-          `Target from Elo` shows where a player currently projects from their rating. `Current` is the live handicap being used on match night. A difference can be normal between scheduled reviews; it does not change the playing start tonight.
+          Elo suggestion updates with approved results. Use the published handicap for match night. The two figures can differ between scheduled reviews.
         </section>}
 
         {!data?.isInformationOnly ? <section className="rounded-2xl border border-cyan-400/20 bg-cyan-500/10 p-4 text-sm text-cyan-100">
@@ -97,8 +97,8 @@ export default function PublicHandicapsPage() {
                   <th className="px-3 py-3">#</th>
                   <th className="px-3 py-3">Player</th>
                   <th className="px-3 py-3 text-center">Elo</th>
-                  <th className="px-3 py-3 text-center">{data?.isInformationOnly ? "Suggested Handicap" : "Target From Elo"}</th>
-                  {!data?.isInformationOnly ? <><th className="px-3 py-3 text-center">Current</th><th className="px-3 py-3 text-center">Gap To Target</th><th className="px-3 py-3 text-center">Baseline</th></> : null}
+                  <th className="px-3 py-3 text-center">Elo suggestion</th>
+                  {!data?.isInformationOnly ? <><th className="px-3 py-3 text-center">Published handicap</th><th className="px-3 py-3 text-center">Gap To Target</th><th className="px-3 py-3 text-center">Baseline</th></> : null}
                   <th className="px-3 py-3 text-center">Rated Matches</th>
                 </tr>
               </thead>

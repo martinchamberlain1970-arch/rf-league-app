@@ -1155,9 +1155,9 @@ export default function PlayerProfilePage() {
   );
   const handicapExplain = useMemo(() => {
     const current = Number(player?.snooker_handicap ?? 0);
-    if (current < 0) return `Current handicap after the latest review: this player gives ${Math.abs(current)} points start to a scratch (0) opponent.`;
-    if (current > 0) return `Current handicap after the latest review: this player receives ${current} points start from a scratch (0) opponent.`;
-    return "Current handicap after the latest review: this player is off scratch and neither gives nor receives points against a 0-handicap opponent.";
+    if (current < 0) return `Published handicap after the latest review: this player gives ${Math.abs(current)} points start to a scratch (0) opponent.`;
+    if (current > 0) return `Published handicap after the latest review: this player receives ${current} points start from a scratch (0) opponent.`;
+    return "Published handicap after the latest review: this player is off scratch and neither gives nor receives points against a 0-handicap opponent.";
   }, [player?.snooker_handicap]);
   const baselineExplain = useMemo(() => {
     const start = Number(player?.snooker_handicap_base ?? 0);
@@ -1895,7 +1895,7 @@ export default function PlayerProfilePage() {
                     <p className="mt-2 text-xs text-slate-600">Current position in the snooker ladder for published league players and other live players.</p>
                   </div>
                   <div className="rounded-2xl border border-teal-200 bg-gradient-to-br from-teal-50 to-white p-4 shadow-sm">
-                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700">Current Handicap</p>
+                    <p className="text-xs font-semibold uppercase tracking-[0.2em] text-teal-700">Published handicap</p>
                     <p className="mt-2 text-3xl font-black text-slate-950">{Number(player.snooker_handicap ?? 0) > 0 ? `+${player.snooker_handicap}` : (player.snooker_handicap ?? 0)}</p>
                     <p className="mt-1 text-sm font-medium text-slate-900">Live points-start figure after latest review.</p>
                     <p className="mt-2 text-xs text-slate-600">Baseline {Number(player.snooker_handicap_base ?? 0) > 0 ? `+${player.snooker_handicap_base}` : (player.snooker_handicap_base ?? 0)}</p>
@@ -2047,6 +2047,14 @@ export default function PlayerProfilePage() {
                 </button>
                 {showPerformance ? (
                   <>
+                    <p className="mt-2 text-sm font-semibold text-slate-700">
+                      {[currentLeagueTeams.join(" / "), currentLeagueLabel || "Career summary"].filter(Boolean).join(" · ")}
+                    </p>
+                    {overviewSummary.played === 0 ? (
+                      <p className="mt-3 rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
+                        {currentLeagueLabel ? "No recorded frames in this division for the current season." : "No recorded frames in this summary."}
+                      </p>
+                    ) : <>
                     <div className="mt-3 grid gap-2 sm:grid-cols-5">
                       <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
                         <p className="text-xs text-slate-500">Frames Played</p>
@@ -2069,7 +2077,8 @@ export default function PlayerProfilePage() {
                         <p className="text-xl font-semibold text-slate-900">{overviewSummary.snookerWon}/{overviewSummary.snookerPlayed}</p>
                       </div>
                     </div>
-                    <p className="mt-2 text-sm text-slate-700">{currentLeagueLabel || "Career summary"} · Recent form (last 10): {overviewFormGuide}</p>
+                    <p className="mt-2 text-sm text-slate-700">Recent form (last 10): {overviewFormGuide}</p>
+                    </>}
                   </>
                 ) : null}
               </section>
