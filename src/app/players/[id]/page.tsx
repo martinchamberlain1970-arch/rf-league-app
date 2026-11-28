@@ -1902,8 +1902,10 @@ export default function PlayerProfilePage() {
                   </div>
                   <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-white p-4 shadow-sm">
                     <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-700">Frames Won %</p>
-                    <p className="mt-2 text-3xl font-black text-slate-950">{pct(overviewSummary.won, overviewSummary.played)}%</p>
-                    <p className="mt-1 text-sm font-medium text-slate-900">{overviewSummary.won} wins from {overviewSummary.played} recorded frames.</p>
+                    <p className="mt-2 text-3xl font-black text-slate-950">{overviewSummary.played ? `${pct(overviewSummary.won, overviewSummary.played)}%` : "—"}</p>
+                    <p className="mt-1 text-sm font-medium text-slate-900">
+                      {overviewSummary.played ? `${overviewSummary.won} wins from ${overviewSummary.played} recorded frames.` : "No recorded frames for this season."}
+                    </p>
                     <p className="mt-2 text-xs text-slate-600">Current season form: {overviewFormGuide}</p>
                   </div>
                 </section>
@@ -2111,7 +2113,7 @@ export default function PlayerProfilePage() {
                       <p className="font-semibold text-slate-900">What your handicap means in points start</p>
                       <p className="mt-1">{handicapExplain}</p>
                       <p className="mt-1">{baselineExplain}</p>
-                      <p className="mt-1">Current Elo target handicap: <span className="font-semibold text-slate-900">{formatSignedNumber(currentTargetHandicap)}</span>. Gap to current live handicap: <span className="font-semibold text-slate-900">{formatSignedNumber(currentTargetGap)}</span>.</p>
+                      <p className="mt-1">Elo suggestion: <span className="font-semibold text-slate-900">{formatSignedNumber(currentTargetHandicap)}</span>. Gap to published handicap: <span className="font-semibold text-slate-900">{formatSignedNumber(currentTargetGap)}</span>.</p>
                     </div>
                     <div className="mb-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950">
                       <p className="font-semibold text-slate-900">2026/2027 division rules</p>
