@@ -335,6 +335,7 @@ export default function HomePage() {
     queueAction("/results?tab=competition", "Competition results to review", officerQueue.competition),
     queueAction("/outstanding-scorecards", "Outstanding scorecards", officerQueue.scorecards),
     queueAction("/signups#team-forms", "Competition forms to review", officerQueue.forms),
+    { href: "/events#cup-schedule", title: "Competition schedule watch" },
     queueAction(pendingRequestsHref, "Registrations and other requests", pendingRequestsCount === null ? null : { count: pendingRequestsCount, oldest: null }),
   ];
   const personalActions: DashboardAction[] = [

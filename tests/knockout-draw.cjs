@@ -58,3 +58,15 @@ test("all selected partners must share the same club, including multi-club regis
   assert.equal(clubExports.playersShareCompetitionClub(clubs, ["lead", "partner", "other-player"]), false);
   assert.equal(clubExports.playersShareCompetitionClub(clubs, ["lead", "unregistered"]), false);
 });
+
+test("semi-finals must finish before the final league night in UK time", () => {
+  const schedule = {};
+  vm.runInNewContext(ts.transpileModule(readFileSync("src/lib/competition-schedule.ts", "utf8"), {
+    compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 },
+  }).outputText, { exports: schedule });
+  const now = new Date("2027-04-10T12:00:00Z");
+  assert.equal(schedule.semiFinalScheduleWarning("2027-04-22", "2027-04-21T22:59:00Z", now), null);
+  assert.match(schedule.semiFinalScheduleWarning("2027-04-22", "2027-04-21T23:00:00Z", now), /on or after/);
+  assert.match(schedule.semiFinalScheduleWarning("2027-04-22", undefined, now), /No semi-final deadline/);
+  assert.match(schedule.semiFinalScheduleWarning("2027-04-22", undefined, new Date("2027-04-22T12:00:00Z")), /has arrived/);
+});

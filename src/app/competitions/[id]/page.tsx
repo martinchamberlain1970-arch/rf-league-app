@@ -14,6 +14,7 @@ import CompetitionOfficerEntry from "@/components/CompetitionOfficerEntry";
 import { entryRoster, isLeagueCup, knockoutBestOf, knockoutMatchSides, knockoutRosterProblems } from "@/lib/knockout-draw";
 import CompetitionEntryWithdrawal from "@/components/CompetitionEntryWithdrawal";
 import MessageModal from "@/components/MessageModal";
+import { loadLastLeagueFixture, semiFinalScheduleWarning } from "@/lib/competition-schedule";
 
 type Competition = {
   id: string;
@@ -165,10 +166,7 @@ export default function CompetitionPage() {
     const client = supabase;
     if (!client || !isSuperManager || !matches.length || competition?.competition_format !== "knockout") return;
     let active = true;
-    void client.from("league_fixtures").select("fixture_date,league_seasons!inner(is_active,is_published)")
-      .eq("league_seasons.is_active", true).eq("league_seasons.is_published", true)
-      .in("status", ["pending", "in_progress", "complete"]).not("fixture_date", "is", null)
-      .order("fixture_date", { ascending: false }).limit(1).maybeSingle()
+    void loadLastLeagueFixture(client)
       .then(({ data }) => { if (active) setLastLeagueDate(data?.fixture_date ?? null); });
     return () => { active = false; };
   }, [competition?.competition_format, isSuperManager, matches.length]);
@@ -659,15 +657,10 @@ export default function CompetitionPage() {
   });
   const semiRound = totalBracketRounds - 1;
   const semiDeadline = deadlineByRound.get(semiRound);
-  const roundDateUK = (date: string) => new Date(date).toLocaleDateString("en-CA", { timeZone: "Europe/London" });
   const semiMatches = matches.filter((match) => match.round_no === semiRound);
   const semiFinalsComplete = finalReady || (semiMatches.length === 2 && semiMatches.every(({ status }) => status === "complete" || status === "bye"));
-  let scheduleNotice: string | null = null;
-  if (semiRound > 0 && !semiFinalsComplete && lastLeagueDate) {
-    if (!semiDeadline) scheduleNotice = "Set a semi-final deadline to check it against the last league fixture.";
-    else if (roundDateUK(semiDeadline) >= lastLeagueDate) scheduleNotice = "The semi-final deadline falls on or after the last league fixture.";
-    else if (roundDateUK(new Date().toISOString()) >= lastLeagueDate) scheduleNotice = "The last league fixture date has arrived and the semi-finals are still open.";
-  }
+  const scheduleNotice = semiRound > 0 && !semiFinalsComplete
+    ? semiFinalScheduleWarning(lastLeagueDate, semiDeadline) : null;
 
   const leagueTable = useMemo(() => {
     if (!competition || competition.competition_format !== "league") return [];

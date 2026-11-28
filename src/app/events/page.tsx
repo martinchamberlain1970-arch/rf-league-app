@@ -1,5 +1,6 @@
 "use client";
 
+import { loadLastLeagueFixture, semiFinalScheduleWarning } from "@/lib/competition-schedule";
 import { rankLeagueStandings } from "@/lib/league-standings";
 import { Suspense, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
@@ -34,6 +35,8 @@ type MatchRow = {
   competition_id: string;
   status: "pending" | "in_progress" | "complete" | "bye";
   updated_at: string | null;
+  round_no: number | null;
+  match_no: number | null;
   is_archived?: boolean | null;
 };
 
@@ -194,6 +197,11 @@ function EventsPageContent() {
   const leagueViewRequested = searchParams.get("view") === "league";
   const [rows, setRows] = useState<Competition[]>([]);
   const [matchRows, setMatchRows] = useState<MatchRow[]>([]);
+  const [cupSchedule, setCupSchedule] = useState<{
+    leagueDate: string | null;
+    deadlines: Record<string, string>;
+  } | null>(null);
+  const [cupScheduleError, setCupScheduleError] = useState(false);
   const [leagueMode, setLeagueMode] = useState(false);
   const [teamLabel, setTeamLabel] = useState<string | null>(null);
   const [lastFixture, setLastFixture] = useState<LeagueFixture | null>(null);
@@ -536,7 +544,7 @@ function EventsPageContent() {
       const matchesPromise = fetchAllSupabasePages<MatchRow>((from, to) =>
         client
           .from("matches")
-          .select("id,competition_id,status,updated_at,is_archived")
+          .select("id,competition_id,status,updated_at,is_archived,round_no,match_no")
           .order("id", { ascending: true })
           .range(from, to)
       );
@@ -579,6 +587,24 @@ function EventsPageContent() {
       setRows(competitionRows);
       setMatchRows((matchesRes.data ?? []) as MatchRow[]);
       setLoading(false);
+      const publishedDraws = new Set((matchesRes.data ?? []).filter(({ is_archived }) => !is_archived).map(({ competition_id }) => competition_id));
+      const cupIds = competitionRows.filter((row) => row.competition_format === "knockout" && !row.is_practice && !row.is_archived && !row.is_completed && publishedDraws.has(row.id)).map(({ id }) => id);
+      if (matchesRes.error) { setCupScheduleError(true); return; }
+      if (!cupIds.length) { setCupSchedule({ leagueDate: null, deadlines: {} }); return; }
+      const [lastLeague, deadlines] = await Promise.all([
+        loadLastLeagueFixture(client),
+        fetchAllSupabasePagesByChunks<{ competition_id: string; round_no: number; deadline_at: string }, string>(
+          cupIds, (ids, from, to) => client.from("competition_round_deadlines").select("competition_id,round_no,deadline_at")
+            .in("competition_id", ids).order("id").range(from, to)
+        ),
+      ]);
+      if (!active) return;
+      if (lastLeague.error || deadlines.error) { setCupScheduleError(true); return; }
+      setCupSchedule({
+        leagueDate: lastLeague.data?.fixture_date ?? null,
+        deadlines: Object.fromEntries((deadlines.data ?? []).map(({ competition_id, round_no, deadline_at }) =>
+          [`${competition_id}:${round_no}`, deadline_at])),
+      });
     };
     load();
     return () => {
@@ -1411,6 +1437,33 @@ function EventsPageContent() {
   const completed = useMemo(() => rows.filter((r) => !r.is_archived && r.is_completed), [rows]);
   const archived = useMemo(() => rows.filter((r) => r.is_archived), [rows]);
   const activeRows = tab === "archived" ? archived : tab === "completed" ? completed : open;
+  const cupWarnings = useMemo(() => {
+    if (!cupSchedule) return [];
+    const now = new Date();
+    const byCup = new Map<string, MatchRow[]>();
+    for (const match of matchRows) {
+      if (match.is_archived) continue;
+      const cupMatches = byCup.get(match.competition_id) ?? [];
+      cupMatches.push(match);
+      byCup.set(match.competition_id, cupMatches);
+    }
+    return activeRows.flatMap((cup) => {
+      const matches = byCup.get(cup.id);
+      if (!matches?.length || cup.competition_format !== "knockout" || cup.is_practice) return [];
+      const deadline = (round: number) => cupSchedule.deadlines[`${cup.id}:${round}`];
+      const overdue = matches.filter((match) => {
+        const due = deadline(match.round_no ?? 1);
+        return (match.status === "pending" || match.status === "in_progress") && due && new Date(due) < now;
+      });
+      const openingSize = Math.max(1, ...matches.filter(({ round_no }) => (round_no ?? 1) === 1).map(({ match_no }) => match_no ?? 1));
+      const semiRound = Math.round(Math.log2(openingSize));
+      const semiMatches = matches.filter(({ round_no }) => round_no === semiRound);
+      const semisComplete = matches.some(({ round_no }) => round_no === semiRound + 1) ||
+        (semiMatches.length === 2 && semiMatches.every(({ status }) => status === "complete" || status === "bye"));
+      const warning = semiRound > 0 && !semisComplete ? semiFinalScheduleWarning(cupSchedule.leagueDate, deadline(semiRound), now) : null;
+      return overdue.length || warning ? [{ cup, overdue, warning }] : [];
+    });
+  }, [activeRows, cupSchedule, matchRows]);
   const statsByComp = useMemo(() => {
     const map = new Map<string, { total: number; done: number; inProgress: number; lastUpdated: string | null }>();
     for (const m of matchRows) {
@@ -1992,6 +2045,22 @@ function EventsPageContent() {
             </section>
           ) : (
             <section className="space-y-3">
+            {admin.canManageLeague && tab === "open" ? (
+              <section id="cup-schedule" className={`${cardBaseClass} scroll-mt-24`}>
+                <h2 className="text-lg font-bold text-slate-950">Competition schedule watch</h2>
+                {cupScheduleError ? <p className="mt-1 text-sm text-slate-600">Schedule checks could not be loaded.</p>
+                  : !cupSchedule ? <p className="mt-1 text-sm text-slate-600">Checking published draws…</p>
+                  : cupWarnings.length ? <ul className="mt-2 space-y-2">{cupWarnings.map(({ cup, overdue, warning }) => (
+                    <li key={cup.id} className="rounded-xl bg-amber-50 px-3 py-2 text-sm text-amber-950">
+                      <Link className="font-bold underline" href={`/competitions/${cup.id}#competition-fixtures`}>{cup.name}</Link>
+                      {warning ? <p>{warning}</p> : null}
+                      {overdue.length ? <p>{overdue.length} overdue {overdue.length === 1 ? "tie" : "ties"}</p> : null}
+                    </li>
+                  ))}</ul> : <p className="mt-1 text-sm text-slate-600">{cupSchedule.leagueDate
+                    ? "No overdue ties or semi-final deadline issues in the published draws."
+                    : "Schedule checks will appear when draws and league fixture dates are available."}</p>}
+              </section>
+            ) : null}
             {activeRows.length === 0 ? <p className={`${cardBaseClass} text-slate-600`}>No events.</p> : null}
             {activeRows.map((r) => (
               <article key={r.id} className={cardBaseClass}>
