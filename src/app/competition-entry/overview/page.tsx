@@ -3,7 +3,7 @@ import Link from "next/link";
 import { connection } from "next/server";
 import { competitionDeadlineLabel, competitionEntriesOpen } from "@/lib/fixed-competition-handicaps";
 import { isLeagueCup, knockoutBestOf, knockoutRoundLabel, knockoutSize } from "@/lib/knockout-draw";
-import { competitionEntryFormat, entrantsRequired, isHamiltonCompetitionName, specialCompetitionScoring } from "@/lib/public-competition-entry";
+import { competitionEntryFormat, entrantsRequired, isHamiltonCompetitionName, isMickWhiteCompetitionName, specialCompetitionScoring } from "@/lib/public-competition-entry";
 import { fetchAllSupabasePages } from "@/lib/supabase-pagination";
 
 export const metadata = { title: "Cup entry totals | Rack & Frame" };
@@ -49,7 +49,7 @@ async function loadCompetitionCounts() {
     const { id, name, signup_open, signup_deadline, knockout_round_best_of, best_of } = competition;
     const { approved, pending } = counts.get(id) ?? { approved: 0, pending: 0 };
     const forecast = knockoutSize(approved + pending);
-    const size = entrantsRequired(competition);
+    const size = isMickWhiteCompetitionName(name) ? 3 : entrantsRequired(competition);
     const format = competitionEntryFormat(competition);
     const final = knockoutBestOf(knockout_round_best_of, best_of, 1, 1);
     const semi = knockoutBestOf(knockout_round_best_of, best_of, 1, 2);

@@ -193,7 +193,10 @@ export function buildLeagueInvoicePreview(input: BuildInvoicePreviewInput): Leag
     if (!invoice.recipientNames.length) invoice.recipientNames = Array.from(captainNamesByLocation.get(locationId) ?? []).sort((left, right) => left.localeCompare(right));
     const teammateNamesFromIds = (note.teamMemberIds ?? []).map((id) => playerName(playerById.get(id))).filter((name) => name !== "Unknown player");
     const teammates = teammateNamesFromIds.length ? teammateNamesFromIds : (note.teamMemberNames ?? []).filter(Boolean);
-    const entrantNames = Array.from(new Set([playerName(primaryPlayer), ...teammates].filter((name) => name !== "Unknown player")));
+    const entryTeam = note.teamId ? teamById.get(note.teamId) : null;
+    const entrantNames = isMickWhite(competition.name) && entryTeam
+      ? [entryTeam.name]
+      : Array.from(new Set([playerName(primaryPlayer), ...teammates].filter((name) => name !== "Unknown player")));
     if (!entrantNames.length) warnings.push(`${competition.name} entry ${entry.id} has no entrant names in its saved record.`);
     const amountPence = isMickWhite(competition.name)
       ? input.mickWhiteTeamFeePence

@@ -41,7 +41,7 @@ type Entry = {
 
 type Player = { id: string; display_name: string; full_name: string | null };
 type Location = { id: string; name: string };
-type TeamEntryNote = { teamMemberNames?: string[] };
+type TeamEntryNote = { teamMemberNames?: string[]; teamName?: string };
 
 function parseTeamNote(note: string | null): TeamEntryNote {
   if (!note) return {};
@@ -184,10 +184,11 @@ export default function CompetitionSignupsPage() {
     await reload();
   };
 
-  const entryLabel = (entry: Entry) => [
-    playerNameMap.get(entry.player_id) ?? "Unknown player",
-    ...(parseTeamNote(entry.note).teamMemberNames ?? []),
-  ].join(" & ");
+  const entryLabel = (entry: Entry) => {
+    const note = parseTeamNote(entry.note);
+    if (!entry.player_id && note.teamName) return note.teamName;
+    return [playerNameMap.get(entry.player_id) ?? "Unknown player", ...(note.teamMemberNames ?? [])].join(" & ");
+  };
   const onWithdrawal = (message: string) => {
     setMessage(message);
     void reload();
@@ -352,17 +353,10 @@ export default function CompetitionSignupsPage() {
                       <div className="space-y-1 text-sm">
                         {allEntries.map((e) => (
                           <div key={e.id} className="flex flex-wrap items-center justify-between gap-2">
-                            {(() => {
-                              const note = parseTeamNote(e.note);
-                              const teamNames = (note.teamMemberNames ?? []).filter((n) => String(n ?? "").trim().length > 0);
-                              return (
                             <span className="text-slate-700">
-                              {playerNameMap.get(e.player_id) ?? "Unknown player"}
-                              {teamNames.length > 0 ? ` + ${teamNames.join(" + ")}` : ""}
+                              {entryLabel(e)}
                               {e.entrant_date_of_birth ? ` · DOB ${new Date(e.entrant_date_of_birth).toLocaleDateString()}` : ""}
                             </span>
-                              );
-                            })()}
                             <div className="flex items-center gap-2">
                               <span className="rounded-full border border-slate-300 bg-white px-2 py-0.5 text-xs text-slate-600">{e.status}</span>
                               {admin.canManageLeague && e.status === "pending" ? (

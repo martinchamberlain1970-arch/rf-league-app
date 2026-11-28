@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { loadCompetitionClubs, playersShareCompetitionClub } from "@/lib/competition-clubs";
 import { competitionEntriesOpen } from "@/lib/fixed-competition-handicaps";
 import { entryRoster, isLeagueCup, knockoutBestOf, knockoutMatchFields, knockoutOpeningRound, knockoutSize, shuffleDraw } from "@/lib/knockout-draw";
-import { ageFromDob, competitionAgeRule, entrantsRequired, meetsCompetitionAgeRule } from "@/lib/public-competition-entry";
+import { ageFromDob, competitionAgeRule, entrantsRequired, isMickWhiteCompetitionName, meetsCompetitionAgeRule } from "@/lib/public-competition-entry";
 import { requireLeagueManager } from "@/lib/server-role";
 
 const uuid = /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/i;
@@ -34,6 +34,7 @@ export async function POST(request: NextRequest) {
   if (competition.error) return error("Competition settings could not be loaded.", 500);
   const cup = competition.data;
   if (!cup || cup.is_archived || cup.is_completed) return error("This competition is unavailable.", 404);
+  if (isMickWhiteCompetitionName(cup.name)) return error("The Mick White Cup uses team entries and team fixtures.");
   const required = entrantsRequired(cup);
 
   if (body.action === "add_entry") {

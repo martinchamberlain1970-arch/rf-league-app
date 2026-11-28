@@ -1,23 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { competitionEntriesOpen } from "@/lib/fixed-competition-handicaps";
-import { ageFromDob, competitionAgeRule, competitionEntryReceipt, meetsCompetitionAgeRule, validatePublicSelections, type PublicCompetition, type PublicCompetitionPartner, type PublicCompetitionPlayer, type PublicCompetitionSelection } from "@/lib/public-competition-entry";
+import { ageFromDob, competitionAgeRule, competitionEntryReceipt, isDivisionOneSeason, isMickWhiteCompetitionName, meetsCompetitionAgeRule, validatePublicSelections, type PublicCompetition, type PublicCompetitionPartner, type PublicCompetitionPlayer, type PublicCompetitionSelection } from "@/lib/public-competition-entry";
 
 export const dynamic = "force-dynamic";
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
 const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
 const headers = { "Cache-Control": "no-store", "Referrer-Policy": "no-referrer", "X-Robots-Tag": "noindex, nofollow" };
 
-async function formData(client: SupabaseClient, teamId?: string) {
+async function formData(client: SupabaseClient, teamId?: string, mickWhiteOnly = false) {
   const [seasonsRes, competitionsRes] = await Promise.all([
     client.from("league_seasons").select("id,name").eq("is_active", true).eq("is_published", true),
     client.from("competitions").select("id,name,match_mode,signup_deadline").eq("competition_format", "knockout").eq("signup_open", true).eq("is_archived", false).eq("is_completed", false).order("name"),
   ]);
   if (seasonsRes.error || competitionsRes.error) throw new Error(seasonsRes.error?.message ?? competitionsRes.error?.message);
   const seasons = (seasonsRes.data ?? []) as Array<{ id: string; name: string }>;
-  const competitions = ((competitionsRes.data ?? []) as PublicCompetition[])
+  const openCompetitions = ((competitionsRes.data ?? []) as PublicCompetition[])
     .filter((competition) => competitionEntriesOpen(competition.signup_deadline));
-  const ageRestricted = competitions.flatMap((competition) => {
+  const ageRestricted = openCompetitions.flatMap((competition) => {
     const rule = competitionAgeRule(competition.name);
     return rule.minimum !== null || rule.maximum !== null ? [{ id: competition.id, rule }] : [];
   });
@@ -28,11 +28,16 @@ async function formData(client: SupabaseClient, teamId?: string) {
     if (teamsRes.error) throw new Error(teamsRes.error.message);
     teams = (teamsRes.data ?? []) as typeof teams;
   }
+  const divisionOneIds = new Set(seasons.filter(({ name }) => isDivisionOneSeason(name)).map(({ id }) => id));
+  const eligibleTeams = mickWhiteOnly ? teams.filter(({ season_id }) => divisionOneIds.has(season_id)) : teams;
+  const selectedTeam = eligibleTeams.find((team) => team.id === teamId);
+  const competitions = openCompetitions.filter((competition) => isMickWhiteCompetitionName(competition.name)
+    ? mickWhiteOnly || (selectedTeam && divisionOneIds.has(selectedTeam.season_id))
+    : !mickWhiteOnly);
   let players: PublicCompetitionPlayer[] = [];
   let partners: PublicCompetitionPartner[] = [];
   const registeredDobs = new Map<string, string>();
   let captainName: string | null = null;
-  const selectedTeam = teams.find((team) => team.id === teamId);
   if (selectedTeam) {
     const clubTeams = selectedTeam.location_id
       ? teams.filter((team) => team.location_id === selectedTeam.location_id)
@@ -82,7 +87,7 @@ async function formData(client: SupabaseClient, teamId?: string) {
     }
   }
   return {
-    data: { seasons, teams, competitions, players, partners, captainName },
+    data: { seasons, teams: eligibleTeams, competitions, players, partners, captainName },
     registeredDobs,
   };
 }
@@ -91,18 +96,22 @@ async function loadReceipt(client: SupabaseClient, teamId: string, submittedAt: 
   const competitionIds = [...new Set(selections.map((selection) => selection.competitionId))];
   const playerIds = [...new Set(selections.flatMap((selection) => selection.entries.flatMap((entry) => entry.playerIds)).filter(Boolean))];
   const [team, competitions, players] = await Promise.all([
-    client.from("league_teams").select("name").eq("id", teamId).maybeSingle(),
+    client.from("league_teams").select("name,is_active,league_seasons(name,is_active,is_published)").eq("id", teamId).maybeSingle(),
     competitionIds.length ? client.from("competitions").select("id,name").in("id", competitionIds) : null,
     playerIds.length ? client.from("players").select("id,full_name,display_name").in("id", playerIds) : null,
   ]);
   if (team.error || competitions?.error || players?.error) throw new Error("The submitted entries could not be loaded. Refresh to try again.");
-  return competitionEntryReceipt(
-    team.data?.name ?? "Team",
-    submittedAt,
-    selections,
-    new Map((competitions?.data ?? []).map(({ id, name }) => [id, name])),
-    new Map((players?.data ?? []).map(({ id, full_name, display_name }) => [id, full_name?.trim() || display_name])),
-  );
+  const season = team.data?.league_seasons as { name: string; is_active: boolean; is_published: boolean } | null | undefined;
+  return {
+    receipt: competitionEntryReceipt(
+      team.data?.name ?? "Team",
+      submittedAt,
+      selections,
+      new Map((competitions?.data ?? []).map(({ id, name }) => [id, name])),
+      new Map((players?.data ?? []).map(({ id, full_name, display_name }) => [id, full_name?.trim() || display_name])),
+    ),
+    eligibleForMickWhite: Boolean(team.data?.is_active && season?.is_active && season.is_published && isDivisionOneSeason(season.name)),
+  };
 }
 
 export async function GET(req: NextRequest) {
@@ -110,6 +119,7 @@ export async function GET(req: NextRequest) {
   try {
     const client = createClient(url, key);
     const teamId = req.nextUrl.searchParams.get("teamId")?.trim() || undefined;
+    const mickWhiteOnly = req.nextUrl.searchParams.get("cup") === "mick-white";
     const draftToken = req.nextUrl.searchParams.get("draftToken")?.trim() || "";
     let draft = null;
     if (/^[a-f0-9]{48}$/i.test(draftToken)) {
@@ -118,10 +128,15 @@ export async function GET(req: NextRequest) {
       draft = draftRes.data;
     }
     if (draft?.status === "submitted") {
-      const receipt = await loadReceipt(client, draft.team_id, draft.submitted_at, draft.selections as PublicCompetitionSelection[]);
-      return NextResponse.json({ receipt }, { headers });
+      const { receipt, eligibleForMickWhite } = await loadReceipt(client, draft.team_id, draft.submitted_at, draft.selections as PublicCompetitionSelection[]);
+      const supplement = eligibleForMickWhite && !mickWhiteOnly && !receipt.competitions.some(({ name }) => isMickWhiteCompetitionName(name))
+        ? await client.from("competitions").select("signup_deadline").ilike("name", "Mick White%")
+          .eq("signup_open", true).eq("is_archived", false).eq("is_completed", false)
+        : null;
+      const mickWhiteSupplement = supplement?.data?.some(({ signup_deadline }) => competitionEntriesOpen(signup_deadline));
+      return NextResponse.json({ receipt, ...(mickWhiteSupplement ? { mickWhiteSupplement: true } : {}) }, { headers });
     }
-    const { data } = await formData(client, teamId);
+    const { data } = await formData(client, teamId ?? draft?.team_id, mickWhiteOnly);
     return NextResponse.json({ ...data, draft }, { headers });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : "Form could not be loaded." }, { status: 400, headers });
@@ -139,7 +154,7 @@ export async function POST(req: NextRequest) {
     const contactPhone = String(body?.contactPhone ?? "").trim().slice(0, 40);
     if (!/^[a-f0-9]{48}$/.test(draftToken)) throw new Error("The private draft key is invalid. Reload the form and try again.");
     const client = createClient(url, key);
-    const { data, registeredDobs } = await formData(client, teamId);
+    const { data, registeredDobs } = await formData(client, teamId, body?.cup === "mick-white");
     if (data.competitions.length === 0) throw new Error("Competition entries are currently closed.");
     const team = data.teams.find((item) => item.id === teamId);
     if (!team) throw new Error("Select a valid team.");
@@ -171,25 +186,32 @@ export async function POST(req: NextRequest) {
     }
     const teamPlayers = new Map(data.players.map((player) => [player.id, player]));
     const partnerNames = new Map(data.partners.map((player) => [player.id, player.name]));
-    const entries = draftSelections.filter((item) => item.decision === "enter").flatMap((selection) =>
-      selection.entries.map((entry) => {
+    const entered = draftSelections.filter((item) => item.decision === "enter");
+    const competitionsById = new Map(data.competitions.map((competition) => [competition.id, competition]));
+    const entries = entered.flatMap<{ competition_id: string; player_id: string | null; entrant_date_of_birth: string | null; note: Record<string, unknown> }>((selection) => {
+      const base = {
+        source: "public_team_competition_form",
+        draftToken,
+        teamId,
+      };
+      if (isMickWhiteCompetitionName(competitionsById.get(selection.competitionId)?.name ?? "")) {
+        return [{
+          competition_id: selection.competitionId, player_id: null, entrant_date_of_birth: null,
+          note: { ...base, teamMemberIds: [], teamMemberNames: [], teamName: team.name },
+        }];
+      }
+      return selection.entries.map((entry) => {
         const [primary, ...teammates] = entry.playerIds;
         return {
           competition_id: selection.competitionId,
           player_id: primary,
           entrant_date_of_birth: teamPlayers.get(primary)?.ageEligibility[selection.competitionId] === "eligible"
-            ? registeredDobs.get(primary)
+            ? registeredDobs.get(primary) ?? null
             : entry.entrantDateOfBirth || null,
-          note: {
-            source: "public_team_competition_form",
-            draftToken,
-            teamId,
-            teamMemberIds: teammates,
-            teamMemberNames: teammates.map((id) => partnerNames.get(id) ?? ""),
-          },
+          note: { ...base, teamMemberIds: teammates, teamMemberNames: teammates.map((id) => partnerNames.get(id) ?? "") },
         };
-      }),
-    );
+      });
+    });
     const submit = await client.rpc("submit_public_competition_form", { p_form: values, p_entries: entries });
     if (submit.error) throw new Error(submit.error.message);
     const receipt = competitionEntryReceipt(

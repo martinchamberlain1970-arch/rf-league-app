@@ -147,3 +147,17 @@ test("three-player cups retain their own sport, entry size and scoring descripti
   assert.match(specialCompetitionScoring(albery.name), /100, 200 and 300/);
   assert.equal(competitionEntryFormat(doubles).mode, "Doubles");
 });
+
+test("the Mick White Cup takes a league team selection with no individual players", () => {
+  const { competitionEntryReceipt, competitionEntryFormat, isDivisionOneSeason, specialCompetitionScoring } = exportsForTest;
+  const cup = { id: "mick", name: "Mick White Memorial Cup - 2026/2027", match_mode: "singles" };
+  const selection = { competitionId: cup.id, decision: "enter", entries: [] };
+  assert.equal(competitionEntryFormat(cup).mode, "League team");
+  assert.match(specialCompetitionScoring(cup.name), /Four singles and one doubles/);
+  assert.equal(isDivisionOneSeason("League - Division 1 2026/2027"), true);
+  assert.equal(isDivisionOneSeason("League - Premier League 2026/2027"), false);
+  assert.equal(validatePublicSelections([selection], [cup], team, club, true, new Map()), null);
+  assert.match(validatePublicSelections([{ ...selection, entries: [{ playerIds: ["captain-player"] }] }], [cup], team, club, true, new Map()), /registered team/);
+  const receipt = competitionEntryReceipt("Division One Team", null, [selection], new Map([[cup.id, cup.name]]), new Map());
+  assert.equal(receipt.competitions[0].groups[0][0], "Division One Team");
+});

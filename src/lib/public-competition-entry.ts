@@ -31,6 +31,10 @@ export const isAlberyCompetitionName = (name: string) => /^Albery Cup \(Billiard
 export const isHamiltonCompetitionName = (name: string) =>
   /^Hamilton Cup \((?:Singles Billiards|Billiards Singles)\)(?: - |$)/i.test(name);
 
+export const isMickWhiteCompetitionName = (name: string) => /^Mick White\b/i.test(name);
+export const isDivisionOneSeason = (name: string) => /\b(?:division\s+(?:1|one)|first division)\b/i.test(name);
+export const mickWhiteFormat = "Four singles and one doubles · off scratch";
+
 type CompetitionFormatFields = { name: string; match_mode?: string; sport_type?: string };
 
 export const entrantsRequired = (competition: CompetitionFormatFields) =>
@@ -42,11 +46,12 @@ export function competitionEntryFormat(competition: CompetitionFormatFields) {
   const sport = isAlberyCompetitionName(name) || isHamiltonCompetitionName(name) || sport_type === "billiards"
     ? "Billiards"
     : "Snooker";
-  const mode = entrants === 3 ? "Three-player team" : entrants === 2 ? "Doubles" : "Singles";
+  const mode = isMickWhiteCompetitionName(name) ? "League team" : entrants === 3 ? "Three-player team" : entrants === 2 ? "Doubles" : "Singles";
   return { sport, mode };
 }
 
 export function specialCompetitionScoring(name: string, stage?: "early" | "late") {
+  if (isMickWhiteCompetitionName(name)) return mickWhiteFormat;
   if (isHodgeCompetitionName(name)) return "First to 5 points · 6 singles frames and 3 aggregate points";
   if (isAlberyCompetitionName(name)) return "Race to 300 · cumulative legs to 100, 200 and 300";
   if (isHamiltonCompetitionName(name)) {
@@ -100,6 +105,10 @@ export function validatePublicSelections(
       continue;
     }
     if (selection.decision === "no_entry") continue;
+    if (isMickWhiteCompetitionName(competition.name)) {
+      if (selection.decision !== "enter" || selection.entries.length) return "Enter the registered team for the Mick White Cup.";
+      continue;
+    }
     if (!selection.entries.length) return `Add an entry for ${competition.name}.`;
     const used = new Set<string>();
     for (const entry of selection.entries) {
@@ -146,7 +155,7 @@ export function competitionEntryReceipt(
       .map(({ competitionId, decision, entries }) => ({
         name: competitionNames.get(competitionId) ?? "Competition details unavailable",
         groups: decision === "enter"
-          ? entries.map(({ playerIds }) => playerIds.map((id) => playerNames.get(id) ?? "Player name unavailable"))
+          ? isMickWhiteCompetitionName(competitionNames.get(competitionId) ?? "") ? [[teamName]] : entries.map(({ playerIds }) => playerIds.map((id) => playerNames.get(id) ?? "Player name unavailable"))
           : [],
       })),
   };

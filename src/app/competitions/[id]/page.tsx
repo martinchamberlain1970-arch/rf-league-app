@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
-import { competitionEntryFormat, entrantsRequired, specialCompetitionScoring } from "@/lib/public-competition-entry";
+import { competitionEntryFormat, entrantsRequired, isMickWhiteCompetitionName, specialCompetitionScoring } from "@/lib/public-competition-entry";
 import RequireAuth from "@/components/RequireAuth";
 import ScreenHeader from "@/components/ScreenHeader";
 import { competitionDeadlineLabel, competitionEntriesOpen, usesFixedCompetitionHandicaps } from "@/lib/fixed-competition-handicaps";
@@ -328,7 +328,9 @@ export default function CompetitionPage() {
   const entryLabel = (entry: Pick<Entry, "player_id" | "note">) => {
     const name = fullMap.get(entry.player_id) ?? shortMap.get(entry.player_id) ?? "Unknown player";
     try {
-      const partners = JSON.parse(entry.note ?? "{}")?.teamMemberNames;
+      const note = JSON.parse(entry.note ?? "{}");
+      if (!entry.player_id && typeof note.teamName === "string") return note.teamName;
+      const partners = note.teamMemberNames;
       return Array.isArray(partners) ? [name, ...partners].join(" & ") : name;
     } catch {
       return name;
@@ -533,6 +535,7 @@ export default function CompetitionPage() {
   }, [competition, matches, shortMap, round1MatchCount, rosterByLead]);
   const totalBracketRounds = bracketRounds.length;
   const knockout = competition?.competition_format === "knockout";
+  const mickWhite = Boolean(competition && isMickWhiteCompetitionName(competition.name));
   const fixturesReady = fixtureLoad?.competitionId === id && !fixtureLoad.failed;
   const finalReady = knockout && fixturesReady && matches.some((match) => {
     if ((match.round_no ?? 1) !== totalBracketRounds || match.status === "bye") return false;
@@ -556,6 +559,8 @@ export default function CompetitionPage() {
       };
     } else if (pendingEntries.length) {
       officerStatus = { label: "Review pending entries", detail: `${pendingEntries.length} awaiting approval.`, target: "#competition-entries" };
+    } else if (mickWhite) {
+      officerStatus = { label: "Team entries collected", detail: "Team fixtures use the Division One winter format.", target: "#competition-entries" };
     } else if (approvedEntries.length < minimum) {
       officerStatus = { label: "Confirm the competition format", detail: `${minimum - approvedEntries.length} more needed for a standard knockout.`, target: "#official-draw" };
     } else if (incomplete.length || duplicated) {
@@ -871,7 +876,7 @@ export default function CompetitionPage() {
                     </div>
                   </details>
                 ) : null}
-                {isSuperManager && entriesLoaded && (competition.competition_format !== "knockout" || !matches.length) ? (
+                {!mickWhite && isSuperManager && entriesLoaded && (competition.competition_format !== "knockout" || !matches.length) ? (
                   <CompetitionOfficerEntry key={`entry-${id}`} competition={competition} players={players.filter((player) => !player.is_archived)} locations={locations}
                     usedPlayerIds={new Set([...pendingEntries, ...approvedEntries].flatMap(entryRoster))}
                     onAdd={(playerIds, dateOfBirth) => manageCompetition({ action: "add_entry", playerIds, dateOfBirth })} />
@@ -881,7 +886,7 @@ export default function CompetitionPage() {
                     <span id="official-draw">The draw has been published. See the fixture list below.</span>
                   </p>
                 ) : null}
-                {isSuperManager && entriesLoaded && competition.competition_format === "knockout" && !matches.length ? (
+                {isSuperManager && entriesLoaded && competition.competition_format === "knockout" && !mickWhite && !matches.length ? (
                   <CompetitionOfficialDraw key={`draw-${id}`} competition={competition} entries={approvedEntries} pendingCount={pendingEntries.length}
                     entryLabel={entryLabel} deadlines={deadlines}
                     onPublish={(entryIds) => manageCompetition({ action: "publish_draw", entryIds })} />
